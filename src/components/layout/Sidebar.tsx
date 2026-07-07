@@ -17,6 +17,7 @@ import {
   ChevronRight,
   QrCode,
   Globe,
+  HelpCircle,
 } from 'lucide-react';
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
@@ -64,9 +65,15 @@ const navItems: NavItem[] = [
     fase: 'Fase 1',
   },
   {
-    label: 'Live Chat',
+    label: 'Live Chat Staf',
     href: '/admin/chat',
     icon: <MessageSquare size={20} />,
+    fase: 'Fase 3',
+  },
+  {
+    label: 'Kelola FAQ Bot',
+    href: '/admin/chat/faq',
+    icon: <HelpCircle size={20} />,
     fase: 'Fase 3',
   },
   {

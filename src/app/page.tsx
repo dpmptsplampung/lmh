@@ -14,6 +14,7 @@ import {
   Shield,
   LogOut,
   User,
+  MessageSquare,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { APP_NAME, WA_NUMBER, WA_DEFAULT_MESSAGE } from '@/lib/constants';
@@ -104,6 +105,7 @@ export default function LandingPage() {
           <li><a href="#layanan" className={styles.navLink}>Layanan</a></li>
           <li><Link href="/umkm" className={styles.navLink}>UMKM</Link></li>
           <li><Link href="/gallery" className={styles.navLink}>Investasi</Link></li>
+          <li><Link href="/chat" className={styles.navLink}>Live Chat</Link></li>
         </ul>
 
         <div className={styles.navActions}>
@@ -212,6 +214,12 @@ export default function LandingPage() {
       <footer className={styles.footer}>
         <p>© {new Date().getFullYear()} {APP_NAME} — DPMPTSP Provinsi Lampung. Hak cipta dilindungi.</p>
       </footer>
+
+      {/* Floating Chat Widget */}
+      <Link href="/chat" className={styles.floatingChat}>
+        <MessageSquare size={18} />
+        <span>Tanya Bot / Petugas</span>
+      </Link>
     </div>
   );
 }

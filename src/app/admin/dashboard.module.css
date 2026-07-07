@@ -139,30 +139,106 @@
   }
 }
 
-/* Walk-in Wizard Card */
+/* Walk-in Wizard Modal Overlay with Backdrop Blur */
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  animation: fadeIn 0.3s ease-out;
+}
+
 .wizardCard {
   background: var(--surface-elevated);
   border: 1px solid var(--border-default);
-  border-radius: var(--radius-xl);
-  padding: var(--space-6);
-  margin-bottom: var(--space-8);
-  animation: fadeIn 0.4s ease-out;
+  border-radius: var(--radius-2xl);
+  padding: var(--space-8);
+  width: 100%;
+  max-width: 540px;
+  box-shadow: var(--shadow-2xl), 0 20px 40px rgba(0, 0, 0, 0.15);
+  z-index: 1001;
+  position: relative;
+  animation: slideInUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .wizardHeader {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  margin-bottom: var(--space-5);
+  margin-bottom: var(--space-6);
   padding-bottom: var(--space-4);
   border-bottom: 1px solid var(--border-default);
 }
 
 .wizardTitle {
   font-family: var(--font-display);
-  font-size: var(--text-base);
-  font-weight: 700;
+  font-size: var(--text-lg);
+  font-weight: 800;
   color: var(--text-primary);
+}
+
+.closeButton {
+  position: absolute;
+  top: var(--space-6);
+  right: var(--space-6);
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: color var(--transition-fast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-1);
+  border-radius: 50%;
+}
+
+.closeButton:hover {
+  color: var(--color-danger-500);
+  background: var(--color-danger-50);
+}
+
+/* Quick access Walk-in button on dashboard */
+.walkinTriggerContainer {
+  margin-bottom: var(--space-8);
+  display: flex;
+  justify-content: flex-start;
+}
+
+.walkinTriggerBtn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-6);
+  background: linear-gradient(135deg, var(--color-primary-600), var(--color-primary-700));
+  color: white;
+  border: none;
+  border-radius: var(--radius-xl);
+  font-family: var(--font-sans);
+  font-weight: 700;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  box-shadow: var(--shadow-md), var(--shadow-glow);
+  transition: all var(--transition-base);
+}
+
+.walkinTriggerBtn:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg), var(--shadow-glow);
+  background: linear-gradient(135deg, var(--color-primary-500), var(--color-primary-600));
+}
+
+.walkinTriggerBtn:active {
+  transform: scale(0.97);
 }
 
 .wizardBody {
@@ -272,4 +348,5 @@
   gap: var(--space-2);
   border: 1px dashed var(--border-default);
 }
+
 
