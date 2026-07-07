@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Building2, AlertCircle, Loader2, Shield, User, Lock, Mail, ArrowLeft } from 'lucide-react';
+import { Building2, AlertCircle, Loader2, Shield, Lock, Mail, ArrowLeft } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { APP_NAME } from '@/lib/constants';
 import styles from './login.module.css';
@@ -80,7 +80,6 @@ export default function LoginPage() {
           .single();
 
         if (dbError || !petugas) {
-          // Pengunjung biasa (jika login via email password)
           window.location.href = '/me';
         } else if (petugas.role === 'admin' || petugas.role === 'petugas') {
           window.location.href = '/admin';
@@ -99,6 +98,9 @@ export default function LoginPage() {
       <div className={styles.loginGlow} />
       <div className={styles.loginGlow2} />
 
+      {/* Spacer atas untuk menyeimbangkan layout */}
+      <div className={styles.topSpacer} />
+
       <div className={styles.loginCard}>
         <div className={styles.loginHeader}>
           <div className={styles.loginIcon}>
@@ -108,7 +110,7 @@ export default function LoginPage() {
           <p className={styles.loginSubtitle}>
             {isAdminLogin 
               ? 'Masuk ke Panel Operator & Admin DPMPTSP Provinsi Lampung'
-              : 'Masuk untuk mengakses layanan digital DPMPTSP Provinsi Lampung'}
+              : 'Silakan login dengan Google untuk mengakses layanan digital DPMPTSP Provinsi Lampung'}
           </p>
         </div>
 
@@ -186,6 +188,10 @@ export default function LoginPage() {
               ) : (
                 /* Login Pengunjung (Google OAuth) */
                 <>
+                  <div style={{ textAlign: 'center', marginBottom: 'var(--space-5)', fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
+                    Gunakan akun Google aktif Anda untuk memulai check-in atau membuat reservasi kunjungan.
+                  </div>
+
                   <button
                     className={styles.googleBtn}
                     onClick={handleGoogleLogin}
@@ -212,19 +218,6 @@ export default function LoginPage() {
                     Masuk dengan Google
                   </button>
 
-                  <button
-                    type="button"
-                    className="btn btn--secondary btn--lg"
-                    style={{ width: '100%', marginTop: 'var(--space-3)', display: 'flex', gap: 'var(--space-2)' }}
-                    onClick={() => {
-                      setIsAdminLogin(true);
-                      setError('');
-                    }}
-                  >
-                    <User size={18} />
-                    Masuk sebagai Petugas / Admin
-                  </button>
-
                   <div className={styles.loginDivider}>
                     <span>Keamanan Data</span>
                   </div>
@@ -238,6 +231,22 @@ export default function LoginPage() {
             </>
           )}
         </div>
+      </div>
+
+      {/* Footer tersembunyi di bawah kanan (harus scroll di handphone) */}
+      <div className={styles.loginFooter}>
+        {!isAdminLogin && (
+          <button
+            type="button"
+            className={styles.adminLink}
+            onClick={() => {
+              setIsAdminLogin(true);
+              setError('');
+            }}
+          >
+            Akses Operator & Admin &rarr;
+          </button>
+        )}
       </div>
     </div>
   );
