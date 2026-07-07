@@ -79,6 +79,20 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
+  // JIKA USER LOGIN: Cek otorisasi untuk rute admin (/admin/*)
+  if (pathname.startsWith('/admin')) {
+    const { data: petugas } = await supabase
+      .from('petugas')
+      .select('role')
+      .eq('auth_user_id', user.id)
+      .single();
+
+    // Jika user tidak terdaftar sebagai petugas/admin, alihkan ke dashboard pengunjung (/me)
+    if (!petugas || (petugas.role !== 'admin' && petugas.role !== 'petugas')) {
+      return NextResponse.redirect(new URL('/me', request.url));
+    }
+  }
+
   return response;
 }
 
