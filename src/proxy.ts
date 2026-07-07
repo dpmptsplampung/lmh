@@ -2,14 +2,15 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 
-// Routes yang bisa diakses tanpa login
-const publicPrefixes = ['/login', '/auth/callback'];
+// Rute yang WAJIB login
+const protectedPrefixes = ['/admin', '/me'];
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Skip public routes
-  if (publicPrefixes.some((prefix) => pathname.startsWith(prefix))) {
+  // Skip middleware unless it's a protected route
+  const isProtected = protectedPrefixes.some((prefix) => pathname.startsWith(prefix));
+  if (!isProtected) {
     return NextResponse.next();
   }
 

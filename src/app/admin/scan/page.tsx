@@ -136,14 +136,21 @@ export default function AdminScanPage() {
     };
   }, [lookupToken]);
 
-  const handleProcess = async (action: 'hadir' | 'selesai') => {
-    if (!result) return;
+  const handleCheckIn = async (action: 'hadir' | 'tolak') => {
+    if (!result || scanState !== 'found') return;
     setProcessing(true);
 
     const supabase = createClient();
 
-    const updateData: Record<string, unknown> = {
-      status: action === 'hadir' ? 'hadir' : 'selesai',
+    const today = new Date().toISOString().split('T')[0];
+    if (action === 'hadir' && result.tanggal_rencana !== today) {
+      alert(`Gagal Check-In: Jadwal reservasi ini adalah tanggal ${formatDate(result.tanggal_rencana)}, bukan hari ini.`);
+      setProcessing(false);
+      return;
+    }
+
+    const updateData: any = { 
+      status: action === 'hadir' ? 'hadir' : 'ditolak',
       updated_at: new Date().toISOString(),
     };
 
@@ -351,7 +358,7 @@ export default function AdminScanPage() {
                       <button
                         className="btn btn--primary btn--lg"
                         style={{ width: '100%' }}
-                        onClick={() => handleProcess('hadir')}
+                        onClick={() => handleCheckIn('hadir')}
                         disabled={processing}
                       >
                         {processing ? (
@@ -376,7 +383,7 @@ export default function AdminScanPage() {
                         <button
                           className="btn btn--primary btn--lg"
                           style={{ width: '100%' }}
-                          onClick={() => handleProcess('hadir')}
+                          onClick={() => handleCheckIn('hadir')}
                           disabled={processing}
                         >
                           {processing ? (

@@ -58,13 +58,13 @@ export default function AntrianPage() {
         if (p) {
           myRole = p.role;
           myLayananId = p.layanan_id;
-          setCurrentUser(p as PetugasData);
+          setCurrentUser(p as unknown as PetugasData);
         }
       }
 
-      // Mulai dari awal hari s/d akhir hari
-      const startOfDay = new Date(tanggal + 'T00:00:00.000Z');
-      const endOfDay = new Date(tanggal + 'T23:59:59.999Z');
+      // Gunakan waktu lokal, lalu convert ke UTC ISO untuk query ke Supabase
+      const startOfDay = new Date(`${tanggal}T00:00:00`);
+      const endOfDay = new Date(`${tanggal}T23:59:59.999`);
 
       let query = supabase
         .from('kunjungan')
@@ -90,7 +90,7 @@ export default function AntrianPage() {
   const handleSelesaikan = async (id: string) => {
     try {
       const supabase = createClient();
-      await supabase
+      const { error } = await supabase
         .from('kunjungan')
         .update({
           status: 'selesai',
@@ -98,9 +98,15 @@ export default function AntrianPage() {
         })
         .eq('id', id);
       
-      await fetchData();
+      if (error) {
+        console.error("Gagal menyelesaikan antrian:", error);
+        alert("Gagal menyelesaikan antrian. Pastikan Anda memiliki akses atau periksa koneksi.");
+      } else {
+        await fetchData();
+      }
     } catch (e) {
       console.error(e);
+      alert("Terjadi kesalahan saat memproses permintaan.");
     }
   };
 

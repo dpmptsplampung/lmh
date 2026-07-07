@@ -36,21 +36,45 @@ const services = [
   },
   {
     icon: <HeartHandshake size={28} />,
-    title: 'CS BPJS Kesehatan',
+    title: 'BPJS Kesehatan',
     description: 'Layanan informasi dan bantuan terkait BPJS Kesehatan. Tersedia konsultasi tatap muka dan online.',
     color: 'serviceIconAccent',
   },
   {
     icon: <Store size={28} />,
     title: 'Matchmaking UMKM',
-    description: 'Platform penghubung kebutuhan UMKM — dari bahan baku hingga kemitraan bisnis. Terbuka untuk seluruh Indonesia.',
+    description: 'Platform penghubung kebutuhan UMKM — dari bahan baku hingga kemitraan bisnis. Tersedia juga layanan PEMBIAYAAN UMKM.',
     color: 'serviceIconPrimary',
   },
   {
     icon: <FileText size={28} />,
     title: 'Investment Gallery',
-    description: 'Pameran potensi investasi Provinsi Lampung. Dokumen profil investasi tersedia untuk dilihat secara daring.',
+    description: 'Pameran potensi investasi Provinsi Lampung. Dokumen IPRO dan Peta Potensi tersedia untuk dilihat secara daring.',
     color: 'serviceIconAccent',
+  },
+  {
+    icon: <Building2 size={28} />,
+    title: 'Bank Lampung',
+    description: 'Layanan perbankan daerah pendukung ekosistem UMKM dan investasi.',
+    color: 'serviceIconPrimary',
+  },
+  {
+    icon: <Sparkles size={28} />,
+    title: 'BALMON',
+    description: 'Pelayanan Balai Monitor Spektrum Frekuensi Radio, meliputi perizinan frekuensi dan sertifikasi alat telekomunikasi.',
+    color: 'serviceIconSuccess',
+  },
+  {
+    icon: <Shield size={28} />,
+    title: 'Sertifikasi Mutu Keamanan Hasil Perikanan',
+    description: 'Sertifikasi Kelayakan Pengolahan (SKP) produk perikanan untuk menjamin mutu dan keamanan pangan standar ekspor.',
+    color: 'serviceIconAccent',
+  },
+  {
+    icon: <FileText size={28} />,
+    title: 'Layanan Jasa Industri',
+    description: 'Layanan sertifikasi SNI, pengujian, dan kalibrasi produk industri.',
+    color: 'serviceIconPrimary',
   },
 ];
 
@@ -175,7 +199,7 @@ export default function LandingPage() {
       <section id="layanan" className={styles.services}>
         <div className={styles.sectionHeader}>
           <p className={styles.sectionLabel}>Layanan Kami</p>
-          <h2 className={styles.sectionTitle}>5 Layanan dalam Satu Atap</h2>
+          <h2 className={styles.sectionTitle}>9 Layanan dalam Satu Atap</h2>
           <p className={styles.sectionDescription}>
             Layanan konsultatif tatap muka dan platform digital yang bisa diakses
             dari mana saja, kapan saja.
