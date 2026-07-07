@@ -1,0 +1,139 @@
+.checkinPage {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8);
+  background: linear-gradient(135deg,
+    var(--color-primary-50) 0%,
+    #fff 50%,
+    var(--color-accent-50) 100%
+  );
+  position: relative;
+  overflow: hidden;
+}
+
+.checkinGlow {
+  position: absolute;
+  top: -300px;
+  right: -200px;
+  width: 600px;
+  height: 600px;
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.06) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.checkinCard {
+  width: 100%;
+  max-width: 520px;
+  background: var(--surface-elevated);
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow-xl);
+  overflow: hidden;
+  animation: slideInUp 0.5s ease-out;
+  position: relative;
+}
+
+.checkinHeader {
+  padding: var(--space-8) var(--space-8) var(--space-6);
+  text-align: center;
+  background: linear-gradient(135deg, var(--color-primary-600), var(--color-primary-700));
+  color: white;
+}
+
+.checkinIcon {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-xl);
+  background: rgba(255, 255, 255, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto var(--space-4);
+}
+
+.checkinTitle {
+  font-size: var(--text-2xl);
+  font-weight: 800;
+  color: white;
+  margin-bottom: var(--space-2);
+}
+
+.checkinSubtitle {
+  font-size: var(--text-sm);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.checkinBody {
+  padding: var(--space-8);
+}
+
+.checkinForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.checkinSubmit {
+  margin-top: var(--space-2);
+}
+
+.backLink {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-6);
+  justify-content: center;
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+  text-decoration: none;
+}
+
+.backLink:hover {
+  color: var(--text-secondary);
+}
+
+/* Success State */
+.successState {
+  padding: var(--space-12) var(--space-8);
+  text-align: center;
+  animation: fadeIn 0.4s ease-out;
+}
+
+.successIcon {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: var(--color-success-50);
+  color: var(--color-success-600);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto var(--space-6);
+}
+
+.successTitle {
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  margin-bottom: var(--space-3);
+}
+
+.successDescription {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin-bottom: var(--space-8);
+  line-height: 1.6;
+}
+
+@media (max-width: 480px) {
+  .checkinPage {
+    padding: var(--space-4);
+    align-items: flex-start;
+    padding-top: var(--space-8);
+  }
+
+  .checkinHeader,
+  .checkinBody {
+    padding: var(--space-6);
+  }
+}
