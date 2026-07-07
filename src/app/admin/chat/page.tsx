@@ -1,63 +1,35 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   MessageSquare,
   User,
   Bot,
   Send,
   CheckCircle2,
-  Clock,
   AlertCircle,
+  Loader2,
 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
+import { createClient } from '@/lib/supabase/client';
 
-// Demo chat sessions
-const demoSessions = [
-  {
-    id: '1',
-    layanan: 'Helpdesk OSS',
-    kontak: '081234567890',
-    status: 'eskalasi',
-    created_at: '2026-07-06T10:20:00Z',
-    last_message: 'Saya ingin bertanya soal perubahan data NIB',
-    unread: 2,
-  },
-  {
-    id: '2',
-    layanan: 'CS BPJS Kesehatan',
-    kontak: 'siti@email.com',
-    status: 'aktif',
-    created_at: '2026-07-06T10:00:00Z',
-    last_message: 'Terima kasih atas informasinya',
-    unread: 0,
-  },
-  {
-    id: '3',
-    layanan: 'Helpdesk OSS',
-    kontak: null,
-    status: 'bot',
-    created_at: '2026-07-06T09:45:00Z',
-    last_message: 'Bagaimana cara daftar NIB?',
-    unread: 0,
-  },
-  {
-    id: '4',
-    layanan: 'Sertifikasi Halal',
-    kontak: '087654321000',
-    status: 'selesai',
-    created_at: '2026-07-06T09:00:00Z',
-    last_message: 'Baik, saya akan datang besok',
-    unread: 0,
-  },
-];
+interface Session {
+  id: string;
+  layanan_id: string;
+  kontak_pengunjung: string | null;
+  status: 'bot' | 'eskalasi' | 'aktif' | 'selesai';
+  created_at: string;
+  layanan: { nama: string } | null;
+  last_message?: string;
+  unread?: number;
+}
 
-const demoPesan = [
-  { id: '1', pengirim: 'pengunjung', isi: 'Halo, saya ingin bertanya soal perubahan data NIB', waktu: '10:20' },
-  { id: '2', pengirim: 'bot', isi: 'Selamat datang di Helpdesk OSS! Untuk perubahan data NIB, Anda perlu menyiapkan dokumen berikut:\n1. KTP pemilik usaha\n2. NPWP\n3. Akta perubahan (jika ada)\n\nApakah ada pertanyaan lain?', waktu: '10:20' },
-  { id: '3', pengirim: 'pengunjung', isi: 'Apakah bisa diproses online atau harus datang langsung?', waktu: '10:22' },
-  { id: '4', pengirim: 'bot', isi: 'Maaf, saya tidak yakin dengan jawaban untuk pertanyaan ini. Saya akan menghubungkan Anda dengan petugas. Mohon tunggu sebentar.', waktu: '10:22' },
-];
+interface Message {
+  id: string;
+  pengirim: 'pengunjung' | 'bot' | 'petugas';
+  isi: string;
+  created_at: string;
+}
 
 const statusConfig = {
   bot: { label: 'Bot', icon: <Bot size={12} />, className: 'badge--bot' },
@@ -67,8 +39,182 @@ const statusConfig = {
 };
 
 export default function AdminChatPage() {
-  const [selectedSession, setSelectedSession] = useState(demoSessions[0]);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [selectedSession, setSelectedSession] = useState<Session | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [messageInput, setMessageInput] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  const fetchSessions = async (layananId: string | null) => {
+    const supabase = createClient();
+    let query = supabase
+      .from('chat_sesi')
+      .select(`
+        id, layanan_id, kontak_pengunjung, status, created_at,
+        layanan:layanan_id ( nama )
+      `)
+      .order('created_at', { ascending: false });
+
+    if (layananId) {
+      query = query.eq('layanan_id', layananId);
+    }
+
+    const { data } = await query;
+    if (data) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const formatted = data.map(d => ({
+        ...d,
+        layanan: Array.isArray(d.layanan) ? d.layanan[0] : d.layanan
+      })) as any as Session[];
+      setSessions(formatted);
+      
+      // Update selected session if it exists to refresh status
+      setSelectedSession(prev => {
+        if (!prev) return prev;
+        const updated = formatted.find(s => s.id === prev.id);
+        return updated || prev;
+      });
+    }
+  };
+
+  // Load User & Sessions
+  useEffect(() => {
+    async function init() {
+      try {
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        let targetLayananId = null;
+
+        if (user) {
+          const { data: petugas } = await supabase
+            .from('petugas')
+            .select('role, layanan_id')
+            .eq('auth_user_id', user.id)
+            .single();
+
+          if (petugas) {
+            if (petugas.role === 'petugas') {
+              targetLayananId = petugas.layanan_id;
+            }
+          }
+        }
+        
+        await fetchSessions(targetLayananId);
+
+        // Subscribe to new sessions
+        const channel = supabase.channel('public:chat_sesi')
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_sesi' }, () => {
+             fetchSessions(targetLayananId);
+          })
+          .subscribe();
+
+        return () => {
+          supabase.removeChannel(channel);
+        };
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    }
+    init();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Load Messages for Selected Session
+  useEffect(() => {
+    if (!selectedSession) return;
+    
+    let active = true;
+    const supabase = createClient();
+
+    async function loadMessages() {
+      const { data } = await supabase
+        .from('chat_pesan')
+        .select('id, pengirim, isi, created_at')
+        .eq('sesi_id', selectedSession!.id)
+        .order('created_at', { ascending: true });
+        
+      if (active && data) {
+        setMessages(data as Message[]);
+      }
+    }
+    
+    loadMessages();
+
+    // Subscribe to new messages for this specific session
+    const msgChannel = supabase.channel(`room_${selectedSession.id}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_pesan', filter: `sesi_id=eq.${selectedSession.id}` }, (payload) => {
+        const newMsg = payload.new as Message;
+        setMessages(prev => {
+          if (prev.find(m => m.id === newMsg.id)) return prev;
+          return [...prev, newMsg];
+        });
+      })
+      .subscribe();
+
+    return () => {
+      active = false;
+      supabase.removeChannel(msgChannel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSession?.id]);
+
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!messageInput.trim() || !selectedSession) return;
+
+    const text = messageInput.trim();
+    setMessageInput('');
+
+    try {
+      const supabase = createClient();
+      await supabase.from('chat_pesan').insert({
+        sesi_id: selectedSession.id,
+        pengirim: 'petugas',
+        isi: text,
+      });
+      
+      // If session was escalated or bot, make it active since staff replied
+      if (selectedSession.status !== 'aktif' && selectedSession.status !== 'selesai') {
+         await supabase.from('chat_sesi').update({ status: 'aktif' }).eq('id', selectedSession.id);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleSelesaikanSesi = async () => {
+    if (!selectedSession) return;
+    try {
+      const supabase = createClient();
+      await supabase.from('chat_sesi').update({ status: 'selesai' }).eq('id', selectedSession.id);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+  
+  const handleAmbilAlih = async () => {
+    if (!selectedSession) return;
+    try {
+      const supabase = createClient();
+      await supabase.from('chat_sesi').update({ status: 'aktif' }).eq('id', selectedSession.id);
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   return (
     <>
@@ -100,11 +246,19 @@ export default function AdminChatPage() {
             fontWeight: 600,
             fontSize: 'var(--text-sm)',
           }}>
-            Sesi Chat ({demoSessions.filter(s => s.status !== 'selesai').length} aktif)
+            Sesi Chat ({sessions.filter(s => s.status !== 'selesai').length} aktif)
           </div>
           <div style={{ flex: 1, overflowY: 'auto' }}>
-            {demoSessions.map((session) => {
-              const config = statusConfig[session.status as keyof typeof statusConfig];
+            {loading ? (
+              <div style={{ padding: 'var(--space-8)', textAlign: 'center', color: 'var(--text-tertiary)' }}>
+                <Loader2 size={24} className="animate-pulse" style={{ margin: '0 auto' }} />
+              </div>
+            ) : sessions.length === 0 ? (
+              <div style={{ padding: 'var(--space-8)', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 'var(--text-sm)' }}>
+                Belum ada sesi chat
+              </div>
+            ) : sessions.map((session) => {
+              const config = statusConfig[session.status];
               return (
                 <div
                   key={session.id}
@@ -113,45 +267,23 @@ export default function AdminChatPage() {
                     padding: 'var(--space-4)',
                     borderBottom: '1px solid var(--color-neutral-100)',
                     cursor: 'pointer',
-                    background: selectedSession.id === session.id ? 'var(--color-primary-50)' : 'transparent',
+                    background: selectedSession?.id === session.id ? 'var(--color-primary-50)' : 'transparent',
                     transition: 'background var(--transition-fast)',
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
-                    <span style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{session.layanan}</span>
+                    <span style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{session.layanan?.nama || 'Layanan'}</span>
                     <span className={`badge ${config.className}`} style={{ fontSize: '10px' }}>
                       {config.icon} {config.label}
                     </span>
                   </div>
-                  <p style={{
-                    fontSize: 'var(--text-xs)',
-                    color: 'var(--text-secondary)',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}>
-                    {session.last_message}
-                  </p>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'var(--space-2)' }}>
-                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
-                      {session.kontak || 'Tanpa kontak'}
+                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                      {session.kontak_pengunjung || 'Pengunjung Anonim'}
                     </span>
-                    {session.unread > 0 && (
-                      <span style={{
-                        background: 'var(--color-primary-600)',
-                        color: 'white',
-                        fontSize: '10px',
-                        fontWeight: 700,
-                        width: '20px',
-                        height: '20px',
-                        borderRadius: '50%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}>
-                        {session.unread}
-                      </span>
-                    )}
+                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
+                      {new Date(session.created_at).toLocaleTimeString('id-ID', {hour: '2-digit', minute:'2-digit'})}
+                    </span>
                   </div>
                 </div>
               );
@@ -159,132 +291,121 @@ export default function AdminChatPage() {
           </div>
         </div>
 
-        {/* Chat Area */}
+        {/* Chat Thread */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-          {/* Chat Header */}
-          <div style={{
-            padding: 'var(--space-4) var(--space-6)',
-            borderBottom: '1px solid var(--border-default)',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}>
-            <div>
-              <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{selectedSession.layanan}</div>
-              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-                {selectedSession.kontak || 'Tanpa kontak'} · {new Date(selectedSession.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-              {selectedSession.status === 'eskalasi' && (
-                <button className="btn btn--primary btn--sm">Ambil Alih</button>
-              )}
-              {selectedSession.status === 'aktif' && (
-                <button className="btn btn--secondary btn--sm">
-                  <CheckCircle2 size={14} />
-                  Selesai
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Messages */}
-          <div style={{
-            flex: 1,
-            overflowY: 'auto',
-            padding: 'var(--space-6)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 'var(--space-4)',
-            background: 'var(--color-neutral-50)',
-          }}>
-            {demoPesan.map((msg) => (
-              <div
-                key={msg.id}
-                style={{
-                  display: 'flex',
-                  justifyContent: msg.pengirim === 'pengunjung' ? 'flex-start' : 'flex-end',
-                  gap: 'var(--space-2)',
-                }}
-              >
-                {msg.pengirim === 'pengunjung' && (
-                  <div style={{
-                    width: '32px',
-                    height: '32px',
-                    borderRadius: '50%',
-                    background: 'var(--color-neutral-200)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                  }}>
-                    <User size={16} />
-                  </div>
-                )}
-                <div style={{
-                  maxWidth: '70%',
-                  padding: 'var(--space-3) var(--space-4)',
-                  borderRadius: msg.pengirim === 'pengunjung'
-                    ? '4px var(--radius-lg) var(--radius-lg) var(--radius-lg)'
-                    : 'var(--radius-lg) 4px var(--radius-lg) var(--radius-lg)',
-                  background: msg.pengirim === 'pengunjung'
-                    ? 'var(--surface-elevated)'
-                    : msg.pengirim === 'bot'
-                      ? 'var(--color-primary-50)'
-                      : 'var(--color-primary-600)',
-                  color: msg.pengirim === 'petugas' ? 'white' : 'var(--text-primary)',
-                  fontSize: 'var(--text-sm)',
-                  lineHeight: 1.6,
-                  boxShadow: 'var(--shadow-xs)',
-                  whiteSpace: 'pre-line',
-                }}>
-                  {msg.pengirim === 'bot' && (
-                    <div style={{
-                      fontSize: '10px',
-                      fontWeight: 600,
-                      color: 'var(--color-primary-600)',
-                      marginBottom: 'var(--space-1)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 'var(--space-1)',
-                    }}>
-                      <Bot size={12} /> Chatbot
-                    </div>
-                  )}
-                  {msg.isi}
-                  <div style={{
-                    fontSize: '10px',
-                    marginTop: 'var(--space-1)',
-                    opacity: 0.6,
-                    textAlign: 'right',
-                  }}>
-                    {msg.waktu}
+          {selectedSession ? (
+            <>
+              {/* Thread Header */}
+              <div style={{
+                padding: 'var(--space-4)',
+                borderBottom: '1px solid var(--border-default)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                background: 'var(--surface-primary)',
+              }}>
+                <div>
+                  <h3 style={{ fontWeight: 600, fontSize: 'var(--text-md)', marginBottom: '4px' }}>
+                    {selectedSession.kontak_pengunjung || 'Pengunjung Anonim'}
+                  </h3>
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                    Layanan: {selectedSession.layanan?.nama || '—'}
                   </div>
                 </div>
+                {selectedSession.status !== 'selesai' && (
+                  <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                    {selectedSession.status === 'eskalasi' && (
+                      <button className="btn btn--primary btn--sm" onClick={handleAmbilAlih}>
+                        Ambil Alih Chat
+                      </button>
+                    )}
+                    <button className="btn btn--secondary btn--sm" onClick={handleSelesaikanSesi}>
+                      Selesaikan Chat
+                    </button>
+                  </div>
+                )}
               </div>
-            ))}
-          </div>
 
-          {/* Input */}
-          <div style={{
-            padding: 'var(--space-4) var(--space-6)',
-            borderTop: '1px solid var(--border-default)',
-            display: 'flex',
-            gap: 'var(--space-3)',
-            alignItems: 'flex-end',
-          }}>
-            <textarea
-              className="form-textarea"
-              placeholder="Ketik balasan..."
-              value={messageInput}
-              onChange={(e) => setMessageInput(e.target.value)}
-              rows={2}
-              style={{ minHeight: '44px', resize: 'none' }}
-            />
-            <button className="btn btn--primary" style={{ height: '44px' }}>
-              <Send size={18} />
-            </button>
-          </div>
+              {/* Messages Area */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: 'var(--space-6)', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+                {messages.map((msg) => {
+                  const isStaff = msg.pengirim === 'petugas';
+                  const isBot = msg.pengirim === 'bot';
+                  return (
+                    <div key={msg.id} style={{ display: 'flex', gap: 'var(--space-3)', alignSelf: isStaff ? 'flex-end' : 'flex-start', maxWidth: '80%' }}>
+                      {!isStaff && (
+                        <div style={{
+                          width: '32px', height: '32px', borderRadius: '50%', flexShrink: 0,
+                          background: isBot ? 'var(--color-primary-100)' : 'var(--color-neutral-200)',
+                          color: isBot ? 'var(--color-primary-700)' : 'var(--text-secondary)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center'
+                        }}>
+                          {isBot ? <Bot size={16} /> : <User size={16} />}
+                        </div>
+                      )}
+                      
+                      <div style={{
+                        background: isStaff ? 'var(--color-primary-600)' : 'var(--surface-primary)',
+                        color: isStaff ? 'white' : 'var(--text-primary)',
+                        padding: '12px 16px',
+                        borderRadius: '16px',
+                        borderTopRightRadius: isStaff ? '4px' : '16px',
+                        borderTopLeftRadius: !isStaff ? '4px' : '16px',
+                        boxShadow: 'var(--shadow-sm)',
+                        border: isStaff ? 'none' : '1px solid var(--border-default)',
+                      }}>
+                        {isBot && (
+                          <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--color-primary-600)', marginBottom: '4px' }}>
+                            BOT FAQ
+                          </div>
+                        )}
+                        <div style={{ fontSize: 'var(--text-sm)', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
+                          {msg.isi}
+                        </div>
+                        <div style={{ fontSize: '10px', marginTop: '6px', textAlign: 'right', opacity: isStaff ? 0.8 : 0.5, color: isStaff ? 'white' : 'inherit' }}>
+                          {new Date(msg.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                <div ref={messagesEndRef} />
+              </div>
+
+              {/* Chat Input */}
+              {selectedSession.status !== 'selesai' ? (
+                <div style={{ padding: 'var(--space-4)', borderTop: '1px solid var(--border-default)', background: 'var(--surface-primary)' }}>
+                  <form onSubmit={handleSendMessage} style={{ display: 'flex', gap: 'var(--space-3)' }}>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="Ketik balasan..."
+                      value={messageInput}
+                      onChange={(e) => setMessageInput(e.target.value)}
+                      style={{ flex: 1, borderRadius: '999px', paddingLeft: 'var(--space-4)' }}
+                    />
+                    <button
+                      type="submit"
+                      className="btn btn--primary"
+                      style={{ borderRadius: '50%', width: '40px', height: '40px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      disabled={!messageInput.trim()}
+                    >
+                      <Send size={18} />
+                    </button>
+                  </form>
+                </div>
+              ) : (
+                <div style={{ padding: 'var(--space-4)', borderTop: '1px solid var(--border-default)', background: 'var(--surface-primary)', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 'var(--text-sm)' }}>
+                  Sesi chat ini sudah selesai.
+                </div>
+              )}
+            </>
+          ) : (
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-tertiary)' }}>
+              <MessageSquare size={48} style={{ marginBottom: 'var(--space-4)', opacity: 0.5 }} />
+              <p>Pilih sesi chat di samping untuk mulai membalas</p>
+            </div>
+          )}
         </div>
       </div>
     </>

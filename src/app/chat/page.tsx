@@ -43,6 +43,10 @@ export default function PublicChatPage() {
   const [layananList, setLayananList] = useState<Layanan[]>([]);
   const [loadingLayanan, setLoadingLayanan] = useState(true);
 
+  // Auth States
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
   // Sesi Setup States
   const [visitorName, setVisitorName] = useState('');
   const [selectedLayananId, setSelectedLayananId] = useState('');
@@ -57,6 +61,38 @@ export default function PublicChatPage() {
   const [faqs, setFaqs] = useState<FAQ[]>([]);
 
   const threadEndRef = useRef<HTMLDivElement>(null);
+
+  // Cek Auth dan Profil Pengunjung
+  useEffect(() => {
+    async function checkUser() {
+      try {
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        if (user) {
+          setIsLoggedIn(true);
+          // Ambil nama dari tabel pengunjung
+          const { data: profile } = await supabase
+            .from('pengunjung')
+            .select('nama')
+            .eq('auth_user_id', user.id)
+            .single();
+            
+          if (profile?.nama) {
+            setVisitorName(profile.nama);
+          } else {
+            // Fallback to Google name if profile not completed yet
+            setVisitorName(user.user_metadata?.full_name || user.email?.split('@')[0] || '');
+          }
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setIsCheckingAuth(false);
+      }
+    }
+    checkUser();
+  }, []);
 
   // Load layanan
   useEffect(() => {
@@ -223,7 +259,7 @@ export default function PublicChatPage() {
     setLoadingSetup(true);
     await fetchFAQs(selectedLayananId);
 
-    const nama = visitorName.trim() || 'Pengunjung Anonim';
+    const nama = visitorName.trim() || 'Pengunjung';
     const selectedLayanan = layananList.find((l) => l.id === selectedLayananId);
 
     try {
@@ -433,15 +469,46 @@ export default function PublicChatPage() {
             <form onSubmit={handleStartSession} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
               <div className="form-group">
                 <label className="form-label form-label--required" htmlFor="chatName">Nama Anda</label>
-                <input
-                  id="chatName"
-                  type="text"
-                  className="form-input"
-                  placeholder="Masukkan nama lengkap..."
-                  value={visitorName}
-                  onChange={(e) => setVisitorName(e.target.value)}
-                  required
-                />
+                {!isCheckingAuth && !isLoggedIn ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                    <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
+                      Silakan login terlebih dahulu untuk menggunakan Live Chat.
+                    </p>
+                    <button
+                      type="button"
+                      className="btn btn--secondary"
+                      onClick={async () => {
+                        const supabase = createClient();
+                        await supabase.auth.signInWithOAuth({
+                          provider: 'google',
+                          options: {
+                            redirectTo: `${window.location.origin}/auth/callback?redirect=/chat`,
+                          },
+                        });
+                      }}
+                    >
+                      <svg viewBox="0 0 24 24" width="18" height="18" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
+                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+                      </svg>
+                      Login dengan Google
+                    </button>
+                  </div>
+                ) : (
+                  <input
+                    id="chatName"
+                    type="text"
+                    className="form-input"
+                    placeholder={isCheckingAuth ? "Memuat data profil..." : "Masukkan nama lengkap..."}
+                    value={visitorName}
+                    onChange={(e) => setVisitorName(e.target.value)}
+                    required
+                    readOnly={isLoggedIn}
+                    style={{ background: isLoggedIn ? 'var(--surface-secondary)' : 'var(--surface-primary)', cursor: isLoggedIn ? 'not-allowed' : 'text' }}
+                  />
+                )}
               </div>
 
               <div className="form-group">
@@ -467,12 +534,12 @@ export default function PublicChatPage() {
                 type="submit"
                 className="btn btn--primary btn--lg"
                 style={{ width: '100%', marginTop: 'var(--space-2)' }}
-                disabled={loadingSetup || loadingLayanan}
+                disabled={loadingSetup || loadingLayanan || !isLoggedIn}
               >
                 {loadingSetup ? (
                   <><Loader2 size={20} className="animate-pulse" /> Memulai Sesi...</>
                 ) : (
-                  'Mulai Sesi Chat'
+                  !isLoggedIn && !isCheckingAuth ? 'Login untuk Memulai' : 'Mulai Sesi Chat'
                 )}
               </button>
             </form>

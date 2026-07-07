@@ -218,7 +218,7 @@ export default function LandingPage() {
       {/* Floating Chat Widget */}
       <Link href="/chat" className={styles.floatingChat}>
         <MessageSquare size={18} />
-        <span>Tanya Bot / Petugas</span>
+        <span>Live Chat</span>
       </Link>
     </div>
   );
