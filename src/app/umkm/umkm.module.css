@@ -182,3 +182,153 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Tab Navigation */
+.tabContainer {
+  display: flex;
+  gap: var(--space-4);
+  border-bottom: 2px solid var(--border-default);
+  margin-bottom: var(--space-8);
+}
+
+.tabButton {
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  padding: var(--space-3) var(--space-4);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: 700;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  margin-bottom: -2px;
+}
+
+.tabButton:hover {
+  color: var(--color-primary-600);
+}
+
+.tabButtonActive {
+  color: var(--color-primary-600);
+  border-bottom-color: var(--color-primary-600);
+}
+
+/* Pembiayaan Section */
+.pembiayaanGrid {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr;
+  gap: var(--space-8);
+  margin-bottom: var(--space-8);
+}
+
+.pembiayaanCard {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  padding: var(--space-6);
+}
+
+.cardTitle {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: var(--space-4);
+  border-bottom: 1.5px solid var(--border-default);
+  padding-bottom: var(--space-2);
+}
+
+.requirementList {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.requirementList li {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.6;
+  position: relative;
+  padding-left: var(--space-5);
+}
+
+.requirementList li::before {
+  content: '✓';
+  position: absolute;
+  left: 0;
+  color: var(--color-success-500);
+  font-weight: bold;
+}
+
+/* Bank Callout Panel */
+.bankCallout {
+  background: linear-gradient(135deg, #075ba7 0%, #003666 100%);
+  color: white;
+  border-radius: var(--radius-xl);
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  height: fit-content;
+}
+
+.bankCalloutTitle {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.bankCalloutDesc {
+  font-size: var(--text-sm);
+  color: rgba(255, 255, 255, 0.85);
+  line-height: 1.6;
+}
+
+/* Branch Grid */
+.branchSection {
+  margin-top: var(--space-8);
+}
+
+.branchGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: var(--space-6);
+}
+
+.branchCard {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5);
+  transition: all var(--transition-base);
+}
+
+.branchCard:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--color-primary-300);
+}
+
+.branchName {
+  font-weight: 700;
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-1);
+  color: var(--text-primary);
+}
+
+.branchAddress {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+@media (max-width: 900px) {
+  .pembiayaanGrid {
+    grid-template-columns: 1fr;
+  }
+}
+

@@ -4,7 +4,10 @@
 export const LAYANAN = {
   HELPDESK_OSS: 'Helpdesk OSS',
   SERTIFIKASI_HALAL: 'Sertifikasi Halal',
-  CS_BPJS: 'CS BPJS Kesehatan',
+  CS_BPJS: 'BPJS Kesehatan',
+  BANK_LAMPUNG: 'Bank Lampung',
+  MATCHMAKING_UMKM: 'Matchmaking UMKM',
+  INVESTMENT_GALLERY: 'Investment Gallery',
 } as const;
 
 export const LAYANAN_LIST = Object.values(LAYANAN);

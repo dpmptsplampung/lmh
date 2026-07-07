@@ -84,6 +84,26 @@ export default function PublicChatPage() {
     }
     loadLayanan();
   }, []);
+  // Pre-select service from URL parameter (e.g. ?layanan=Bank+Lampung)
+  useEffect(() => {
+    if (layananList.length === 0) return;
+    
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const urlLayanan = params.get('layanan');
+      if (urlLayanan) {
+        const found = layananList.find(
+          (l) =>
+            l.id === urlLayanan ||
+            l.nama.toLowerCase() === urlLayanan.toLowerCase() ||
+            l.nama.toLowerCase().includes(urlLayanan.toLowerCase())
+        );
+        if (found) {
+          setTimeout(() => setSelectedLayananId(found.id), 0);
+        }
+      }
+    }
+  }, [layananList]);
 
   // Fetch FAQ knowledge base for selected service
   const fetchFAQs = useCallback(async (layananId: string) => {
