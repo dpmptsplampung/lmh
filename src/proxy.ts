@@ -13,6 +13,33 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Defensive Check: If environment variables are missing in Vercel/Production
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    console.error("Supabase environment variables are missing in next proxy!");
+    return new NextResponse(
+      `<html>
+        <head>
+          <title>Configuration Error | Lampung Maju Hub</title>
+        </head>
+        <body style="font-family: system-ui, -apple-system, sans-serif; padding: 2rem; max-width: 600px; margin: 4rem auto; background: #f8fafc; color: #0f172a; line-height: 1.6;">
+          <h1 style="color: #ef4444; margin-bottom: 1rem;">Supabase Configuration Error (500)</h1>
+          <p style="font-size: 1.1rem; color: #334155;">Environment variables <code>NEXT_PUBLIC_SUPABASE_URL</code> or <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code> are missing or empty.</p>
+          <div style="background: #e2e8f0; padding: 1rem; border-radius: 8px; font-family: monospace; font-size: 0.9rem; margin: 1.5rem 0;">
+            1. Buka Vercel Dashboard<br>
+            2. Masuk ke Project Settings -> Environment Variables<br>
+            3. Tambahkan kedua variabel tersebut dengan nilai dari Supabase<br>
+            4. Buat deployment baru (Redeploy) agar konfigurasi diterapkan.
+          </div>
+          <p style="color: #64748b; font-size: 0.875rem;">Sistem Digital Pelayanan Terpadu DPMPTSP Provinsi Lampung</p>
+        </body>
+      </html>`,
+      {
+        status: 500,
+        headers: { 'content-type': 'text/html; charset=utf-8' },
+      }
+    );
+  }
+
   // Buat response yang bisa dimodifikasi cookie-nya
   const response = NextResponse.next({
     request: { headers: request.headers },
