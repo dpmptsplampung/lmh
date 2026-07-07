@@ -87,8 +87,9 @@ export default function LoginPage() {
           window.location.href = '/me';
         }
       }
-    } catch (err: any) {
-      setError(err.message || 'Email atau Password salah. Silakan coba lagi.');
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Email atau Password salah. Silakan coba lagi.';
+      setError(errorMsg);
       setLoading(false);
     }
   };

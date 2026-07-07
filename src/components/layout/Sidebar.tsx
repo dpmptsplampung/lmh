@@ -16,8 +16,10 @@ import {
   LogOut,
   ChevronRight,
   QrCode,
+  Globe,
 } from 'lucide-react';
 import { useState } from 'react';
+import { createClient } from '@/lib/supabase/client';
 import { APP_NAME } from '@/lib/constants';
 import { cn } from '@/lib/utils';
 import styles from './Sidebar.module.css';
@@ -79,6 +81,12 @@ const navItems: NavItem[] = [
     icon: <FileText size={20} />,
     fase: 'Fase 4',
   },
+  {
+    label: 'Tampilan Publik',
+    href: '/',
+    icon: <Globe size={20} />,
+    fase: 'Fase 1',
+  },
 ];
 
 export default function Sidebar() {
@@ -86,8 +94,15 @@ export default function Sidebar() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const isActive = (href: string) => {
+    if (href === '/') return pathname === '/';
     if (href === '/admin') return pathname === '/admin';
     return pathname.startsWith(href);
+  };
+
+  const handleLogout = async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    window.location.href = '/login';
   };
 
   return (
@@ -144,7 +159,10 @@ export default function Sidebar() {
 
         {/* Footer */}
         <div className={styles.footer}>
-          <button className={cn('btn btn--ghost', styles.logoutBtn)}>
+          <button 
+            className={cn('btn btn--ghost', styles.logoutBtn)}
+            onClick={handleLogout}
+          >
             <LogOut size={18} />
             <span>Keluar</span>
           </button>

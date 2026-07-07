@@ -138,3 +138,138 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Walk-in Wizard Card */
+.wizardCard {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  padding: var(--space-6);
+  margin-bottom: var(--space-8);
+  animation: fadeIn 0.4s ease-out;
+}
+
+.wizardHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.wizardTitle {
+  font-family: var(--font-display);
+  font-size: var(--text-base);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.wizardBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.wizardSteps {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: var(--space-5);
+  position: relative;
+  max-width: 400px;
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+}
+
+.wizardSteps::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--color-neutral-200);
+  z-index: 1;
+  transform: translateY(-50%);
+}
+
+.wizardStep {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--surface-primary);
+  border: 2px solid var(--color-neutral-300);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  position: relative;
+  z-index: 2;
+  transition: all var(--transition-fast);
+}
+
+.wizardStepActive {
+  border-color: var(--color-primary-600);
+  background: var(--color-primary-600);
+  color: white;
+}
+
+.wizardStepDone {
+  border-color: var(--color-success-500);
+  background: var(--color-success-500);
+  color: white;
+}
+
+.wizardActions {
+  display: flex;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  justify-content: flex-end;
+}
+
+.wizardLayananGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-3);
+}
+
+.wizardLayananButton {
+  padding: var(--space-4);
+  border: 2px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--surface-elevated);
+  text-align: center;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+.wizardLayananButton:hover {
+  border-color: var(--color-primary-300);
+  background: var(--color-primary-50);
+}
+
+.wizardLayananButtonActive {
+  border-color: var(--color-primary-600);
+  background: var(--color-primary-50);
+  color: var(--color-primary-700);
+}
+
+.wizardConfirmGrid {
+  background: var(--color-neutral-50);
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  border: 1px dashed var(--border-default);
+}
+

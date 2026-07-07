@@ -56,6 +56,7 @@ const services = [
 interface UserInfo {
   nama: string;
   foto_url: string | null;
+  role?: string;
 }
 
 export default function LandingPage() {
@@ -66,9 +67,16 @@ export default function LandingPage() {
       const supabase = createClient();
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (authUser) {
+        const { data: petugas } = await supabase
+          .from('petugas')
+          .select('role')
+          .eq('auth_user_id', authUser.id)
+          .single();
+
         setUser({
           nama: authUser.user_metadata?.full_name || 'Pengunjung',
           foto_url: authUser.user_metadata?.avatar_url || null,
+          role: petugas?.role || 'pengunjung',
         });
       }
     }
@@ -101,10 +109,17 @@ export default function LandingPage() {
         <div className={styles.navActions}>
           {user ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-              <Link href="/me" className="btn btn--primary btn--sm">
-                <User size={16} />
-                Dashboard
-              </Link>
+              {user.role === 'admin' || user.role === 'petugas' ? (
+                <Link href="/admin" className="btn btn--primary btn--sm">
+                  <User size={16} />
+                  Panel Admin
+                </Link>
+              ) : (
+                <Link href="/me" className="btn btn--primary btn--sm">
+                  <User size={16} />
+                  Dashboard Saya
+                </Link>
+              )}
               <button className="btn btn--ghost btn--sm" onClick={handleLogout}>
                 <LogOut size={16} />
               </button>
