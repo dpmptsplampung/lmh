@@ -172,10 +172,15 @@ export default function LandingPage() {
             <Sparkles size={14} />
             DPMPTSP Provinsi Lampung
           </div>
-          <h1 className={styles.heroTitle}>
-            Pelayanan Terpadu{' '}
-            <span className={styles.heroTitleAccent}>Satu Pintu</span>{' '}
-            untuk Lampung Maju
+          <h1 className={styles.heroTitle} style={{ display: 'flex', justifyContent: 'center' }}>
+            <Image 
+              src="/logo.png" 
+              alt="Pelayanan Terpadu Satu Pintu untuk Lampung Maju" 
+              width={500} 
+              height={220} 
+              style={{ objectFit: 'contain', maxWidth: '100%', height: 'auto' }} 
+              priority
+            />
           </h1>
           <p className={styles.heroDescription}>
             Hub digital yang menyatukan layanan perizinan, sertifikasi halal,
