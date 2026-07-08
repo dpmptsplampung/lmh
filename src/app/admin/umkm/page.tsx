@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Store,
   Search,
@@ -9,62 +9,48 @@ import {
   XCircle,
   Clock,
   Filter,
+  RefreshCw,
 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import { KATEGORI_UMKM, type KategoriUMKM } from '@/lib/constants';
 import { cn } from '@/lib/utils';
-
-// Demo data
-const demoListings = [
-  {
-    id: '1',
-    nama_umkm: 'Keripik Pisang Ibu Ani',
-    kategori: 'pemasaran' as KategoriUMKM,
-    deskripsi: 'Mencari mitra pemasaran untuk keripik pisang khas Lampung. Produksi sudah stabil, butuh channel distribusi lebih luas.',
-    kontak_nama: 'Ani Susanti',
-    status: 'published',
-    created_at: '2026-07-01',
-  },
-  {
-    id: '2',
-    nama_umkm: 'CV Maju Bersama',
-    kategori: 'bahan_baku' as KategoriUMKM,
-    deskripsi: 'Membutuhkan supplier kopi robusta grade A dari daerah Tanggamus atau Lampung Barat.',
-    kontak_nama: 'Budi Hartono',
-    status: 'pending_review',
-    created_at: '2026-07-05',
-  },
-  {
-    id: '3',
-    nama_umkm: 'Tapis Lampung Ethnic',
-    kategori: 'modal' as KategoriUMKM,
-    deskripsi: 'Butuh modal untuk mesin tenun baru. Sudah punya 5 pengrajin, demand tinggi.',
-    kontak_nama: 'Rina Wati',
-    status: 'draft',
-    created_at: '2026-07-06',
-  },
-  {
-    id: '4',
-    nama_umkm: 'Kopi Lampung Jaya',
-    kategori: 'kemitraan' as KategoriUMKM,
-    deskripsi: 'Mencari investor atau mitra untuk membuka kedai kopi di Bandar Lampung.',
-    kontak_nama: 'Dedi Kurniawan',
-    status: 'pending_review',
-    created_at: '2026-07-04',
-  },
-];
+import { createClient } from '@/lib/supabase/client';
 
 export default function AdminUMKMPage() {
   const [filterStatus, setFilterStatus] = useState<string>('semua');
   const [search, setSearch] = useState('');
+  const [umkmList, setUmkmList] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const filtered = demoListings.filter((l) => {
+  const loadData = async () => {
+    setLoading(true);
+    const supabase = createClient();
+    const { data } = await supabase.from('umkm').select('*').order('created_at', { ascending: false });
+    if (data) {
+      setUmkmList(data);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const handleUpdateStatus = async (id: string, newStatus: string) => {
+    const supabase = createClient();
+    const { error } = await supabase.from('umkm').update({ status: newStatus }).eq('id', id);
+    if (!error) {
+      loadData();
+    }
+  };
+
+  const filtered = umkmList.filter((l) => {
     const matchSearch = l.nama_umkm.toLowerCase().includes(search.toLowerCase());
     const matchStatus = filterStatus === 'semua' || l.status === filterStatus;
     return matchSearch && matchStatus;
   });
 
-  const pendingCount = demoListings.filter(l => l.status === 'pending_review').length;
+  const pendingCount = umkmList.filter(l => l.status === 'pending_review').length;
 
   return (
     <>
@@ -72,9 +58,9 @@ export default function AdminUMKMPage() {
         title="Kelola UMKM"
         description="Review dan kelola listing Matchmaking UMKM"
       >
-        <button className="btn btn--primary btn--sm">
-          <Store size={16} />
-          Tambah Listing
+        <button className="btn btn--ghost btn--sm" onClick={loadData}>
+          <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+          Refresh
         </button>
       </PageHeader>
 
@@ -155,11 +141,13 @@ export default function AdminUMKMPage() {
                   </td>
                   <td>
                     <span className="badge badge--draft">
-                      {KATEGORI_UMKM[l.kategori]}
+                      {KATEGORI_UMKM[l.kategori as KategoriUMKM] || l.kategori}
                     </span>
                   </td>
                   <td style={{ fontSize: 'var(--text-sm)' }}>{l.kontak_nama}</td>
-                  <td style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>{l.created_at}</td>
+                  <td style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
+                    {new Date(l.created_at).toLocaleDateString('id-ID')}
+                  </td>
                   <td>
                     <span className={`badge badge--${l.status === 'pending_review' ? 'pending' : l.status}`}>
                       {l.status === 'pending_review' ? '● Pending' :
@@ -174,10 +162,19 @@ export default function AdminUMKMPage() {
                       </button>
                       {l.status === 'pending_review' && (
                         <>
-                          <button className="btn btn--primary btn--sm" title="Approve">
+                          <button 
+                            className="btn btn--primary btn--sm" 
+                            title="Approve"
+                            onClick={() => handleUpdateStatus(l.id, 'published')}
+                          >
                             <CheckCircle2 size={14} />
                           </button>
-                          <button className="btn btn--ghost btn--sm" title="Tolak" style={{ color: 'var(--color-danger-500)' }}>
+                          <button 
+                            className="btn btn--ghost btn--sm" 
+                            title="Tolak" 
+                            style={{ color: 'var(--color-danger-500)' }}
+                            onClick={() => handleUpdateStatus(l.id, 'nonaktif')}
+                          >
                             <XCircle size={14} />
                           </button>
                         </>

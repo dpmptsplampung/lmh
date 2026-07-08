@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import {
@@ -16,59 +16,8 @@ import {
 } from 'lucide-react';
 import { KATEGORI_UMKM, type KategoriUMKM, APP_NAME } from '@/lib/constants';
 import { cn, waLink } from '@/lib/utils';
+import { createClient } from '@/lib/supabase/client';
 import styles from './umkm.module.css';
-
-// Demo data
-const demoListings = [
-  {
-    id: '1',
-    nama_umkm: 'Keripik Pisang Ibu Ani',
-    kategori: 'pemasaran' as KategoriUMKM,
-    deskripsi: 'Mencari mitra pemasaran untuk keripik pisang khas Lampung. Produksi sudah stabil dengan kapasitas 500kg/bulan, butuh channel distribusi lebih luas ke luar Lampung.',
-    kontak_nama: 'Ani Susanti',
-    kontak_hp: '081234567890',
-  },
-  {
-    id: '2',
-    nama_umkm: 'CV Maju Bersama',
-    kategori: 'bahan_baku' as KategoriUMKM,
-    deskripsi: 'Membutuhkan supplier kopi robusta grade A dari daerah Tanggamus atau Lampung Barat. Kebutuhan 2 ton/bulan untuk kebutuhan ekspor.',
-    kontak_nama: 'Budi Hartono',
-    kontak_hp: '087654321000',
-  },
-  {
-    id: '3',
-    nama_umkm: 'Tapis Lampung Ethnic',
-    kategori: 'modal' as KategoriUMKM,
-    deskripsi: 'Butuh modal untuk mesin tenun baru dan pelatihan pengrajin. Sudah punya 5 pengrajin aktif, demand meningkat 200% dalam setahun terakhir.',
-    kontak_nama: 'Rina Wati',
-    kontak_hp: '082345678901',
-  },
-  {
-    id: '4',
-    nama_umkm: 'Kopi Lampung Jaya',
-    kategori: 'kemitraan' as KategoriUMKM,
-    deskripsi: 'Mencari investor atau mitra untuk membuka kedai kopi di area strategis Bandar Lampung. Punya brand kuat di level lokal.',
-    kontak_nama: 'Dedi Kurniawan',
-    kontak_hp: '089876543210',
-  },
-  {
-    id: '5',
-    nama_umkm: 'Batik Tulang Bawang',
-    kategori: 'pelatihan' as KategoriUMKM,
-    deskripsi: 'Membutuhkan pelatihan pewarnaan alam untuk motif batik Tulang Bawang. Ingin meningkatkan nilai jual produk ke pasar premium.',
-    kontak_nama: 'Sari Mutiara',
-    kontak_hp: '081112223334',
-  },
-  {
-    id: '6',
-    nama_umkm: 'UD Sumber Makmur',
-    kategori: 'peralatan' as KategoriUMKM,
-    deskripsi: 'Butuh mesin pengolahan lada putih kapasitas industri. Saat ini masih menggunakan metode tradisional yang lambat.',
-    kontak_nama: 'Hasan Ibrahim',
-    kontak_hp: '085556667778',
-  },
-];
 
 const bankLampungBranches = [
   { nama: 'Kantor Cabang Utama Bandar Lampung', alamat: 'Jl. Wolter Monginsidi No.182, Bandar Lampung' },
@@ -81,10 +30,26 @@ export default function UMKMPage() {
   const [activeTab, setActiveTab] = useState<'matchmaking' | 'pembiayaan'>('matchmaking');
   const [search, setSearch] = useState('');
   const [activeKategori, setActiveKategori] = useState<string>('semua');
+  const [listings, setListings] = useState<any[]>([]);
 
-  const filtered = demoListings.filter((l) => {
+  useEffect(() => {
+    async function fetchListings() {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from('umkm')
+        .select('*')
+        .eq('status', 'published')
+        .order('created_at', { ascending: false });
+      if (data) {
+        setListings(data);
+      }
+    }
+    fetchListings();
+  }, []);
+
+  const filtered = listings.filter((l) => {
     const matchSearch = l.nama_umkm.toLowerCase().includes(search.toLowerCase()) ||
-      l.deskripsi.toLowerCase().includes(search.toLowerCase());
+      (l.deskripsi && l.deskripsi.toLowerCase().includes(search.toLowerCase()));
     const matchKategori = activeKategori === 'semua' || l.kategori === activeKategori;
     return matchSearch && matchKategori;
   });

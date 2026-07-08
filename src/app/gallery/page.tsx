@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import {
@@ -15,38 +15,43 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { APP_NAME } from '@/lib/constants';
+import { createClient } from '@/lib/supabase/client';
 import styles from './gallery.module.css';
-
-// IPRO Data
-const iproProjects = [
-  {
-    id: 'kiwk',
-    judul: 'Kawasan Industri Way Kanan (KIWK)',
-    kategori: 'Manufaktur & Industri',
-    deskripsi: 'Pengembangan kawasan industri manufaktur terintegrasi seluas 500 Hektar untuk menampung industri hilir komoditas perkebunan.',
-    nilai: 'Rp 2.4 Triliun',
-    halaman: 2,
-  },
-  {
-    id: 'bhc',
-    judul: 'Bakauheni Harbour City (BHC)',
-    kategori: 'Pariwisata & Jasa',
-    deskripsi: 'Pengembangan kawasan pariwisata terpadu skala internasional di gerbang pulau Sumatera (Pelabuhan Bakauheni).',
-    nilai: 'Rp 4.2 Triliun',
-    halaman: 2,
-  },
-  {
-    id: 'pltsa',
-    judul: 'PLTSa Bakung Bandar Lampung',
-    kategori: 'Infrastruktur & Energi',
-    deskripsi: 'Proyek pengelolaan sampah perkotaan menjadi energi listrik ramah lingkungan berkapasitas 15 MW.',
-    nilai: 'Rp 650 Miliar',
-    halaman: 2,
-  },
-];
 
 export default function GalleryPage() {
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
+  const [iproProjects, setIproProjects] = useState<any[]>([]);
+  const [foilaUrl, setFoilaUrl] = useState('https://invest.lampungprov.go.id/');
+
+  useEffect(() => {
+    async function loadData() {
+      const supabase = createClient();
+      
+      // Load Gallery Docs
+      const { data: docs } = await supabase
+        .from('gallery_docs')
+        .select('*')
+        .eq('status', 'aktif')
+        .order('urutan', { ascending: true });
+        
+      if (docs) {
+        setIproProjects(docs);
+      }
+
+      // Load Site Settings (FOILA URL)
+      const { data: settings } = await supabase
+        .from('site_settings')
+        .select('value')
+        .eq('key', 'foila_url')
+        .single();
+        
+      if (settings) {
+        setFoilaUrl(settings.value);
+      }
+    }
+    
+    loadData();
+  }, []);
 
   // Disable right click inside the document viewer
   const handleContextMenu = (e: React.MouseEvent) => {
@@ -449,7 +454,7 @@ export default function GalleryPage() {
               Masuk ke portal resmi Forum Investasi Lampung (FOILA) untuk mengakses direktori regulasi daerah, kalkulator investasi, insentif pajak daerah, dan pendampingan izin cepat.
             </p>
             <a
-              href="https://invest.lampungprov.go.id/"
+              href={foilaUrl}
               target="_blank"
               rel="noopener noreferrer"
               className={styles.foilaLinkBtn}
