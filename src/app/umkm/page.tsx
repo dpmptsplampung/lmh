@@ -19,6 +19,64 @@ import { cn, waLink } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 import styles from './umkm.module.css';
 
+// Seed data
+const demoListings = [
+  {
+    id: '1',
+    nama_umkm: 'Keripik Pisang Ibu Ani',
+    kategori: 'pemasaran' as KategoriUMKM,
+    deskripsi: 'Mencari mitra pemasaran untuk keripik pisang khas Lampung. Produksi sudah stabil, butuh channel distribusi lebih luas.',
+    kontak_nama: 'Ani Susanti',
+    status: 'published',
+    created_at: '2026-07-01',
+  },
+  {
+    id: '2',
+    nama_umkm: 'CV Maju Bersama',
+    kategori: 'bahan_baku' as KategoriUMKM,
+    deskripsi: 'Membutuhkan supplier kopi robusta grade A dari daerah Tanggamus atau Lampung Barat.',
+    kontak_nama: 'Budi Hartono',
+    status: 'pending_review',
+    created_at: '2026-07-05',
+  },
+  {
+    id: '3',
+    nama_umkm: 'Tapis Lampung Ethnic',
+    kategori: 'modal' as KategoriUMKM,
+    deskripsi: 'Butuh modal untuk mesin tenun baru. Sudah punya 5 pengrajin, demand tinggi.',
+    kontak_nama: 'Rina Wati',
+    status: 'draft',
+    created_at: '2026-07-06',
+  },
+  {
+    id: '4',
+    nama_umkm: 'Kopi Lampung Jaya',
+    kategori: 'kemitraan' as KategoriUMKM,
+    deskripsi: 'Mencari investor atau mitra untuk membuka kedai kopi di Bandar Lampung.',
+    kontak_nama: 'Dedi Kurniawan',
+    status: 'pending_review',
+    created_at: '2026-07-04',
+  },
+  {
+    id: '5',
+    nama_umkm: 'Batik Tulang Bawang',
+    kategori: 'pelatihan' as KategoriUMKM,
+    deskripsi: 'Membutuhkan pelatihan pewarnaan alam untuk motif batik Tulang Bawang. Ingin meningkatkan nilai jual produk ke pasar premium.',
+    kontak_nama: 'Sari Mutiara',
+    status: 'published',
+    created_at: '2026-07-02',
+  },
+  {
+    id: '6',
+    nama_umkm: 'UD Sumber Makmur',
+    kategori: 'peralatan' as KategoriUMKM,
+    deskripsi: 'Butuh mesin pengolahan lada putih kapasitas industri. Saat ini masih menggunakan metode tradisional yang lambat.',
+    kontak_nama: 'Hasan Ibrahim',
+    status: 'published',
+    created_at: '2026-07-03',
+  },
+];
+
 const bankLampungBranches = [
   { nama: 'Kantor Cabang Utama Bandar Lampung', alamat: 'Jl. Wolter Monginsidi No.182, Bandar Lampung' },
   { nama: 'Kantor Cabang Metro', alamat: 'Jl. Jend. Sudirman No. 12, Metro' },
@@ -30,21 +88,10 @@ export default function UMKMPage() {
   const [activeTab, setActiveTab] = useState<'matchmaking' | 'pembiayaan'>('matchmaking');
   const [search, setSearch] = useState('');
   const [activeKategori, setActiveKategori] = useState<string>('semua');
-  const [listings, setListings] = useState<any[]>([]);
+  const [listings, setListings] = useState<any[]>(demoListings.filter(l => l.status === 'published'));
 
   useEffect(() => {
-    async function fetchListings() {
-      const supabase = createClient();
-      const { data } = await supabase
-        .from('umkm')
-        .select('*')
-        .eq('status', 'published')
-        .order('created_at', { ascending: false });
-      if (data) {
-        setListings(data);
-      }
-    }
-    fetchListings();
+    // Disabled for seed
   }, []);
 
   const filtered = listings.filter((l) => {
