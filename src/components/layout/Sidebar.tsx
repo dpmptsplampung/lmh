@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import {
   Building2,
@@ -163,14 +164,15 @@ export default function Sidebar() {
 
       <aside className={cn(styles.sidebar, mobileOpen && styles.sidebarOpen)}>
         {/* Brand */}
-        <div className={styles.brand}>
-          <div className={styles.brandIcon}>
-            <Building2 size={24} />
-          </div>
-          <div className={styles.brandText}>
-            <span className={styles.brandName}>{APP_NAME}</span>
-            <span className={styles.brandSub}>Panel Admin</span>
-          </div>
+        <div className={styles.brand} style={{ padding: 'var(--space-4) var(--space-5)', justifyContent: 'center' }}>
+          <Image 
+            src="/logo.png" 
+            alt="Lampung Maju Hub Logo" 
+            width={180} 
+            height={80} 
+            style={{ objectFit: 'contain', width: '100%', height: 'auto' }} 
+            priority
+          />
         </div>
 
         {/* Navigation */}

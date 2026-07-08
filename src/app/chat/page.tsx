@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import {
   Building2,
   ArrowLeft,
@@ -435,11 +436,15 @@ export default function PublicChatPage() {
     <div className={styles.chatPage}>
       {/* Navbar */}
       <header className={styles.chatHeader}>
-        <Link href="/" className={styles.brand}>
-          <div className={styles.brandIcon}>
-            <Building2 size={20} />
-          </div>
-          <span className={styles.brandText}>{APP_NAME}</span>
+        <Link href="/" className={styles.brand} style={{ display: 'flex', alignItems: 'center' }}>
+          <Image 
+            src="/logo.png" 
+            alt="Lampung Maju Hub Logo" 
+            width={120} 
+            height={50} 
+            style={{ objectFit: 'contain' }} 
+            priority
+          />
         </Link>
         <Link href="/" className={styles.backBtn}>
           <ArrowLeft size={16} />

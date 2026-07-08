@@ -1,6 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
+import Image from 'next/image';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Building2, AlertCircle, Loader2, Shield, Lock, Mail, ArrowLeft } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { APP_NAME } from '@/lib/constants';
@@ -104,10 +106,16 @@ export default function LoginPage() {
 
       <div className={styles.loginCard}>
         <div className={styles.loginHeader}>
-          <div className={styles.loginIcon}>
-            <Building2 size={32} />
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 'var(--space-4)' }}>
+            <Image 
+              src="/logo.png" 
+              alt="Lampung Maju Hub Logo" 
+              width={200} 
+              height={90} 
+              style={{ objectFit: 'contain' }} 
+              priority
+            />
           </div>
-          <h1 className={styles.loginTitle}>{APP_NAME}</h1>
           <p className={styles.loginSubtitle}>
             {isAdminLogin 
               ? 'Masuk ke Panel Operator & Admin DPMPTSP Provinsi Lampung'

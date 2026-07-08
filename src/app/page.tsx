@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import {
   Building2,
   ClipboardCheck,
@@ -118,11 +119,15 @@ export default function LandingPage() {
     <div className={styles.landing}>
       {/* Navbar */}
       <nav className={styles.navbar}>
-        <Link href="/" className={styles.navBrand}>
-          <div className={styles.navBrandIcon}>
-            <Building2 size={20} />
-          </div>
-          <span className={styles.navBrandText}>{APP_NAME}</span>
+        <Link href="/" className={styles.navBrand} style={{ display: 'flex', alignItems: 'center' }}>
+          <Image 
+            src="/logo.png" 
+            alt="Lampung Maju Hub Logo" 
+            width={120} 
+            height={50} 
+            style={{ objectFit: 'contain' }} 
+            priority
+          />
         </Link>
 
         <ul className={styles.navLinks}>

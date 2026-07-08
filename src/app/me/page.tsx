@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import {
   Building2,
   MessageCircle,
@@ -120,9 +122,15 @@ export default function MeDashboard() {
     return (
       <div className={styles.mePage}>
         <div className={styles.navbar}>
-          <div className={styles.navBrand}>
-            <div className={styles.navBrandIcon}><Building2 size={20} /></div>
-            <span className={styles.navBrandText}>{APP_NAME}</span>
+          <div className={styles.navBrand} style={{ display: 'flex', alignItems: 'center' }}>
+            <Image 
+              src="/logo.png" 
+              alt="Lampung Maju Hub Logo" 
+              width={120} 
+              height={50} 
+              style={{ objectFit: 'contain' }} 
+              priority
+            />
           </div>
         </div>
         <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-20)' }}>
@@ -136,11 +144,15 @@ export default function MeDashboard() {
     <div className={styles.mePage}>
       {/* Navbar */}
       <nav className={styles.navbar}>
-        <Link href="/" className={styles.navBrand}>
-          <div className={styles.navBrandIcon}>
-            <Building2 size={20} />
-          </div>
-          <span className={styles.navBrandText}>{APP_NAME}</span>
+        <Link href="/" className={styles.navBrand} style={{ display: 'flex', alignItems: 'center' }}>
+          <Image 
+            src="/logo.png" 
+            alt="Lampung Maju Hub Logo" 
+            width={120} 
+            height={50} 
+            style={{ objectFit: 'contain' }} 
+            priority
+          />
         </Link>
 
         <div className={styles.navUser}>

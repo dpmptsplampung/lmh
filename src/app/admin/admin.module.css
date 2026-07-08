@@ -17,7 +17,7 @@
   padding: var(--space-8);
 }
 
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
   .adminContent {
     margin-left: 0;
   }

@@ -681,10 +681,27 @@ img, video {
 .toast--warning { border-left: 3px solid var(--color-warning-500); }
 
 /* Responsive */
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
   :root {
     --sidebar-width: 0px;
+  }
+  
+  html {
+    font-size: 15px; /* Scale down slightly for tablets */
+  }
+
+  .grid-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  :root {
     --header-height: 56px;
+  }
+  
+  html {
+    font-size: 14px; /* Scale down for mobile so rem units fit better */
   }
 
   h1 { font-size: var(--text-3xl); }
@@ -694,9 +711,13 @@ img, video {
   .container {
     padding: 0 var(--space-4);
   }
-
-  .grid-stats {
-    grid-template-columns: repeat(2, 1fr);
+  
+  .card {
+    padding: var(--space-4); /* Reduce padding on mobile */
+  }
+  
+  .btn {
+    padding: var(--space-2) var(--space-4); /* Smaller buttons on mobile */
   }
 
   .grid-cards {

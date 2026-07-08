@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import {
   FileText,
   ArrowLeft,
@@ -388,8 +389,14 @@ export default function GalleryPage() {
       {/* Navbar */}
       <nav className={styles.galleryNav}>
         <Link href="/" className={styles.galleryNavBrand}>
-          <Building2 size={20} style={{ color: 'var(--color-primary-500)' }} />
-          {APP_NAME}
+          <Image 
+            src="/logo.png" 
+            alt="Lampung Maju Hub Logo" 
+            width={100} 
+            height={40} 
+            style={{ objectFit: 'contain' }} 
+            priority
+          />
         </Link>
         <Link href="/" className={styles.galleryNavBack}>
           <ArrowLeft size={16} />

@@ -349,4 +349,16 @@
   border: 1px dashed var(--border-default);
 }
 
-
+@media (max-width: 768px) {
+  .dashboardGrid {
+    grid-template-columns: 1fr;
+  }
+  
+  .statsGrid {
+    gap: var(--space-4);
+  }
+  
+  .statCard {
+    padding: var(--space-4);
+  }
+}

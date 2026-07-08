@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import {
   Store,
   Search,
@@ -112,8 +113,14 @@ export default function UMKMPage() {
           fontWeight: 600,
           fontSize: 'var(--text-sm)',
         }}>
-          <Building2 size={20} style={{ color: 'var(--color-primary-600)' }} />
-          {APP_NAME}
+          <Image 
+            src="/logo.png" 
+            alt="Lampung Maju Hub Logo" 
+            width={100} 
+            height={40} 
+            style={{ objectFit: 'contain' }} 
+            priority
+          />
         </Link>
         <Link href="/" style={{
           display: 'flex',
