@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Store,
   Search,
@@ -8,133 +8,236 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
-  Filter,
   RefreshCw,
+  Plus,
+  Edit2,
+  Trash2,
+  Loader2,
+  X,
+  Save,
 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import { KATEGORI_UMKM, type KategoriUMKM } from '@/lib/constants';
 import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 
-// Seed data
-const demoListings = [
-  {
-    id: '1',
-    nama_umkm: 'Keripik Pisang Ibu Ani',
-    kategori: 'pemasaran' as KategoriUMKM,
-    deskripsi: 'Mencari mitra pemasaran untuk keripik pisang khas Lampung. Produksi sudah stabil, butuh channel distribusi lebih luas.',
-    kontak_nama: 'Ani Susanti',
-    status: 'published',
-    created_at: '2026-07-01',
-    image: 'https://images.unsplash.com/photo-1599598425947-3300262112fc?auto=format&fit=crop&q=80&w=800'
-  },
-  {
-    id: '2',
-    nama_umkm: 'CV Maju Bersama',
-    kategori: 'bahan_baku' as KategoriUMKM,
-    deskripsi: 'Membutuhkan supplier kopi robusta grade A dari daerah Tanggamus atau Lampung Barat.',
-    kontak_nama: 'Budi Hartono',
-    status: 'pending_review',
-    created_at: '2026-07-05',
-    image: 'https://images.unsplash.com/photo-1497935586351-b67a49e012bf?auto=format&fit=crop&q=80&w=800'
-  },
-  {
-    id: '3',
-    nama_umkm: 'Tapis Lampung Ethnic',
-    kategori: 'modal' as KategoriUMKM,
-    deskripsi: 'Butuh modal untuk mesin tenun baru. Sudah punya 5 pengrajin, demand tinggi.',
-    kontak_nama: 'Rina Wati',
-    status: 'draft',
-    created_at: '2026-07-06',
-    image: 'https://images.unsplash.com/photo-1605814595289-411a7f058098?auto=format&fit=crop&q=80&w=800'
-  },
-  {
-    id: '4',
-    nama_umkm: 'Kopi Lampung Jaya',
-    kategori: 'kemitraan' as KategoriUMKM,
-    deskripsi: 'Mencari investor atau mitra untuk membuka kedai kopi di Bandar Lampung.',
-    kontak_nama: 'Dedi Kurniawan',
-    status: 'pending_review',
-    created_at: '2026-07-04',
-    image: 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?auto=format&fit=crop&q=80&w=800'
-  },
-  {
-    id: '5',
-    nama_umkm: 'Batik Tulang Bawang',
-    kategori: 'pelatihan' as KategoriUMKM,
-    deskripsi: 'Membutuhkan pelatihan pewarnaan alam untuk motif batik Tulang Bawang. Ingin meningkatkan nilai jual produk ke pasar premium.',
-    kontak_nama: 'Sari Mutiara',
-    status: 'published',
-    created_at: '2026-07-02',
-    image: 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&q=80&w=800'
-  },
-  {
-    id: '6',
-    nama_umkm: 'UD Sumber Makmur',
-    kategori: 'peralatan' as KategoriUMKM,
-    deskripsi: 'Butuh mesin pengolahan lada putih kapasitas industri. Saat ini masih menggunakan metode tradisional yang lambat.',
-    kontak_nama: 'Hasan Ibrahim',
-    status: 'published',
-    created_at: '2026-07-03',
-    image: 'https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&q=80&w=800'
-  },
-  {
-    id: '7',
-    nama_umkm: 'Sambal Linggarjati',
-    kategori: 'bahan_baku' as KategoriUMKM,
-    deskripsi: 'Mencari supplier cabai merah keriting dalam jumlah besar secara berkala untuk produksi sambal kemasan.',
-    kontak_nama: 'Ratna Ningsih',
-    status: 'published',
-    created_at: '2026-07-07',
-    image: 'https://images.unsplash.com/photo-1592663527359-cf6642f54cff?auto=format&fit=crop&q=80&w=800'
-  },
-  {
-    id: '8',
-    nama_umkm: 'Pengrajin Kayu Jati Murni',
-    kategori: 'pemasaran' as KategoriUMKM,
-    deskripsi: 'Membutuhkan bantuan untuk digital marketing dan pembuatan website e-commerce untuk mebel Jati Jepara-Lampung.',
-    kontak_nama: 'Joko Widodo',
-    status: 'published',
-    created_at: '2026-07-08',
-    image: 'https://images.unsplash.com/photo-1610925763920-5692027e0ff8?auto=format&fit=crop&q=80&w=800'
-  },
-  {
-    id: '9',
-    nama_umkm: 'Emping Melinjo Makmur',
-    kategori: 'peralatan' as KategoriUMKM,
-    deskripsi: 'Butuh bantuan pembiayaan mesin press emping melinjo otomatis agar kapasitas produksi bisa menembus 1 ton per bulan.',
-    kontak_nama: 'Siti Badriah',
-    status: 'published',
-    created_at: '2026-07-08',
-    image: 'https://images.unsplash.com/photo-1621506289937-a8e4df240d0b?auto=format&fit=crop&q=80&w=800'
-  }
-];
+interface UMKMListing {
+  id: string;
+  nama_umkm: string;
+  kategori_kebutuhan: KategoriUMKM;
+  deskripsi: string | null;
+  kontak_nama: string;
+  kontak_hp: string | null;
+  kontak_email: string | null;
+  status: string;
+  edit_token: string;
+  created_at: string;
+  updated_at: string;
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  draft: 'Draft',
+  pending_review: '● Pending',
+  published: '✓ Published',
+  nonaktif: 'Nonaktif',
+  expired: 'Expired',
+};
+
+interface FormData {
+  nama_umkm: string;
+  kategori_kebutuhan: KategoriUMKM | '';
+  deskripsi: string;
+  kontak_nama: string;
+  kontak_hp: string;
+  kontak_email: string;
+}
+
+const emptyForm: FormData = {
+  nama_umkm: '',
+  kategori_kebutuhan: '',
+  deskripsi: '',
+  kontak_nama: '',
+  kontak_hp: '',
+  kontak_email: '',
+};
 
 export default function AdminUMKMPage() {
   const [filterStatus, setFilterStatus] = useState<string>('semua');
   const [search, setSearch] = useState('');
-  const [umkmList, setUmkmList] = useState<any[]>(demoListings);
-  const [loading, setLoading] = useState(false);
+  const [umkmList, setUmkmList] = useState<UMKMListing[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const loadData = async () => {
-    // Disabled for seed
-  };
+  // Form states
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState<FormData>(emptyForm);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState('');
 
-  useEffect(() => {
-    // Disabled for seed
+  // Detail modal
+  const [viewingId, setViewingId] = useState<string | null>(null);
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('listing_umkm')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setUmkmList((data || []) as UMKMListing[]);
+    } catch (e) {
+      console.error('Error loading UMKM:', e);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  // ---- Status Update (approve / reject / nonaktifkan) ----
   const handleUpdateStatus = async (id: string, newStatus: string) => {
-    setUmkmList(prev => prev.map(l => l.id === id ? { ...l, status: newStatus } : l));
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from('listing_umkm')
+        .update({
+          status: newStatus,
+          updated_at: new Date().toISOString(),
+          ...(newStatus === 'published' ? { snapshot_approved: null } : {}),
+        })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      setUmkmList(prev => prev.map(l => l.id === id ? { ...l, status: newStatus } : l));
+    } catch (e) {
+      console.error('Error updating status:', e);
+      alert('Gagal memperbarui status. Silakan coba lagi.');
+    }
   };
 
+  // ---- Delete ----
+  const handleDelete = async (id: string) => {
+    if (!confirm('Hapus listing UMKM ini? Tindakan ini tidak bisa dibatalkan.')) return;
+
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from('listing_umkm')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      setUmkmList(prev => prev.filter(l => l.id !== id));
+    } catch (e) {
+      console.error('Error deleting UMKM:', e);
+      alert('Gagal menghapus listing. Silakan coba lagi.');
+    }
+  };
+
+  // ---- Open form for Create or Edit ----
+  const handleOpenCreate = () => {
+    setEditingId(null);
+    setForm(emptyForm);
+    setFormError('');
+    setShowForm(true);
+  };
+
+  const handleOpenEdit = (item: UMKMListing) => {
+    setEditingId(item.id);
+    setForm({
+      nama_umkm: item.nama_umkm,
+      kategori_kebutuhan: item.kategori_kebutuhan,
+      deskripsi: item.deskripsi || '',
+      kontak_nama: item.kontak_nama,
+      kontak_hp: item.kontak_hp || '',
+      kontak_email: item.kontak_email || '',
+    });
+    setFormError('');
+    setShowForm(true);
+  };
+
+  // ---- Submit Form (Create or Update) ----
+  const handleSubmitForm = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError('');
+
+    if (!form.nama_umkm.trim()) {
+      setFormError('Nama UMKM wajib diisi');
+      return;
+    }
+    if (!form.kategori_kebutuhan) {
+      setFormError('Pilih kategori kebutuhan');
+      return;
+    }
+    if (!form.kontak_nama.trim()) {
+      setFormError('Nama kontak wajib diisi');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const supabase = createClient();
+
+      const payload = {
+        nama_umkm: form.nama_umkm.trim(),
+        kategori_kebutuhan: form.kategori_kebutuhan,
+        deskripsi: form.deskripsi.trim() || null,
+        kontak_nama: form.kontak_nama.trim(),
+        kontak_hp: form.kontak_hp.trim() || null,
+        kontak_email: form.kontak_email.trim() || null,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (editingId) {
+        const { error } = await supabase
+          .from('listing_umkm')
+          .update(payload)
+          .eq('id', editingId);
+
+        if (error) throw error;
+
+        setUmkmList(prev => prev.map(l => l.id === editingId ? { ...l, ...payload } : l));
+      } else {
+        const { error } = await supabase
+          .from('listing_umkm')
+          .insert({
+            ...payload,
+            status: 'draft',
+            created_at: new Date().toISOString(),
+          });
+
+        if (error) throw error;
+
+        await loadData(); // Reload full list to get the new record with server-generated fields
+      }
+
+      setShowForm(false);
+      setEditingId(null);
+    } catch (e) {
+      console.error('Error saving UMKM:', e);
+      setFormError('Gagal menyimpan data. Pastikan Anda memiliki akses admin.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ---- Filter ----
   const filtered = umkmList.filter((l) => {
-    const matchSearch = l.nama_umkm.toLowerCase().includes(search.toLowerCase());
+    const matchSearch = l.nama_umkm.toLowerCase().includes(search.toLowerCase()) ||
+      (l.deskripsi && l.deskripsi.toLowerCase().includes(search.toLowerCase()));
     const matchStatus = filterStatus === 'semua' || l.status === filterStatus;
     return matchSearch && matchStatus;
   });
 
   const pendingCount = umkmList.filter(l => l.status === 'pending_review').length;
+  const viewedItem = viewingId ? umkmList.find(l => l.id === viewingId) : null;
 
   return (
     <>
@@ -225,7 +328,7 @@ export default function AdminUMKMPage() {
                   </td>
                   <td>
                     <span className="badge badge--draft">
-                      {KATEGORI_UMKM[l.kategori as KategoriUMKM] || l.kategori}
+                      {KATEGORI_UMKM[l.kategori_kebutuhan] || l.kategori_kebutuhan}
                     </span>
                   </td>
                   <td style={{ fontSize: 'var(--text-sm)' }}>{l.kontak_nama}</td>

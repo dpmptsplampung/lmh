@@ -150,7 +150,7 @@ export default function AdminScanPage() {
     }
 
     const updateData: any = { 
-      status: action === 'hadir' ? 'hadir' : 'ditolak',
+      status: action === 'hadir' ? 'hadir' : 'batal',
       updated_at: new Date().toISOString(),
     };
 

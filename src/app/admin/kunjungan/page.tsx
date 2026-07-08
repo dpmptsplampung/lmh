@@ -1,55 +1,103 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Search,
   Filter,
   CheckCircle2,
   Clock,
   RefreshCw,
+  Loader2,
 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 
-// Seed data
-const demoKunjungan = [
-  { id: '1', nama: 'Ahmad Surya', keperluan: 'Konsultasi NIB baru', layanan: 'Helpdesk OSS', status: 'menunggu', waktu_masuk: '2026-07-06T10:30:00Z', waktu_selesai: null },
-  { id: '2', nama: 'Siti Rahayu', keperluan: 'Perpanjangan sertifikat halal', layanan: 'Sertifikasi Halal', status: 'menunggu', waktu_masuk: '2026-07-06T10:15:00Z', waktu_selesai: null },
-  { id: '3', nama: 'Budi Santoso', keperluan: 'Cek status kepesertaan BPJS', layanan: 'CS BPJS Kesehatan', status: 'selesai', waktu_masuk: '2026-07-06T09:50:00Z', waktu_selesai: '2026-07-06T10:05:00Z' },
-  { id: '4', nama: 'Dewi Lestari', keperluan: 'Perubahan data NIB', layanan: 'Helpdesk OSS', status: 'selesai', waktu_masuk: '2026-07-06T09:30:00Z', waktu_selesai: '2026-07-06T09:45:00Z' },
-  { id: '5', nama: 'Rizky Pratama', keperluan: 'Pendaftaran NIB baru untuk CV', layanan: 'Helpdesk OSS', status: 'menunggu', waktu_masuk: '2026-07-06T09:15:00Z', waktu_selesai: null },
-  { id: '6', nama: 'Nur Hasanah', keperluan: 'Informasi proses halal UMK', layanan: 'Sertifikasi Halal', status: 'selesai', waktu_masuk: '2026-07-06T08:50:00Z', waktu_selesai: '2026-07-06T09:20:00Z' },
-];
+interface KunjunganRow {
+  id: string;
+  nama: string;
+  keperluan: string | null;
+  status: 'menunggu' | 'selesai';
+  waktu_masuk: string;
+  waktu_selesai: string | null;
+  layanan: { nama: string } | { nama: string }[] | null;
+}
 
 export default function KunjunganPage() {
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<'semua' | 'menunggu' | 'selesai'>('semua');
-  const [kunjungan, setKunjungan] = useState<any[]>(demoKunjungan);
-  const [loading, setLoading] = useState(false);
+  const [kunjungan, setKunjungan] = useState<KunjunganRow[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const loadData = async () => {
-    // Disabled for seed
-  };
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('kunjungan')
+        .select(`
+          id, nama, keperluan, status, waktu_masuk, waktu_selesai,
+          layanan:layanan_id ( nama )
+        `)
+        .order('waktu_masuk', { ascending: false });
 
-  useEffect(() => {
-    // Disabled for seed
+      if (error) throw error;
+
+      // Normalize layanan join (Supabase may return array or object)
+      const normalized = (data || []).map(k => ({
+        ...k,
+        layanan: Array.isArray(k.layanan) ? k.layanan[0] : k.layanan,
+      })) as KunjunganRow[];
+
+      setKunjungan(normalized);
+    } catch (e) {
+      console.error('Error loading kunjungan:', e);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
   const handleSelesai = async (id: string) => {
-    // Update local state for demo
-    setKunjungan(prev => prev.map(k => k.id === id ? { ...k, status: 'selesai', waktu_selesai: new Date().toISOString() } : k));
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from('kunjungan')
+        .update({
+          status: 'selesai',
+          waktu_selesai: new Date().toISOString(),
+        })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      // Update local state
+      setKunjungan(prev => prev.map(k => k.id === id ? { ...k, status: 'selesai', waktu_selesai: new Date().toISOString() } : k));
+    } catch (e) {
+      console.error('Error updating kunjungan:', e);
+      alert('Gagal menyelesaikan kunjungan. Pastikan Anda memiliki akses.');
+    }
   };
 
   const filtered = kunjungan.filter((k) => {
+    const layananNama = Array.isArray(k.layanan) ? k.layanan[0]?.nama : k.layanan?.nama || '';
     const matchSearch = k.nama.toLowerCase().includes(search.toLowerCase()) ||
-      k.layanan.toLowerCase().includes(search.toLowerCase());
+      layananNama.toLowerCase().includes(search.toLowerCase());
     const matchStatus = filterStatus === 'semua' || k.status === filterStatus;
     return matchSearch && matchStatus;
   });
 
   const formatTime = (iso: string) => {
     return new Date(iso).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const getLayananNama = (k: KunjunganRow) => {
+    if (!k.layanan) return '—';
+    if (Array.isArray(k.layanan)) return k.layanan[0]?.nama || '—';
+    return k.layanan.nama || '—';
   };
 
   return (
@@ -100,6 +148,12 @@ export default function KunjunganPage() {
 
         {/* Table */}
         <div className="table-wrapper">
+          {loading ? (
+            <div style={{ padding: 'var(--space-8)', textAlign: 'center', color: 'var(--text-tertiary)' }}>
+              <Loader2 size={24} className="animate-pulse" style={{ margin: '0 auto' }} />
+              <p style={{ marginTop: 'var(--space-2)' }}>Memuat data kunjungan...</p>
+            </div>
+          ) : (
           <table className="table">
             <thead>
               <tr>
@@ -120,7 +174,7 @@ export default function KunjunganPage() {
                   <td style={{ maxWidth: '240px', color: 'var(--text-secondary)' }}>
                     {k.keperluan || '—'}
                   </td>
-                  <td>{k.layanan}</td>
+                  <td>{getLayananNama(k)}</td>
                   <td>{formatTime(k.waktu_masuk)}</td>
                   <td>
                     <span className={`badge badge--${k.status}`}>
@@ -143,6 +197,7 @@ export default function KunjunganPage() {
               ))}
             </tbody>
           </table>
+          )}
         </div>
 
         {filtered.length === 0 && (

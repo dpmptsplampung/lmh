@@ -15,6 +15,7 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { APP_NAME } from '@/lib/constants';
+import { createClient } from '@/lib/supabase/client';
 import styles from './gallery.module.css';
 
 // IPRO Data
@@ -114,10 +115,50 @@ const iproProjects = [
 export default function GalleryPage() {
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
   const [docs, setDocs] = useState<any[]>(iproProjects.filter(p => p.status === 'aktif'));
-  const foilaUrl = 'https://invest.lampungprov.go.id/';
+  const [foilaUrl, setFoilaUrl] = useState('https://invest.lampungprov.go.id/');
 
   useEffect(() => {
-    // Disabled for seed
+    async function loadData() {
+      try {
+        const supabase = createClient();
+
+        // Load active investment documents
+        const { data: documents } = await supabase
+          .from('investment_documents')
+          .select('id, judul, kategori, urutan_tampil, jumlah_halaman, status, deskripsi, nilai_investasi, image_url')
+          .eq('status', 'aktif')
+          .order('urutan_tampil', { ascending: true });
+
+        if (documents && documents.length > 0) {
+          // Map DB fields to the shape used by the UI
+          setDocs(documents.map((d: any) => ({
+            id: d.id,
+            judul: d.judul,
+            kategori: d.kategori ?? '',
+            deskripsi: d.deskripsi ?? '',
+            nilai: d.nilai_investasi ?? '',
+            halaman: d.jumlah_halaman ?? 0,
+            status: d.status,
+            image: d.image_url ?? '',
+          })));
+        }
+        // else: keep iproProjects fallback
+
+        // Load FOILA URL from site_settings
+        const { data: setting } = await supabase
+          .from('site_settings')
+          .select('value')
+          .eq('key', 'foila_url')
+          .single();
+        if (setting?.value) {
+          setFoilaUrl(setting.value);
+        }
+      } catch (e) {
+        console.error('Error loading gallery data:', e);
+        // Keep fallback seed data on error
+      }
+    }
+    loadData();
   }, []);
 
   // Disable right click inside the document viewer

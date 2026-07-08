@@ -127,7 +127,30 @@ export default function UMKMPage() {
   const [listings, setListings] = useState<any[]>(demoListings.filter(l => l.status === 'published'));
 
   useEffect(() => {
-    // Disabled for seed
+    async function fetchListings() {
+      try {
+        const supabase = createClient();
+        const { data } = await supabase
+          .from('listing_umkm')
+          .select('id, nama_umkm, kategori_kebutuhan, deskripsi, kontak_nama, kontak_hp, foto_produk, status, created_at')
+          .eq('status', 'published')
+          .order('created_at', { ascending: false });
+
+        if (data && data.length > 0) {
+          // Map DB fields to UI shape (kategori_kebutuhan → kategori, foto_produk[0] → image)
+          setListings(data.map((l: any) => ({
+            ...l,
+            kategori: l.kategori_kebutuhan,
+            image: (l.foto_produk && l.foto_produk.length > 0) ? l.foto_produk[0] : null,
+          })));
+        }
+        // else: keep demoListings fallback
+      } catch (e) {
+        console.error('Error fetching UMKM listings:', e);
+        // Keep demoListings on error
+      }
+    }
+    fetchListings();
   }, []);
 
   const filtered = listings.filter((l) => {

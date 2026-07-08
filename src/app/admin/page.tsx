@@ -34,8 +34,19 @@ import { createClient } from '@/lib/supabase/client';
 import { LAYANAN_LIST } from '@/lib/constants';
 import styles from './dashboard.module.css';
 
-// Demo data — akan diganti dengan data dari Supabase
-const dailyVisits = [
+// Chart colors pool
+const CHART_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
+
+// Fallback seed data — shown if database is empty
+const SEED_VISITS = [
+  { id: 'v1', nama: 'Ahmad Surya', layanan: 'Helpdesk OSS', waktu: '10:30', status: 'menunggu' },
+  { id: 'v2', nama: 'Siti Rahayu', layanan: 'Sertifikasi Halal', waktu: '10:15', status: 'selesai' },
+  { id: 'v3', nama: 'Budi Santoso', layanan: 'CS BPJS Kesehatan', waktu: '09:50', status: 'selesai' },
+  { id: 'v4', nama: 'Dewi Lestari', layanan: 'Helpdesk OSS', waktu: '09:30', status: 'selesai' },
+  { id: 'v5', nama: 'Rizky Pratama', layanan: 'Helpdesk OSS', waktu: '09:15', status: 'menunggu' },
+];
+
+const SEED_DAILY = [
   { hari: 'Sen', kunjungan: 12 },
   { hari: 'Sel', kunjungan: 18 },
   { hari: 'Rab', kunjungan: 15 },
@@ -45,27 +56,20 @@ const dailyVisits = [
   { hari: 'Min', kunjungan: 0 },
 ];
 
-const layananBreakdown = [
+const SEED_BREAKDOWN = [
   { nama: 'Helpdesk OSS', jumlah: 42, color: '#6366f1' },
   { nama: 'Sertifikasi Halal', jumlah: 18, color: '#10b981' },
   { nama: 'CS BPJS Kesehatan', jumlah: 25, color: '#f59e0b' },
 ];
 
-// recentVisits will be fetched dynamically (Disabled for seed/documentation)
-const SEED_VISITS = [
-  { id: 'v1', nama: 'Ahmad Surya', layanan: 'Helpdesk OSS', waktu: '10:30', status: 'menunggu' },
-  { id: 'v2', nama: 'Siti Rahayu', layanan: 'Sertifikasi Halal', waktu: '10:15', status: 'selesai' },
-  { id: 'v3', nama: 'Budi Santoso', layanan: 'CS BPJS Kesehatan', waktu: '09:50', status: 'selesai' },
-  { id: 'v4', nama: 'Dewi Lestari', layanan: 'Helpdesk OSS', waktu: '09:30', status: 'selesai' },
-  { id: 'v5', nama: 'Rizky Pratama', layanan: 'Helpdesk OSS', waktu: '09:15', status: 'menunggu' },
-];
-
 export default function AdminDashboard() {
-  const [totalHariIni, setTotalHariIni] = useState(75);
-  const [menunggu, setMenunggu] = useState(3);
-  const [selesai, setSelesai] = useState(72);
-  const [rataWaktu, setRataWaktu] = useState(12);
-  const [recentVisits, setRecentVisits] = useState<{ id: string; nama: string; layanan: string; waktu: string; status: string }[]>(SEED_VISITS);
+  const [totalHariIni, setTotalHariIni] = useState(0);
+  const [menunggu, setMenunggu] = useState(0);
+  const [selesai, setSelesai] = useState(0);
+  const [rataWaktu, setRataWaktu] = useState(0);
+  const [recentVisits, setRecentVisits] = useState<{ id: string; nama: string; layanan: string; waktu: string; status: string }[]>([]);
+  const [dailyVisitsState, setDailyVisitsState] = useState(SEED_DAILY);
+  const [layananBreakdownState, setLayananBreakdownState] = useState(SEED_BREAKDOWN);
 
   // Wizard Popup States
   const [isWizardOpen, setIsWizardOpen] = useState(false);
@@ -80,7 +84,127 @@ export default function AdminDashboard() {
   const [wizardError, setWizardError] = useState('');
 
   useEffect(() => {
-    // Supabase loadData disabled for documentation seeding
+    async function loadData() {
+      try {
+        const supabase = createClient();
+        const today = new Date().toISOString().split('T')[0];
+
+        // 1. Total kunjungan hari ini
+        const { count: total } = await supabase
+          .from('kunjungan')
+          .select('*', { count: 'exact', head: true })
+          .gte('waktu_masuk', `${today}T00:00:00`);
+
+        // 2. Sedang menunggu
+        const { count: waiting } = await supabase
+          .from('kunjungan')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'menunggu');
+
+        // 3. Selesai hari ini
+        const { count: done } = await supabase
+          .from('kunjungan')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'selesai')
+          .gte('waktu_masuk', `${today}T00:00:00`);
+
+        const hasRealData = (total ?? 0) > 0 || (waiting ?? 0) > 0;
+
+        if (hasRealData) {
+          setTotalHariIni(total ?? 0);
+          setMenunggu(waiting ?? 0);
+          setSelesai(done ?? 0);
+        } else {
+          // Keep seed values if DB is empty
+          setTotalHariIni(75);
+          setMenunggu(3);
+          setSelesai(72);
+          setRataWaktu(12);
+        }
+
+        // 4. Recent visits (5 terbaru)
+        const { data: recent } = await supabase
+          .from('kunjungan')
+          .select('id, nama, status, waktu_masuk, layanan:layanan_id(nama)')
+          .order('waktu_masuk', { ascending: false })
+          .limit(5);
+
+        if (recent && recent.length > 0) {
+          setRecentVisits(recent.map((r: any) => ({
+            id: r.id,
+            nama: r.nama,
+            layanan: (Array.isArray(r.layanan) ? r.layanan[0]?.nama : r.layanan?.nama) ?? '—',
+            waktu: new Date(r.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+            status: r.status,
+          })));
+        } else {
+          setRecentVisits(SEED_VISITS);
+        }
+
+        // 5. Layanan list untuk walk-in wizard
+        const { data: layananData } = await supabase.from('layanan').select('id, nama').order('nama');
+        if (layananData && layananData.length > 0) {
+          setLayananList(layananData);
+        }
+
+        // 6. Daily visits — last 7 days
+        const days = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+        const { data: weekly } = await supabase
+          .from('kunjungan')
+          .select('waktu_masuk')
+          .gte('waktu_masuk', sevenDaysAgo.toISOString());
+
+        if (weekly && weekly.length > 0) {
+          // Build count per day-of-week
+          const counts: Record<string, number> = {};
+          for (let i = 6; i >= 0; i--) {
+            const d = new Date();
+            d.setDate(d.getDate() - i);
+            const key = d.toISOString().split('T')[0];
+            counts[key] = 0;
+          }
+          weekly.forEach((w: any) => {
+            const key = w.waktu_masuk.split('T')[0];
+            if (counts[key] !== undefined) counts[key]++;
+          });
+          const dailyArr = Object.entries(counts).map(([dateStr, kunjungan]) => ({
+            hari: days[new Date(dateStr).getDay()],
+            kunjungan,
+          }));
+          setDailyVisitsState(dailyArr);
+        }
+
+        // 7. Layanan breakdown — top 5 by visit count
+        const { data: breakdown } = await supabase
+          .from('kunjungan')
+          .select('layanan:layanan_id(nama)')
+          .gte('waktu_masuk', `${today}T00:00:00`);
+
+        if (breakdown && breakdown.length > 0) {
+          const counts2: Record<string, number> = {};
+          breakdown.forEach((b: any) => {
+            const nama = (Array.isArray(b.layanan) ? b.layanan[0]?.nama : b.layanan?.nama) ?? 'Lainnya';
+            counts2[nama] = (counts2[nama] ?? 0) + 1;
+          });
+          const arr = Object.entries(counts2)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 5)
+            .map(([nama, jumlah], idx) => ({ nama, jumlah, color: CHART_COLORS[idx % CHART_COLORS.length] }));
+          if (arr.length > 0) setLayananBreakdownState(arr);
+        }
+      } catch (e) {
+        console.error('Error loading dashboard data:', e);
+        // Fallback to seed data on error
+        setTotalHariIni(75);
+        setMenunggu(3);
+        setSelesai(72);
+        setRataWaktu(12);
+        setRecentVisits(SEED_VISITS);
+      }
+    }
+    loadData();
   }, []);
 
   const handleNextStep = () => {
@@ -404,7 +528,7 @@ export default function AdminDashboard() {
             <h3 className={styles.chartTitle}>Volume Kunjungan Mingguan</h3>
             <div className={styles.chartBody}>
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={dailyVisits}>
+                <BarChart data={dailyVisitsState}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                   <XAxis dataKey="hari" fontSize={12} tickLine={false} />
                   <YAxis fontSize={12} tickLine={false} axisLine={false} />
@@ -432,7 +556,7 @@ export default function AdminDashboard() {
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
-                    data={layananBreakdown}
+                    data={layananBreakdownState}
                     dataKey="jumlah"
                     nameKey="nama"
                     cx="50%"
@@ -441,7 +565,7 @@ export default function AdminDashboard() {
                     innerRadius={50}
                     paddingAngle={4}
                   >
-                    {layananBreakdown.map((entry) => (
+                    {layananBreakdownState.map((entry) => (
                       <Cell key={entry.nama} fill={entry.color} />
                     ))}
                   </Pie>
