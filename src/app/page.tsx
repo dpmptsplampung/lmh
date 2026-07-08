@@ -61,7 +61,7 @@ const services = [
   },
   {
     icon: <Sparkles size={28} />,
-    title: 'BALMON',
+    title: 'Balai Monitor SFR',
     description: 'Pelayanan Balai Monitor Spektrum Frekuensi Radio, meliputi perizinan frekuensi dan sertifikasi alat telekomunikasi.',
     color: 'serviceIconSuccess',
   },
