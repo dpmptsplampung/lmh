@@ -51,19 +51,14 @@ const layananBreakdown = [
   { nama: 'CS BPJS Kesehatan', jumlah: 25, color: '#f59e0b' },
 ];
 
-const recentVisits = [
-  { nama: 'Ahmad Surya', layanan: 'Helpdesk OSS', waktu: '10:30', status: 'menunggu' },
-  { nama: 'Siti Rahayu', layanan: 'Sertifikasi Halal', waktu: '10:15', status: 'selesai' },
-  { nama: 'Budi Santoso', layanan: 'CS BPJS Kesehatan', waktu: '09:50', status: 'selesai' },
-  { nama: 'Dewi Lestari', layanan: 'Helpdesk OSS', waktu: '09:30', status: 'selesai' },
-  { nama: 'Rizky Pratama', layanan: 'Helpdesk OSS', waktu: '09:15', status: 'menunggu' },
-];
+// recentVisits will be fetched dynamically
 
 export default function AdminDashboard() {
-  const totalHariIni = 75;
-  const menunggu = 3;
-  const selesai = 72;
-  const rataWaktu = 12;
+  const [totalHariIni, setTotalHariIni] = useState(0);
+  const [menunggu, setMenunggu] = useState(0);
+  const [selesai, setSelesai] = useState(0);
+  const [rataWaktu, setRataWaktu] = useState(0);
+  const [recentVisits, setRecentVisits] = useState<{ id: string; nama: string; layanan: string; waktu: string; status: string }[]>([]);
 
   // Wizard Popup States
   const [isWizardOpen, setIsWizardOpen] = useState(false);
@@ -77,18 +72,56 @@ export default function AdminDashboard() {
   const [wizardSuccess, setWizardSuccess] = useState(false);
   const [wizardError, setWizardError] = useState('');
 
-  // Load services list
   useEffect(() => {
-    async function loadLayanan() {
+    async function loadData() {
       const supabase = createClient();
-      const { data } = await supabase.from('layanan').select('id, nama').order('nama');
-      if (data && data.length > 0) {
-        setLayananList(data);
+      
+      // Load Layanan
+      const { data: layananData } = await supabase.from('layanan').select('id, nama').order('nama');
+      if (layananData && layananData.length > 0) {
+        setLayananList(layananData);
       } else {
         setLayananList(LAYANAN_LIST.map((nama, i) => ({ id: `fallback-${i}`, nama })));
       }
+
+      // Load Stats & Recent Visits
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const startOfDay = today.toISOString();
+      
+      const { data: kunjunganData } = await supabase
+        .from('kunjungan')
+        .select('*, layanan(nama)')
+        .gte('waktu_masuk', startOfDay)
+        .order('waktu_masuk', { ascending: false });
+        
+      if (kunjunganData) {
+        setTotalHariIni(kunjunganData.length);
+        const pending = kunjunganData.filter((k: any) => k.status === 'menunggu');
+        const completed = kunjunganData.filter((k: any) => k.status === 'selesai');
+        setMenunggu(pending.length);
+        setSelesai(completed.length);
+        
+        let totalMinutes = 0;
+        completed.forEach((k: any) => {
+          if (k.waktu_selesai && k.waktu_masuk) {
+            const diff = new Date(k.waktu_selesai).getTime() - new Date(k.waktu_masuk).getTime();
+            totalMinutes += diff / 60000;
+          }
+        });
+        setRataWaktu(completed.length > 0 ? Math.round(totalMinutes / completed.length) : 0);
+        
+        const formatted = kunjunganData.slice(0, 5).map((k: any) => ({
+          id: k.id,
+          nama: k.nama,
+          layanan: k.layanan?.nama || '-',
+          waktu: new Date(k.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+          status: k.status
+        }));
+        setRecentVisits(formatted);
+      }
     }
-    loadLayanan();
+    loadData();
   }, []);
 
   const handleNextStep = () => {

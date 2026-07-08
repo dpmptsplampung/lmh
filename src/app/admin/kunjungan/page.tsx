@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Search,
   Filter,
@@ -10,22 +10,53 @@ import {
 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import { cn } from '@/lib/utils';
-
-// Demo data
-const demoKunjungan = [
-  { id: '1', nama: 'Ahmad Surya', keperluan: 'Konsultasi NIB baru', layanan: 'Helpdesk OSS', status: 'menunggu', waktu_masuk: '2026-07-06T10:30:00Z', waktu_selesai: null },
-  { id: '2', nama: 'Siti Rahayu', keperluan: 'Perpanjangan sertifikat halal', layanan: 'Sertifikasi Halal', status: 'menunggu', waktu_masuk: '2026-07-06T10:15:00Z', waktu_selesai: null },
-  { id: '3', nama: 'Budi Santoso', keperluan: 'Cek status kepesertaan BPJS', layanan: 'CS BPJS Kesehatan', status: 'selesai', waktu_masuk: '2026-07-06T09:50:00Z', waktu_selesai: '2026-07-06T10:05:00Z' },
-  { id: '4', nama: 'Dewi Lestari', keperluan: 'Perubahan data NIB', layanan: 'Helpdesk OSS', status: 'selesai', waktu_masuk: '2026-07-06T09:30:00Z', waktu_selesai: '2026-07-06T09:45:00Z' },
-  { id: '5', nama: 'Rizky Pratama', keperluan: 'Pendaftaran NIB baru untuk CV', layanan: 'Helpdesk OSS', status: 'menunggu', waktu_masuk: '2026-07-06T09:15:00Z', waktu_selesai: null },
-  { id: '6', nama: 'Nur Hasanah', keperluan: 'Informasi proses halal UMK', layanan: 'Sertifikasi Halal', status: 'selesai', waktu_masuk: '2026-07-06T08:50:00Z', waktu_selesai: '2026-07-06T09:20:00Z' },
-];
+import { createClient } from '@/lib/supabase/client';
 
 export default function KunjunganPage() {
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<'semua' | 'menunggu' | 'selesai'>('semua');
+  const [kunjungan, setKunjungan] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const filtered = demoKunjungan.filter((k) => {
+  const loadData = async () => {
+    setLoading(true);
+    const supabase = createClient();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const startOfDay = today.toISOString();
+
+    const { data } = await supabase
+      .from('kunjungan')
+      .select('*, layanan(nama)')
+      .gte('waktu_masuk', startOfDay)
+      .order('waktu_masuk', { ascending: false });
+
+    if (data) {
+      setKunjungan(data.map(k => ({
+        ...k,
+        layanan: k.layanan?.nama || '-'
+      })));
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const handleSelesai = async (id: string) => {
+    const supabase = createClient();
+    const { error } = await supabase
+      .from('kunjungan')
+      .update({ status: 'selesai', waktu_selesai: new Date().toISOString() })
+      .eq('id', id);
+
+    if (!error) {
+      loadData();
+    }
+  };
+
+  const filtered = kunjungan.filter((k) => {
     const matchSearch = k.nama.toLowerCase().includes(search.toLowerCase()) ||
       k.layanan.toLowerCase().includes(search.toLowerCase());
     const matchStatus = filterStatus === 'semua' || k.status === filterStatus;
@@ -42,8 +73,8 @@ export default function KunjunganPage() {
         title="Kelola Kunjungan"
         description="Daftar pengunjung yang telah check-in hari ini"
       >
-        <button className="btn btn--ghost btn--sm">
-          <RefreshCw size={16} />
+        <button className="btn btn--ghost btn--sm" onClick={loadData}>
+          <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
           Refresh
         </button>
       </PageHeader>
@@ -113,7 +144,7 @@ export default function KunjunganPage() {
                   </td>
                   <td>
                     {k.status === 'menunggu' ? (
-                      <button className="btn btn--primary btn--sm">
+                      <button className="btn btn--primary btn--sm" onClick={() => handleSelesai(k.id)}>
                         <CheckCircle2 size={14} />
                         Selesai
                       </button>

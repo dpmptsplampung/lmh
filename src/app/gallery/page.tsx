@@ -449,7 +449,7 @@ export default function GalleryPage() {
               Masuk ke portal resmi Forum Investasi Lampung (FOILA) untuk mengakses direktori regulasi daerah, kalkulator investasi, insentif pajak daerah, dan pendampingan izin cepat.
             </p>
             <a
-              href="http://foila.lampungprov.go.id"
+              href="https://invest.lampungprov.go.id/"
               target="_blank"
               rel="noopener noreferrer"
               className={styles.foilaLinkBtn}
