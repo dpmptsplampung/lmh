@@ -181,7 +181,7 @@ export default function UMKMPage() {
                   </div>
                   <div className={styles.listingBody}>
                     <span className={styles.listingCategory}>
-                      {KATEGORI_UMKM[listing.kategori]}
+                      {KATEGORI_UMKM[listing.kategori as KategoriUMKM] || listing.kategori}
                     </span>
                     <h3 className={styles.listingName}>{listing.nama_umkm}</h3>
                     <p className={styles.listingDesc}>{listing.deskripsi}</p>
