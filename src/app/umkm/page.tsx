@@ -29,6 +29,7 @@ const demoListings = [
     kontak_nama: 'Ani Susanti',
     status: 'published',
     created_at: '2026-07-01',
+    image: 'https://images.unsplash.com/photo-1599598425947-3300262112fc?auto=format&fit=crop&q=80&w=800'
   },
   {
     id: '2',
@@ -38,6 +39,7 @@ const demoListings = [
     kontak_nama: 'Budi Hartono',
     status: 'pending_review',
     created_at: '2026-07-05',
+    image: 'https://images.unsplash.com/photo-1497935586351-b67a49e012bf?auto=format&fit=crop&q=80&w=800'
   },
   {
     id: '3',
@@ -47,6 +49,7 @@ const demoListings = [
     kontak_nama: 'Rina Wati',
     status: 'draft',
     created_at: '2026-07-06',
+    image: 'https://images.unsplash.com/photo-1605814595289-411a7f058098?auto=format&fit=crop&q=80&w=800'
   },
   {
     id: '4',
@@ -56,6 +59,7 @@ const demoListings = [
     kontak_nama: 'Dedi Kurniawan',
     status: 'pending_review',
     created_at: '2026-07-04',
+    image: 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?auto=format&fit=crop&q=80&w=800'
   },
   {
     id: '5',
@@ -65,6 +69,7 @@ const demoListings = [
     kontak_nama: 'Sari Mutiara',
     status: 'published',
     created_at: '2026-07-02',
+    image: 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&q=80&w=800'
   },
   {
     id: '6',
@@ -74,7 +79,38 @@ const demoListings = [
     kontak_nama: 'Hasan Ibrahim',
     status: 'published',
     created_at: '2026-07-03',
+    image: 'https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&q=80&w=800'
   },
+  {
+    id: '7',
+    nama_umkm: 'Sambal Linggarjati',
+    kategori: 'bahan_baku' as KategoriUMKM,
+    deskripsi: 'Mencari supplier cabai merah keriting dalam jumlah besar secara berkala untuk produksi sambal kemasan.',
+    kontak_nama: 'Ratna Ningsih',
+    status: 'published',
+    created_at: '2026-07-07',
+    image: 'https://images.unsplash.com/photo-1592663527359-cf6642f54cff?auto=format&fit=crop&q=80&w=800'
+  },
+  {
+    id: '8',
+    nama_umkm: 'Pengrajin Kayu Jati Murni',
+    kategori: 'pemasaran' as KategoriUMKM,
+    deskripsi: 'Membutuhkan bantuan untuk digital marketing dan pembuatan website e-commerce untuk mebel Jati Jepara-Lampung.',
+    kontak_nama: 'Joko Widodo',
+    status: 'published',
+    created_at: '2026-07-08',
+    image: 'https://images.unsplash.com/photo-1610925763920-5692027e0ff8?auto=format&fit=crop&q=80&w=800'
+  },
+  {
+    id: '9',
+    nama_umkm: 'Emping Melinjo Makmur',
+    kategori: 'peralatan' as KategoriUMKM,
+    deskripsi: 'Butuh bantuan pembiayaan mesin press emping melinjo otomatis agar kapasitas produksi bisa menembus 1 ton per bulan.',
+    kontak_nama: 'Siti Badriah',
+    status: 'published',
+    created_at: '2026-07-08',
+    image: 'https://images.unsplash.com/photo-1621506289937-a8e4df240d0b?auto=format&fit=crop&q=80&w=800'
+  }
 ];
 
 const bankLampungBranches = [
@@ -224,7 +260,11 @@ export default function UMKMPage() {
               {filtered.map((listing) => (
                 <div key={listing.id} className={styles.listingCard}>
                   <div className={styles.listingImage}>
-                    <Store size={40} />
+                    {listing.image ? (
+                      <img src={listing.image} alt={listing.nama_umkm} />
+                    ) : (
+                      <Store size={40} />
+                    )}
                   </div>
                   <div className={styles.listingBody}>
                     <span className={styles.listingCategory}>

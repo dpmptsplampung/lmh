@@ -27,6 +27,7 @@ const iproProjects = [
     nilai: 'Rp 2.4 Triliun',
     halaman: 24,
     status: 'aktif',
+    image: 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&q=80&w=800',
   },
   {
     id: 'bhc',
@@ -36,6 +37,7 @@ const iproProjects = [
     nilai: 'Rp 4.2 Triliun',
     halaman: 18,
     status: 'aktif',
+    image: 'https://images.unsplash.com/photo-1559589689-577aabd1ce4c?auto=format&fit=crop&q=80&w=800',
   },
   {
     id: 'pltsa',
@@ -45,7 +47,68 @@ const iproProjects = [
     nilai: 'Rp 650 Miliar',
     halaman: 32,
     status: 'aktif',
+    image: 'https://images.unsplash.com/photo-1532601224476-15c79f2f7a51?auto=format&fit=crop&q=80&w=800',
   },
+  {
+    id: 'kiluan',
+    judul: 'Kawasan Terpadu Pariwisata Teluk Kiluan',
+    kategori: 'Pariwisata & Jasa',
+    deskripsi: 'Pengembangan resort dan fasilitas ekowisata pengamatan lumba-lumba berstandar internasional.',
+    nilai: 'Rp 850 Miliar',
+    halaman: 20,
+    status: 'aktif',
+    image: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&q=80&w=800',
+  },
+  {
+    id: 'agro_nanas',
+    judul: 'Agroindustri Nanas Terpadu Lampung Tengah',
+    kategori: 'Pertanian & Pangan',
+    deskripsi: 'Pembangunan pabrik pengolahan nanas kaleng dan konsentrat untuk pasar ekspor Timur Tengah.',
+    nilai: 'Rp 1.2 Triliun',
+    halaman: 28,
+    status: 'aktif',
+    image: 'https://images.unsplash.com/photo-1550828520-4cb496926fc9?auto=format&fit=crop&q=80&w=800',
+  },
+  {
+    id: 'dipasena',
+    judul: 'Revitalisasi Tambak Udang Dipasena',
+    kategori: 'Perikanan & Kelautan',
+    deskripsi: 'Modernisasi infrastruktur pertambakan dan penerapan teknologi smart aquaculture di Tulang Bawang.',
+    nilai: 'Rp 3.5 Triliun',
+    halaman: 40,
+    status: 'aktif',
+    image: 'https://images.unsplash.com/photo-1615462575791-76495ff246a4?auto=format&fit=crop&q=80&w=800',
+  },
+  {
+    id: 'kek_karet',
+    judul: 'KEK Industri Karet Tulang Bawang',
+    kategori: 'Manufaktur & Industri',
+    deskripsi: 'Kawasan Ekonomi Khusus yang difokuskan pada hilirisasi produk karet spesifikasi tinggi dan ban.',
+    nilai: 'Rp 5.1 Triliun',
+    halaman: 45,
+    status: 'aktif',
+    image: 'https://images.unsplash.com/photo-1605374828131-0cfd80cbcd7b?auto=format&fit=crop&q=80&w=800',
+  },
+  {
+    id: 'pltp_ulubelu',
+    judul: 'Ekspansi PLTP Ulubelu Unit 5 & 6',
+    kategori: 'Infrastruktur & Energi',
+    deskripsi: 'Pembangunan pembangkit listrik tenaga panas bumi tambahan untuk mendukung ketahanan energi hijau.',
+    nilai: 'Rp 2.8 Triliun',
+    halaman: 36,
+    status: 'aktif',
+    image: 'https://images.unsplash.com/photo-1466611653911-95081537e5b7?auto=format&fit=crop&q=80&w=800',
+  },
+  {
+    id: 'pelabuhan_panjang',
+    judul: 'Pengembangan Terminal Petikemas Panjang',
+    kategori: 'Infrastruktur & Logistik',
+    deskripsi: 'Peningkatan kapasitas terminal petikemas pelabuhan internasional Panjang menjadi 1 juta TEUs.',
+    nilai: 'Rp 1.9 Triliun',
+    halaman: 22,
+    status: 'aktif',
+    image: 'https://images.unsplash.com/photo-1586528116311-ad8ed745eb33?auto=format&fit=crop&q=80&w=800',
+  }
 ];
 
 export default function GalleryPage() {
@@ -486,6 +549,9 @@ export default function GalleryPage() {
           <div className={styles.iproGrid}>
             {docs.map((project) => (
               <div key={project.id} className={styles.iproCard}>
+                {project.image && (
+                  <img src={project.image} alt={project.judul} className={styles.iproCardImage} loading="lazy" />
+                )}
                 <div className={styles.iproCardHeader}>
                   <span className={styles.iproBadge}>{project.kategori}</span>
                   <h3 className={styles.iproTitle}>{project.judul}</h3>
@@ -504,8 +570,8 @@ export default function GalleryPage() {
                     style={{ fontSize: '11px', display: 'flex', gap: '4px', alignItems: 'center' }}
                     onClick={() => setSelectedDocId(project.id)}
                   >
-                    <FileText size={12} />
-                    Lihat IPRO
+                    <FileCheck size={12} />
+                    Lihat Dokumen
                   </button>
                 </div>
               </div>
