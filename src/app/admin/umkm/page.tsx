@@ -16,32 +16,62 @@ import { KATEGORI_UMKM, type KategoriUMKM } from '@/lib/constants';
 import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 
+// Seed data
+const demoListings = [
+  {
+    id: '1',
+    nama_umkm: 'Keripik Pisang Ibu Ani',
+    kategori: 'pemasaran' as KategoriUMKM,
+    deskripsi: 'Mencari mitra pemasaran untuk keripik pisang khas Lampung. Produksi sudah stabil, butuh channel distribusi lebih luas.',
+    kontak_nama: 'Ani Susanti',
+    status: 'published',
+    created_at: '2026-07-01',
+  },
+  {
+    id: '2',
+    nama_umkm: 'CV Maju Bersama',
+    kategori: 'bahan_baku' as KategoriUMKM,
+    deskripsi: 'Membutuhkan supplier kopi robusta grade A dari daerah Tanggamus atau Lampung Barat.',
+    kontak_nama: 'Budi Hartono',
+    status: 'pending_review',
+    created_at: '2026-07-05',
+  },
+  {
+    id: '3',
+    nama_umkm: 'Tapis Lampung Ethnic',
+    kategori: 'modal' as KategoriUMKM,
+    deskripsi: 'Butuh modal untuk mesin tenun baru. Sudah punya 5 pengrajin, demand tinggi.',
+    kontak_nama: 'Rina Wati',
+    status: 'draft',
+    created_at: '2026-07-06',
+  },
+  {
+    id: '4',
+    nama_umkm: 'Kopi Lampung Jaya',
+    kategori: 'kemitraan' as KategoriUMKM,
+    deskripsi: 'Mencari investor atau mitra untuk membuka kedai kopi di Bandar Lampung.',
+    kontak_nama: 'Dedi Kurniawan',
+    status: 'pending_review',
+    created_at: '2026-07-04',
+  },
+];
+
 export default function AdminUMKMPage() {
   const [filterStatus, setFilterStatus] = useState<string>('semua');
   const [search, setSearch] = useState('');
-  const [umkmList, setUmkmList] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [umkmList, setUmkmList] = useState<any[]>(demoListings);
+  const [loading, setLoading] = useState(false);
 
   const loadData = async () => {
-    setLoading(true);
-    const supabase = createClient();
-    const { data } = await supabase.from('umkm').select('*').order('created_at', { ascending: false });
-    if (data) {
-      setUmkmList(data);
-    }
-    setLoading(false);
+    // Disabled for seed
   };
 
   useEffect(() => {
-    loadData();
+    // Disabled for seed
   }, []);
 
   const handleUpdateStatus = async (id: string, newStatus: string) => {
-    const supabase = createClient();
-    const { error } = await supabase.from('umkm').update({ status: newStatus }).eq('id', id);
-    if (!error) {
-      loadData();
-    }
+    setUmkmList(prev => prev.map(l => l.id === id ? { ...l, status: newStatus } : l));
   };
 
   const filtered = umkmList.filter((l) => {

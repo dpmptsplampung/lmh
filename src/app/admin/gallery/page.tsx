@@ -13,31 +13,52 @@ import {
 import PageHeader from '@/components/layout/PageHeader';
 import { createClient } from '@/lib/supabase/client';
 
+// Seed data
+const demoDocs = [
+  {
+    id: '1',
+    judul: 'Profil Investasi Provinsi Lampung 2026',
+    kategori: 'Profil Investasi',
+    halaman: 24,
+    status: 'aktif',
+    urutan: 1,
+    uploaded_at: '2026-06-15',
+  },
+  {
+    id: '2',
+    judul: 'Peta Potensi Industri Lampung Selatan',
+    kategori: 'Potensi Daerah',
+    halaman: 18,
+    status: 'aktif',
+    urutan: 2,
+    uploaded_at: '2026-06-20',
+  },
+  {
+    id: '3',
+    judul: 'Proposal KEK Bakauheni',
+    kategori: 'KEK',
+    halaman: 32,
+    status: 'nonaktif',
+    urutan: 3,
+    uploaded_at: '2026-05-10',
+  },
+];
+
 export default function AdminGalleryPage() {
-  const [docs, setDocs] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [docs, setDocs] = useState<any[]>(demoDocs);
+  const [loading, setLoading] = useState(false);
 
   const loadData = async () => {
-    setLoading(true);
-    const supabase = createClient();
-    const { data } = await supabase.from('gallery_docs').select('*').order('urutan', { ascending: true });
-    if (data) {
-      setDocs(data);
-    }
-    setLoading(false);
+    // Disabled for seed
   };
 
   useEffect(() => {
-    loadData();
+    // Disabled for seed
   }, []);
 
   const handleToggleStatus = async (id: string, currentStatus: string) => {
     const newStatus = currentStatus === 'aktif' ? 'nonaktif' : 'aktif';
-    const supabase = createClient();
-    const { error } = await supabase.from('gallery_docs').update({ status: newStatus }).eq('id', id);
-    if (!error) {
-      loadData();
-    }
+    setDocs(prev => prev.map(d => d.id === id ? { ...d, status: newStatus } : d));
   };
 
   const aktifCount = docs.filter(d => d.status === 'aktif').length;

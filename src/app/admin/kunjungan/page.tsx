@@ -12,48 +12,33 @@ import PageHeader from '@/components/layout/PageHeader';
 import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 
+// Seed data
+const demoKunjungan = [
+  { id: '1', nama: 'Ahmad Surya', keperluan: 'Konsultasi NIB baru', layanan: 'Helpdesk OSS', status: 'menunggu', waktu_masuk: '2026-07-06T10:30:00Z', waktu_selesai: null },
+  { id: '2', nama: 'Siti Rahayu', keperluan: 'Perpanjangan sertifikat halal', layanan: 'Sertifikasi Halal', status: 'menunggu', waktu_masuk: '2026-07-06T10:15:00Z', waktu_selesai: null },
+  { id: '3', nama: 'Budi Santoso', keperluan: 'Cek status kepesertaan BPJS', layanan: 'CS BPJS Kesehatan', status: 'selesai', waktu_masuk: '2026-07-06T09:50:00Z', waktu_selesai: '2026-07-06T10:05:00Z' },
+  { id: '4', nama: 'Dewi Lestari', keperluan: 'Perubahan data NIB', layanan: 'Helpdesk OSS', status: 'selesai', waktu_masuk: '2026-07-06T09:30:00Z', waktu_selesai: '2026-07-06T09:45:00Z' },
+  { id: '5', nama: 'Rizky Pratama', keperluan: 'Pendaftaran NIB baru untuk CV', layanan: 'Helpdesk OSS', status: 'menunggu', waktu_masuk: '2026-07-06T09:15:00Z', waktu_selesai: null },
+  { id: '6', nama: 'Nur Hasanah', keperluan: 'Informasi proses halal UMK', layanan: 'Sertifikasi Halal', status: 'selesai', waktu_masuk: '2026-07-06T08:50:00Z', waktu_selesai: '2026-07-06T09:20:00Z' },
+];
+
 export default function KunjunganPage() {
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<'semua' | 'menunggu' | 'selesai'>('semua');
-  const [kunjungan, setKunjungan] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [kunjungan, setKunjungan] = useState<any[]>(demoKunjungan);
+  const [loading, setLoading] = useState(false);
 
   const loadData = async () => {
-    setLoading(true);
-    const supabase = createClient();
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const startOfDay = today.toISOString();
-
-    const { data } = await supabase
-      .from('kunjungan')
-      .select('*, layanan(nama)')
-      .gte('waktu_masuk', startOfDay)
-      .order('waktu_masuk', { ascending: false });
-
-    if (data) {
-      setKunjungan(data.map(k => ({
-        ...k,
-        layanan: k.layanan?.nama || '-'
-      })));
-    }
-    setLoading(false);
+    // Disabled for seed
   };
 
   useEffect(() => {
-    loadData();
+    // Disabled for seed
   }, []);
 
   const handleSelesai = async (id: string) => {
-    const supabase = createClient();
-    const { error } = await supabase
-      .from('kunjungan')
-      .update({ status: 'selesai', waktu_selesai: new Date().toISOString() })
-      .eq('id', id);
-
-    if (!error) {
-      loadData();
-    }
+    // Update local state for demo
+    setKunjungan(prev => prev.map(k => k.id === id ? { ...k, status: 'selesai', waktu_selesai: new Date().toISOString() } : k));
   };
 
   const filtered = kunjungan.filter((k) => {

@@ -15,42 +15,46 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { APP_NAME } from '@/lib/constants';
-import { createClient } from '@/lib/supabase/client';
 import styles from './gallery.module.css';
+
+// IPRO Data
+const iproProjects = [
+  {
+    id: 'kiwk',
+    judul: 'Kawasan Industri Way Kanan (KIWK)',
+    kategori: 'Manufaktur & Industri',
+    deskripsi: 'Pengembangan kawasan industri manufaktur terintegrasi seluas 500 Hektar untuk menampung industri hilir komoditas perkebunan.',
+    nilai: 'Rp 2.4 Triliun',
+    halaman: 24,
+    status: 'aktif',
+  },
+  {
+    id: 'bhc',
+    judul: 'Bakauheni Harbour City (BHC)',
+    kategori: 'Pariwisata & Jasa',
+    deskripsi: 'Pengembangan kawasan pariwisata terpadu skala internasional di gerbang pulau Sumatera (Pelabuhan Bakauheni).',
+    nilai: 'Rp 4.2 Triliun',
+    halaman: 18,
+    status: 'aktif',
+  },
+  {
+    id: 'pltsa',
+    judul: 'PLTSa Bakung Bandar Lampung',
+    kategori: 'Infrastruktur & Energi',
+    deskripsi: 'Proyek pengelolaan sampah perkotaan menjadi energi listrik ramah lingkungan berkapasitas 15 MW.',
+    nilai: 'Rp 650 Miliar',
+    halaman: 32,
+    status: 'aktif',
+  },
+];
 
 export default function GalleryPage() {
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
-  const [iproProjects, setIproProjects] = useState<any[]>([]);
-  const [foilaUrl, setFoilaUrl] = useState('https://invest.lampungprov.go.id/');
+  const [docs, setDocs] = useState<any[]>(iproProjects.filter(p => p.status === 'aktif'));
+  const foilaUrl = 'https://invest.lampungprov.go.id/';
 
   useEffect(() => {
-    async function loadData() {
-      const supabase = createClient();
-      
-      // Load Gallery Docs
-      const { data: docs } = await supabase
-        .from('gallery_docs')
-        .select('*')
-        .eq('status', 'aktif')
-        .order('urutan', { ascending: true });
-        
-      if (docs) {
-        setIproProjects(docs);
-      }
-
-      // Load Site Settings (FOILA URL)
-      const { data: settings } = await supabase
-        .from('site_settings')
-        .select('value')
-        .eq('key', 'foila_url')
-        .single();
-        
-      if (settings) {
-        setFoilaUrl(settings.value);
-      }
-    }
-    
-    loadData();
+    // Disabled for seed
   }, []);
 
   // Disable right click inside the document viewer
@@ -445,8 +449,14 @@ export default function GalleryPage() {
           {/* FOILA Portal Link Card */}
           <div className={styles.foilaCard}>
             <div className={styles.foilaHeader}>
-              <div className={styles.foilaIcon}>
-                <Globe size={24} />
+              <div className={styles.foilaIcon} style={{ background: 'transparent', padding: 0 }}>
+                <Image 
+                  src="/logo_foila.webp" 
+                  alt="FOILA Logo" 
+                  width={100} 
+                  height={40} 
+                  style={{ objectFit: 'contain' }} 
+                />
               </div>
               <h3 className={styles.foilaTitle}>Portal FOILA (Fast Track)</h3>
             </div>
@@ -474,7 +484,7 @@ export default function GalleryPage() {
           </h2>
           
           <div className={styles.iproGrid}>
-            {iproProjects.map((project) => (
+            {docs.map((project) => (
               <div key={project.id} className={styles.iproCard}>
                 <div className={styles.iproCardHeader}>
                   <span className={styles.iproBadge}>{project.kategori}</span>
