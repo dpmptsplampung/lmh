@@ -14,104 +14,23 @@ import {
   MessageSquare,
   ShieldCheck,
 } from 'lucide-react';
-import { KATEGORI_UMKM, type KategoriUMKM, APP_NAME } from '@/lib/constants';
+import { KATEGORI_UMKM, type KategoriUMKM } from '@/lib/constants';
 import { cn, waLink } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 import styles from './umkm.module.css';
 
-// Seed data
-const demoListings = [
-  {
-    id: '1',
-    nama_umkm: 'Keripik Pisang Ibu Ani',
-    kategori: 'pemasaran' as KategoriUMKM,
-    deskripsi: 'Mencari mitra pemasaran untuk keripik pisang khas Lampung. Produksi sudah stabil, butuh channel distribusi lebih luas.',
-    kontak_nama: 'Ani Susanti',
-    status: 'published',
-    created_at: '2026-07-01',
-    image: 'https://images.unsplash.com/photo-1599598425947-3300262112fc?auto=format&fit=crop&q=80&w=800'
-  },
-  {
-    id: '2',
-    nama_umkm: 'CV Maju Bersama',
-    kategori: 'bahan_baku' as KategoriUMKM,
-    deskripsi: 'Membutuhkan supplier kopi robusta grade A dari daerah Tanggamus atau Lampung Barat.',
-    kontak_nama: 'Budi Hartono',
-    status: 'pending_review',
-    created_at: '2026-07-05',
-    image: 'https://images.unsplash.com/photo-1497935586351-b67a49e012bf?auto=format&fit=crop&q=80&w=800'
-  },
-  {
-    id: '3',
-    nama_umkm: 'Tapis Lampung Ethnic',
-    kategori: 'modal' as KategoriUMKM,
-    deskripsi: 'Butuh modal untuk mesin tenun baru. Sudah punya 5 pengrajin, demand tinggi.',
-    kontak_nama: 'Rina Wati',
-    status: 'draft',
-    created_at: '2026-07-06',
-    image: 'https://images.unsplash.com/photo-1605814595289-411a7f058098?auto=format&fit=crop&q=80&w=800'
-  },
-  {
-    id: '4',
-    nama_umkm: 'Kopi Lampung Jaya',
-    kategori: 'kemitraan' as KategoriUMKM,
-    deskripsi: 'Mencari investor atau mitra untuk membuka kedai kopi di Bandar Lampung.',
-    kontak_nama: 'Dedi Kurniawan',
-    status: 'pending_review',
-    created_at: '2026-07-04',
-    image: 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?auto=format&fit=crop&q=80&w=800'
-  },
-  {
-    id: '5',
-    nama_umkm: 'Batik Tulang Bawang',
-    kategori: 'pelatihan' as KategoriUMKM,
-    deskripsi: 'Membutuhkan pelatihan pewarnaan alam untuk motif batik Tulang Bawang. Ingin meningkatkan nilai jual produk ke pasar premium.',
-    kontak_nama: 'Sari Mutiara',
-    status: 'published',
-    created_at: '2026-07-02',
-    image: 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&q=80&w=800'
-  },
-  {
-    id: '6',
-    nama_umkm: 'UD Sumber Makmur',
-    kategori: 'peralatan' as KategoriUMKM,
-    deskripsi: 'Butuh mesin pengolahan lada putih kapasitas industri. Saat ini masih menggunakan metode tradisional yang lambat.',
-    kontak_nama: 'Hasan Ibrahim',
-    status: 'published',
-    created_at: '2026-07-03',
-    image: 'https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&q=80&w=800'
-  },
-  {
-    id: '7',
-    nama_umkm: 'Sambal Linggarjati',
-    kategori: 'bahan_baku' as KategoriUMKM,
-    deskripsi: 'Mencari supplier cabai merah keriting dalam jumlah besar secara berkala untuk produksi sambal kemasan.',
-    kontak_nama: 'Ratna Ningsih',
-    status: 'published',
-    created_at: '2026-07-07',
-    image: 'https://images.unsplash.com/photo-1592663527359-cf6642f54cff?auto=format&fit=crop&q=80&w=800'
-  },
-  {
-    id: '8',
-    nama_umkm: 'Pengrajin Kayu Jati Murni',
-    kategori: 'pemasaran' as KategoriUMKM,
-    deskripsi: 'Membutuhkan bantuan untuk digital marketing dan pembuatan website e-commerce untuk mebel Jati Jepara-Lampung.',
-    kontak_nama: 'Joko Widodo',
-    status: 'published',
-    created_at: '2026-07-08',
-    image: 'https://images.unsplash.com/photo-1610925763920-5692027e0ff8?auto=format&fit=crop&q=80&w=800'
-  },
-  {
-    id: '9',
-    nama_umkm: 'Emping Melinjo Makmur',
-    kategori: 'peralatan' as KategoriUMKM,
-    deskripsi: 'Butuh bantuan pembiayaan mesin press emping melinjo otomatis agar kapasitas produksi bisa menembus 1 ton per bulan.',
-    kontak_nama: 'Siti Badriah',
-    status: 'published',
-    created_at: '2026-07-08',
-    image: 'https://images.unsplash.com/photo-1621506289937-a8e4df240d0b?auto=format&fit=crop&q=80&w=800'
-  }
-];
+interface UMKMListing {
+  id: string;
+  nama_umkm: string;
+  kategori_kebutuhan: string;
+  deskripsi: string | null;
+  kontak_nama: string | null;
+  kontak_hp: string | null;
+  foto_produk: string[] | null;
+  status: string;
+  created_at: string;
+  image: string | null;
+}
 
 const bankLampungBranches = [
   { nama: 'Kantor Cabang Utama Bandar Lampung', alamat: 'Jl. Wolter Monginsidi No.182, Bandar Lampung' },
@@ -124,7 +43,7 @@ export default function UMKMPage() {
   const [activeTab, setActiveTab] = useState<'matchmaking' | 'pembiayaan'>('matchmaking');
   const [search, setSearch] = useState('');
   const [activeKategori, setActiveKategori] = useState<string>('semua');
-  const [listings, setListings] = useState<any[]>(demoListings.filter(l => l.status === 'published'));
+  const [listings, setListings] = useState<UMKMListing[]>([]);
 
   useEffect(() => {
     async function fetchListings() {
@@ -137,17 +56,27 @@ export default function UMKMPage() {
           .order('created_at', { ascending: false });
 
         if (data && data.length > 0) {
-          // Map DB fields to UI shape (kategori_kebutuhan → kategori, foto_produk[0] → image)
-          setListings(data.map((l: any) => ({
-            ...l,
-            kategori: l.kategori_kebutuhan,
-            image: (l.foto_produk && l.foto_produk.length > 0) ? l.foto_produk[0] : null,
-          })));
+          setListings(data.map((l) => {
+            const row = l as Record<string, unknown>;
+            return {
+              id: row.id as string,
+              nama_umkm: row.nama_umkm as string,
+              kategori_kebutuhan: row.kategori_kebutuhan as string,
+              deskripsi: (row.deskripsi as string) ?? null,
+              kontak_nama: (row.kontak_nama as string) ?? null,
+              kontak_hp: (row.kontak_hp as string) ?? null,
+              foto_produk: (row.foto_produk as string[]) ?? null,
+              status: row.status as string,
+              created_at: row.created_at as string,
+              image: (row.foto_produk && Array.isArray(row.foto_produk) && row.foto_produk.length > 0) ? row.foto_produk[0] : null,
+            };
+          }));
+        } else {
+          setListings([]);
         }
-        // else: keep demoListings fallback
       } catch (e) {
         console.error('Error fetching UMKM listings:', e);
-        // Keep demoListings on error
+        setListings([]);
       }
     }
     fetchListings();
@@ -156,7 +85,7 @@ export default function UMKMPage() {
   const filtered = listings.filter((l) => {
     const matchSearch = l.nama_umkm.toLowerCase().includes(search.toLowerCase()) ||
       (l.deskripsi && l.deskripsi.toLowerCase().includes(search.toLowerCase()));
-    const matchKategori = activeKategori === 'semua' || l.kategori === activeKategori;
+    const matchKategori = activeKategori === 'semua' || l.kategori_kebutuhan === activeKategori;
     return matchSearch && matchKategori;
   });
 
@@ -184,12 +113,12 @@ export default function UMKMPage() {
           fontWeight: 600,
           fontSize: 'var(--text-sm)',
         }}>
-          <Image 
-            src="/logo.png" 
-            alt="Lampung Maju Hub Logo" 
-            width={100} 
-            height={40} 
-            style={{ objectFit: 'contain' }} 
+          <Image
+            src="/logo.png"
+            alt="Lampung Maju Hub Logo"
+            width={100}
+            height={40}
+            style={{ objectFit: 'contain' }}
             priority
           />
         </Link>
@@ -219,7 +148,7 @@ export default function UMKMPage() {
 
       {/* Body */}
       <div className={styles.umkmBody}>
-        
+
         {/* Tab Navigation */}
         <div className={styles.tabContainer}>
           <button
@@ -279,49 +208,66 @@ export default function UMKMPage() {
             </div>
 
             {/* Listing Grid */}
-            <div className={styles.listingGrid}>
-              {filtered.map((listing) => (
-                <div key={listing.id} className={styles.listingCard}>
-                  <div className={styles.listingImage}>
-                    {listing.image ? (
-                      <img src={listing.image} alt={listing.nama_umkm} />
-                    ) : (
-                      <Store size={40} />
-                    )}
-                  </div>
-                  <div className={styles.listingBody}>
-                    <span className={styles.listingCategory}>
-                      {KATEGORI_UMKM[listing.kategori as KategoriUMKM] || listing.kategori}
-                    </span>
-                    <h3 className={styles.listingName}>{listing.nama_umkm}</h3>
-                    <p className={styles.listingDesc}>{listing.deskripsi}</p>
-                    <div className={styles.listingFooter}>
-                      <span className={styles.listingContact}>
-                        <User size={14} />
-                        {listing.kontak_nama}
-                      </span>
-                      {listing.kontak_hp && (
-                        <a
-                          href={waLink(listing.kontak_hp)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className={styles.contactBtn}
-                        >
-                          <Phone size={14} />
-                          Hubungi
-                        </a>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {filtered.length === 0 && (
+            {listings.length === 0 ? (
+              <div className="empty-state">
+                <Store size={48} className="empty-state__icon" />
+                <h3 className="empty-state__title">Belum ada listing UMKM tersedia</h3>
+                <p>Listing UMKM akan muncul di sini setelah diverifikasi oleh admin.</p>
+              </div>
+            ) : filtered.length === 0 ? (
               <div className="empty-state">
                 <Store size={48} className="empty-state__icon" />
                 <h3 className="empty-state__title">Belum Ada Listing</h3>
                 <p>Tidak ada UMKM yang sesuai dengan filter Anda.</p>
+              </div>
+            ) : (
+              <div className={styles.listingGrid}>
+                {filtered.map((listing) => {
+                  const kategoriLabel = KATEGORI_UMKM[listing.kategori_kebutuhan as KategoriUMKM] || listing.kategori_kebutuhan;
+                  return (
+                    <div key={listing.id} className={styles.listingCard}>
+                      <div className={styles.listingImage}>
+                        {listing.image ? (
+                          <Image
+                            src={listing.image}
+                            alt={listing.nama_umkm}
+                            fill
+                            style={{ objectFit: 'cover' }}
+                            unoptimized
+                          />
+                        ) : (
+                          <Store size={40} />
+                        )}
+                      </div>
+                      <div className={styles.listingBody}>
+                        <span className={styles.listingCategory}>
+                          {kategoriLabel}
+                        </span>
+                        <h3 className={styles.listingName}>{listing.nama_umkm}</h3>
+                        {listing.deskripsi && (
+                          <p className={styles.listingDesc}>{listing.deskripsi}</p>
+                        )}
+                        <div className={styles.listingFooter}>
+                          <span className={styles.listingContact}>
+                            <User size={14} />
+                            {listing.kontak_nama || '—'}
+                          </span>
+                          {listing.kontak_hp && (
+                            <a
+                              href={waLink(listing.kontak_hp)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className={styles.contactBtn}
+                            >
+                              <Phone size={14} />
+                              Hubungi
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </>
@@ -329,20 +275,20 @@ export default function UMKMPage() {
           /* TAB 2: PEMBIAYAAN UMKM */
           <div className={styles.pembiayaanSection}>
             <div className={styles.pembiayaanGrid}>
-              
+
               {/* Syarat & Overview */}
               <div className={styles.pembiayaanCard}>
                 <h2 className={styles.cardTitle}>
                   <ShieldCheck size={20} style={{ display: 'inline', marginRight: '8px', verticalAlign: 'middle', color: 'var(--color-primary-600)' }} />
                   Overview & Syarat Pembiayaan
                 </h2>
-                
+
                 <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 'var(--space-5)' }}>
                   Pemerintah Provinsi Lampung bekerjasama dengan <strong>Bank Lampung</strong> menyediakan fasilitas permodalan Kredit Usaha Rakyat (KUR) dengan suku bunga bersubsidi untuk mendorong daya saing dan percepatan usaha UMKM lokal.
                 </p>
 
                 <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 700, marginBottom: 'var(--space-3)' }}>Syarat Dokumen Pengajuan:</h3>
-                
+
                 <ul className={styles.requirementList}>
                   <li>Memiliki usaha produktif dan layak yang telah berjalan minimal selama 6 (enam) bulan aktif.</li>
                   <li>Fotokopi KTP Elektronik Pemohon (Suami dan Istri jika sudah menikah).</li>
@@ -359,7 +305,7 @@ export default function UMKMPage() {
                   <Building2 size={24} />
                   <span>Akses Modal Bank Lampung</span>
                 </div>
-                
+
                 <p className={styles.bankCalloutDesc}>
                   Konsultasikan kebutuhan permodalan usaha Anda secara instan dan dapatkan panduan langsung dari perwakilan Bank Lampung melalui chat interaktif kami.
                 </p>
@@ -382,7 +328,7 @@ export default function UMKMPage() {
                 <MapPin size={20} style={{ color: 'var(--color-primary-600)' }} />
                 Kantor Cabang Terdekat Bank Lampung
               </h2>
-              
+
               <div className={styles.branchGrid}>
                 {bankLampungBranches.map((branch, i) => (
                   <div key={i} className={styles.branchCard}>

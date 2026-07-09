@@ -6,145 +6,53 @@ import Image from 'next/image';
 import {
   FileText,
   ArrowLeft,
-  Building2,
-  Globe,
   ExternalLink,
   Info,
   X,
   FileCheck,
   TrendingUp,
+  Loader2,
 } from 'lucide-react';
-import { APP_NAME } from '@/lib/constants';
 import { createClient } from '@/lib/supabase/client';
 import styles from './gallery.module.css';
 
-// IPRO Data
-const iproProjects = [
-  {
-    id: 'kiwk',
-    judul: 'Kawasan Industri Way Kanan (KIWK)',
-    kategori: 'Manufaktur & Industri',
-    deskripsi: 'Pengembangan kawasan industri manufaktur terintegrasi seluas 500 Hektar untuk menampung industri hilir komoditas perkebunan.',
-    nilai: 'Rp 2.4 Triliun',
-    halaman: 24,
-    status: 'aktif',
-    image: 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&q=80&w=800',
-  },
-  {
-    id: 'bhc',
-    judul: 'Bakauheni Harbour City (BHC)',
-    kategori: 'Pariwisata & Jasa',
-    deskripsi: 'Pengembangan kawasan pariwisata terpadu skala internasional di gerbang pulau Sumatera (Pelabuhan Bakauheni).',
-    nilai: 'Rp 4.2 Triliun',
-    halaman: 18,
-    status: 'aktif',
-    image: 'https://images.unsplash.com/photo-1559589689-577aabd1ce4c?auto=format&fit=crop&q=80&w=800',
-  },
-  {
-    id: 'pltsa',
-    judul: 'PLTSa Bakung Bandar Lampung',
-    kategori: 'Infrastruktur & Energi',
-    deskripsi: 'Proyek pengelolaan sampah perkotaan menjadi energi listrik ramah lingkungan berkapasitas 15 MW.',
-    nilai: 'Rp 650 Miliar',
-    halaman: 32,
-    status: 'aktif',
-    image: 'https://images.unsplash.com/photo-1532601224476-15c79f2f7a51?auto=format&fit=crop&q=80&w=800',
-  },
-  {
-    id: 'kiluan',
-    judul: 'Kawasan Terpadu Pariwisata Teluk Kiluan',
-    kategori: 'Pariwisata & Jasa',
-    deskripsi: 'Pengembangan resort dan fasilitas ekowisata pengamatan lumba-lumba berstandar internasional.',
-    nilai: 'Rp 850 Miliar',
-    halaman: 20,
-    status: 'aktif',
-    image: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&q=80&w=800',
-  },
-  {
-    id: 'agro_nanas',
-    judul: 'Agroindustri Nanas Terpadu Lampung Tengah',
-    kategori: 'Pertanian & Pangan',
-    deskripsi: 'Pembangunan pabrik pengolahan nanas kaleng dan konsentrat untuk pasar ekspor Timur Tengah.',
-    nilai: 'Rp 1.2 Triliun',
-    halaman: 28,
-    status: 'aktif',
-    image: 'https://images.unsplash.com/photo-1550828520-4cb496926fc9?auto=format&fit=crop&q=80&w=800',
-  },
-  {
-    id: 'dipasena',
-    judul: 'Revitalisasi Tambak Udang Dipasena',
-    kategori: 'Perikanan & Kelautan',
-    deskripsi: 'Modernisasi infrastruktur pertambakan dan penerapan teknologi smart aquaculture di Tulang Bawang.',
-    nilai: 'Rp 3.5 Triliun',
-    halaman: 40,
-    status: 'aktif',
-    image: 'https://images.unsplash.com/photo-1615462575791-76495ff246a4?auto=format&fit=crop&q=80&w=800',
-  },
-  {
-    id: 'kek_karet',
-    judul: 'KEK Industri Karet Tulang Bawang',
-    kategori: 'Manufaktur & Industri',
-    deskripsi: 'Kawasan Ekonomi Khusus yang difokuskan pada hilirisasi produk karet spesifikasi tinggi dan ban.',
-    nilai: 'Rp 5.1 Triliun',
-    halaman: 45,
-    status: 'aktif',
-    image: 'https://images.unsplash.com/photo-1605374828131-0cfd80cbcd7b?auto=format&fit=crop&q=80&w=800',
-  },
-  {
-    id: 'pltp_ulubelu',
-    judul: 'Ekspansi PLTP Ulubelu Unit 5 & 6',
-    kategori: 'Infrastruktur & Energi',
-    deskripsi: 'Pembangunan pembangkit listrik tenaga panas bumi tambahan untuk mendukung ketahanan energi hijau.',
-    nilai: 'Rp 2.8 Triliun',
-    halaman: 36,
-    status: 'aktif',
-    image: 'https://images.unsplash.com/photo-1466611653911-95081537e5b7?auto=format&fit=crop&q=80&w=800',
-  },
-  {
-    id: 'pelabuhan_panjang',
-    judul: 'Pengembangan Terminal Petikemas Panjang',
-    kategori: 'Infrastruktur & Logistik',
-    deskripsi: 'Peningkatan kapasitas terminal petikemas pelabuhan internasional Panjang menjadi 1 juta TEUs.',
-    nilai: 'Rp 1.9 Triliun',
-    halaman: 22,
-    status: 'aktif',
-    image: 'https://images.unsplash.com/photo-1586528116311-ad8ed745eb33?auto=format&fit=crop&q=80&w=800',
-  }
-];
+interface GalleryDoc {
+  id: string;
+  judul: string;
+  kategori: string | null;
+  urutan_tampil: number;
+  file_path: string;
+  jumlah_halaman: number;
+  status: string;
+  deskripsi: string | null;
+  nilai_investasi: string | null;
+  image_url: string | null;
+}
 
 export default function GalleryPage() {
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
-  const [docs, setDocs] = useState<any[]>(iproProjects.filter(p => p.status === 'aktif'));
+  const [docs, setDocs] = useState<GalleryDoc[]>([]);
   const [foilaUrl, setFoilaUrl] = useState('https://invest.lampungprov.go.id/');
+  const [signedUrl, setSignedUrl] = useState<string | null>(null);
+  const [loadingSignedUrl, setLoadingSignedUrl] = useState(false);
 
   useEffect(() => {
     async function loadData() {
       try {
         const supabase = createClient();
 
-        // Load active investment documents
         const { data: documents } = await supabase
           .from('investment_documents')
-          .select('id, judul, kategori, urutan_tampil, jumlah_halaman, status, deskripsi, nilai_investasi, image_url')
+          .select('id, judul, kategori, urutan_tampil, file_path, jumlah_halaman, status, deskripsi, nilai_investasi, image_url')
           .eq('status', 'aktif')
           .order('urutan_tampil', { ascending: true });
 
         if (documents && documents.length > 0) {
-          // Map DB fields to the shape used by the UI
-          setDocs(documents.map((d: any) => ({
-            id: d.id,
-            judul: d.judul,
-            kategori: d.kategori ?? '',
-            deskripsi: d.deskripsi ?? '',
-            nilai: d.nilai_investasi ?? '',
-            halaman: d.jumlah_halaman ?? 0,
-            status: d.status,
-            image: d.image_url ?? '',
-          })));
+          setDocs(documents as GalleryDoc[]);
+        } else {
+          setDocs([]);
         }
-        // else: keep iproProjects fallback
 
-        // Load FOILA URL from site_settings
         const { data: setting } = await supabase
           .from('site_settings')
           .select('value')
@@ -155,13 +63,46 @@ export default function GalleryPage() {
         }
       } catch (e) {
         console.error('Error loading gallery data:', e);
-        // Keep fallback seed data on error
+        setDocs([]);
       }
     }
     loadData();
   }, []);
 
-  // Disable right click inside the document viewer
+  useEffect(() => {
+    if (!selectedDocId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSignedUrl(null);
+      return;
+    }
+    const selectedDoc = docs.find((d) => d.id === selectedDocId);
+    if (!selectedDoc || !selectedDoc.file_path) {
+      setSignedUrl(null);
+      return;
+    }
+    let cancelled = false;
+    setLoadingSignedUrl(true);
+    setSignedUrl(null);
+    fetch('/api/investment-docs/public-view?file_path=' + encodeURIComponent(selectedDoc.file_path))
+      .then((res) => {
+        if (!res.ok) throw new Error('Failed to fetch signed URL');
+        return res.json();
+      })
+      .then((data) => {
+        if (!cancelled) setSignedUrl(data.signedUrl);
+      })
+      .catch((e) => {
+        console.error('Error fetching signed URL:', e);
+        if (!cancelled) setSignedUrl(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingSignedUrl(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedDocId, docs]);
+
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
   };
@@ -170,331 +111,9 @@ export default function GalleryPage() {
     setSelectedDocId(null);
   };
 
-  // Helper to render pages content for the secure viewer
-  const renderDocPages = () => {
-    const watermarkText = 'DPMPTSP PROV LAMPUNG — DILINDUNGI';
-
-    if (selectedDocId === 'peta_potensi') {
-      return (
-        <>
-          {/* Page 1: Cover */}
-          <div className={styles.securePage}>
-            <div className={styles.watermark}>{watermarkText}</div>
-            <div className={styles.pageHeader}>
-              <span>DOKUMEN POTENSI DAERAH</span>
-              <span>HALAMAN 1</span>
-            </div>
-            <div className={styles.pageContent} style={{ justifyContent: 'center', alignItems: 'center', textAlign: 'center' }}>
-              <Building2 size={64} style={{ color: 'var(--color-primary-600)', marginBottom: '16px' }} />
-              <h2 style={{ fontSize: '20px', fontWeight: 900, color: '#111827', margin: '0 0 8px 0', letterSpacing: '-0.02em' }}>
-                PETA POTENSI INVESTASI DAERAH
-              </h2>
-              <h3 style={{ fontSize: '14px', fontWeight: 700, color: '#4b5563', margin: '0 0 24px 0' }}>
-                PROVINSI LAMPUNG 2026
-              </h3>
-              <div style={{ width: '40px', height: '3px', background: 'var(--color-primary-600)', marginBottom: '24px' }} />
-              <p style={{ fontSize: '10px', color: '#9ca3af', maxWidth: '300px', lineHeight: 1.5 }}>
-                Diterbitkan oleh Dinas Penanaman Modal dan Pelayanan Terpadu Satu Pintu (DPMPTSP) Provinsi Lampung.
-              </p>
-            </div>
-            <div className={styles.pageFooter}>
-              <span>© {new Date().getFullYear()} DPMPTSP Lampung</span>
-              <span>RAHASIA - VIEW ONLY</span>
-            </div>
-          </div>
-
-          {/* Page 2: Ringkasan Sektoral */}
-          <div className={styles.securePage}>
-            <div className={styles.watermark}>{watermarkText}</div>
-            <div className={styles.pageHeader}>
-              <span>PETA POTENSI INVESTASI LAMPUNG</span>
-              <span>HALAMAN 2</span>
-            </div>
-            <div className={styles.pageContent}>
-              <h4 className={styles.pageSectionTitle}>1. RINGKASAN SEKTORAL UNGGULAN</h4>
-              <p className={styles.pageParagraph}>
-                Provinsi Lampung memiliki letak geografis strategis sebagai pintu gerbang Pulau Sumatera. Sektor-sektor utama penyumbang PDRB yang memiliki potensi investasi tinggi meliputi:
-              </p>
-              <ul style={{ paddingLeft: '16px', margin: '8px 0', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <li style={{ fontSize: '10px', color: '#4b5563', lineHeight: 1.5 }}>
-                  <strong>Pertanian & Perkebunan:</strong> Penghasil utama kopi robusta, lada hitam, tebu, kelapa sawit, dan singkong skala nasional.
-                </li>
-                <li style={{ fontSize: '10px', color: '#4b5563', lineHeight: 1.5 }}>
-                  <strong>Agroindustri:</strong> Peluang industri pengolahan hasil panen terintegrasi untuk meningkatkan nilai tambah ekspor.
-                </li>
-                <li style={{ fontSize: '10px', color: '#4b5563', lineHeight: 1.5 }}>
-                  <strong>Pariwisata Bahari:</strong> Kawasan Pesisir Barat (Krui) untuk selancar internasional dan Teluk Lampung untuk resort wisata terpadu.
-                </li>
-              </ul>
-            </div>
-            <div className={styles.pageFooter}>
-              <span>© {new Date().getFullYear()} DPMPTSP Lampung</span>
-              <span>RAHASIA - VIEW ONLY</span>
-            </div>
-          </div>
-
-          {/* Page 3: Proyek Strategis */}
-          <div className={styles.securePage}>
-            <div className={styles.watermark}>{watermarkText}</div>
-            <div className={styles.pageHeader}>
-              <span>PETA POTENSI INVESTASI LAMPUNG</span>
-              <span>HALAMAN 3</span>
-            </div>
-            <div className={styles.pageContent}>
-              <h4 className={styles.pageSectionTitle}>2. DAFTAR PELUANG INVESTASI STRATEGIS</h4>
-              <p className={styles.pageParagraph}>
-                Berikut adalah rekapitulasi zonasi potensi proyek investasi strategis siap ditawarkan (Ready to Offer) di Provinsi Lampung:
-              </p>
-              <table className={styles.pageTable}>
-                <thead>
-                  <tr>
-                    <th>Wilayah</th>
-                    <th>Sektor Unggulan</th>
-                    <th>Potensi Pengembangan</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td><strong>Lampung Selatan</strong></td>
-                    <td>Kawasan Industri & Pariwisata</td>
-                    <td>Bakauheni Harbour City, Kawasan Industri Lamsel</td>
-                  </tr>
-                  <tr>
-                    <td><strong>Way Kanan</strong></td>
-                    <td>Manufaktur Hilir Sawit/Karet</td>
-                    <td>Kawasan Industri Way Kanan (KIWK)</td>
-                  </tr>
-                  <tr>
-                    <td><strong>Pesawaran</strong></td>
-                    <td>Pariwisata Bahari & Kerajinan</td>
-                    <td>Kawasan Resort Wisata Pulau Pahawang</td>
-                  </tr>
-                  <tr>
-                    <td><strong>Pesisir Barat</strong></td>
-                    <td>Wisata Selancar & Ekoturisme</td>
-                    <td>Kawasan Tanjung Setia Krui</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <div className={styles.pageFooter}>
-              <span>© {new Date().getFullYear()} DPMPTSP Lampung</span>
-              <span>RAHASIA - VIEW ONLY</span>
-            </div>
-          </div>
-        </>
-      );
-    }
-
-    if (selectedDocId === 'kiwk') {
-      return (
-        <>
-          <div className={styles.securePage}>
-            <div className={styles.watermark}>{watermarkText}</div>
-            <div className={styles.pageHeader}>
-              <span>IPRO PROJECT PROFILE</span>
-              <span>HALAMAN 1</span>
-            </div>
-            <div className={styles.pageContent} style={{ justifyContent: 'center', alignItems: 'center', textAlign: 'center' }}>
-              <div style={{
-                padding: '12px', borderRadius: '12px', background: 'rgba(245, 158, 11, 0.1)',
-                color: '#f59e0b', marginBottom: '16px'
-              }}>
-                <FileCheck size={48} />
-              </div>
-              <h2 style={{ fontSize: '18px', fontWeight: 900, color: '#111827', margin: '0 0 8px 0' }}>
-                INVESTMENT PROJECT READY TO OFFER (IPRO)
-              </h2>
-              <h3 style={{ fontSize: '13px', fontWeight: 700, color: '#4b5563', margin: '0' }}>
-                KAWASAN INDUSTRI WAY KANAN (KIWK)
-              </h3>
-              <div style={{ width: '40px', height: '3px', background: '#f59e0b', margin: '16px 0' }} />
-              <table style={{ border: 'none', fontSize: '10px', color: '#4b5563', maxWidth: '300px' }}>
-                <tbody>
-                  <tr>
-                    <td style={{ padding: '4px', fontWeight: 'bold' }}>Estimasi Investasi:</td>
-                    <td style={{ padding: '4px' }}>Rp 2.4 Triliun</td>
-                  </tr>
-                  <tr>
-                    <td style={{ padding: '4px', fontWeight: 'bold' }}>Luas Lahan:</td>
-                    <td style={{ padding: '4px' }}>500 Hektar</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <div className={styles.pageFooter}>
-              <span>IPRO PROYEK KIWK 2026</span>
-              <span>HALAMAN 1</span>
-            </div>
-          </div>
-
-          <div className={styles.securePage}>
-            <div className={styles.watermark}>{watermarkText}</div>
-            <div className={styles.pageHeader}>
-              <span>IPRO PROJECT PROFILE</span>
-              <span>HALAMAN 2</span>
-            </div>
-            <div className={styles.pageContent}>
-              <h4 className={styles.pageSectionTitle}>SPESIFIKASI PROYEK & DUKUNGAN INFRASTRUKTUR</h4>
-              <p className={styles.pageParagraph}>
-                Proyek Kawasan Industri Way Kanan (KIWK) dirancang untuk menampung hilirisasi perkebunan kelapa sawit, karet, dan singkong.
-              </p>
-              <h5 style={{ fontSize: '10px', fontWeight: 700, marginTop: '8px', color: '#1f2937' }}>Dukungan Pemerintah Daerah:</h5>
-              <ul style={{ paddingLeft: '16px', margin: '4px 0', fontSize: '9px', color: '#4b5563', display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                <li>Kemudahan izin lokasi dan insentif pajak daerah.</li>
-                <li>Ketersediaan akses jalan provinsi berkapasitas muatan berat.</li>
-                <li>Jaminan pasokan listrik dari gardu induk PLN terdekat.</li>
-              </ul>
-            </div>
-            <div className={styles.pageFooter}>
-              <span>IPRO PROYEK KIWK 2026</span>
-              <span>HALAMAN 2</span>
-            </div>
-          </div>
-        </>
-      );
-    }
-
-    if (selectedDocId === 'bhc') {
-      return (
-        <>
-          <div className={styles.securePage}>
-            <div className={styles.watermark}>{watermarkText}</div>
-            <div className={styles.pageHeader}>
-              <span>IPRO PROJECT PROFILE</span>
-              <span>HALAMAN 1</span>
-            </div>
-            <div className={styles.pageContent} style={{ justifyContent: 'center', alignItems: 'center', textAlign: 'center' }}>
-              <div style={{
-                padding: '12px', borderRadius: '12px', background: 'rgba(245, 158, 11, 0.1)',
-                color: '#f59e0b', marginBottom: '16px'
-              }}>
-                <FileCheck size={48} />
-              </div>
-              <h2 style={{ fontSize: '18px', fontWeight: 900, color: '#111827', margin: '0 0 8px 0' }}>
-                INVESTMENT PROJECT READY TO OFFER (IPRO)
-              </h2>
-              <h3 style={{ fontSize: '13px', fontWeight: 700, color: '#4b5563', margin: '0' }}>
-                BAKAUHENI HARBOUR CITY (BHC)
-              </h3>
-              <div style={{ width: '40px', height: '3px', background: '#f59e0b', margin: '16px 0' }} />
-              <table style={{ border: 'none', fontSize: '10px', color: '#4b5563', maxWidth: '300px' }}>
-                <tbody>
-                  <tr>
-                    <td style={{ padding: '4px', fontWeight: 'bold' }}>Estimasi Investasi:</td>
-                    <td style={{ padding: '4px' }}>Rp 4.2 Triliun</td>
-                  </tr>
-                  <tr>
-                    <td style={{ padding: '4px', fontWeight: 'bold' }}>Sektor:</td>
-                    <td style={{ padding: '4px' }}>Pariwisata & Hospitality</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <div className={styles.pageFooter}>
-              <span>IPRO PROYEK BHC 2026</span>
-              <span>HALAMAN 1</span>
-            </div>
-          </div>
-
-          <div className={styles.securePage}>
-            <div className={styles.watermark}>{watermarkText}</div>
-            <div className={styles.pageHeader}>
-              <span>IPRO PROJECT PROFILE</span>
-              <span>HALAMAN 2</span>
-            </div>
-            <div className={styles.pageContent}>
-              <h4 className={styles.pageSectionTitle}>KONSEP PENGEMBANGAN WISATA</h4>
-              <p className={styles.pageParagraph}>
-                Bakauheni Harbour City memadukan pariwisata rekreasi, budaya, dan akomodasi premium berupa Theme Park, Krakatau Park, Masjid Raya BSI, serta pusat UMKM terintegrasi.
-              </p>
-              <h5 style={{ fontSize: '10px', fontWeight: 700, marginTop: '8px', color: '#1f2937' }}>Target Pasar Proyek:</h5>
-              <p className={styles.pageParagraph}>
-                Menyasar jutaan penyeberang Selat Sunda setiap tahunnya serta pasar liburan akhir pekan penduduk Jabodetabek dan Sumatera Bagian Selatan.
-              </p>
-            </div>
-            <div className={styles.pageFooter}>
-              <span>IPRO PROYEK BHC 2026</span>
-              <span>HALAMAN 2</span>
-            </div>
-          </div>
-        </>
-      );
-    }
-
-    if (selectedDocId === 'pltsa') {
-      return (
-        <>
-          <div className={styles.securePage}>
-            <div className={styles.watermark}>{watermarkText}</div>
-            <div className={styles.pageHeader}>
-              <span>IPRO PROJECT PROFILE</span>
-              <span>HALAMAN 1</span>
-            </div>
-            <div className={styles.pageContent} style={{ justifyContent: 'center', alignItems: 'center', textAlign: 'center' }}>
-              <div style={{
-                padding: '12px', borderRadius: '12px', background: 'rgba(245, 158, 11, 0.1)',
-                color: '#f59e0b', marginBottom: '16px'
-              }}>
-                <FileCheck size={48} />
-              </div>
-              <h2 style={{ fontSize: '18px', fontWeight: 900, color: '#111827', margin: '0 0 8px 0' }}>
-                INVESTMENT PROJECT READY TO OFFER (IPRO)
-              </h2>
-              <h3 style={{ fontSize: '13px', fontWeight: 700, color: '#4b5563', margin: '0' }}>
-                PLTSA BAKUNG BANDAR LAMPUNG
-              </h3>
-              <div style={{ width: '40px', height: '3px', background: '#f59e0b', margin: '16px 0' }} />
-              <table style={{ border: 'none', fontSize: '10px', color: '#4b5563', maxWidth: '300px' }}>
-                <tbody>
-                  <tr>
-                    <td style={{ padding: '4px', fontWeight: 'bold' }}>Estimasi Investasi:</td>
-                    <td style={{ padding: '4px' }}>Rp 650 Miliar</td>
-                  </tr>
-                  <tr>
-                    <td style={{ padding: '4px', fontWeight: 'bold' }}>Kapasitas Output:</td>
-                    <td style={{ padding: '4px' }}>15 Megawatt (MW)</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <div className={styles.pageFooter}>
-              <span>IPRO PLTSA BAKUNG 2026</span>
-              <span>HALAMAN 1</span>
-            </div>
-          </div>
-
-          <div className={styles.securePage}>
-            <div className={styles.watermark}>{watermarkText}</div>
-            <div className={styles.pageHeader}>
-              <span>IPRO PROJECT PROFILE</span>
-              <span>HALAMAN 2</span>
-            </div>
-            <div className={styles.pageContent}>
-              <h4 className={styles.pageSectionTitle}>TINJAUAN OPERASIONAL & BAHAN BAKU</h4>
-              <p className={styles.pageParagraph}>
-                PLTSa Bakung dirancang menggunakan teknologi insinerasi modern ramah lingkungan untuk mengubah sampah TPA Bakung menjadi tenaga listrik mandiri.
-              </p>
-              <h5 style={{ fontSize: '10px', fontWeight: 700, marginTop: '8px', color: '#1f2937' }}>Skema Bisnis Kerjasama:</h5>
-              <p className={styles.pageParagraph}>
-                Menggunakan Kerjasama Pemerintah dengan Badan Usaha (KPBU) dengan jaminan pembelian tarif listrik (fit-in-tariff) oleh PLN.
-              </p>
-            </div>
-            <div className={styles.pageFooter}>
-              <span>IPRO PLTSA BAKUNG 2026</span>
-              <span>HALAMAN 2</span>
-            </div>
-          </div>
-        </>
-      );
-    }
-
-    return null;
-  };
-
   const getSelectedDocTitle = () => {
-    if (selectedDocId === 'peta_potensi') return 'Peta Potensi Investasi Daerah Lampung 2026';
-    return iproProjects.find((p) => p.id === selectedDocId)?.judul || 'Dokumen Investasi';
+    const doc = docs.find((d) => d.id === selectedDocId);
+    return doc?.judul || 'Dokumen Investasi';
   };
 
   return (
@@ -502,12 +121,12 @@ export default function GalleryPage() {
       {/* Navbar */}
       <nav className={styles.galleryNav}>
         <Link href="/" className={styles.galleryNavBrand}>
-          <Image 
-            src="/logo.png" 
-            alt="Lampung Maju Hub Logo" 
-            width={100} 
-            height={40} 
-            style={{ objectFit: 'contain' }} 
+          <Image
+            src="/logo.png"
+            alt="Lampung Maju Hub Logo"
+            width={100}
+            height={40}
+            style={{ objectFit: 'contain' }}
             priority
           />
         </Link>
@@ -530,12 +149,15 @@ export default function GalleryPage() {
 
       {/* Body */}
       <div className={styles.galleryBody}>
-        
+
         {/* TOP SECTION: PETA POTENSI & FOILA PORTAL */}
         <div className={styles.topGrid}>
-          
+
           {/* Peta Potensi Investasi Card */}
-          <div className={styles.petaCard} onClick={() => setSelectedDocId('peta_potensi')}>
+          <div className={styles.petaCard} onClick={() => {
+            const petaDoc = docs.find((d) => d.kategori === 'Peta Potensi' || d.judul.toLowerCase().includes('peta potensi'));
+            if (petaDoc) setSelectedDocId(petaDoc.id);
+          }}>
             <div className={styles.petaHeader}>
               <div className={styles.petaIcon}>
                 <FileText size={24} />
@@ -554,12 +176,12 @@ export default function GalleryPage() {
           <div className={styles.foilaCard}>
             <div className={styles.foilaHeader}>
               <div className={styles.foilaIcon} style={{ background: 'transparent', padding: 0 }}>
-                <Image 
-                  src="/logo_foila.webp" 
-                  alt="FOILA Logo" 
-                  width={100} 
-                  height={40} 
-                  style={{ objectFit: 'contain' }} 
+                <Image
+                  src="/logo_foila.webp"
+                  alt="FOILA Logo"
+                  width={100}
+                  height={40}
+                  style={{ objectFit: 'contain' }}
                 />
               </div>
               <h3 className={styles.foilaTitle}>Portal FOILA (Fast Track)</h3>
@@ -586,38 +208,61 @@ export default function GalleryPage() {
             <TrendingUp size={20} style={{ color: 'var(--color-primary-400)' }} />
             Investment Project Ready to Offer (IPRO)
           </h2>
-          
-          <div className={styles.iproGrid}>
-            {docs.map((project) => (
-              <div key={project.id} className={styles.iproCard}>
-                {project.image && (
-                  <img src={project.image} alt={project.judul} className={styles.iproCardImage} loading="lazy" />
-                )}
-                <div className={styles.iproCardHeader}>
-                  <span className={styles.iproBadge}>{project.kategori}</span>
-                  <h3 className={styles.iproTitle}>{project.judul}</h3>
-                  <p className={styles.iproDesc}>{project.deskripsi}</p>
-                </div>
-                
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'var(--space-2)' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    <span style={{ fontSize: '9px', color: 'var(--color-neutral-400)', fontWeight: 'bold' }}>NILAI PROYEK</span>
-                    <span style={{ fontSize: 'var(--text-sm)', fontWeight: 800, color: '#f59e0b' }}>{project.nilai}</span>
+
+          {docs.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 'var(--space-12)', color: 'var(--color-neutral-400)' }}>
+              <FileText size={48} style={{ marginBottom: 'var(--space-4)', opacity: 0.5 }} />
+              <p style={{ fontSize: 'var(--text-base)' }}>Belum ada dokumen tersedia</p>
+            </div>
+          ) : (
+            <div className={styles.iproGrid}>
+              {docs.map((project) => (
+                <div key={project.id} className={styles.iproCard}>
+                  {project.image_url && (
+                    <Image
+                      src={project.image_url}
+                      alt={project.judul}
+                      width={400}
+                      height={180}
+                      className={styles.iproCardImage}
+                      style={{ objectFit: 'cover' }}
+                      unoptimized
+                    />
+                  )}
+                  <div className={styles.iproCardHeader}>
+                    {project.kategori && (
+                      <span className={styles.iproBadge}>{project.kategori}</span>
+                    )}
+                    <h3 className={styles.iproTitle}>{project.judul}</h3>
+                    {project.deskripsi && (
+                      <p className={styles.iproDesc}>{project.deskripsi}</p>
+                    )}
                   </div>
-                  
-                  <button
-                    type="button"
-                    className="btn btn--secondary btn--sm"
-                    style={{ fontSize: '11px', display: 'flex', gap: '4px', alignItems: 'center' }}
-                    onClick={() => setSelectedDocId(project.id)}
-                  >
-                    <FileCheck size={12} />
-                    Lihat Dokumen
-                  </button>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'var(--space-2)' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      {project.nilai_investasi && (
+                        <>
+                          <span style={{ fontSize: '9px', color: 'var(--color-neutral-400)', fontWeight: 'bold' }}>NILAI PROYEK</span>
+                          <span style={{ fontSize: 'var(--text-sm)', fontWeight: 800, color: '#f59e0b' }}>{project.nilai_investasi}</span>
+                        </>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      className="btn btn--secondary btn--sm"
+                      style={{ fontSize: '11px', display: 'flex', gap: '4px', alignItems: 'center' }}
+                      onClick={() => setSelectedDocId(project.id)}
+                    >
+                      <FileCheck size={12} />
+                      Lihat Dokumen
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
       </div>
@@ -626,7 +271,7 @@ export default function GalleryPage() {
       {selectedDocId && (
         <div className={styles.secureModal}>
           <div className={styles.secureViewerContent}>
-            
+
             {/* Header */}
             <div className={styles.secureViewerHeader}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -641,18 +286,54 @@ export default function GalleryPage() {
               </div>
 
               {/* Close Button */}
-              <button 
-                type="button" 
-                className={styles.secureCloseBtn} 
+              <button
+                type="button"
+                className={styles.secureCloseBtn}
                 onClick={handleCloseViewer}
               >
                 <X size={20} />
               </button>
             </div>
 
-            {/* Body (Scrollable pages list) */}
+            {/* Body */}
             <div className={styles.secureViewerBody}>
-              {renderDocPages()}
+              <style>{`@media print { .no-print { display: none !important; } }`}</style>
+              <div className="no-print" style={{ width: '100%', position: 'relative' }}>
+                {loadingSignedUrl ? (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '600px', color: 'var(--color-neutral-400)' }}>
+                    <Loader2 size={32} className="animate-spin" />
+                  </div>
+                ) : signedUrl ? (
+                  <>
+                    <div style={{
+                      position: 'absolute',
+                      top: '50%',
+                      left: '50%',
+                      transform: 'translate(-50%, -50%) rotate(-45deg)',
+                      fontSize: '36px',
+                      fontWeight: 900,
+                      color: 'rgba(239, 68, 68, 0.06)',
+                      pointerEvents: 'none',
+                      userSelect: 'none',
+                      whiteSpace: 'nowrap',
+                      letterSpacing: '0.1em',
+                      zIndex: 1,
+                    }}>
+                      DPMPTSP PROV LAMPUNG — DILINDUNGI
+                    </div>
+                    <iframe
+                      src={signedUrl}
+                      style={{ width: '100%', height: '600px', border: 'none', position: 'relative', zIndex: 2 }}
+                      onContextMenu={(e) => e.preventDefault()}
+                      title="Document Viewer"
+                    />
+                  </>
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '600px', color: 'var(--color-neutral-400)' }}>
+                    <p>Dokumen tidak tersedia untuk dilihat.</p>
+                  </div>
+                )}
+              </div>
             </div>
 
           </div>
