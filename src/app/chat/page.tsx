@@ -14,6 +14,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { LAYANAN_LIST } from '@/lib/constants';
 import styles from './chat.module.css';
 
 interface Layanan {

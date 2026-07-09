@@ -93,7 +93,7 @@ export default function AbsensiPage() {
       const formattedData = (data || []).map(d => ({
         ...d,
         petugas: Array.isArray(d.petugas) ? d.petugas[0] : d.petugas
-      })) as Absensi[];
+      })) as unknown as Absensi[];
       
       setAbsensi(formattedData);
     } catch (e) {
