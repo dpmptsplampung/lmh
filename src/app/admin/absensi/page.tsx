@@ -93,7 +93,7 @@ export default function AbsensiPage() {
       const formattedData = (data || []).map(d => ({
         ...d,
         petugas: Array.isArray(d.petugas) ? d.petugas[0] : d.petugas
-      })) as any as Absensi[];
+      })) as Absensi[];
       
       setAbsensi(formattedData);
     } catch (e) {
@@ -250,7 +250,7 @@ export default function AbsensiPage() {
               <tbody>
                 {absensi.map((a) => {
                   // Fallback for nested data structure depending on how supabase joins
-                  const layananNama = a.petugas?.layanan ? (Array.isArray(a.petugas.layanan) ? a.petugas.layanan[0]?.nama : (a.petugas.layanan as any).nama) : 'Semua Layanan';
+                  const layananNama = a.petugas?.layanan ? (Array.isArray(a.petugas.layanan) ? a.petugas.layanan[0]?.nama : (a.petugas.layanan as { nama: string }).nama) : 'Semua Layanan';
                   const petugasNama = a.petugas?.nama || 'Petugas';
                   
                   return (

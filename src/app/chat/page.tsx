@@ -4,7 +4,6 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import {
-  Building2,
   ArrowLeft,
   Send,
   Bot,
@@ -15,7 +14,6 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { LAYANAN_LIST, APP_NAME } from '@/lib/constants';
 import styles from './chat.module.css';
 
 interface Layanan {

@@ -1,32 +1,25 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, Suspense } from 'react';
 import Image from 'next/image';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { AlertCircle, Loader2, Shield, Lock, Mail, ArrowLeft } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import styles from './login.module.css';
 
 function LoginContent() {
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
   const [isAdminLogin, setIsAdminLogin] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const router = useRouter();
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      if (params.get('error') === 'auth') {
-        setError('Gagal login. Silakan coba lagi.');
-      }
-    }
-  }, []);
+  const searchParams = useSearchParams();
+  const error = searchParams.get('error') === 'auth' ? 'Gagal login. Silakan coba lagi.' : errorMessage;
 
   const handleGoogleLogin = async () => {
     setLoading(true);
-    setError('');
+    setErrorMessage('');
 
     try {
       const supabase = createClient();
@@ -50,7 +43,7 @@ function LoginContent() {
         throw authError;
       }
     } catch {
-      setError('Gagal memulai proses login. Silakan coba lagi.');
+      setErrorMessage('Gagal memulai proses login. Silakan coba lagi.');
       setLoading(false);
     }
   };
@@ -58,12 +51,12 @@ function LoginContent() {
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() || !password) {
-      setError('Email dan Password wajib diisi');
+      setErrorMessage('Email dan Password wajib diisi');
       return;
     }
 
     setLoading(true);
-    setError('');
+    setErrorMessage('');
 
     try {
       const supabase = createClient();
@@ -91,7 +84,7 @@ function LoginContent() {
       }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Email atau Password salah. Silakan coba lagi.';
-      setError(errorMsg);
+      setErrorMessage(errorMsg);
       setLoading(false);
     }
   };
@@ -187,7 +180,7 @@ function LoginContent() {
                     style={{ marginTop: 'var(--space-2)' }}
                     onClick={() => {
                       setIsAdminLogin(false);
-                      setError('');
+                      setErrorMessage('');
                     }}
                   >
                     <ArrowLeft size={14} />
@@ -250,7 +243,7 @@ function LoginContent() {
             className={styles.adminLink}
             onClick={() => {
               setIsAdminLogin(true);
-              setError('');
+              setErrorMessage('');
             }}
           >
             Akses Operator & Admin &rarr;
