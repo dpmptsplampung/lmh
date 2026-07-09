@@ -20,6 +20,7 @@ import {
   Globe,
   HelpCircle,
   Settings,
+  LayoutTemplate,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
@@ -108,6 +109,13 @@ const navItems: NavItem[] = [
     roles: ['admin'],
   },
   {
+    label: 'Konten Landing',
+    href: '/admin/settings/landing',
+    icon: <LayoutTemplate size={20} />,
+    fase: 'Fase 4',
+    roles: ['admin'],
+  },
+  {
     label: 'Tampilan Publik',
     href: '/',
     icon: <Globe size={20} />,
@@ -142,7 +150,15 @@ export default function Sidebar() {
   const isActive = (href: string) => {
     if (href === '/') return pathname === '/';
     if (href === '/admin') return pathname === '/admin';
-    return pathname.startsWith(href);
+    if (pathname === href) return true;
+    const moreSpecific = navItems.some(
+      (item) =>
+        item.href !== href &&
+        item.href.startsWith(href + '/') &&
+        (pathname === item.href || pathname.startsWith(item.href + '/'))
+    );
+    if (moreSpecific) return false;
+    return pathname.startsWith(href + '/');
   };
 
   const handleLogout = async () => {

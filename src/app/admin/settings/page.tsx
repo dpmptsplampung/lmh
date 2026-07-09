@@ -1,45 +1,85 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Settings, Save, Globe } from 'lucide-react';
+import Link from 'next/link';
+import { Settings, Save, Globe, MessageCircle, ExternalLink } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import { createClient } from '@/lib/supabase/client';
+import { useToast } from '@/components/Toast';
 
 export default function AdminSettingsPage() {
+  const { toast } = useToast();
   const [foilaUrl, setFoilaUrl] = useState('');
+  const [waNumber, setWaNumber] = useState('');
+  const [waDefaultMessage, setWaDefaultMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState('');
 
   useEffect(() => {
     async function fetchSettings() {
-      const supabase = createClient();
-      const { data } = await supabase.from('site_settings').select('value').eq('key', 'foila_url').single();
-      if (data) {
-        setFoilaUrl(data.value);
+      try {
+        const supabase = createClient();
+        const { data, error } = await supabase
+          .from('site_settings')
+          .select('key, value');
+
+        if (error) throw error;
+
+        if (data) {
+          const settingsMap = new Map(data.map((row) => [row.key, row.value]));
+          setFoilaUrl(settingsMap.get('foila_url') || '');
+          setWaNumber(settingsMap.get('wa_number') || '');
+          setWaDefaultMessage(settingsMap.get('wa_default_message') || '');
+        }
+      } catch {
+        toast('Gagal memuat pengaturan.', 'error');
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     }
     fetchSettings();
-  }, []);
+  }, [toast]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
-    setMessage('');
 
     const supabase = createClient();
-    const { error } = await supabase
-      .from('site_settings')
-      .upsert({ key: 'foila_url', value: foilaUrl, updated_at: new Date().toISOString() });
+    const now = new Date().toISOString();
+    const updates = [
+      { key: 'foila_url', value: foilaUrl, updated_at: now },
+      { key: 'wa_number', value: waNumber, updated_at: now },
+      { key: 'wa_default_message', value: waDefaultMessage, updated_at: now },
+    ];
 
-    if (error) {
-      setMessage('Gagal menyimpan pengaturan.');
-    } else {
-      setMessage('Pengaturan berhasil disimpan!');
+    try {
+      const { error } = await supabase
+        .from('site_settings')
+        .upsert(updates);
+
+      if (error) throw error;
+
+      toast('Pengaturan berhasil disimpan!', 'success');
+    } catch {
+      toast('Gagal menyimpan pengaturan.', 'error');
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
+
+  if (loading) {
+    return (
+      <>
+        <PageHeader
+          title="Pengaturan Website"
+          description="Kelola tautan eksternal dan konfigurasi global website"
+        />
+        <div style={{ padding: 'var(--space-8)' }}>
+          <p style={{ color: 'var(--text-tertiary)' }}>Memuat pengaturan...</p>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -48,52 +88,81 @@ export default function AdminSettingsPage() {
         description="Kelola tautan eksternal dan konfigurasi global website"
       />
 
-      <div style={{ padding: 'var(--space-8)', maxWidth: '600px' }}>
+      <div style={{ padding: 'var(--space-8)', maxWidth: '640px' }}>
         <form onSubmit={handleSave} style={{
-          background: 'var(--color-neutral-0)',
+          background: 'var(--surface-elevated)',
           padding: 'var(--space-6)',
-          borderRadius: 'var(--radius-lg)',
-          border: '1px solid var(--color-neutral-200)'
+          borderRadius: 'var(--radius-xl)',
+          border: '1px solid var(--border-default)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 'var(--space-8)',
         }}>
-          <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, marginBottom: 'var(--space-6)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Settings size={20} /> Konfigurasi Tautan
-          </h3>
+          <div>
+            <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, marginBottom: 'var(--space-5)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Settings size={20} /> Pengaturan Eksternal
+            </h3>
 
-          <div style={{ marginBottom: 'var(--space-6)' }}>
-            <label style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 500, marginBottom: 'var(--space-2)' }}>
-              URL Portal FOILA
-            </label>
-            <div style={{ position: 'relative' }}>
-              <Globe size={18} style={{
-                position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)',
-                color: 'var(--text-tertiary)'
-              }} />
-              <input
-                type="url"
-                required
-                className="form-input"
-                style={{ paddingLeft: '40px', width: '100%' }}
-                placeholder="https://..."
-                value={foilaUrl}
-                onChange={(e) => setFoilaUrl(e.target.value)}
-                disabled={loading}
-              />
+            <div className="form-group">
+              <label className="form-label">URL Portal FOILA</label>
+              <div style={{ position: 'relative' }}>
+                <Globe size={18} style={{
+                  position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)',
+                  color: 'var(--text-tertiary)'
+                }} />
+                <input
+                  type="url"
+                  required
+                  className="form-input"
+                  style={{ paddingLeft: '40px' }}
+                  placeholder="https://..."
+                  value={foilaUrl}
+                  onChange={(e) => setFoilaUrl(e.target.value)}
+                />
+              </div>
+              <p className="form-hint">Tautan ini akan digunakan di halaman Investment Gallery.</p>
             </div>
-            <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-              Tautan ini akan digunakan di halaman Investment Gallery.
-            </p>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <button type="submit" className="btn btn--primary" disabled={loading || saving}>
+          <div>
+            <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, marginBottom: 'var(--space-5)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <MessageCircle size={20} /> Pengaturan Kontak
+            </h3>
+
+            <div className="form-group" style={{ marginBottom: 'var(--space-5)' }}>
+              <label className="form-label">Nomor WhatsApp</label>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="6281234567890"
+                value={waNumber}
+                onChange={(e) => setWaNumber(e.target.value)}
+              />
+              <p className="form-hint">Format internasional tanpa tanda + (contoh: 6281234567890).</p>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Pesan Default WhatsApp</label>
+              <textarea
+                className="form-textarea"
+                placeholder="Halo, saya ingin bertanya..."
+                rows={3}
+                value={waDefaultMessage}
+                onChange={(e) => setWaDefaultMessage(e.target.value)}
+              />
+              <p className="form-hint">Pesan otomatis yang terisi saat pengguna mengklik tombol chat WhatsApp.</p>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
+            <button type="submit" className="btn btn--primary" disabled={saving}>
               <Save size={16} />
               {saving ? 'Menyimpan...' : 'Simpan Pengaturan'}
             </button>
-            {message && (
-              <span style={{ fontSize: 'var(--text-sm)', color: message.includes('Gagal') ? 'var(--color-danger-600)' : 'var(--color-success-600)' }}>
-                {message}
-              </span>
-            )}
+            <Link href="/admin/settings/landing" className="btn btn--secondary">
+              <ExternalLink size={16} />
+              Edit Konten Landing Page
+            </Link>
           </div>
         </form>
       </div>
