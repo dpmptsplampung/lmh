@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import { createClient } from '@/lib/supabase/client';
+import { useToast } from '@/components/Toast';
 
 interface PetugasData {
   id: string;
@@ -30,6 +31,7 @@ interface Kunjungan {
 }
 
 export default function AntrianPage() {
+  const { toast } = useToast();
   const [tanggal, setTanggal] = useState(new Date().toISOString().split('T')[0]);
   const [antrian, setAntrian] = useState<Kunjungan[]>([]);
   const [currentUser, setCurrentUser] = useState<PetugasData | null>(null);
@@ -82,6 +84,7 @@ export default function AntrianPage() {
       setAntrian((data || []) as any);
     } catch (e) {
       console.error(e);
+      toast('Gagal memuat data antrian', 'error');
     } finally {
       setLoading(false);
     }
@@ -100,13 +103,14 @@ export default function AntrianPage() {
       
       if (error) {
         console.error("Gagal menyelesaikan antrian:", error);
-        alert("Gagal menyelesaikan antrian. Pastikan Anda memiliki akses atau periksa koneksi.");
+        toast('Gagal menyelesaikan antrian', 'error');
       } else {
+        toast('Kunjungan berhasil diselesaikan', 'success');
         await fetchData();
       }
     } catch (e) {
       console.error(e);
-      alert("Terjadi kesalahan saat memproses permintaan.");
+      toast('Gagal menyelesaikan antrian', 'error');
     }
   };
 

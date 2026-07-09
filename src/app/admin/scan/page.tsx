@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import Image from 'next/image';
 import {
   QrCode,
   Camera,
@@ -17,6 +18,7 @@ import {
 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import { createClient } from '@/lib/supabase/client';
+import { useToast } from '@/components/Toast';
 import styles from './scan.module.css';
 
 interface ReservasiResult {
@@ -40,12 +42,21 @@ interface ReservasiResult {
 
 type ScanState = 'scanning' | 'found' | 'not_found' | 'processed' | 'error';
 
+interface CheckInUpdateData {
+  status: string;
+  updated_at: string;
+  waktu_scan?: string;
+  diarahkan_ke?: string;
+}
+
 export default function AdminScanPage() {
+  const { toast } = useToast();
   const [scanState, setScanState] = useState<ScanState>('scanning');
   const [result, setResult] = useState<ReservasiResult | null>(null);
   const [processing, setProcessing] = useState(false);
   const [manualToken, setManualToken] = useState('');
   const [diarahkanKe, setDiarahkanKe] = useState('');
+  const [scannerError, setScannerError] = useState(false);
   const scannerRef = useRef<HTMLDivElement>(null);
   const html5QrRef = useRef<unknown>(null);
 
@@ -124,6 +135,7 @@ export default function AdminScanPage() {
         scanner = html5QrCode;
       } catch (err) {
         console.error('Scanner init error:', err);
+        setScannerError(true);
       }
     };
 
@@ -136,7 +148,7 @@ export default function AdminScanPage() {
     };
   }, [lookupToken]);
 
-  const handleCheckIn = async (action: 'hadir' | 'tolak') => {
+  const handleCheckIn = async (action: 'hadir' | 'batal') => {
     if (!result || scanState !== 'found') return;
     setProcessing(true);
 
@@ -144,12 +156,12 @@ export default function AdminScanPage() {
 
     const today = new Date().toISOString().split('T')[0];
     if (action === 'hadir' && result.tanggal_rencana !== today) {
-      alert(`Gagal Check-In: Jadwal reservasi ini adalah tanggal ${formatDate(result.tanggal_rencana)}, bukan hari ini.`);
+      toast(`Gagal Check-In: Jadwal reservasi ini adalah tanggal ${formatDate(result.tanggal_rencana)}, bukan hari ini.`, 'error');
       setProcessing(false);
       return;
     }
 
-    const updateData: any = { 
+    const updateData: CheckInUpdateData = { 
       status: action === 'hadir' ? 'hadir' : 'batal',
       updated_at: new Date().toISOString(),
     };
@@ -174,10 +186,17 @@ export default function AdminScanPage() {
 
     if (error) {
       console.error('Update error:', error);
+      toast('Gagal memproses: ' + error.message, 'error');
       return;
     }
 
     setScanState('processed');
+  };
+
+  const handleTolak = () => {
+    if (confirm('Yakin ingin menolak pengunjung ini?')) {
+      handleCheckIn('batal');
+    }
   };
 
   const handleReset = async () => {
@@ -225,6 +244,15 @@ export default function AdminScanPage() {
               Kamera Scanner
             </div>
             <div className={styles.scannerBody}>
+              {scannerError ? (
+                <div style={{ textAlign: 'center', padding: '2rem' }}>
+                  <p>Gagal mengakses kamera. Pastikan izin kamera diberikan.</p>
+                  <button className="btn btn--primary" onClick={() => { setScannerError(false); window.location.reload(); }}>
+                    Coba Lagi
+                  </button>
+                </div>
+              ) : (
+              <>
               <div className={styles.scannerPreview} ref={scannerRef} />
 
               <div className={`${styles.scannerStatus} ${
@@ -257,6 +285,8 @@ export default function AdminScanPage() {
                   </button>
                 </div>
               </div>
+              </>
+              )}
             </div>
           </div>
 
@@ -295,7 +325,14 @@ export default function AdminScanPage() {
                   {/* Visitor Header */}
                   <div className={styles.visitorHeader}>
                     {result.pengunjung.foto_url ? (
-                      <img src={result.pengunjung.foto_url} alt="" className={styles.visitorAvatar} referrerPolicy="no-referrer" />
+                      <Image
+                        src={result.pengunjung.foto_url}
+                        alt=""
+                        width={56}
+                        height={56}
+                        className={styles.visitorAvatar}
+                        referrerPolicy="no-referrer"
+                      />
                     ) : (
                       <div className={styles.visitorAvatarFallback}>
                         {result.pengunjung.nama.charAt(0).toUpperCase()}
@@ -394,6 +431,16 @@ export default function AdminScanPage() {
                         </button>
                       </>
                     )}
+
+                    <button
+                      className="btn btn--danger btn--lg"
+                      style={{ width: '100%' }}
+                      onClick={handleTolak}
+                      disabled={processing}
+                    >
+                      <XCircle size={18} />
+                      Tolak Pengunjung
+                    </button>
 
                     <button className="btn btn--ghost btn--sm" onClick={handleReset}>
                       <RotateCcw size={14} />

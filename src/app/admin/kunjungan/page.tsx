@@ -8,10 +8,12 @@ import {
   Clock,
   RefreshCw,
   Loader2,
+  Calendar,
 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
+import { useToast } from '@/components/Toast';
 
 interface KunjunganRow {
   id: string;
@@ -24,26 +26,32 @@ interface KunjunganRow {
 }
 
 export default function KunjunganPage() {
+  const { toast } = useToast();
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<'semua' | 'menunggu' | 'selesai'>('semua');
   const [kunjungan, setKunjungan] = useState<KunjunganRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [filterTanggal, setFilterTanggal] = useState(
+    new Date().toISOString().split('T')[0]
+  );
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const supabase = createClient();
+      const startOfDay = new Date(`${filterTanggal}T00:00:00`);
       const { data, error } = await supabase
         .from('kunjungan')
         .select(`
           id, nama, keperluan, status, waktu_masuk, waktu_selesai,
           layanan:layanan_id ( nama )
         `)
+        .gte('waktu_masuk', startOfDay.toISOString())
+        .lt('waktu_masuk', new Date(filterTanggal + 'T23:59:59.999Z').toISOString())
         .order('waktu_masuk', { ascending: false });
 
       if (error) throw error;
 
-      // Normalize layanan join (Supabase may return array or object)
       const normalized = (data || []).map(k => ({
         ...k,
         layanan: Array.isArray(k.layanan) ? k.layanan[0] : k.layanan,
@@ -52,12 +60,14 @@ export default function KunjunganPage() {
       setKunjungan(normalized);
     } catch (e) {
       console.error('Error loading kunjungan:', e);
+      toast('Gagal memuat data kunjungan', 'error');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [filterTanggal, toast]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadData();
   }, [loadData]);
 
@@ -74,11 +84,11 @@ export default function KunjunganPage() {
 
       if (error) throw error;
 
-      // Update local state
       setKunjungan(prev => prev.map(k => k.id === id ? { ...k, status: 'selesai', waktu_selesai: new Date().toISOString() } : k));
+      toast('Kunjungan berhasil diselesaikan', 'success');
     } catch (e) {
       console.error('Error updating kunjungan:', e);
-      alert('Gagal menyelesaikan kunjungan. Pastikan Anda memiliki akses.');
+      toast('Gagal menyelesaikan kunjungan', 'error');
     }
   };
 
@@ -127,6 +137,17 @@ export default function KunjunganPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               style={{ paddingLeft: '40px' }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+            <Calendar size={18} style={{ color: 'var(--text-tertiary)' }} />
+            <input
+              type="date"
+              className="form-input"
+              value={filterTanggal}
+              onChange={(e) => setFilterTanggal(e.target.value)}
+              style={{ width: '160px', padding: 'var(--space-2) var(--space-3)', fontSize: 'var(--text-sm)' }}
             />
           </div>
 
