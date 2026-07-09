@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import type { ElementType } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import {
@@ -22,62 +23,156 @@ import { APP_NAME, WA_NUMBER, WA_DEFAULT_MESSAGE } from '@/lib/constants';
 import { waLink } from '@/lib/utils';
 import styles from './landing.module.css';
 
-const services = [
+const iconMap: Record<string, ElementType> = {
+  Building2,
+  ClipboardCheck,
+  Store,
+  FileText,
+  HeartHandshake,
+  Sparkles,
+  Shield,
+};
+
+const FALLBACK_SERVICES = [
   {
-    icon: <ClipboardCheck size={28} />,
+    icon: 'ClipboardCheck' as const,
     title: 'Helpdesk OSS',
     description: 'Konsultasi perizinan usaha melalui Online Single Submission. Petugas siap membantu proses NIB dan izin berusaha Anda.',
     color: 'serviceIconPrimary',
   },
   {
-    icon: <Shield size={28} />,
+    icon: 'Shield' as const,
     title: 'Sertifikasi Halal',
     description: 'Pendampingan proses sertifikasi halal untuk produk UMKM. Konsultasi gratis langsung dengan petugas terlatih.',
     color: 'serviceIconSuccess',
   },
   {
-    icon: <HeartHandshake size={28} />,
+    icon: 'HeartHandshake' as const,
     title: 'BPJS Kesehatan',
     description: 'Layanan informasi dan bantuan terkait BPJS Kesehatan. Tersedia konsultasi tatap muka dan online.',
     color: 'serviceIconAccent',
   },
   {
-    icon: <Store size={28} />,
+    icon: 'Store' as const,
     title: 'Matchmaking UMKM',
     description: 'Platform penghubung kebutuhan UMKM — dari bahan baku hingga kemitraan bisnis. Tersedia juga layanan PEMBIAYAAN UMKM.',
     color: 'serviceIconPrimary',
   },
   {
-    icon: <FileText size={28} />,
+    icon: 'FileText' as const,
     title: 'Investment Gallery',
     description: 'Pameran potensi investasi Provinsi Lampung. Dokumen IPRO dan Peta Potensi tersedia untuk dilihat secara daring.',
     color: 'serviceIconAccent',
   },
   {
-    icon: <Building2 size={28} />,
+    icon: 'Building2' as const,
     title: 'Bank Lampung',
     description: 'Layanan perbankan daerah pendukung ekosistem UMKM dan investasi.',
     color: 'serviceIconPrimary',
   },
   {
-    icon: <Sparkles size={28} />,
+    icon: 'Sparkles' as const,
     title: 'Balai Monitor SFR',
     description: 'Pelayanan Balai Monitor Spektrum Frekuensi Radio, meliputi perizinan frekuensi dan sertifikasi alat telekomunikasi.',
     color: 'serviceIconSuccess',
   },
   {
-    icon: <Shield size={28} />,
+    icon: 'Shield' as const,
     title: 'Sertifikasi Mutu Keamanan Hasil Perikanan',
     description: 'Sertifikasi Kelayakan Pengolahan (SKP) produk perikanan untuk menjamin mutu dan keamanan pangan standar ekspor.',
     color: 'serviceIconAccent',
   },
   {
-    icon: <FileText size={28} />,
+    icon: 'FileText' as const,
     title: 'Layanan Jasa Industri',
     description: 'Layanan sertifikasi SNI, pengujian, dan kalibrasi produk industri.',
     color: 'serviceIconPrimary',
   },
 ];
+
+const FALLBACK_HERO = {
+  badge_text: 'DPMPTSP Provinsi Lampung',
+  description: 'Hub digital yang menyatukan layanan perizinan, sertifikasi halal, BPJS Kesehatan, matchmaking UMKM, dan galeri investasi dalam satu platform terintegrasi.',
+  cta_primary_text: 'Rencanakan Kedatangan',
+  cta_primary_link: '/me/reservasi',
+  cta_secondary_text: 'Chat via WhatsApp',
+  cta_secondary_link: 'wa',
+};
+
+const FALLBACK_SECTION_HEADER = {
+  label: 'Layanan Kami',
+  title: '9 Layanan dalam Satu Atap',
+  description: 'Layanan konsultatif tatap muka dan platform digital yang bisa diakses dari mana saja, kapan saja.',
+};
+
+const FALLBACK_CTA = {
+  title: 'Siap Berkunjung?',
+  description: 'Booking kedatangan online terlebih dahulu untuk mempercepat pelayanan Anda di kantor DPMPTSP Provinsi Lampung.',
+  button_text: 'Rencanakan Kedatangan',
+  button_link: '/me/reservasi',
+};
+
+const FALLBACK_FOOTER = {
+  copyright: 'DPMPTSP Provinsi Lampung. Hak cipta dilindungi.',
+};
+
+interface ServiceItem {
+  icon: string;
+  title: string;
+  description: string;
+  color: string;
+}
+
+interface LandingData {
+  hero: Record<string, string>;
+  sectionHeader: Record<string, string>;
+  services: ServiceItem[];
+  cta: Record<string, string>;
+  footer: Record<string, string>;
+}
+
+function parseLandingContent(rows: { section: string; item_key: string; item_value: string | null; item_order: number }[]): LandingData {
+  const hero: Record<string, string> = {};
+  const sectionHeader: Record<string, string> = {};
+  const cta: Record<string, string> = {};
+  const footer: Record<string, string> = {};
+  const serviceMap = new Map<number, ServiceItem>();
+
+  for (const row of rows) {
+    const value = row.item_value ?? '';
+    switch (row.section) {
+      case 'hero':
+        hero[row.item_key] = value;
+        break;
+      case 'section_header':
+        sectionHeader[row.item_key] = value;
+        break;
+      case 'cta':
+        cta[row.item_key] = value;
+        break;
+      case 'footer':
+        footer[row.item_key] = value;
+        break;
+      case 'service': {
+        if (!serviceMap.has(row.item_order)) {
+          serviceMap.set(row.item_order, { icon: '', title: '', description: '', color: '' });
+        }
+        const svc = serviceMap.get(row.item_order)!;
+        if (row.item_key === 'icon') svc.icon = value;
+        else if (row.item_key === 'title') svc.title = value;
+        else if (row.item_key === 'description') svc.description = value;
+        else if (row.item_key === 'color') svc.color = value;
+        break;
+      }
+    }
+  }
+
+  const services = Array.from(serviceMap.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([, svc]) => svc);
+
+  return { hero, sectionHeader, services, cta, footer };
+}
 
 interface UserInfo {
   nama: string;
@@ -87,6 +182,7 @@ interface UserInfo {
 
 export default function LandingPage() {
   const [user, setUser] = useState<UserInfo | null>(null);
+  const [landingData, setLandingData] = useState<LandingData | null>(null);
 
   useEffect(() => {
     async function checkUser() {
@@ -106,8 +202,48 @@ export default function LandingPage() {
         });
       }
     }
+
+    async function fetchLandingContent() {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('landing_content')
+        .select('section, item_key, item_value, item_order')
+        .eq('is_active', true)
+        .order('section')
+        .order('item_order');
+
+      if (!error && data && data.length > 0) {
+        setLandingData(parseLandingContent(data as { section: string; item_key: string; item_value: string | null; item_order: number }[]));
+      }
+    }
+
     checkUser();
+    fetchLandingContent();
   }, []);
+
+  const hero = landingData?.hero ?? {};
+  const sectionHeader = landingData?.sectionHeader ?? {};
+  const cta = landingData?.cta ?? {};
+  const footer = landingData?.footer ?? {};
+  const services = landingData?.services?.length ? landingData.services : FALLBACK_SERVICES;
+
+  const heroBadgeText = hero.badge_text || FALLBACK_HERO.badge_text;
+  const heroDescription = hero.description || FALLBACK_HERO.description;
+  const heroCtaPrimaryText = hero.cta_primary_text || FALLBACK_HERO.cta_primary_text;
+  const heroCtaPrimaryLink = hero.cta_primary_link || FALLBACK_HERO.cta_primary_link;
+  const heroCtaSecondaryText = hero.cta_secondary_text || FALLBACK_HERO.cta_secondary_text;
+  const heroCtaSecondaryLink = hero.cta_secondary_link || FALLBACK_HERO.cta_secondary_link;
+
+  const sectionLabel = sectionHeader.label || FALLBACK_SECTION_HEADER.label;
+  const sectionTitle = sectionHeader.title || FALLBACK_SECTION_HEADER.title;
+  const sectionDescription = sectionHeader.description || FALLBACK_SECTION_HEADER.description;
+
+  const ctaTitle = cta.title || FALLBACK_CTA.title;
+  const ctaDescription = cta.description || FALLBACK_CTA.description;
+  const ctaButtonText = cta.button_text || FALLBACK_CTA.button_text;
+  const ctaButtonLink = cta.button_link || FALLBACK_CTA.button_link;
+
+  const footerCopyright = footer.copyright || FALLBACK_FOOTER.copyright;
 
   const handleLogout = async () => {
     const supabase = createClient();
@@ -170,7 +306,7 @@ export default function LandingPage() {
         <div className={styles.heroContent}>
           <div className={styles.heroBadge}>
             <Sparkles size={14} />
-            DPMPTSP Provinsi Lampung
+            {heroBadgeText}
           </div>
           <h1 className={styles.heroTitle} style={{ display: 'flex', justifyContent: 'center' }}>
             <Image 
@@ -183,24 +319,29 @@ export default function LandingPage() {
             />
           </h1>
           <p className={styles.heroDescription}>
-            Hub digital yang menyatukan layanan perizinan, sertifikasi halal,
-            BPJS Kesehatan, matchmaking UMKM, dan galeri investasi
-            dalam satu platform terintegrasi.
+            {heroDescription}
           </p>
           <div className={styles.heroActions}>
-            <Link href="/me/reservasi" className="btn btn--primary btn--lg">
+            <Link href={heroCtaPrimaryLink} className="btn btn--primary btn--lg">
               <ClipboardCheck size={20} />
-              Rencanakan Kedatangan
+              {heroCtaPrimaryText}
             </Link>
-            <a
-              href={waLink(WA_NUMBER, WA_DEFAULT_MESSAGE)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn btn--secondary btn--lg"
-            >
-              <MessageCircle size={20} />
-              Chat via WhatsApp
-            </a>
+            {heroCtaSecondaryLink === 'wa' ? (
+              <a
+                href={waLink(WA_NUMBER, WA_DEFAULT_MESSAGE)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn--secondary btn--lg"
+              >
+                <MessageCircle size={20} />
+                {heroCtaSecondaryText}
+              </a>
+            ) : (
+              <Link href={heroCtaSecondaryLink} className="btn btn--secondary btn--lg">
+                <MessageCircle size={20} />
+                {heroCtaSecondaryText}
+              </Link>
+            )}
           </div>
         </div>
       </section>
@@ -208,37 +349,39 @@ export default function LandingPage() {
       {/* Services */}
       <section id="layanan" className={styles.services}>
         <div className={styles.sectionHeader}>
-          <p className={styles.sectionLabel}>Layanan Kami</p>
-          <h2 className={styles.sectionTitle}>9 Layanan dalam Satu Atap</h2>
+          <p className={styles.sectionLabel}>{sectionLabel}</p>
+          <h2 className={styles.sectionTitle}>{sectionTitle}</h2>
           <p className={styles.sectionDescription}>
-            Layanan konsultatif tatap muka dan platform digital yang bisa diakses
-            dari mana saja, kapan saja.
+            {sectionDescription}
           </p>
         </div>
 
         <div className={styles.serviceGrid}>
-          {services.map((service) => (
-            <div key={service.title} className={styles.serviceCard}>
-              <div className={`${styles.serviceIcon} ${styles[service.color]}`}>
-                {service.icon}
+          {services.map((service, index) => {
+            const IconComponent = iconMap[service.icon] || ClipboardCheck;
+            const colorClass = styles[service.color] || styles.serviceIconPrimary;
+            return (
+              <div key={service.title || index} className={styles.serviceCard}>
+                <div className={`${styles.serviceIcon} ${colorClass}`}>
+                  <IconComponent size={28} />
+                </div>
+                <h3 className={styles.serviceTitle}>{service.title}</h3>
+                <p className={styles.serviceDescription}>{service.description}</p>
               </div>
-              <h3 className={styles.serviceTitle}>{service.title}</h3>
-              <p className={styles.serviceDescription}>{service.description}</p>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </section>
 
       {/* CTA */}
       <section className={styles.cta}>
         <div className={styles.ctaContent}>
-          <h2 className={styles.ctaTitle}>Siap Berkunjung?</h2>
+          <h2 className={styles.ctaTitle}>{ctaTitle}</h2>
           <p className={styles.ctaDescription}>
-            Booking kedatangan online terlebih dahulu untuk mempercepat pelayanan Anda
-            di kantor DPMPTSP Provinsi Lampung.
+            {ctaDescription}
           </p>
-          <Link href="/me/reservasi" className="btn btn--accent btn--lg">
-            Rencanakan Kedatangan
+          <Link href={ctaButtonLink} className="btn btn--accent btn--lg">
+            {ctaButtonText}
             <ArrowRight size={20} />
           </Link>
         </div>
@@ -246,7 +389,7 @@ export default function LandingPage() {
 
       {/* Footer */}
       <footer className={styles.footer}>
-        <p>© {new Date().getFullYear()} {APP_NAME} — DPMPTSP Provinsi Lampung. Hak cipta dilindungi.</p>
+        <p>© {new Date().getFullYear()} {APP_NAME} — {footerCopyright}</p>
       </footer>
 
       {/* Floating Chat Widget */}
