@@ -1,26 +1,31 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Image from 'next/image';
 import {
   FileText,
-  Upload,
   Eye,
   EyeOff,
-  GripVertical,
   Trash2,
   RefreshCw,
   X,
   Save,
   Plus,
+  Edit2,
+  ChevronUp,
+  ChevronDown,
+  Loader2,
 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import { createClient } from '@/lib/supabase/client';
+import { useToast } from '@/components/Toast';
 
 interface GalleryDoc {
   id: string;
   judul: string;
   kategori: string | null;
   urutan_tampil: number;
+  file_path: string;
   jumlah_halaman: number;
   status: 'aktif' | 'nonaktif';
   deskripsi: string | null;
@@ -30,7 +35,19 @@ interface GalleryDoc {
   updated_at: string;
 }
 
-const emptyForm = {
+interface GalleryForm {
+  judul: string;
+  kategori: string;
+  urutan_tampil: number;
+  jumlah_halaman: number;
+  deskripsi: string;
+  nilai_investasi: string;
+  image_url: string;
+  file_path: string;
+  status: 'aktif' | 'nonaktif';
+}
+
+const emptyForm: GalleryForm = {
   judul: '',
   kategori: '',
   urutan_tampil: 1,
@@ -38,22 +55,27 @@ const emptyForm = {
   deskripsi: '',
   nilai_investasi: '',
   image_url: '',
-  status: 'aktif' as 'aktif' | 'nonaktif',
+  file_path: '',
+  status: 'aktif',
 };
 
 export default function AdminGalleryPage() {
+  const { toast } = useToast();
   const [docs, setDocs] = useState<GalleryDoc[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Form modal state
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm] = useState<GalleryForm>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
+  const [uploadingFile, setUploadingFile] = useState(false);
 
   // Detail modal
   const [viewingDoc, setViewingDoc] = useState<GalleryDoc | null>(null);
+  const [signedUrl, setSignedUrl] = useState<string | null>(null);
+  const [loadingSignedUrl, setLoadingSignedUrl] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -65,14 +87,15 @@ export default function AdminGalleryPage() {
         .order('urutan_tampil', { ascending: true });
       if (error) throw error;
       setDocs((data || []) as GalleryDoc[]);
-    } catch (e) {
-      console.error('Error loading gallery:', e);
+    } catch {
+      toast('Gagal memuat data galeri. Silakan coba lagi.', 'error');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadData();
   }, [loadData]);
 
@@ -86,9 +109,9 @@ export default function AdminGalleryPage() {
         .eq('id', id);
       if (error) throw error;
       setDocs(prev => prev.map(d => d.id === id ? { ...d, status: newStatus as 'aktif' | 'nonaktif' } : d));
-    } catch (e) {
-      console.error('Error toggling status:', e);
-      alert('Gagal mengubah status.');
+      toast(`Status berhasil diubah menjadi ${newStatus}.`, 'success');
+    } catch {
+      toast('Gagal mengubah status dokumen.', 'error');
     }
   };
 
@@ -99,9 +122,120 @@ export default function AdminGalleryPage() {
       const { error } = await supabase.from('investment_documents').delete().eq('id', id);
       if (error) throw error;
       setDocs(prev => prev.filter(d => d.id !== id));
-    } catch (e) {
-      console.error('Error deleting doc:', e);
-      alert('Gagal menghapus dokumen.');
+      toast('Dokumen berhasil dihapus.', 'success');
+    } catch {
+      toast('Gagal menghapus dokumen.', 'error');
+    }
+  };
+
+  const handlePdfUpload = async (file: File) => {
+    if (file.type !== 'application/pdf') {
+      toast('File harus berupa PDF.', 'warning');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast('Ukuran file maksimal 10MB.', 'warning');
+      return;
+    }
+
+    setUploadingFile(true);
+    try {
+      const supabase = createClient();
+      const path = `${crypto.randomUUID()}.pdf`;
+      const { error: uploadError } = await supabase.storage
+        .from('investment-docs')
+        .upload(path, file);
+
+      if (uploadError) throw uploadError;
+
+      setForm(prev => ({ ...prev, file_path: path }));
+      toast('PDF berhasil diunggah.', 'success');
+    } catch {
+      toast('Gagal mengunggah PDF. Silakan coba lagi.', 'error');
+    } finally {
+      setUploadingFile(false);
+    }
+  };
+
+  const handleMoveUp = async (doc: GalleryDoc) => {
+    const sorted = [...docs].sort((a, b) => a.urutan_tampil - b.urutan_tampil);
+    const index = sorted.findIndex(d => d.id === doc.id);
+    if (index <= 0) return;
+
+    const prevDoc = sorted[index - 1];
+    const prevOrder = prevDoc.urutan_tampil;
+    const currOrder = doc.urutan_tampil;
+
+    try {
+      const supabase = createClient();
+      const { error: err1 } = await supabase
+        .from('investment_documents')
+        .update({ urutan_tampil: currOrder, updated_at: new Date().toISOString() })
+        .eq('id', prevDoc.id);
+      if (err1) throw err1;
+
+      const { error: err2 } = await supabase
+        .from('investment_documents')
+        .update({ urutan_tampil: prevOrder, updated_at: new Date().toISOString() })
+        .eq('id', doc.id);
+      if (err2) throw err2;
+
+      setDocs(prev => prev.map(d => {
+        if (d.id === prevDoc.id) return { ...d, urutan_tampil: currOrder };
+        if (d.id === doc.id) return { ...d, urutan_tampil: prevOrder };
+        return d;
+      }));
+    } catch {
+      toast('Gagal mengubah urutan dokumen.', 'error');
+    }
+  };
+
+  const handleMoveDown = async (doc: GalleryDoc) => {
+    const sorted = [...docs].sort((a, b) => a.urutan_tampil - b.urutan_tampil);
+    const index = sorted.findIndex(d => d.id === doc.id);
+    if (index < 0 || index >= sorted.length - 1) return;
+
+    const nextDoc = sorted[index + 1];
+    const nextOrder = nextDoc.urutan_tampil;
+    const currOrder = doc.urutan_tampil;
+
+    try {
+      const supabase = createClient();
+      const { error: err1 } = await supabase
+        .from('investment_documents')
+        .update({ urutan_tampil: currOrder, updated_at: new Date().toISOString() })
+        .eq('id', nextDoc.id);
+      if (err1) throw err1;
+
+      const { error: err2 } = await supabase
+        .from('investment_documents')
+        .update({ urutan_tampil: nextOrder, updated_at: new Date().toISOString() })
+        .eq('id', doc.id);
+      if (err2) throw err2;
+
+      setDocs(prev => prev.map(d => {
+        if (d.id === nextDoc.id) return { ...d, urutan_tampil: currOrder };
+        if (d.id === doc.id) return { ...d, urutan_tampil: nextOrder };
+        return d;
+      }));
+    } catch {
+      toast('Gagal mengubah urutan dokumen.', 'error');
+    }
+  };
+
+  const handleViewDoc = async (doc: GalleryDoc) => {
+    setViewingDoc(doc);
+    setSignedUrl(null);
+    setLoadingSignedUrl(true);
+    try {
+      const res = await fetch('/api/investment-docs/signed-url?file_path=' + encodeURIComponent(doc.file_path));
+      if (!res.ok) throw new Error('Failed to fetch signed URL');
+      const data = await res.json();
+      setSignedUrl(data.signedUrl);
+    } catch {
+      toast('Gagal memuat pratinjau PDF.', 'error');
+    } finally {
+      setLoadingSignedUrl(false);
     }
   };
 
@@ -116,6 +250,7 @@ export default function AdminGalleryPage() {
         deskripsi: doc.deskripsi ?? '',
         nilai_investasi: doc.nilai_investasi ?? '',
         image_url: doc.image_url ?? '',
+        file_path: doc.file_path,
         status: doc.status,
       });
     } else {
@@ -132,6 +267,10 @@ export default function AdminGalleryPage() {
       setFormError('Judul wajib diisi.');
       return;
     }
+    if (!editingId && !form.file_path) {
+      setFormError('File PDF wajib diunggah.');
+      return;
+    }
     setSaving(true);
     setFormError('');
     try {
@@ -146,8 +285,7 @@ export default function AdminGalleryPage() {
         image_url: form.image_url.trim() || null,
         status: form.status,
         updated_at: new Date().toISOString(),
-        // file_path is required by schema — use placeholder for now
-        ...(!editingId ? { file_path: 'pending-upload' } : {}),
+        ...(!editingId ? { file_path: form.file_path } : {}),
       };
 
       if (editingId) {
@@ -163,10 +301,12 @@ export default function AdminGalleryPage() {
         if (error) throw error;
       }
       setShowForm(false);
+      toast('Dokumen berhasil disimpan.', 'success');
       loadData();
-    } catch (e: any) {
-      console.error('Error saving doc:', e);
-      setFormError(e.message ?? 'Gagal menyimpan dokumen.');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Gagal menyimpan dokumen.';
+      setFormError(message);
+      toast(message, 'error');
     } finally {
       setSaving(false);
     }
@@ -234,18 +374,44 @@ export default function AdminGalleryPage() {
                 {docs.length === 0 ? (
                   <tr>
                     <td colSpan={8} style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: 'var(--space-8)' }}>
-                      Belum ada dokumen. Klik "Tambah Dokumen" untuk menambahkan.
+                      Belum ada dokumen. Klik &quot;Tambah Dokumen&quot; untuk menambahkan.
                     </td>
                   </tr>
-                ) : docs.map((doc) => (
+                ) : docs.map((doc, idx) => (
                   <tr key={doc.id}>
                     <td>
-                      <GripVertical size={16} style={{ color: 'var(--text-tertiary)', cursor: 'grab' }} />
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        <button
+                          className="btn btn--ghost btn--sm"
+                          title="Pindah ke atas"
+                          disabled={idx === 0}
+                          style={{ padding: '2px', opacity: idx === 0 ? 0.3 : 1, cursor: idx === 0 ? 'default' : 'pointer' }}
+                          onClick={() => handleMoveUp(doc)}
+                        >
+                          <ChevronUp size={14} />
+                        </button>
+                        <button
+                          className="btn btn--ghost btn--sm"
+                          title="Pindah ke bawah"
+                          disabled={idx === docs.length - 1}
+                          style={{ padding: '2px', opacity: idx === docs.length - 1 ? 0.3 : 1, cursor: idx === docs.length - 1 ? 'default' : 'pointer' }}
+                          onClick={() => handleMoveDown(doc)}
+                        >
+                          <ChevronDown size={14} />
+                        </button>
+                      </div>
                     </td>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
                         {doc.image_url ? (
-                          <img src={doc.image_url} alt={doc.judul} style={{ width: 40, height: 48, objectFit: 'cover', borderRadius: 'var(--radius-sm)', flexShrink: 0 }} />
+                          <Image
+                            src={doc.image_url}
+                            alt={doc.judul}
+                            width={40}
+                            height={48}
+                            style={{ objectFit: 'cover', borderRadius: 'var(--radius-sm)', flexShrink: 0 }}
+                            unoptimized
+                          />
                         ) : (
                           <div style={{ width: '40px', height: '48px', borderRadius: 'var(--radius-sm)', background: 'var(--color-primary-50)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                             <FileText size={20} style={{ color: 'var(--color-primary-600)' }} />
@@ -274,11 +440,11 @@ export default function AdminGalleryPage() {
                     </td>
                     <td>
                       <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-                        <button className="btn btn--ghost btn--sm" title="Detail" onClick={() => setViewingDoc(doc)}>
+                        <button className="btn btn--ghost btn--sm" title="Detail" onClick={() => handleViewDoc(doc)}>
                           <Eye size={14} />
                         </button>
                         <button className="btn btn--ghost btn--sm" title="Edit" onClick={() => handleOpenForm(doc)}>
-                          <Upload size={14} />
+                          <Edit2 size={14} />
                         </button>
                         <button
                           className="btn btn--ghost btn--sm"
@@ -338,7 +504,40 @@ export default function AdminGalleryPage() {
                 <label className="form-label">URL Gambar Thumbnail</label>
                 <input className="form-input" type="url" placeholder="https://..." value={form.image_url} onChange={e => setForm(f => ({ ...f, image_url: e.target.value }))} />
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
+              <div className="form-group">
+                <label className="form-label form-label--required">File PDF</label>
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  className="form-input"
+                  onChange={e => {
+                    const file = e.target.files?.[0];
+                    if (file) handlePdfUpload(file);
+                  }}
+                  disabled={uploadingFile}
+                />
+                <span className="form-hint">Maksimal 10MB, format PDF</span>
+                {uploadingFile && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', color: 'var(--text-secondary)', fontSize: 'var(--text-sm)' }}>
+                    <Loader2 size={16} className="animate-spin" />
+                    Mengunggah PDF...
+                  </div>
+                )}
+                {form.file_path && !uploadingFile && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', color: 'var(--color-success-700)', fontSize: 'var(--text-sm)' }}>
+                    <FileText size={16} />
+                    {form.file_path.split('/').pop()}
+                  </div>
+                )}
+                {editingId && form.file_path && (
+                  <span className="form-hint">File saat ini: {form.file_path.split('/').pop()}</span>
+                )}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 'var(--space-4)' }}>
+                <div className="form-group">
+                  <label className="form-label">Jumlah Halaman</label>
+                  <input className="form-input" type="number" min={0} value={form.jumlah_halaman} onChange={e => setForm(f => ({ ...f, jumlah_halaman: Number(e.target.value) }))} />
+                </div>
                 <div className="form-group">
                   <label className="form-label">Urutan Tampil</label>
                   <input className="form-input" type="number" min={1} value={form.urutan_tampil} onChange={e => setForm(f => ({ ...f, urutan_tampil: Number(e.target.value) }))} />
@@ -367,20 +566,48 @@ export default function AdminGalleryPage() {
       {/* Detail View Modal */}
       {viewingDoc && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
-          <div style={{ background: 'var(--color-neutral-0)', borderRadius: 'var(--radius-xl)', padding: 'var(--space-6)', width: '100%', maxWidth: 480 }}>
+          <div style={{ background: 'var(--color-neutral-0)', borderRadius: 'var(--radius-xl)', padding: 'var(--space-6)', width: '100%', maxWidth: 640, maxHeight: '90vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
               <h3 style={{ fontWeight: 700, fontSize: 'var(--text-base)' }}>Detail Dokumen</h3>
-              <button className="btn btn--ghost btn--sm" onClick={() => setViewingDoc(null)}><X size={18} /></button>
+              <button className="btn btn--ghost btn--sm" onClick={() => { setViewingDoc(null); setSignedUrl(null); }}><X size={18} /></button>
             </div>
             {viewingDoc.image_url && (
-              <img src={viewingDoc.image_url} alt={viewingDoc.judul} style={{ width: '100%', height: 180, objectFit: 'cover', borderRadius: 'var(--radius-lg)', marginBottom: 'var(--space-4)' }} />
+              <Image
+                src={viewingDoc.image_url}
+                alt={viewingDoc.judul}
+                width={640}
+                height={180}
+                style={{ width: '100%', height: 180, objectFit: 'cover', borderRadius: 'var(--radius-lg)', marginBottom: 'var(--space-4)' }}
+                unoptimized
+              />
             )}
             <h2 style={{ fontWeight: 700, marginBottom: 'var(--space-2)' }}>{viewingDoc.judul}</h2>
             {viewingDoc.kategori && <span className="badge badge--draft" style={{ marginBottom: 'var(--space-3)', display: 'inline-block' }}>{viewingDoc.kategori}</span>}
             {viewingDoc.nilai_investasi && <p style={{ color: '#f59e0b', fontWeight: 700, marginBottom: 'var(--space-2)' }}>{viewingDoc.nilai_investasi}</p>}
-            {viewingDoc.deskripsi && <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', lineHeight: 1.6 }}>{viewingDoc.deskripsi}</p>}
-            <div style={{ marginTop: 'var(--space-4)', paddingTop: 'var(--space-3)', borderTop: '1px solid var(--border-default)', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+            {viewingDoc.deskripsi && <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 'var(--space-3)' }}>{viewingDoc.deskripsi}</p>}
+            <div style={{ marginBottom: 'var(--space-4)', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
               {viewingDoc.jumlah_halaman} halaman · Urutan #{viewingDoc.urutan_tampil} · {viewingDoc.status}
+            </div>
+            <div className="form-group">
+              <label className="form-label">Pratinjau PDF</label>
+              {loadingSignedUrl ? (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 500, background: 'var(--color-neutral-50)', borderRadius: 'var(--radius-md)' }}>
+                  <Loader2 size={24} className="animate-spin" style={{ color: 'var(--text-secondary)' }} />
+                </div>
+              ) : signedUrl ? (
+                <>
+                  <style>{`@media print { .pdf-preview-frame { display: none !important; }`}</style>
+                  <iframe
+                    src={signedUrl}
+                    className="pdf-preview-frame"
+                    style={{ width: '100%', height: '500px', border: 'none', borderRadius: 'var(--radius-md)' }}
+                    onContextMenu={(e) => e.preventDefault()}
+                    title="PDF Preview"
+                  />
+                </>
+              ) : (
+                <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)' }}>PDF tidak tersedia untuk pratinjau.</p>
+              )}
             </div>
           </div>
         </div>
