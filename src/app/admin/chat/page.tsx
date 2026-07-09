@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   MessageSquare,
   User,
@@ -12,6 +12,8 @@ import {
 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import { createClient } from '@/lib/supabase/client';
+import { useToast } from '@/components/Toast';
+import { truncate, relativeTime } from '@/lib/utils';
 
 interface Session {
   id: string;
@@ -19,8 +21,10 @@ interface Session {
   kontak_pengunjung: string | null;
   status: 'bot' | 'eskalasi' | 'aktif' | 'selesai';
   created_at: string;
+  updated_at: string;
   layanan: { nama: string } | null;
   last_message?: string;
+  last_message_at?: string;
   unread?: number;
 }
 
@@ -30,6 +34,16 @@ interface Message {
   isi: string;
   created_at: string;
 }
+
+type SessionQueryRow = {
+  id: string;
+  layanan_id: string;
+  kontak_pengunjung: string | null;
+  status: 'bot' | 'eskalasi' | 'aktif' | 'selesai';
+  created_at: string;
+  updated_at: string;
+  layanan: { nama: string } | { nama: string }[] | null;
+};
 
 const statusConfig = {
   bot: { label: 'Bot', icon: <Bot size={12} />, className: 'badge--bot' },
@@ -44,9 +58,11 @@ export default function AdminChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [messageInput, setMessageInput] = useState('');
   const [loading, setLoading] = useState(true);
+  const [lastReadTimestamps, setLastReadTimestamps] = useState<Record<string, string>>({});
 
+  const { toast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -55,46 +71,75 @@ export default function AdminChatPage() {
     scrollToBottom();
   }, [messages]);
 
-  const fetchSessions = async (layananId: string | null) => {
+  const fetchSessions = useCallback(async (layananId: string | null) => {
     const supabase = createClient();
     let query = supabase
       .from('chat_sesi')
       .select(`
-        id, layanan_id, kontak_pengunjung, status, created_at,
+        id, layanan_id, kontak_pengunjung, status, created_at, updated_at,
         layanan:layanan_id ( nama )
       `)
-      .order('created_at', { ascending: false });
+      .order('updated_at', { ascending: false });
 
     if (layananId) {
       query = query.eq('layanan_id', layananId);
     }
 
-    const { data } = await query;
-    if (data) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const formatted = data.map(d => ({
-        ...d,
-        layanan: Array.isArray(d.layanan) ? d.layanan[0] : d.layanan
-      })) as any as Session[];
-      setSessions(formatted);
-      
-      // Update selected session if it exists to refresh status
-      setSelectedSession(prev => {
-        if (!prev) return prev;
-        const updated = formatted.find(s => s.id === prev.id);
-        return updated || prev;
-      });
+    const { data, error: fetchErr } = await query;
+    if (fetchErr) {
+      toast('Gagal memuat sesi chat', 'error');
+      return;
     }
-  };
 
-  // Load User & Sessions
+    if (!data) return;
+
+    const formatted: Session[] = (data as SessionQueryRow[]).map(d => ({
+      ...d,
+      layanan: Array.isArray(d.layanan) ? d.layanan[0] : d.layanan,
+    }));
+
+    const sessionIds = formatted.map(s => s.id);
+    const latestMap: Record<string, { isi: string; created_at: string }> = {};
+
+    if (sessionIds.length > 0) {
+      const { data: latestMessages } = await supabase
+        .from('chat_pesan')
+        .select('sesi_id, isi, created_at')
+        .in('sesi_id', sessionIds)
+        .order('created_at', { ascending: false });
+
+      for (const msg of latestMessages || []) {
+        if (!latestMap[msg.sesi_id]) {
+          latestMap[msg.sesi_id] = { isi: msg.isi, created_at: msg.created_at };
+        }
+      }
+    }
+
+    const withMessages: Session[] = formatted.map(s => ({
+      ...s,
+      last_message: latestMap[s.id]?.isi,
+      last_message_at: latestMap[s.id]?.created_at,
+    }));
+
+    setSessions(withMessages);
+
+    setSelectedSession(prev => {
+      if (!prev) return prev;
+      const updated = withMessages.find(s => s.id === prev.id);
+      return updated || prev;
+    });
+  }, [toast]);
+
+  // Effect 1: Load user + session list subscription (mount only)
   useEffect(() => {
+    const supabase = createClient();
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
     async function init() {
       try {
-        const supabase = createClient();
         const { data: { user } } = await supabase.auth.getUser();
-        
-        let targetLayananId = null;
+
+        let layananId: string | null = null;
 
         if (user) {
           const { data: petugas } = await supabase
@@ -105,59 +150,73 @@ export default function AdminChatPage() {
 
           if (petugas) {
             if (petugas.role === 'petugas') {
-              targetLayananId = petugas.layanan_id;
+              layananId = petugas.layanan_id;
             }
           }
         }
-        
-        await fetchSessions(targetLayananId);
 
-        // Subscribe to new sessions
-        const channel = supabase.channel('public:chat_sesi')
+        await fetchSessions(layananId);
+
+        channel = supabase
+          .channel('chat-sesi-changes')
           .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_sesi' }, () => {
-             fetchSessions(targetLayananId);
+            fetchSessions(layananId);
           })
           .subscribe();
-
-        return () => {
-          supabase.removeChannel(channel);
-        };
       } catch (e) {
         console.error(e);
+        toast('Gagal menginisialisasi chat', 'error');
       } finally {
         setLoading(false);
       }
     }
     init();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
-  // Load Messages for Selected Session
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+    };
+  }, [fetchSessions, toast]);
+
+  // Effect 2: Message subscription (depends on selectedSession)
   useEffect(() => {
-    if (!selectedSession) return;
-    
+    if (!selectedSession) {
+      return;
+    }
+
     let active = true;
     const supabase = createClient();
 
     async function loadMessages() {
-      const { data } = await supabase
+      const { data, error: fetchErr } = await supabase
         .from('chat_pesan')
         .select('id, pengirim, isi, created_at')
         .eq('sesi_id', selectedSession!.id)
         .order('created_at', { ascending: true });
-        
+
+      if (fetchErr) {
+        toast('Gagal memuat pesan', 'error');
+        return;
+      }
+
       if (active && data) {
         setMessages(data as Message[]);
       }
     }
-    
+
     loadMessages();
 
-    // Subscribe to new messages for this specific session
-    const msgChannel = supabase.channel(`room_${selectedSession.id}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_pesan', filter: `sesi_id=eq.${selectedSession.id}` }, (payload) => {
-        const newMsg = payload.new as Message;
+    const channel = supabase
+      .channel(`chat-pesan-${selectedSession.id}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'chat_pesan',
+        filter: `sesi_id=eq.${selectedSession.id}`,
+      }, (payload) => {
         setMessages(prev => {
+          const newMsg = payload.new as Message;
           if (prev.find(m => m.id === newMsg.id)) return prev;
           return [...prev, newMsg];
         });
@@ -166,11 +225,25 @@ export default function AdminChatPage() {
 
     return () => {
       active = false;
-      supabase.removeChannel(msgChannel);
+      supabase.removeChannel(channel);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSession?.id]);
+  }, [selectedSession, toast]);
+
+  const handleSelectSession = (session: Session) => {
+    setSelectedSession(session);
+    setLastReadTimestamps(prev => ({
+      ...prev,
+      [session.id]: new Date().toISOString(),
+    }));
+  };
+
+  const unreadCount = (session: Session): number => {
+    const lastRead = lastReadTimestamps[session.id];
+    if (!lastRead) return 0;
+    return messages.filter(
+      m => m.pengirim === 'pengunjung' && m.created_at > lastRead
+    ).length;
+  };
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -181,18 +254,24 @@ export default function AdminChatPage() {
 
     try {
       const supabase = createClient();
-      await supabase.from('chat_pesan').insert({
+      const { error: insertErr } = await supabase.from('chat_pesan').insert({
         sesi_id: selectedSession.id,
         pengirim: 'petugas',
         isi: text,
       });
-      
-      // If session was escalated or bot, make it active since staff replied
+
+      if (insertErr) throw insertErr;
+
       if (selectedSession.status !== 'aktif' && selectedSession.status !== 'selesai') {
-         await supabase.from('chat_sesi').update({ status: 'aktif' }).eq('id', selectedSession.id);
+        const { error: updateErr } = await supabase
+          .from('chat_sesi')
+          .update({ status: 'aktif' })
+          .eq('id', selectedSession.id);
+        if (updateErr) throw updateErr;
       }
-    } catch (e) {
-      console.error(e);
+    } catch (err) {
+      console.error(err);
+      toast('Gagal mengirim pesan', 'error');
     }
   };
 
@@ -200,19 +279,31 @@ export default function AdminChatPage() {
     if (!selectedSession) return;
     try {
       const supabase = createClient();
-      await supabase.from('chat_sesi').update({ status: 'selesai' }).eq('id', selectedSession.id);
-    } catch (e) {
-      console.error(e);
+      const { error: updateErr } = await supabase
+        .from('chat_sesi')
+        .update({ status: 'selesai' })
+        .eq('id', selectedSession.id);
+      if (updateErr) throw updateErr;
+      toast('Sesi chat diselesaikan', 'success');
+    } catch (err) {
+      console.error(err);
+      toast('Gagal menyelesaikan sesi', 'error');
     }
   };
-  
+
   const handleAmbilAlih = async () => {
     if (!selectedSession) return;
     try {
       const supabase = createClient();
-      await supabase.from('chat_sesi').update({ status: 'aktif' }).eq('id', selectedSession.id);
-    } catch (e) {
-      console.error(e);
+      const { error: updateErr } = await supabase
+        .from('chat_sesi')
+        .update({ status: 'aktif' })
+        .eq('id', selectedSession.id);
+      if (updateErr) throw updateErr;
+      toast('Berhasil mengambil alih chat', 'success');
+    } catch (err) {
+      console.error(err);
+      toast('Gagal mengambil alih chat', 'error');
     }
   };
 
@@ -259,10 +350,13 @@ export default function AdminChatPage() {
               </div>
             ) : sessions.map((session) => {
               const config = statusConfig[session.status];
+              const unread = session.id === selectedSession?.id
+                ? unreadCount(session)
+                : (session.last_message_at && !lastReadTimestamps[session.id] ? 1 : 0);
               return (
                 <div
                   key={session.id}
-                  onClick={() => setSelectedSession(session)}
+                  onClick={() => handleSelectSession(session)}
                   style={{
                     padding: 'var(--space-4)',
                     borderBottom: '1px solid var(--color-neutral-100)',
@@ -277,13 +371,36 @@ export default function AdminChatPage() {
                       {config.icon} {config.label}
                     </span>
                   </div>
+                  {session.last_message && (
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: 'var(--space-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {truncate(session.last_message, 40)}
+                    </div>
+                  )}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'var(--space-2)' }}>
                     <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
                       {session.kontak_pengunjung || 'Pengunjung Anonim'}
                     </span>
-                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
-                      {new Date(session.created_at).toLocaleTimeString('id-ID', {hour: '2-digit', minute:'2-digit'})}
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                      {unread > 0 && (
+                        <span style={{
+                          background: 'var(--color-danger-500)',
+                          color: 'white',
+                          fontSize: '10px',
+                          fontWeight: 700,
+                          borderRadius: '999px',
+                          padding: '1px 6px',
+                          minWidth: '18px',
+                          textAlign: 'center',
+                        }}>
+                          {unread}
+                        </span>
+                      )}
+                      <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
+                        {session.last_message_at
+                          ? relativeTime(session.last_message_at)
+                          : relativeTime(session.created_at)}
+                      </span>
+                    </div>
                   </div>
                 </div>
               );
@@ -343,7 +460,7 @@ export default function AdminChatPage() {
                           {isBot ? <Bot size={16} /> : <User size={16} />}
                         </div>
                       )}
-                      
+
                       <div style={{
                         background: isStaff ? 'var(--color-primary-600)' : 'var(--surface-primary)',
                         color: isStaff ? 'white' : 'var(--text-primary)',

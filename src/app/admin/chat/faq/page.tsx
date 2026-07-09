@@ -8,14 +8,13 @@ import {
   Save,
   RotateCcw,
   Building2,
-  Check,
   Loader2,
   MessageSquare,
   AlertCircle,
 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import { createClient } from '@/lib/supabase/client';
-import { LAYANAN_LIST } from '@/lib/constants';
+import { useToast } from '@/components/Toast';
 import styles from './faq.module.css';
 
 interface Layanan {
@@ -34,10 +33,12 @@ interface FAQ {
 }
 
 export default function AdminFAQPage() {
+  const { toast } = useToast();
   const [layananList, setLayananList] = useState<Layanan[]>([]);
   const [selectedLayananId, setSelectedLayananId] = useState('');
   const [faqList, setFaqList] = useState<FAQ[]>([]);
   const [loading, setLoading] = useState(true);
+  const [layananError, setLayananError] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   // Form States
@@ -49,7 +50,6 @@ export default function AdminFAQPage() {
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
 
   // Load Layanan
   useEffect(() => {
@@ -64,21 +64,18 @@ export default function AdminFAQPage() {
         if (fetchErr) throw fetchErr;
 
         setLayananList(data || []);
+        setLayananError(false);
         if (data && data.length > 0) {
           setSelectedLayananId(data[0].id);
         }
       } catch {
-        const fallback = LAYANAN_LIST.map((nama, i) => ({
-          id: `fallback-${i}`,
-          nama,
-          chatbot_aktif: true,
-        }));
-        setLayananList(fallback);
-        setSelectedLayananId(fallback[0].id);
+        setLayananList([]);
+        setLayananError(true);
+        toast('Gagal memuat layanan', 'error');
       }
     }
     loadLayanan();
-  }, []);
+  }, [toast]);
 
   // Load FAQs when selected service changes or refresh triggered
   useEffect(() => {
@@ -96,31 +93,14 @@ export default function AdminFAQPage() {
         if (fetchErr) throw fetchErr;
         setFaqList(data || []);
       } catch {
-        // Mock fallback data for layout
-        setFaqList([
-          {
-            id: 'faq-1',
-            layanan_id: selectedLayananId,
-            pertanyaan: 'Bagaimana cara mendaftar izin usaha?',
-            jawaban: 'Pendaftaran izin usaha dapat dilakukan secara online mandiri melalui web resmi oss.go.id, atau Anda dapat berkonsultasi di kantor kami.',
-            aktif: true,
-            urutan: 1,
-          },
-          {
-            id: 'faq-2',
-            layanan_id: selectedLayananId,
-            pertanyaan: 'Dokumen apa saja yang harus dibawa?',
-            jawaban: 'Siapkan KTP, NPWP, alamat email aktif, nomor telepon aktif, serta deskripsi umum mengenai bidang usaha yang dijalankan.',
-            aktif: true,
-            urutan: 2,
-          },
-        ]);
+        setFaqList([]);
+        toast('Gagal memuat FAQ', 'error');
       } finally {
         setLoading(false);
       }
     }
     loadFAQs();
-  }, [selectedLayananId, refreshTrigger]);
+  }, [selectedLayananId, refreshTrigger, toast]);
 
   // Toggle chatbot state per-service
   const handleToggleChatbot = async (id: string, currentVal: boolean) => {
@@ -137,14 +117,12 @@ export default function AdminFAQPage() {
       setLayananList((prev) =>
         prev.map((l) => (l.id === id ? { ...l, chatbot_aktif: newVal } : l))
       );
-      setSuccess('Status chatbot layanan berhasil diperbarui!');
-      setTimeout(() => setSuccess(''), 3000);
+      toast('Status chatbot layanan berhasil diperbarui', 'success');
     } catch {
       setLayananList((prev) =>
         prev.map((l) => (l.id === id ? { ...l, chatbot_aktif: !currentVal } : l))
       );
-      setError('Gagal memperbarui status chatbot.');
-      setTimeout(() => setError(''), 3000);
+      toast('Gagal memperbarui status chatbot', 'error');
     }
   };
 
@@ -179,7 +157,6 @@ export default function AdminFAQPage() {
 
     try {
       if (editingFaqId) {
-        // Update
         const { error: editErr } = await supabase
           .from('faq_knowledge_base')
           .update({
@@ -192,9 +169,8 @@ export default function AdminFAQPage() {
           .eq('id', editingFaqId);
 
         if (editErr) throw editErr;
-        setSuccess('FAQ berhasil diperbarui!');
+        toast('FAQ berhasil diperbarui', 'success');
       } else {
-        // Insert new FAQ
         const { error: insertErr } = await supabase.from('faq_knowledge_base').insert({
           layanan_id: selectedLayananId,
           pertanyaan: formPertanyaan.trim(),
@@ -204,15 +180,15 @@ export default function AdminFAQPage() {
         });
 
         if (insertErr) throw insertErr;
-        setSuccess('FAQ baru berhasil ditambahkan!');
+        toast('FAQ baru berhasil ditambahkan', 'success');
       }
 
       handleResetForm();
       setRefreshTrigger((prev) => prev + 1);
-      setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Gagal menyimpan FAQ. Pastikan skema database sudah siap.';
+      const errorMsg = err instanceof Error ? err.message : 'Gagal menyimpan FAQ.';
       setError(errorMsg);
+      toast(errorMsg, 'error');
     } finally {
       setSaving(false);
     }
@@ -230,12 +206,10 @@ export default function AdminFAQPage() {
 
       if (delErr) throw delErr;
 
-      setSuccess('FAQ berhasil dihapus!');
+      toast('FAQ berhasil dihapus', 'success');
       setRefreshTrigger((prev) => prev + 1);
-      setTimeout(() => setSuccess(''), 3000);
     } catch {
-      setError('Gagal menghapus FAQ.');
-      setTimeout(() => setError(''), 3000);
+      toast('Gagal menghapus FAQ', 'error');
     }
   };
 
@@ -252,12 +226,6 @@ export default function AdminFAQPage() {
 
       <div className={styles.faqPage}>
         {/* Banner Pesan */}
-        {success && (
-          <div className="form-success" style={{ marginBottom: 'var(--space-6)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-            <Check size={16} />
-            {success}
-          </div>
-        )}
         {error && (
           <div className="form-error" style={{ marginBottom: 'var(--space-6)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
             <AlertCircle size={16} />
@@ -277,6 +245,7 @@ export default function AdminFAQPage() {
               setSelectedLayananId(e.target.value);
               handleResetForm();
             }}
+            disabled={layananError}
           >
             {layananList.map((l) => (
               <option key={l.id} value={l.id}>{l.nama}</option>
@@ -284,172 +253,179 @@ export default function AdminFAQPage() {
           </select>
         </div>
 
-        <div className={styles.faqLayout}>
-          {/* Sisi Kiri: Config & List FAQ */}
-          <div>
-            {/* Status Chatbot Per-layanan */}
-            {getSelectedLayanan() && (
-              <div className={styles.serviceCard}>
-                <div className={styles.serviceHeader}>
+        {layananError ? (
+          <div className={styles.faqListCard} style={{ textAlign: 'center', padding: 'var(--space-10)', color: 'var(--color-danger-600)' }}>
+            <AlertCircle size={40} style={{ margin: '0 auto var(--space-2)', opacity: 0.5 }} />
+            <p style={{ fontSize: 'var(--text-sm)' }}>Gagal memuat daftar layanan.</p>
+          </div>
+        ) : (
+          <div className={styles.faqLayout}>
+            {/* Sisi Kiri: Config & List FAQ */}
+            <div>
+              {/* Status Chatbot Per-layanan */}
+              {getSelectedLayanan() && (
+                <div className={styles.serviceCard}>
+                  <div className={styles.serviceHeader}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                      <Building2 size={20} style={{ color: 'var(--color-primary-600)' }} />
+                      <span className={styles.serviceTitle}>{getSelectedLayanan()?.nama}</span>
+                    </div>
+
+                    <div className={styles.toggleContainer}>
+                      <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                        Auto-reply Chatbot Bot:
+                      </span>
+                      <button
+                        className={`btn btn--sm ${getSelectedLayanan()?.chatbot_aktif ? 'btn--primary' : 'btn--secondary'}`}
+                        onClick={() => handleToggleChatbot(selectedLayananId, getSelectedLayanan()?.chatbot_aktif || false)}
+                      >
+                        {getSelectedLayanan()?.chatbot_aktif ? 'AKTIF (On)' : 'NONAKTIF (Off)'}
+                      </button>
+                    </div>
+                  </div>
+                  <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', margin: 0 }}>
+                    Jika chatbot AKTIF, pesan pengunjung yang masuk di layanan ini akan dijawab otomatis oleh bot jika kata kuncinya sesuai FAQ di bawah. Jika tidak aktif, chat langsung diteruskan ke petugas loket.
+                  </p>
+                </div>
+              )}
+
+              {/* List FAQ */}
+              <div className={styles.faqListCard}>
+                <div className={styles.faqListHeader}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                    <Building2 size={20} style={{ color: 'var(--color-primary-600)' }} />
-                    <span className={styles.serviceTitle}>{getSelectedLayanan()?.nama}</span>
-                  </div>
-
-                  <div className={styles.toggleContainer}>
-                    <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                      Auto-reply Chatbot Bot:
-                    </span>
-                    <button
-                      className={`btn btn--sm ${getSelectedLayanan()?.chatbot_aktif ? 'btn--primary' : 'btn--secondary'}`}
-                      onClick={() => handleToggleChatbot(selectedLayananId, getSelectedLayanan()?.chatbot_aktif || false)}
-                    >
-                      {getSelectedLayanan()?.chatbot_aktif ? 'AKTIF (On)' : 'NONAKTIF (Off)'}
-                    </button>
+                    <MessageSquare size={18} style={{ color: 'var(--color-primary-600)' }} />
+                    <span className={styles.faqListTitle}>Database Knowledge Base FAQ</span>
                   </div>
                 </div>
-                <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', margin: 0 }}>
-                  Jika chatbot AKTIF, pesan pengunjung yang masuk di layanan ini akan dijawab otomatis oleh bot jika kata kuncinya sesuai FAQ di bawah. Jika tidak aktif, chat langsung diteruskan ke petugas loket.
-                </p>
-              </div>
-            )}
 
-            {/* List FAQ */}
-            <div className={styles.faqListCard}>
-              <div className={styles.faqListHeader}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                  <MessageSquare size={18} style={{ color: 'var(--color-primary-600)' }} />
-                  <span className={styles.faqListTitle}>Database Knowledge Base FAQ</span>
-                </div>
-              </div>
-
-              {loading ? (
-                <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-10)' }}>
-                  <div className="spinner" />
-                </div>
-              ) : (
-                <div className={styles.faqItems}>
-                  {faqList.length > 0 ? (
-                    faqList.map((faq) => (
-                      <div key={faq.id} className={styles.faqItem}>
-                        <div className={styles.faqQuestionRow}>
-                          <span className={styles.faqQuestion}>Q: {faq.pertanyaan}</span>
-                          <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-                            <button
-                              className="btn btn--secondary btn--sm"
-                              style={{ padding: '4px 8px' }}
-                              onClick={() => handleEdit(faq)}
-                            >
-                              <Edit2 size={12} />
-                            </button>
-                            <button
-                              className="btn btn--ghost btn--sm"
-                              style={{ padding: '4px 8px', color: 'var(--color-danger-600)' }}
-                              onClick={() => handleDelete(faq.id)}
-                            >
-                              <Trash2 size={12} />
-                            </button>
+                {loading ? (
+                  <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-10)' }}>
+                    <div className="spinner" />
+                  </div>
+                ) : (
+                  <div className={styles.faqItems}>
+                    {faqList.length > 0 ? (
+                      faqList.map((faq) => (
+                        <div key={faq.id} className={styles.faqItem}>
+                          <div className={styles.faqQuestionRow}>
+                            <span className={styles.faqQuestion}>Q: {faq.pertanyaan}</span>
+                            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                              <button
+                                className="btn btn--secondary btn--sm"
+                                style={{ padding: '4px 8px' }}
+                                onClick={() => handleEdit(faq)}
+                              >
+                                <Edit2 size={12} />
+                              </button>
+                              <button
+                                className="btn btn--ghost btn--sm"
+                                style={{ padding: '4px 8px', color: 'var(--color-danger-600)' }}
+                                onClick={() => handleDelete(faq.id)}
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          </div>
+                          <p className={styles.faqAnswer}>A: {faq.jawaban}</p>
+                          <div className={styles.faqMetaRow}>
+                            <span className={`badge ${faq.aktif ? 'badge--published' : 'badge--nonaktif'}`}>
+                              {faq.aktif ? 'Aktif' : 'Nonaktif'}
+                            </span>
+                            <span>Urutan: {faq.urutan}</span>
                           </div>
                         </div>
-                        <p className={styles.faqAnswer}>A: {faq.jawaban}</p>
-                        <div className={styles.faqMetaRow}>
-                          <span className={`badge ${faq.aktif ? 'badge--published' : 'badge--nonaktif'}`}>
-                            {faq.aktif ? 'Aktif' : 'Nonaktif'}
-                          </span>
-                          <span>Urutan: {faq.urutan}</span>
-                        </div>
+                      ))
+                    ) : (
+                      <div style={{ textAlign: 'center', padding: 'var(--space-10)', color: 'var(--text-tertiary)' }}>
+                        <HelpCircle size={40} style={{ margin: '0 auto var(--space-2)', opacity: 0.5 }} />
+                        <p style={{ fontSize: 'var(--text-sm)' }}>Belum ada FAQ untuk layanan ini.</p>
                       </div>
-                    ))
-                  ) : (
-                    <div style={{ textAlign: 'center', padding: 'var(--space-10)', color: 'var(--text-tertiary)' }}>
-                      <HelpCircle size={40} style={{ margin: '0 auto var(--space-2)', opacity: 0.5 }} />
-                      <p style={{ fontSize: 'var(--text-sm)' }}>Belum ada FAQ untuk layanan ini.</p>
-                    </div>
-                  )}
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Sisi Kiri: Form input/edit FAQ */}
+            <div className={styles.formCard}>
+              <div className={styles.formHeader}>
+                <span className={styles.formTitle}>
+                  {editingFaqId ? 'Edit FAQ' : 'Tambah FAQ Baru'}
+                </span>
+                {editingFaqId && (
+                  <button className="btn btn--ghost btn--sm" onClick={handleResetForm}>
+                    <RotateCcw size={14} /> Reset
+                  </button>
+                )}
+              </div>
+
+              <form className={styles.formBody} onSubmit={handleSubmitFaq}>
+                <div className="form-group">
+                  <label className="form-label form-label--required" htmlFor="faqQuestion">Pertanyaan (User Chat)</label>
+                  <input
+                    id="faqQuestion"
+                    type="text"
+                    className="form-input"
+                    placeholder="Contoh: Apa saja syarat membuat NIB?"
+                    value={formPertanyaan}
+                    onChange={(e) => setFormPertanyaan(e.target.value)}
+                    required
+                  />
                 </div>
-              )}
+
+                <div className="form-group">
+                  <label className="form-label form-label--required" htmlFor="faqAnswer">Jawaban (Bot Auto-reply)</label>
+                  <textarea
+                    id="faqAnswer"
+                    className="form-textarea"
+                    placeholder="Masukkan balasan otomatis chatbot..."
+                    value={formJawaban}
+                    onChange={(e) => setFormJawaban(e.target.value)}
+                    rows={6}
+                    required
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label" htmlFor="faqOrder">Urutan Pencocokan</label>
+                  <input
+                    id="faqOrder"
+                    type="number"
+                    className="form-input"
+                    value={formUrutan}
+                    onChange={(e) => setFormUrutan(parseInt(e.target.value) || 0)}
+                  />
+                  <span className="form-hint">Makin kecil angkanya, makin awal dicocokkan</span>
+                </div>
+
+                <div className="form-group" style={{ flexDirection: 'row', alignItems: 'center', gap: 'var(--space-2)' }}>
+                  <input
+                    id="faqActive"
+                    type="checkbox"
+                    checked={formAktif}
+                    onChange={(e) => setFormAktif(e.target.checked)}
+                  />
+                  <label className="form-label" htmlFor="faqActive" style={{ margin: 0, cursor: 'pointer' }}>
+                    FAQ Aktif (Siap dicocokkan bot)
+                  </label>
+                </div>
+
+                <div className={styles.formActions}>
+                  <button type="submit" className="btn btn--primary" disabled={saving}>
+                    {saving ? (
+                      <><Loader2 size={16} className="animate-pulse" /> Menyimpan...</>
+                    ) : (
+                      <>
+                        <Save size={16} />
+                        {editingFaqId ? 'Perbarui FAQ' : 'Simpan FAQ'}
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
-
-          {/* Sisi Kanan: Form input/edit FAQ */}
-          <div className={styles.formCard}>
-            <div className={styles.formHeader}>
-              <span className={styles.formTitle}>
-                {editingFaqId ? 'Edit FAQ' : 'Tambah FAQ Baru'}
-              </span>
-              {editingFaqId && (
-                <button className="btn btn--ghost btn--sm" onClick={handleResetForm}>
-                  <RotateCcw size={14} /> Reset
-                </button>
-              )}
-            </div>
-
-            <form className={styles.formBody} onSubmit={handleSubmitFaq}>
-              <div className="form-group">
-                <label className="form-label form-label--required" htmlFor="faqQuestion">Pertanyaan (User Chat)</label>
-                <input
-                  id="faqQuestion"
-                  type="text"
-                  className="form-input"
-                  placeholder="Contoh: Apa saja syarat membuat NIB?"
-                  value={formPertanyaan}
-                  onChange={(e) => setFormPertanyaan(e.target.value)}
-                  required
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label form-label--required" htmlFor="faqAnswer">Jawaban (Bot Auto-reply)</label>
-                <textarea
-                  id="faqAnswer"
-                  className="form-textarea"
-                  placeholder="Masukkan balasan otomatis chatbot..."
-                  value={formJawaban}
-                  onChange={(e) => setFormJawaban(e.target.value)}
-                  rows={6}
-                  required
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label" htmlFor="faqOrder">Urutan Pencocokan</label>
-                <input
-                  id="faqOrder"
-                  type="number"
-                  className="form-input"
-                  value={formUrutan}
-                  onChange={(e) => setFormUrutan(parseInt(e.target.value) || 0)}
-                />
-                <span className="form-hint">Makin kecil angkanya, makin awal dicocokkan</span>
-              </div>
-
-              <div className="form-group" style={{ flexDirection: 'row', alignItems: 'center', gap: 'var(--space-2)' }}>
-                <input
-                  id="faqActive"
-                  type="checkbox"
-                  checked={formAktif}
-                  onChange={(e) => setFormAktif(e.target.checked)}
-                />
-                <label className="form-label" htmlFor="faqActive" style={{ margin: 0, cursor: 'pointer' }}>
-                  FAQ Aktif (Siap dicocokkan bot)
-                </label>
-              </div>
-
-              <div className={styles.formActions}>
-                <button type="submit" className="btn btn--primary" disabled={saving}>
-                  {saving ? (
-                    <><Loader2 size={16} className="animate-pulse" /> Menyimpan...</>
-                  ) : (
-                    <>
-                      <Save size={16} />
-                      {editingFaqId ? 'Perbarui FAQ' : 'Simpan FAQ'}
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        )}
       </div>
     </>
   );
