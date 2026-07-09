@@ -12,6 +12,7 @@ interface ProfileCompletenessGateProps {
 export default function ProfileCompletenessGate({ children }: ProfileCompletenessGateProps) {
   const [loading, setLoading] = useState(true);
   const [complete, setComplete] = useState(false);
+  const [dbError, setDbError] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
 
   // Form states
@@ -67,8 +68,7 @@ export default function ProfileCompletenessGate({ children }: ProfileCompletenes
         }
       } catch (err) {
         console.error('Error checking profile completeness:', err);
-        // Fallback jika database belum migrasi, loloskan untuk mencegah fatal screen
-        setComplete(true);
+        setDbError(true);
       } finally {
         setLoading(false);
       }
@@ -127,6 +127,19 @@ export default function ProfileCompletenessGate({ children }: ProfileCompletenes
         <div className={styles.loaderOverlay}>
           <Loader2 className="animate-spin" size={32} style={{ color: 'var(--color-primary-500)' }} />
           <span>Memeriksa kelengkapan profil...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (dbError) {
+    return (
+      <div className={styles.overlay}>
+        <div className={styles.loaderOverlay}>
+          <p>Gagal memverifikasi profil. Coba refresh halaman.</p>
+          <button className="btn btn--primary" onClick={() => window.location.reload()}>
+            Coba Lagi
+          </button>
         </div>
       </div>
     );

@@ -4,7 +4,6 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import {
-  Building2,
   LayoutDashboard,
   ClipboardCheck,
   Users,
@@ -24,7 +23,6 @@ import {
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { APP_NAME } from '@/lib/constants';
 import { cn } from '@/lib/utils';
 import styles from './Sidebar.module.css';
 
@@ -127,21 +125,31 @@ const navItems: NavItem[] = [
 export default function Sidebar() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [userRole, setUserRole] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<string | null | undefined>(undefined);
 
   useEffect(() => {
     async function getUserRole() {
       const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (user) {
-        const { data: petugas } = await supabase
+        const { data: petugas, error } = await supabase
           .from('petugas')
           .select('role')
           .eq('auth_user_id', user.id)
-          .single();
-        if (petugas) {
-          setUserRole(petugas.role);
+          .maybeSingle();
+        if (error) {
+          setUserRole(null);
+          return;
         }
+        if (!petugas) {
+          setUserRole(null);
+          return;
+        }
+        setUserRole(petugas.role);
+      } else {
+        setUserRole(null);
       }
     }
     getUserRole();
@@ -201,7 +209,11 @@ export default function Sidebar() {
 
         {/* Navigation */}
         <nav className={styles.nav}>
-          {navItems.filter(item => !item.roles || !userRole || item.roles.includes(userRole)).map((item) => (
+          {navItems.filter(item => {
+            if (userRole === undefined || userRole === null) return false;
+            if (!item.roles) return true;
+            return item.roles.includes(userRole);
+          }).map((item) => (
             <Link
               key={item.href}
               href={item.href}
