@@ -1,22 +1,28 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import Image from 'next/image';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { AlertCircle, Loader2, Shield, Lock, Mail, ArrowLeft } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import styles from './login.module.css';
 
-export default function LoginPage() {
+function LoginContent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [isAdminLogin, setIsAdminLogin] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const router = useRouter();
-  const searchParams = useSearchParams();
 
-  const authError = searchParams.get('error') === 'auth';
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('error') === 'auth') {
+        setError('Gagal login. Silakan coba lagi.');
+      }
+    }
+  }, []);
 
   const handleGoogleLogin = async () => {
     setLoading(true);
@@ -118,10 +124,10 @@ export default function LoginPage() {
         </div>
 
         <div className={styles.loginBody}>
-          {(error || authError) && (
+          {error && (
             <div className={styles.loginError}>
               <AlertCircle size={16} />
-              {error || 'Gagal login. Silakan coba lagi.'}
+              {error}
             </div>
           )}
 
@@ -252,5 +258,13 @@ export default function LoginPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="spinner" />}>
+      <LoginContent />
+    </Suspense>
   );
 }
