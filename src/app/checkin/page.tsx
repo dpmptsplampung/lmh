@@ -10,7 +10,7 @@ import {
   Send,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { LAYANAN_LIST, APP_NAME } from '@/lib/constants';
+import { APP_NAME } from '@/lib/constants';
 import styles from './checkin.module.css';
 
 interface FormData {
@@ -44,10 +44,7 @@ export default function CheckinPage() {
         if (fetchError) throw fetchError;
         setLayananOptions(data || []);
       } catch {
-        // Fallback: use static list if Supabase not connected
-        setLayananOptions(
-          LAYANAN_LIST.map((nama, i) => ({ id: `fallback-${i}`, nama }))
-        );
+        setLayananOptions([]);
       } finally {
         setLoadingLayanan(false);
       }
@@ -151,20 +148,26 @@ export default function CheckinPage() {
                 <label className="form-label form-label--required" htmlFor="layanan">
                   Layanan Tujuan
                 </label>
-                <select
-                  id="layanan"
-                  className="form-select"
-                  value={form.layanan_id}
-                  onChange={(e) => setForm({ ...form, layanan_id: e.target.value })}
-                  disabled={loadingLayanan}
-                >
-                  <option value="">— Pilih layanan —</option>
-                  {layananOptions.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.nama}
-                    </option>
-                  ))}
-                </select>
+                {!loadingLayanan && layananOptions.length === 0 ? (
+                  <p className="form-hint" style={{ color: 'var(--color-danger-600)' }}>
+                    Gagal memuat layanan. Coba refresh halaman.
+                  </p>
+                ) : (
+                  <select
+                    id="layanan"
+                    className="form-select"
+                    value={form.layanan_id}
+                    onChange={(e) => setForm({ ...form, layanan_id: e.target.value })}
+                    disabled={loadingLayanan}
+                  >
+                    <option value="">— Pilih layanan —</option>
+                    {layananOptions.map((l) => (
+                      <option key={l.id} value={l.id}>
+                        {l.nama}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               <div className="form-group">
@@ -193,7 +196,7 @@ export default function CheckinPage() {
               <button
                 type="submit"
                 className={`btn btn--primary btn--lg ${styles.checkinSubmit}`}
-                disabled={loading}
+                disabled={loading || layananOptions.length === 0}
                 style={{ width: '100%' }}
               >
                 {loading ? (

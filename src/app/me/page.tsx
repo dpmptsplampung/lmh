@@ -1,11 +1,9 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { useRouter } from 'next/navigation';
 import {
-  Building2,
   MessageCircle,
   CalendarPlus,
   Store,
@@ -19,8 +17,9 @@ import {
   QrCode,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { APP_NAME, WA_NUMBER, WA_DEFAULT_MESSAGE } from '@/lib/constants';
+import { WA_NUMBER, WA_DEFAULT_MESSAGE } from '@/lib/constants';
 import { waLink } from '@/lib/utils';
+import { useToast } from '@/components/Toast';
 import QRCodeDisplay from '@/components/QRCode';
 import styles from './me.module.css';
 
@@ -46,41 +45,46 @@ export default function MeDashboard() {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [reservasiList, setReservasiList] = useState<Reservasi[]>([]);
   const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
 
   useEffect(() => {
     const supabase = createClient();
 
     async function loadData() {
-      // Get current user
       const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) return;
+      if (!authUser) {
+        setLoading(false);
+        window.location.href = '/login?redirect=/me';
+        return;
+      }
 
-      // Get profile
-      const { data: profile } = await supabase
+      const { data: pengunjung, error: profileError } = await supabase
         .from('pengunjung')
-        .select('nama, email, foto_url')
+        .select('id, nama, email, foto_url')
         .eq('auth_user_id', authUser.id)
         .single();
 
-      if (profile) {
-        setUser(profile);
-      } else {
-        // Fallback dari metadata Google
+      if (profileError || !pengunjung) {
         setUser({
           nama: authUser.user_metadata?.full_name || 'Pengunjung',
           email: authUser.email || '',
           foto_url: authUser.user_metadata?.avatar_url || null,
         });
+      } else {
+        setUser({
+          nama: pengunjung.nama,
+          email: pengunjung.email,
+          foto_url: pengunjung.foto_url,
+        });
       }
 
-      // Get reservasi aktif
       const { data: reservasi } = await supabase
         .from('reservasi')
         .select('id, tujuan, nama_yang_ditemui, tanggal_rencana, jam_rencana, keperluan, qr_token, status, layanan(nama)')
+        .eq('pengunjung_id', pengunjung?.id || '')
         .in('status', ['terjadwal', 'hadir', 'dilayani'])
         .order('tanggal_rencana', { ascending: true });
 
-      // Normalize joined data (Supabase may return array for FK joins)
       const normalized: Reservasi[] = (reservasi || []).map((r) => ({
         ...r,
         layanan: Array.isArray(r.layanan) ? r.layanan[0] || null : r.layanan,
@@ -89,8 +93,11 @@ export default function MeDashboard() {
       setLoading(false);
     }
 
-    loadData();
-  }, []);
+    loadData().catch(() => {
+      toast('Gagal memuat data. Silakan refresh halaman.', 'error');
+      setLoading(false);
+    });
+  }, [toast]);
 
   const handleLogout = async () => {
     const supabase = createClient();
@@ -158,7 +165,15 @@ export default function MeDashboard() {
         <div className={styles.navUser}>
           <div className={styles.navUserInfo}>
             {user?.foto_url ? (
-              <img src={user.foto_url} alt="" className={styles.navAvatar} referrerPolicy="no-referrer" />
+              <Image
+                src={user.foto_url}
+                alt=""
+                width={40}
+                height={40}
+                className={styles.navAvatar}
+                referrerPolicy="no-referrer"
+                unoptimized
+              />
             ) : (
               <div className={styles.navAvatarFallback}>
                 {user?.nama?.charAt(0)?.toUpperCase() || 'P'}

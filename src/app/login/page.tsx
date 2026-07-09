@@ -1,11 +1,10 @@
 'use client';
 
-import { useEffect, useState, Suspense } from 'react';
+import { useState } from 'react';
 import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Building2, AlertCircle, Loader2, Shield, Lock, Mail, ArrowLeft } from 'lucide-react';
+import { AlertCircle, Loader2, Shield, Lock, Mail, ArrowLeft } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { APP_NAME } from '@/lib/constants';
 import styles from './login.module.css';
 
 export default function LoginPage() {
@@ -14,14 +13,10 @@ export default function LoginPage() {
   const [isAdminLogin, setIsAdminLogin] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
-  // Cek URL params untuk error
-  if (typeof window !== 'undefined') {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('error') === 'auth' && !error) {
-      setError('Gagal login. Silakan coba lagi.');
-    }
-  }
+  const authError = searchParams.get('error') === 'auth';
 
   const handleGoogleLogin = async () => {
     setLoading(true);
@@ -74,7 +69,6 @@ export default function LoginPage() {
       if (authError) throw authError;
 
       if (data.user) {
-        // Cek role petugas
         const { data: petugas, error: dbError } = await supabase
           .from('petugas')
           .select('role')
@@ -82,11 +76,11 @@ export default function LoginPage() {
           .single();
 
         if (dbError || !petugas) {
-          window.location.href = '/me';
+          router.push('/me');
         } else if (petugas.role === 'admin' || petugas.role === 'petugas') {
-          window.location.href = '/admin';
+          router.push('/admin');
         } else {
-          window.location.href = '/me';
+          router.push('/me');
         }
       }
     } catch (err) {
@@ -124,10 +118,10 @@ export default function LoginPage() {
         </div>
 
         <div className={styles.loginBody}>
-          {error && (
+          {(error || authError) && (
             <div className={styles.loginError}>
               <AlertCircle size={16} />
-              {error}
+              {error || 'Gagal login. Silakan coba lagi.'}
             </div>
           )}
 

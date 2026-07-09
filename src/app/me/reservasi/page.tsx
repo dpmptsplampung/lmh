@@ -12,7 +12,6 @@ import {
   Send,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { LAYANAN_LIST } from '@/lib/constants';
 import QRCodeDisplay from '@/components/QRCode';
 import styles from './reservasi.module.css';
 
@@ -72,9 +71,7 @@ export default function ReservasiPage() {
         if (fetchError) throw fetchError;
         setLayananOptions(data || []);
       } catch {
-        setLayananOptions(
-          LAYANAN_LIST.map((nama, i) => ({ id: `fallback-${i}`, nama }))
-        );
+        setLayananOptions([]);
       }
 
       setLoadingInit(false);
@@ -263,17 +260,23 @@ export default function ReservasiPage() {
                     <label className="form-label form-label--required" htmlFor="layanan">
                       Layanan Tujuan
                     </label>
-                    <select
-                      id="layanan"
-                      className="form-select"
-                      value={form.layanan_id}
-                      onChange={(e) => setForm({ ...form, layanan_id: e.target.value })}
-                    >
-                      <option value="">— Pilih layanan —</option>
-                      {layananOptions.map((l) => (
-                        <option key={l.id} value={l.id}>{l.nama}</option>
-                      ))}
-                    </select>
+                    {layananOptions.length === 0 ? (
+                      <p className="form-hint" style={{ color: 'var(--color-danger-600)' }}>
+                        Gagal memuat layanan
+                      </p>
+                    ) : (
+                      <select
+                        id="layanan"
+                        className="form-select"
+                        value={form.layanan_id}
+                        onChange={(e) => setForm({ ...form, layanan_id: e.target.value })}
+                      >
+                        <option value="">— Pilih layanan —</option>
+                        {layananOptions.map((l) => (
+                          <option key={l.id} value={l.id}>{l.nama}</option>
+                        ))}
+                      </select>
+                    )}
                   </div>
                 )}
 
@@ -348,7 +351,7 @@ export default function ReservasiPage() {
                 <button
                   type="submit"
                   className="btn btn--primary btn--lg"
-                  disabled={loading}
+                  disabled={loading || (form.tujuan === 'loket' && layananOptions.length === 0)}
                   style={{ width: '100%' }}
                 >
                   {loading ? (
