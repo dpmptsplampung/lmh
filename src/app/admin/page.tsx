@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
   Users,
   Clock,
@@ -31,181 +31,207 @@ import {
 } from 'recharts';
 import PageHeader from '@/components/layout/PageHeader';
 import { createClient } from '@/lib/supabase/client';
-import { LAYANAN_LIST } from '@/lib/constants';
+import { useToast } from '@/components/Toast';
 import styles from './dashboard.module.css';
 
-// Chart colors pool
-const CHART_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
+const CHART_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef444', '#3b82f6', '#8b5cf6', '#ec489', '#14b8a6', '#f97316'];
 
-// Fallback seed data — shown if database is empty
-const SEED_VISITS = [
-  { id: 'v1', nama: 'Ahmad Surya', layanan: 'Helpdesk OSS', waktu: '10:30', status: 'menunggu' },
-  { id: 'v2', nama: 'Siti Rahayu', layanan: 'Sertifikasi Halal', waktu: '10:15', status: 'selesai' },
-  { id: 'v3', nama: 'Budi Santoso', layanan: 'CS BPJS Kesehatan', waktu: '09:50', status: 'selesai' },
-  { id: 'v4', nama: 'Dewi Lestari', layanan: 'Helpdesk OSS', waktu: '09:30', status: 'selesai' },
-  { id: 'v5', nama: 'Rizky Pratama', layanan: 'Helpdesk OSS', waktu: '09:15', status: 'menunggu' },
-];
+interface RecentVisit {
+  id: string;
+  nama: string;
+  layanan: string;
+  waktu: string;
+  status: string;
+}
 
-const SEED_DAILY = [
-  { hari: 'Sen', kunjungan: 12 },
-  { hari: 'Sel', kunjungan: 18 },
-  { hari: 'Rab', kunjungan: 15 },
-  { hari: 'Kam', kunjungan: 22 },
-  { hari: 'Jum', kunjungan: 8 },
-  { hari: 'Sab', kunjungan: 0 },
-  { hari: 'Min', kunjungan: 0 },
-];
+interface DailyVisit {
+  hari: string;
+  kunjungan: number;
+}
 
-const SEED_BREAKDOWN = [
-  { nama: 'Helpdesk OSS', jumlah: 42, color: '#6366f1' },
-  { nama: 'Sertifikasi Halal', jumlah: 18, color: '#10b981' },
-  { nama: 'CS BPJS Kesehatan', jumlah: 25, color: '#f59e0b' },
-];
+interface LayananBreakdown {
+  nama: string;
+  jumlah: number;
+  color: string;
+}
+
+interface LayananRef {
+  nama: string | null;
+}
+
+interface RecentVisitRow {
+  id: string;
+  nama: string;
+  status: string;
+  waktu_masuk: string;
+  layanan: LayananRef | LayananRef[] | null;
+}
+
+interface WeeklyVisitRow {
+  waktu_masuk: string;
+}
+
+interface BreakdownRow {
+  layanan: LayananRef | LayananRef[] | null;
+}
+
+interface CompletedVisitRow {
+  waktu_masuk: string;
+  waktu_selesai: string | null;
+}
+
+function resolveLayananName(layanan: LayananRef | LayananRef[] | null): string {
+  if (!layanan) return '—';
+  if (Array.isArray(layanan)) return layanan[0]?.nama ?? '—';
+  return layanan.nama ?? '—';
+}
 
 export default function AdminDashboard() {
+  const { toast } = useToast();
   const [totalHariIni, setTotalHariIni] = useState(0);
   const [menunggu, setMenunggu] = useState(0);
   const [selesai, setSelesai] = useState(0);
   const [rataWaktu, setRataWaktu] = useState(0);
-  const [recentVisits, setRecentVisits] = useState<{ id: string; nama: string; layanan: string; waktu: string; status: string }[]>([]);
-  const [dailyVisitsState, setDailyVisitsState] = useState(SEED_DAILY);
-  const [layananBreakdownState, setLayananBreakdownState] = useState(SEED_BREAKDOWN);
+  const [recentVisits, setRecentVisits] = useState<RecentVisit[]>([]);
+  const [dailyVisitsState, setDailyVisitsState] = useState<DailyVisit[]>([]);
+  const [layananBreakdownState, setLayananBreakdownState] = useState<LayananBreakdown[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Wizard Popup States
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [wizardStep, setWizardStep] = useState(1);
   const [visitorName, setVisitorName] = useState('');
   const [visitorAsal, setVisitorAsal] = useState('');
   const [visitorKeperluan, setVisitorKeperluan] = useState('');
   const [selectedLayananId, setSelectedLayananId] = useState('');
-  const [layananList, setLayananList] = useState<{ id: string; nama: string }[]>(LAYANAN_LIST.map((nama, i) => ({ id: `fallback-${i}`, nama })));
+  const [layananList, setLayananList] = useState<{ id: string; nama: string }[]>([]);
   const [savingWizard, setSavingWizard] = useState(false);
   const [wizardSuccess, setWizardSuccess] = useState(false);
   const [wizardError, setWizardError] = useState('');
 
-  useEffect(() => {
-    async function loadData() {
-      try {
-        const supabase = createClient();
-        const today = new Date().toISOString().split('T')[0];
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const supabase = createClient();
+      const today = new Date().toISOString().split('T')[0];
+      const startOfToday = `${today}T00:00:00`;
 
-        // 1. Total kunjungan hari ini
-        const { count: total } = await supabase
-          .from('kunjungan')
-          .select('*', { count: 'exact', head: true })
-          .gte('waktu_masuk', `${today}T00:00:00`);
+      const { count: total } = await supabase
+        .from('kunjungan')
+        .select('*', { count: 'exact', head: true })
+        .gte('waktu_masuk', startOfToday);
 
-        // 2. Sedang menunggu
-        const { count: waiting } = await supabase
-          .from('kunjungan')
-          .select('*', { count: 'exact', head: true })
-          .eq('status', 'menunggu');
+      const { count: waiting } = await supabase
+        .from('kunjungan')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'menunggu')
+        .gte('waktu_masuk', startOfToday);
 
-        // 3. Selesai hari ini
-        const { count: done } = await supabase
-          .from('kunjungan')
-          .select('*', { count: 'exact', head: true })
-          .eq('status', 'selesai')
-          .gte('waktu_masuk', `${today}T00:00:00`);
+      const { count: done } = await supabase
+        .from('kunjungan')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'selesai')
+        .gte('waktu_masuk', startOfToday);
 
-        const hasRealData = (total ?? 0) > 0 || (waiting ?? 0) > 0;
+      setTotalHariIni(total ?? 0);
+      setMenunggu(waiting ?? 0);
+      setSelesai(done ?? 0);
 
-        if (hasRealData) {
-          setTotalHariIni(total ?? 0);
-          setMenunggu(waiting ?? 0);
-          setSelesai(done ?? 0);
-        } else {
-          // Keep seed values if DB is empty
-          setTotalHariIni(75);
-          setMenunggu(3);
-          setSelesai(72);
-          setRataWaktu(12);
-        }
+      const { data: completed } = await supabase
+        .from('kunjungan')
+        .select('waktu_masuk, waktu_selesai')
+        .eq('status', 'selesai')
+        .gte('waktu_masuk', startOfToday);
 
-        // 4. Recent visits (5 terbaru)
-        const { data: recent } = await supabase
-          .from('kunjungan')
-          .select('id, nama, status, waktu_masuk, layanan:layanan_id(nama)')
-          .order('waktu_masuk', { ascending: false })
-          .limit(5);
-
-        if (recent && recent.length > 0) {
-          setRecentVisits(recent.map((r: any) => ({
-            id: r.id,
-            nama: r.nama,
-            layanan: (Array.isArray(r.layanan) ? r.layanan[0]?.nama : r.layanan?.nama) ?? '—',
-            waktu: new Date(r.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-            status: r.status,
-          })));
-        } else {
-          setRecentVisits(SEED_VISITS);
-        }
-
-        // 5. Layanan list untuk walk-in wizard
-        const { data: layananData } = await supabase.from('layanan').select('id, nama').order('nama');
-        if (layananData && layananData.length > 0) {
-          setLayananList(layananData);
-        }
-
-        // 6. Daily visits — last 7 days
-        const days = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
-        const sevenDaysAgo = new Date();
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
-        const { data: weekly } = await supabase
-          .from('kunjungan')
-          .select('waktu_masuk')
-          .gte('waktu_masuk', sevenDaysAgo.toISOString());
-
-        if (weekly && weekly.length > 0) {
-          // Build count per day-of-week
-          const counts: Record<string, number> = {};
-          for (let i = 6; i >= 0; i--) {
-            const d = new Date();
-            d.setDate(d.getDate() - i);
-            const key = d.toISOString().split('T')[0];
-            counts[key] = 0;
-          }
-          weekly.forEach((w: any) => {
-            const key = w.waktu_masuk.split('T')[0];
-            if (counts[key] !== undefined) counts[key]++;
-          });
-          const dailyArr = Object.entries(counts).map(([dateStr, kunjungan]) => ({
-            hari: days[new Date(dateStr).getDay()],
-            kunjungan,
-          }));
-          setDailyVisitsState(dailyArr);
-        }
-
-        // 7. Layanan breakdown — top 5 by visit count
-        const { data: breakdown } = await supabase
-          .from('kunjungan')
-          .select('layanan:layanan_id(nama)')
-          .gte('waktu_masuk', `${today}T00:00:00`);
-
-        if (breakdown && breakdown.length > 0) {
-          const counts2: Record<string, number> = {};
-          breakdown.forEach((b: any) => {
-            const nama = (Array.isArray(b.layanan) ? b.layanan[0]?.nama : b.layanan?.nama) ?? 'Lainnya';
-            counts2[nama] = (counts2[nama] ?? 0) + 1;
-          });
-          const arr = Object.entries(counts2)
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 5)
-            .map(([nama, jumlah], idx) => ({ nama, jumlah, color: CHART_COLORS[idx % CHART_COLORS.length] }));
-          if (arr.length > 0) setLayananBreakdownState(arr);
-        }
-      } catch (e) {
-        console.error('Error loading dashboard data:', e);
-        // Fallback to seed data on error
-        setTotalHariIni(75);
-        setMenunggu(3);
-        setSelesai(72);
-        setRataWaktu(12);
-        setRecentVisits(SEED_VISITS);
+      const completedRecords: CompletedVisitRow[] = (completed ?? []) as CompletedVisitRow[];
+      const completedWithEnd = completedRecords.filter((r) => r.waktu_selesai);
+      if (completedWithEnd.length > 0) {
+        const avgMs = completedWithEnd.reduce((sum, r) => {
+          return sum + (new Date(r.waktu_selesai as string).getTime() - new Date(r.waktu_masuk).getTime());
+        }, 0) / completedWithEnd.length;
+        setRataWaktu(Math.round(avgMs / 60000));
+      } else {
+        setRataWaktu(0);
       }
+
+      const { data: recent } = await supabase
+        .from('kunjungan')
+        .select('id, nama, status, waktu_masuk, layanan:layanan_id(nama)')
+        .order('waktu_masuk', { ascending: false })
+        .limit(5);
+
+      const recentRows: RecentVisitRow[] = (recent ?? []) as RecentVisitRow[];
+      setRecentVisits(recentRows.map((r) => ({
+        id: r.id,
+        nama: r.nama,
+        layanan: resolveLayananName(r.layanan),
+        waktu: new Date(r.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+        status: r.status,
+      })));
+
+      const { data: layananData, error: layananError } = await supabase
+        .from('layanan')
+        .select('id, nama')
+        .order('nama');
+      if (layananError || !layananData || layananData.length === 0) {
+        setLayananList([]);
+      } else {
+        setLayananList(layananData);
+      }
+
+      const days = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+      const { data: weekly } = await supabase
+        .from('kunjungan')
+        .select('waktu_masuk')
+        .gte('waktu_masuk', sevenDaysAgo.toISOString());
+
+      const counts: Record<string, number> = {};
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const key = d.toISOString().split('T')[0];
+        counts[key] = 0;
+      }
+      const weeklyRows: WeeklyVisitRow[] = (weekly ?? []) as WeeklyVisitRow[];
+      weeklyRows.forEach((w) => {
+        const key = w.waktu_masuk.split('T')[0];
+        if (counts[key] !== undefined) counts[key]++;
+      });
+      const dailyArr: DailyVisit[] = Object.entries(counts).map(([dateStr, kunjungan]) => ({
+        hari: days[new Date(dateStr).getDay()],
+        kunjungan,
+      }));
+      setDailyVisitsState(dailyArr);
+
+      const { data: breakdown } = await supabase
+        .from('kunjungan')
+        .select('layanan:layanan_id(nama)')
+        .gte('waktu_masuk', startOfToday);
+
+      const counts2: Record<string, number> = {};
+      const breakdownRows: BreakdownRow[] = (breakdown ?? []) as BreakdownRow[];
+      breakdownRows.forEach((b) => {
+        const nama = resolveLayananName(b.layanan);
+        if (nama === '—') return;
+        counts2[nama] = (counts2[nama] ?? 0) + 1;
+      });
+      const arr: LayananBreakdown[] = Object.entries(counts2)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([nama, jumlah], idx) => ({ nama, jumlah, color: CHART_COLORS[idx % CHART_COLORS.length] }));
+      setLayananBreakdownState(arr);
+    } catch {
+      toast('Gagal memuat data dashboard. Periksa koneksi Anda.', 'error');
+    } finally {
+      setLoading(false);
     }
+  }, [toast]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadData();
-  }, []);
+  }, [loadData]);
 
   const handleNextStep = () => {
     if (!visitorName.trim()) {
@@ -240,6 +266,7 @@ export default function AdminDashboard() {
       });
 
       if (error) throw error;
+      await loadData();
       setWizardSuccess(true);
     } catch {
       setWizardError('Gagal menyimpan kunjungan walk-in. Silakan coba lagi.');
@@ -271,11 +298,10 @@ export default function AdminDashboard() {
       />
 
       <div className={styles.dashboard} style={{ padding: 'var(--space-8)' }}>
-        
-        {/* Trigger Button Walk-in Kunjungan */}
+
         <div className={styles.walkinTriggerContainer}>
-          <button 
-            type="button" 
+          <button
+            type="button"
             className={styles.walkinTriggerBtn}
             onClick={() => setIsWizardOpen(true)}
           >
@@ -284,22 +310,19 @@ export default function AdminDashboard() {
           </button>
         </div>
 
-        {/* Wizard Popup Modal (Backdrop Blur) */}
         {isWizardOpen && (
           <div className={styles.modalOverlay}>
             <div className={styles.wizardCard}>
-              {/* Header */}
               <div className={styles.wizardHeader}>
                 <div className={`${styles.statIcon} ${styles.statIconBlue}`} style={{ width: 36, height: 36 }}>
                   <UserPlus size={18} />
                 </div>
                 <span className={styles.wizardTitle}>Registrasi Walk-in</span>
 
-                {/* Close Button: disembunyikan saat sukses agar wajib tekan tombol Tutup & Selesai */}
                 {!wizardSuccess && (
-                  <button 
-                    type="button" 
-                    className={styles.closeButton} 
+                  <button
+                    type="button"
+                    className={styles.closeButton}
                     onClick={handleCloseWizard}
                   >
                     <X size={18} />
@@ -307,10 +330,8 @@ export default function AdminDashboard() {
                 )}
               </div>
 
-              {/* Body */}
               <div className={styles.wizardBody}>
                 {wizardSuccess ? (
-                  /* Success/Thank you Screen (Wajib tekan Tutup & Selesai) */
                   <div style={{ textAlign: 'center', padding: 'var(--space-4)' }}>
                     <div style={{
                       width: 56, height: 56, borderRadius: '50%', background: 'var(--color-success-50)',
@@ -325,8 +346,8 @@ export default function AdminDashboard() {
                       Pendaftaran Anda ke loket <strong>{getSelectedLayananName()}</strong> telah berhasil dicatat. <br />
                       Mohon menunggu di ruang tunggu, Anda akan segera dilayani oleh petugas kami.
                     </p>
-                    <button 
-                      className="btn btn--primary btn--lg" 
+                    <button
+                      className="btn btn--primary btn--lg"
                       onClick={handleCloseWizard}
                       style={{ width: '100%' }}
                     >
@@ -335,7 +356,6 @@ export default function AdminDashboard() {
                   </div>
                 ) : (
                   <>
-                    {/* Step Indicators */}
                     <div className={styles.wizardSteps}>
                       <div className={`${styles.wizardStep} ${wizardStep >= 1 ? (wizardStep > 1 ? styles.wizardStepDone : styles.wizardStepActive) : ''}`}>
                         {wizardStep > 1 ? '✓' : '1'}
@@ -349,7 +369,6 @@ export default function AdminDashboard() {
                     </div>
 
                     {wizardStep === 1 && (
-                      /* Step 1: Input Nama & Asal */
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
                         <div className="form-group">
                           <label className="form-label form-label--required" htmlFor="walkinName">Nama Lengkap</label>
@@ -388,25 +407,29 @@ export default function AdminDashboard() {
                     )}
 
                     {wizardStep === 2 && (
-                      /* Step 2: Pilih Layanan (Dengan sapaan dinamis) */
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
                         <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
                           Halo <strong>Bapak/Ibu {visitorName}</strong> dari <strong>{visitorAsal}</strong>, <br />
                           layanan apa yang ingin Anda akses hari ini?
                         </p>
 
-                        <div className={styles.wizardLayananGrid}>
-                          {layananList.map((layanan) => (
-                            <div
-                              key={layanan.id}
-                              className={`${styles.wizardLayananButton} ${selectedLayananId === layanan.id ? styles.wizardLayananButtonActive : ''}`}
-                              onClick={() => handleLayananSelect(layanan.id)}
-                            >
-                              <Building2 size={24} style={{ color: 'var(--color-primary-500)' }} />
-                              <div style={{ fontSize: 'var(--text-sm)' }}>{layanan.nama}</div>
-                            </div>
-                          ))}
-                        </div>
+                        {layananList.length === 0 ? (
+                          <p className="form-error">Gagal memuat daftar layanan</p>
+                        ) : (
+                          <div className={styles.wizardLayananGrid}>
+                            {layananList.map((layanan) => (
+                              <button
+                                type="button"
+                                key={layanan.id}
+                                className={`${styles.wizardLayananButton} ${selectedLayananId === layanan.id ? styles.wizardLayananButtonActive : ''}`}
+                                onClick={() => handleLayananSelect(layanan.id)}
+                              >
+                                <Building2 size={24} style={{ color: 'var(--color-primary-500)' }} />
+                                <div style={{ fontSize: 'var(--text-sm)' }}>{layanan.nama}</div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
 
                         <div className="form-group" style={{ marginTop: 'var(--space-2)' }}>
                           <label className="form-label" htmlFor="walkinReason">Keperluan</label>
@@ -431,7 +454,6 @@ export default function AdminDashboard() {
                     )}
 
                     {wizardStep === 3 && (
-                      /* Step 3: Konfirmasi */
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
                         <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
                           Apakah data kunjungan <strong>Bapak/Ibu {visitorName}</strong> sudah benar?
@@ -462,7 +484,11 @@ export default function AdminDashboard() {
                             <ChevronLeft size={16} />
                             Kembali
                           </button>
-                          <button className="btn btn--primary" onClick={handleSubmitWalkin} disabled={savingWizard}>
+                          <button
+                            className="btn btn--primary"
+                            onClick={handleSubmitWalkin}
+                            disabled={savingWizard || layananList.length === 0}
+                          >
                             {savingWizard ? (
                               <><Loader2 size={16} className="animate-pulse" /> Mendaftarkan...</>
                             ) : (
@@ -479,144 +505,165 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* Stats */}
-        <div className={styles.statsGrid}>
-          <div className={styles.statCard}>
-            <div className={`${styles.statIcon} ${styles.statIconBlue}`}>
-              <Users size={24} />
-            </div>
-            <div className={styles.statInfo}>
-              <span className={styles.statValue}>{totalHariIni}</span>
-              <span className={styles.statLabel}>Kunjungan Hari Ini</span>
-            </div>
+        {loading ? (
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 'var(--space-16)' }}>
+            <div className="spinner" />
           </div>
+        ) : (
+          <>
+            <div className={styles.statsGrid}>
+              <div className={styles.statCard}>
+                <div className={`${styles.statIcon} ${styles.statIconBlue}`}>
+                  <Users size={24} />
+                </div>
+                <div className={styles.statInfo}>
+                  <span className={styles.statValue}>{totalHariIni}</span>
+                  <span className={styles.statLabel}>Kunjungan Hari Ini</span>
+                </div>
+              </div>
 
-          <div className={styles.statCard}>
-            <div className={`${styles.statIcon} ${styles.statIconAmber}`}>
-              <Clock size={24} />
-            </div>
-            <div className={styles.statInfo}>
-              <span className={styles.statValue}>{menunggu}</span>
-              <span className={styles.statLabel}>Sedang Menunggu</span>
-            </div>
-          </div>
+              <div className={styles.statCard}>
+                <div className={`${styles.statIcon} ${styles.statIconAmber}`}>
+                  <Clock size={24} />
+                </div>
+                <div className={styles.statInfo}>
+                  <span className={styles.statValue}>{menunggu}</span>
+                  <span className={styles.statLabel}>Sedang Menunggu</span>
+                </div>
+              </div>
 
-          <div className={styles.statCard}>
-            <div className={`${styles.statIcon} ${styles.statIconGreen}`}>
-              <CheckCircle2 size={24} />
-            </div>
-            <div className={styles.statInfo}>
-              <span className={styles.statValue}>{selesai}</span>
-              <span className={styles.statLabel}>Selesai Dilayani</span>
-            </div>
-          </div>
+              <div className={styles.statCard}>
+                <div className={`${styles.statIcon} ${styles.statIconGreen}`}>
+                  <CheckCircle2 size={24} />
+                </div>
+                <div className={styles.statInfo}>
+                  <span className={styles.statValue}>{selesai}</span>
+                  <span className={styles.statLabel}>Selesai Dilayani</span>
+                </div>
+              </div>
 
-          <div className={styles.statCard}>
-            <div className={`${styles.statIcon} ${styles.statIconRed}`}>
-              <TrendingUp size={24} />
+              <div className={styles.statCard}>
+                <div className={`${styles.statIcon} ${styles.statIconRed}`}>
+                  <TrendingUp size={24} />
+                </div>
+                <div className={styles.statInfo}>
+                  <span className={styles.statValue}>{rataWaktu} <small style={{ fontSize: '0.5em', fontWeight: 400 }}>mnt</small></span>
+                  <span className={styles.statLabel}>Rata-rata Waktu Tunggu</span>
+                </div>
+              </div>
             </div>
-            <div className={styles.statInfo}>
-              <span className={styles.statValue}>{rataWaktu} <small style={{ fontSize: '0.5em', fontWeight: 400 }}>mnt</small></span>
-              <span className={styles.statLabel}>Rata-rata Waktu Tunggu</span>
-            </div>
-          </div>
-        </div>
 
-        {/* Charts */}
-        <div className={styles.chartsGrid}>
-          <div className={styles.chartCard}>
-            <h3 className={styles.chartTitle}>Volume Kunjungan Mingguan</h3>
-            <div className={styles.chartBody}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={dailyVisitsState}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="hari" fontSize={12} tickLine={false} />
-                  <YAxis fontSize={12} tickLine={false} axisLine={false} />
-                  <Tooltip
-                    contentStyle={{
-                      borderRadius: '8px',
-                      border: '1px solid #e2e8f0',
-                      boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
-                    }}
-                  />
-                  <Bar
-                    dataKey="kunjungan"
-                    fill="#6366f1"
-                    radius={[6, 6, 0, 0]}
-                    name="Kunjungan"
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
+            <div className={styles.chartsGrid}>
+              <div className={styles.chartCard}>
+                <h3 className={styles.chartTitle}>Volume Kunjungan Mingguan</h3>
+                <div className={styles.chartBody}>
+                  {dailyVisitsState.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={dailyVisitsState}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                        <XAxis dataKey="hari" fontSize={12} tickLine={false} />
+                        <YAxis fontSize={12} tickLine={false} axisLine={false} />
+                        <Tooltip
+                          contentStyle={{
+                            borderRadius: '8px',
+                            border: '1px solid #e2e8f0',
+                            boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
+                          }}
+                        />
+                        <Bar
+                          dataKey="kunjungan"
+                          fill="#6366f1"
+                          radius={[6, 6, 0, 0]}
+                          name="Kunjungan"
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)' }}>Belum ada data mingguan</span>
+                  )}
+                </div>
+              </div>
 
-          <div className={styles.chartCard}>
-            <h3 className={styles.chartTitle}>Breakdown per Layanan</h3>
-            <div className={styles.chartBody}>
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={layananBreakdownState}
-                    dataKey="jumlah"
-                    nameKey="nama"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={90}
-                    innerRadius={50}
-                    paddingAngle={4}
-                  >
-                    {layananBreakdownState.map((entry) => (
-                      <Cell key={entry.nama} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Legend
-                    verticalAlign="bottom"
-                    iconType="circle"
-                    iconSize={8}
-                    wrapperStyle={{ fontSize: '12px' }}
-                  />
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
+              <div className={styles.chartCard}>
+                <h3 className={styles.chartTitle}>Breakdown per Layanan</h3>
+                <div className={styles.chartBody}>
+                  {layananBreakdownState.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={layananBreakdownState}
+                          dataKey="jumlah"
+                          nameKey="nama"
+                          cx="50%"
+                          cy="50%"
+                          outerRadius={90}
+                          innerRadius={50}
+                          paddingAngle={4}
+                        >
+                          {layananBreakdownState.map((entry) => (
+                            <Cell key={entry.nama} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Legend
+                          verticalAlign="bottom"
+                          iconType="circle"
+                          iconSize={8}
+                          wrapperStyle={{ fontSize: '12px' }}
+                        />
+                        <Tooltip />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)' }}>Belum ada data layanan</span>
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
 
-        {/* Recent Visits */}
-        <div className={styles.recentSection}>
-          <div className={styles.recentHeader}>
-            <h3 className={styles.recentTitle}>Kunjungan Terbaru</h3>
-            <Link href="/admin/kunjungan" className="btn btn--ghost btn--sm">
-              Lihat Semua <ArrowRight size={14} />
-            </Link>
-          </div>
-          <div className="table-wrapper" style={{ border: 'none', borderRadius: 0 }}>
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Nama</th>
-                  <th>Layanan</th>
-                  <th>Waktu</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recentVisits.map((visit, i) => (
-                  <tr key={i}>
-                    <td style={{ fontWeight: 500 }}>{visit.nama}</td>
-                    <td>{visit.layanan}</td>
-                    <td>{visit.waktu}</td>
-                    <td>
-                      <span className={`badge badge--${visit.status}`}>
-                        {visit.status === 'menunggu' ? '● Menunggu' : '✓ Selesai'}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+            <div className={styles.recentSection}>
+              <div className={styles.recentHeader}>
+                <h3 className={styles.recentTitle}>Kunjungan Terbaru</h3>
+                <Link href="/admin/kunjungan" className="btn btn--ghost btn--sm">
+                  Lihat Semua <ArrowRight size={14} />
+                </Link>
+              </div>
+              <div className="table-wrapper" style={{ border: 'none', borderRadius: 0 }}>
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Nama</th>
+                      <th>Layanan</th>
+                      <th>Waktu</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentVisits.length > 0 ? (
+                      recentVisits.map((visit, i) => (
+                        <tr key={i}>
+                          <td style={{ fontWeight: 500 }}>{visit.nama}</td>
+                          <td>{visit.layanan}</td>
+                          <td>{visit.waktu}</td>
+                          <td>
+                            <span className={`badge badge--${visit.status}`}>
+                              {visit.status === 'menunggu' ? '● Menunggu' : '✓ Selesai'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: 'var(--space-6)' }}>
+                          Belum ada kunjungan hari ini
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </>
   );
