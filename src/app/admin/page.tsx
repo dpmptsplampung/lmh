@@ -308,6 +308,13 @@ export default function AdminDashboard() {
             <UserPlus size={20} />
             + Registrasi Kunjungan Walk-in (Cepat)
           </button>
+          <Link
+            href="/admin/petugas/invite"
+            className={`${styles.walkinTriggerBtn} ${styles.inviteLinkBtn}`}
+          >
+            <UserPlus size={20} />
+            Undang Petugas
+          </Link>
         </div>
 
         {isWizardOpen && (
