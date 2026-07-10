@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { useSearchParams } from 'next/navigation';
 import {
   Store,
   Search,
@@ -13,6 +14,10 @@ import {
   MapPin,
   MessageSquare,
   ShieldCheck,
+  Mail,
+  X,
+  Loader2,
+  CheckCircle2,
 } from 'lucide-react';
 import { KATEGORI_UMKM, type KategoriUMKM } from '@/lib/constants';
 import { cn, waLink } from '@/lib/utils';
@@ -39,11 +44,34 @@ const bankLampungBranches = [
   { nama: 'Kantor Cabang Kotabumi', alamat: 'Jl. Jend. Sudirman No. 240, Kotabumi' },
 ];
 
+// K5: extracted so useSearchParams is wrapped in a Suspense boundary
+// (required by Next.js for prerendering). See page.tsx usage.
+function LoginNotice() {
+  const searchParams = useSearchParams();
+  const showLoginNotice = searchParams?.get('edit_login_required') === '1';
+  if (!showLoginNotice) return null;
+  return (
+    <div className={styles.loginNotice}>
+      <Mail size={18} />
+      <span>
+        Anda perlu membuka link edit yang dikirim ke email pemilik listing untuk masuk.
+        Minta link edit baru di bawah jika diperlukan.
+      </span>
+    </div>
+  );
+}
+
 export default function UMKMPage() {
   const [activeTab, setActiveTab] = useState<'matchmaking' | 'pembiayaan'>('matchmaking');
   const [search, setSearch] = useState('');
   const [activeKategori, setActiveKategori] = useState<string>('semua');
   const [listings, setListings] = useState<UMKMListing[]>([]);
+
+  // K5: magic-link edit request state
+  const [editModalListing, setEditModalListing] = useState<UMKMListing | null>(null);
+  const [editEmail, setEditEmail] = useState('');
+  const [editSending, setEditSending] = useState(false);
+  const [editSent, setEditSent] = useState(false);
 
   useEffect(() => {
     async function fetchListings() {
@@ -88,6 +116,40 @@ export default function UMKMPage() {
     const matchKategori = activeKategori === 'semua' || l.kategori_kebutuhan === activeKategori;
     return matchSearch && matchKategori;
   });
+
+  // K5: magic-link edit request handlers
+  const openEditModal = (listing: UMKMListing) => {
+    setEditModalListing(listing);
+    setEditEmail('');
+    setEditSent(false);
+  };
+
+  const closeEditModal = () => {
+    setEditModalListing(null);
+    setEditEmail('');
+    setEditSent(false);
+  };
+
+  const submitEditRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editModalListing) return;
+    setEditSending(true);
+    setEditSent(false);
+    try {
+      await fetch('/api/umkm/request-edit-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ listing_id: editModalListing.id, email: editEmail }),
+      });
+      // Selalu tampilkan pesan generik (jangan leak apakah email terdaftar).
+      setEditSent(true);
+    } catch {
+      // Bahkan pada error network, tampilkan pesan generik (no leak).
+      setEditSent(true);
+    } finally {
+      setEditSending(false);
+    }
+  };
 
   return (
     <div className={styles.umkmPage}>
@@ -148,6 +210,11 @@ export default function UMKMPage() {
 
       {/* Body */}
       <div className={styles.umkmBody}>
+
+        {/* K5: login-required notice (from /umkm/edit redirect) */}
+        <Suspense fallback={null}>
+          <LoginNotice />
+        </Suspense>
 
         {/* Tab Navigation */}
         <div className={styles.tabContainer}>
@@ -252,17 +319,28 @@ export default function UMKMPage() {
                             <User size={14} />
                             {listing.kontak_nama || '—'}
                           </span>
-                          {listing.kontak_hp && (
-                            <a
-                              href={waLink(listing.kontak_hp)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className={styles.contactBtn}
+                          <div className={styles.listingActions}>
+                            {listing.kontak_hp && (
+                              <a
+                                href={waLink(listing.kontak_hp)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className={styles.contactBtn}
+                              >
+                                <Phone size={14} />
+                                Hubungi
+                              </a>
+                            )}
+                            <button
+                              type="button"
+                              className={styles.editLinkBtn}
+                              onClick={() => openEditModal(listing)}
+                              aria-label={`Minta link edit untuk ${listing.nama_umkm}`}
                             >
-                              <Phone size={14} />
-                              Hubungi
-                            </a>
-                          )}
+                              <Mail size={14} />
+                              Minta link edit
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -350,6 +428,86 @@ export default function UMKMPage() {
         )}
 
       </div>
+
+      {/* K5: Request edit-link modal */}
+      {editModalListing && (
+        <div
+          className={styles.editModalOverlay}
+          onClick={closeEditModal}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Minta link edit UMKM"
+        >
+          <div className={styles.editModal} onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              className={styles.editModalClose}
+              onClick={closeEditModal}
+              aria-label="Tutup"
+            >
+              <X size={18} />
+            </button>
+
+            {!editSent ? (
+              <>
+                <h3 className={styles.editModalTitle}>
+                  <Mail size={20} />
+                  Minta Link Edit
+                </h3>
+                <p className={styles.editModalListing}>
+                  Untuk listing: <strong>{editModalListing.nama_umkm}</strong>
+                </p>
+                <p className={styles.editModalDesc}>
+                  Masukkan email yang terdaftar sebagai pemilik listing. Jika email
+                  terdaftar, kami akan mengirimkan link edit ke email tersebut.
+                </p>
+                <form className={styles.editModalForm} onSubmit={submitEditRequest}>
+                  <input
+                    type="email"
+                    className="form-input"
+                    placeholder="email@pemilik-umkm.id"
+                    value={editEmail}
+                    onChange={(e) => setEditEmail(e.target.value)}
+                    required
+                    disabled={editSending}
+                    autoFocus
+                  />
+                  <button
+                    type="submit"
+                    className="btn btn--primary"
+                    disabled={editSending || !editEmail}
+                  >
+                    {editSending ? (
+                      <>
+                        <Loader2 size={16} className={styles.spinner} />
+                        Mengirim…
+                      </>
+                    ) : (
+                      'Kirim Link Edit'
+                    )}
+                  </button>
+                </form>
+              </>
+            ) : (
+              <div className={styles.editModalSuccess}>
+                <CheckCircle2 size={32} />
+                <h3>Permintaan Diterima</h3>
+                <p>
+                  Jika email Anda terdaftar sebagai pemilik, link edit telah dikirim
+                  ke email tersebut. Periksa kotak masuk (dan folder spam) Anda.
+                </p>
+                <button
+                  type="button"
+                  className="btn btn--primary"
+                  onClick={closeEditModal}
+                >
+                  Tutup
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
