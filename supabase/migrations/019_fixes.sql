@@ -44,6 +44,10 @@ DO $$ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_constraint WHERE conname = 'pengunjung_kategori_check'
   ) THEN
+    UPDATE pengunjung SET kategori = 'Umum'
+    WHERE kategori IS NOT NULL
+      AND kategori NOT IN ('UMKM', 'Umum', 'Instansi', 'Investor');
+
     ALTER TABLE pengunjung ADD CONSTRAINT pengunjung_kategori_check
       CHECK (kategori IN ('UMKM', 'Umum', 'Instansi', 'Investor'));
   END IF;
