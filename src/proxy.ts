@@ -82,14 +82,23 @@ export async function proxy(request: NextRequest) {
 
   // JIKA USER LOGIN: Cek otorisasi untuk rute admin (/admin/*)
   if (pathname.startsWith('/admin')) {
-    const { data: petugas } = await supabase
-      .from('petugas')
-      .select('role')
-      .eq('auth_user_id', user.id)
-      .single();
+    // A1: Baca role dari JWT app_metadata (lebih cepat, no DB query)
+    // Fallback ke DB query jika claim belum dikonfigurasi (pre-hook)
+    const jwtRole = (user.app_metadata?.role as string | undefined) ?? null;
+
+    let role: string | null = jwtRole;
+    if (!role) {
+      // Fallback: query petugas table (sebelum Auth hook dikonfigurasi)
+      const { data: petugas } = await supabase
+        .from('petugas')
+        .select('role')
+        .eq('auth_user_id', user.id)
+        .maybeSingle();
+      role = petugas?.role ?? null;
+    }
 
     // Jika user tidak terdaftar sebagai petugas/admin, alihkan ke dashboard pengunjung (/me)
-    if (!petugas || (petugas.role !== 'admin' && petugas.role !== 'petugas')) {
+    if (role !== 'admin' && role !== 'petugas') {
       return NextResponse.redirect(new URL('/me', request.url));
     }
   }
