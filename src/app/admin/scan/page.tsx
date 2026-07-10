@@ -64,7 +64,7 @@ export default function AdminScanPage() {
     const supabase = createClient();
 
     const { data, error } = await supabase
-      .from('reservasi')
+      .from('visit')
       .select(`
         id, tujuan, nama_yang_ditemui, tanggal_rencana, jam_rencana,
         keperluan, status, qr_token,
@@ -72,6 +72,7 @@ export default function AdminScanPage() {
         layanan(nama)
       `)
       .eq('qr_token', token)
+      .eq('asal', 'reservasi')
       .single();
 
     if (error || !data) {
@@ -178,7 +179,7 @@ export default function AdminScanPage() {
     }
 
     const { error } = await supabase
-      .from('reservasi')
+      .from('visit')
       .update(updateData)
       .eq('id', result.id);
 

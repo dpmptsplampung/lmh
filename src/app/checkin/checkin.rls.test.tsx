@@ -290,4 +290,44 @@ describe('K3 checkin page: auth gate', () => {
       expect(mock.auth.getUser.mock.calls.length).toBeGreaterThan(initialCalls);
     });
   });
+
+  // I1.b: verify the check-in INSERT now targets the visit spine with asal='walk_in'
+  it('inserts into visit with asal=walk_in on submit', async () => {
+    const { inserts } = buildMockSupabase({
+      user: { id: 'google-user-2' },
+      layanan: [{ id: 'lay-1', nama: 'DPMPTSP' }],
+    });
+
+    render(<CheckinPage />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/nama lengkap/i)).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText(/nama lengkap/i), {
+      target: { value: 'Budi Santoso' },
+    });
+    fireEvent.change(screen.getByLabelText(/layanan tujuan/i), {
+      target: { value: 'lay-1' },
+    });
+    fireEvent.change(screen.getByLabelText(/keperluan/i), {
+      target: { value: 'Persuratan' },
+    });
+    fireEvent.click(screen.getByLabelText(/saya setuju data saya diproses/i));
+
+    fireEvent.click(screen.getByRole('button', { name: /kirim check-in/i }));
+
+    await waitFor(() => {
+      const visitInsert = inserts.find((i) => i.table === 'visit');
+      expect(visitInsert).toBeDefined();
+      expect((visitInsert?.payload as Record<string, unknown>).asal).toBe('walk_in');
+      expect((visitInsert?.payload as Record<string, unknown>).nama).toBe('Budi Santoso');
+      expect((visitInsert?.payload as Record<string, unknown>).layanan_id).toBe('lay-1');
+      expect((visitInsert?.payload as Record<string, unknown>).tujuan).toBe('loket');
+      expect((visitInsert?.payload as Record<string, unknown>).status).toBe('menunggu');
+    });
+
+    // No row should be inserted into the legacy kunjungan table
+    expect(inserts.find((i) => i.table === 'kunjungan')).toBeUndefined();
+  });
 });

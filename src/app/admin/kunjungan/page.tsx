@@ -41,11 +41,12 @@ export default function KunjunganPage() {
       const supabase = createClient();
       const startOfDay = new Date(`${filterTanggal}T00:00:00`);
       const { data, error } = await supabase
-        .from('kunjungan')
+        .from('visit')
         .select(`
           id, nama, keperluan, status, waktu_masuk, waktu_selesai,
           layanan:layanan_id ( nama )
         `)
+        .eq('asal', 'walk_in')
         .gte('waktu_masuk', startOfDay.toISOString())
         .lt('waktu_masuk', new Date(filterTanggal + 'T23:59:59.999Z').toISOString())
         .order('waktu_masuk', { ascending: false });
@@ -75,7 +76,7 @@ export default function KunjunganPage() {
     try {
       const supabase = createClient();
       const { error } = await supabase
-        .from('kunjungan')
+        .from('visit')
         .update({
           status: 'selesai',
           waktu_selesai: new Date().toISOString(),

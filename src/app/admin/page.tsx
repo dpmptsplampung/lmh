@@ -117,19 +117,22 @@ export default function AdminDashboard() {
       const startOfToday = `${today}T00:00:00`;
 
       const { count: total } = await supabase
-        .from('kunjungan')
+        .from('visit')
         .select('*', { count: 'exact', head: true })
+        .eq('asal', 'walk_in')
         .gte('waktu_masuk', startOfToday);
 
       const { count: waiting } = await supabase
-        .from('kunjungan')
+        .from('visit')
         .select('*', { count: 'exact', head: true })
+        .eq('asal', 'walk_in')
         .eq('status', 'menunggu')
         .gte('waktu_masuk', startOfToday);
 
       const { count: done } = await supabase
-        .from('kunjungan')
+        .from('visit')
         .select('*', { count: 'exact', head: true })
+        .eq('asal', 'walk_in')
         .eq('status', 'selesai')
         .gte('waktu_masuk', startOfToday);
 
@@ -138,8 +141,9 @@ export default function AdminDashboard() {
       setSelesai(done ?? 0);
 
       const { data: completed } = await supabase
-        .from('kunjungan')
+        .from('visit')
         .select('waktu_masuk, waktu_selesai')
+        .eq('asal', 'walk_in')
         .eq('status', 'selesai')
         .gte('waktu_masuk', startOfToday);
 
@@ -155,8 +159,9 @@ export default function AdminDashboard() {
       }
 
       const { data: recent } = await supabase
-        .from('kunjungan')
+        .from('visit')
         .select('id, nama, status, waktu_masuk, layanan:layanan_id(nama)')
+        .eq('asal', 'walk_in')
         .order('waktu_masuk', { ascending: false })
         .limit(5);
 
@@ -183,8 +188,9 @@ export default function AdminDashboard() {
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
       const { data: weekly } = await supabase
-        .from('kunjungan')
+        .from('visit')
         .select('waktu_masuk')
+        .eq('asal', 'walk_in')
         .gte('waktu_masuk', sevenDaysAgo.toISOString());
 
       const counts: Record<string, number> = {};
@@ -206,8 +212,9 @@ export default function AdminDashboard() {
       setDailyVisitsState(dailyArr);
 
       const { data: breakdown } = await supabase
-        .from('kunjungan')
+        .from('visit')
         .select('layanan:layanan_id(nama)')
+        .eq('asal', 'walk_in')
         .gte('waktu_masuk', startOfToday);
 
       const counts2: Record<string, number> = {};
@@ -258,11 +265,13 @@ export default function AdminDashboard() {
 
     try {
       const supabase = createClient();
-      const { error } = await supabase.from('kunjungan').insert({
+      const { error } = await supabase.from('visit').insert({
+        asal: 'walk_in',
         nama: visitorName.trim(),
         asal_instansi: visitorAsal.trim(),
         keperluan: visitorKeperluan.trim() || null,
         layanan_id: selectedLayananId,
+        tujuan: 'loket',
         status: 'menunggu',
       });
 

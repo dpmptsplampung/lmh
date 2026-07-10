@@ -112,10 +112,12 @@ export default function ReservasiPage() {
       const supabase = createClient();
 
       const insertData: Record<string, unknown> = {
+        asal: 'reservasi',
         pengunjung_id: pengunjungId,
         tujuan: form.tujuan,
         tanggal_rencana: form.tanggal_rencana,
         keperluan: form.keperluan.trim() || null,
+        status: 'terjadwal',
       };
 
       if (form.tujuan === 'loket') {
@@ -129,7 +131,7 @@ export default function ReservasiPage() {
       }
 
       const { data, error: insertError } = await supabase
-        .from('reservasi')
+        .from('visit')
         .insert(insertData)
         .select('qr_token')
         .single();

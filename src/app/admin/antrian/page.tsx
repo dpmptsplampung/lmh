@@ -69,8 +69,9 @@ export default function AntrianPage() {
       const endOfDay = new Date(`${tanggal}T23:59:59.999`);
 
       let query = supabase
-        .from('kunjungan')
+        .from('visit')
         .select('id, nama, keperluan, status, waktu_masuk, waktu_selesai, layanan:layanan_id(nama)')
+        .eq('asal', 'walk_in')
         .gte('waktu_masuk', startOfDay.toISOString())
         .lte('waktu_masuk', endOfDay.toISOString())
         .order('waktu_masuk', { ascending: true });
@@ -94,7 +95,7 @@ export default function AntrianPage() {
     try {
       const supabase = createClient();
       const { error } = await supabase
-        .from('kunjungan')
+        .from('visit')
         .update({
           status: 'selesai',
           waktu_selesai: new Date().toISOString()

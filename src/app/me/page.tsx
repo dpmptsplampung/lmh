@@ -79,9 +79,10 @@ export default function MeDashboard() {
       }
 
       const { data: reservasi } = await supabase
-        .from('reservasi')
+        .from('visit')
         .select('id, tujuan, nama_yang_ditemui, tanggal_rencana, jam_rencana, keperluan, qr_token, status, layanan(nama)')
         .eq('pengunjung_id', pengunjung?.id || '')
+        .eq('asal', 'reservasi')
         .in('status', ['terjadwal', 'hadir', 'dilayani'])
         .order('tanggal_rencana', { ascending: true });
 

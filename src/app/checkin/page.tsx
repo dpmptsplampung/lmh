@@ -43,7 +43,7 @@ export default function CheckinPage() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   // Auth gate: require a user (Google or anon) before allowing INSERT.
-  // RLS on kunjungan now requires authenticated + rate limit (migration 022).
+  // RLS on visit (walk_in) requires authenticated + rate limit (migration 029).
   // I8: also capture user id for consent_log.subjek_ref (returned, not set here,
   // to avoid setState-in-effect lint violation).
   const runAuth = async (): Promise<{ state: AuthState; userId: string | null }> => {
@@ -138,11 +138,15 @@ export default function CheckinPage() {
       }
 
       const { error: insertError } = await supabase
-        .from('kunjungan')
+        .from('visit')
         .insert({
+          asal: 'walk_in',
           nama: form.nama.trim(),
           keperluan: form.keperluan.trim() || null,
           layanan_id: form.layanan_id,
+          tujuan: 'loket',
+          status: 'menunggu',
+          waktu_masuk: new Date().toISOString(),
         });
 
       if (insertError) throw insertError;
