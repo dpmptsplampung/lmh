@@ -39,6 +39,9 @@ interface FAQ {
 // Module-level counter for pure unique IDs in handlers
 let msgIdCounter = 0;
 
+const CONSENT_VERSION = '1.0';
+const CONSENT_TEXT = 'Saya setuju data saya diproses sesuai Kebijakan Privasi.';
+
 export default function PublicChatPage() {
   const [layananList, setLayananList] = useState<Layanan[]>([]);
   const [loadingLayanan, setLoadingLayanan] = useState(true);
@@ -62,6 +65,9 @@ export default function PublicChatPage() {
   const [messageInput, setMessageInput] = useState('');
   const [sesiStatus, setSesiStatus] = useState<'bot' | 'eskalasi' | 'aktif' | 'selesai'>('bot');
   const [faqs, setFaqs] = useState<FAQ[]>([]);
+
+  // I8: PDP consent — required before starting chat session
+  const [consentGiven, setConsentGiven] = useState(false);
 
   const threadEndRef = useRef<HTMLDivElement>(null);
 
@@ -298,6 +304,20 @@ export default function PublicChatPage() {
 
     try {
       const supabase = createClient();
+
+      // I8: Record PDP consent BEFORE creating chat session.
+      // subjek_ref = pengunjung id (preferred) or auth user id as fallback.
+      const consentRef = pengunjungId ?? (await supabase.auth.getUser()).data?.user?.id ?? 'anon';
+      try {
+        await supabase.from('consent_log').insert({
+          subjek_ref: consentRef,
+          tujuan: 'chat_followup',
+          disetujui: true,
+          versi_kebijakan: CONSENT_VERSION,
+        });
+      } catch {
+        // Consent logging is best-effort: don't block the session if it fails.
+      }
 
       // K2: sertakan pengunjung_id agar RLS chat_sesi_owner_insert menerima
       // baris ini (harus dimiliki user: pengunjung.auth_user_id = auth.uid()).
@@ -583,11 +603,35 @@ export default function PublicChatPage() {
                 </select>
               </div>
 
+              {/* I8: PDP consent checkbox — required */}
+              <div className="form-group" style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)' }}>
+                <input
+                  id="chatConsent"
+                  type="checkbox"
+                  checked={consentGiven}
+                  onChange={(e) => setConsentGiven(e.target.checked)}
+                  style={{ marginTop: '4px', width: '18px', height: '18px', cursor: 'pointer', flexShrink: 0 }}
+                  required
+                />
+                <label
+                  htmlFor="chatConsent"
+                  style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', cursor: 'pointer', lineHeight: 1.5 }}
+                >
+                  {CONSENT_TEXT}{' '}
+                  <Link
+                    href="/kebijakan-privasi"
+                    style={{ color: 'var(--color-primary-600)', textDecoration: 'underline' }}
+                  >
+                    Baca kebijakan
+                  </Link>
+                </label>
+              </div>
+
               <button
                 type="submit"
                 className="btn btn--primary btn--lg"
                 style={{ width: '100%', marginTop: 'var(--space-2)' }}
-                disabled={loadingSetup || loadingLayanan || !isLoggedIn}
+                disabled={loadingSetup || loadingLayanan || !isLoggedIn || !consentGiven}
               >
                 {loadingSetup ? (
                   <><Loader2 size={20} className="animate-pulse" /> Memulai Sesi...</>

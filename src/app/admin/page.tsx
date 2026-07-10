@@ -14,6 +14,7 @@ import {
   Building2,
   Loader2,
   X,
+  ShieldCheck,
 } from 'lucide-react';
 import Link from 'next/link';
 import {
@@ -314,6 +315,14 @@ export default function AdminDashboard() {
           >
             <UserPlus size={20} />
             Undang Petugas
+          </Link>
+          {/* I8: link ke DPO mini-dashboard */}
+          <Link
+            href="/admin/data-governance"
+            className={`${styles.walkinTriggerBtn} ${styles.inviteLinkBtn}`}
+          >
+            <ShieldCheck size={20} />
+            Tata Kelola Data (DPO)
           </Link>
         </div>
 

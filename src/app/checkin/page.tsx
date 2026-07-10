@@ -23,6 +23,9 @@ interface FormData {
 
 type AuthState = 'loading' | 'authed' | 'anon-disabled';
 
+const CONSENT_VERSION = '1.0';
+const CONSENT_TEXT = 'Saya setuju data saya diproses sesuai Kebijakan Privasi.';
+
 export default function CheckinPage() {
   const [authState, setAuthState] = useState<AuthState>('loading');
   const [form, setForm] = useState<FormData>({
@@ -35,32 +38,40 @@ export default function CheckinPage() {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
   const [loadingLayanan, setLoadingLayanan] = useState(true);
+  // I8: PDP consent — required before submit
+  const [consentGiven, setConsentGiven] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   // Auth gate: require a user (Google or anon) before allowing INSERT.
   // RLS on kunjungan now requires authenticated + rate limit (migration 022).
-  const runAuth = async () => {
+  // I8: also capture user id for consent_log.subjek_ref (returned, not set here,
+  // to avoid setState-in-effect lint violation).
+  const runAuth = async (): Promise<{ state: AuthState; userId: string | null }> => {
     const supabase = createClient();
     const { data: userData } = await supabase.auth.getUser();
     if (userData?.user) {
-      return 'authed' as const;
+      return { state: 'authed' as const, userId: userData.user.id };
     }
     // No user — attempt anon sign-in (must be enabled in Dashboard).
     try {
       const { data: anonData, error: anonError } =
         await supabase.auth.signInAnonymously();
       if (anonError || !anonData?.user) {
-        return 'anon-disabled' as const;
+        return { state: 'anon-disabled' as const, userId: null };
       }
-      return 'authed' as const;
+      return { state: 'authed' as const, userId: anonData.user.id };
     } catch {
-      return 'anon-disabled' as const;
+      return { state: 'anon-disabled' as const, userId: null };
     }
   };
 
   useEffect(() => {
     let active = true;
     runAuth().then((result) => {
-      if (active) setAuthState(result);
+      if (!active) return;
+      setAuthState(result.state);
+      // I8: capture user id for consent_log.subjek_ref
+      setCurrentUserId(result.userId);
     });
     return () => {
       active = false;
@@ -69,7 +80,10 @@ export default function CheckinPage() {
 
   const handleRetry = () => {
     setAuthState('loading');
-    runAuth().then((result) => setAuthState(result));
+    runAuth().then((result) => {
+      setAuthState(result.state);
+      setCurrentUserId(result.userId);
+    });
   };
 
   // Load layanan on mount (only once authed)
@@ -111,6 +125,18 @@ export default function CheckinPage() {
     setLoading(true);
     try {
       const supabase = createClient();
+
+      // I8: Record PDP consent BEFORE inserting kunjungan.
+      // subjek_ref = auth user id (RLS allows authenticated INSERT).
+      if (currentUserId) {
+        await supabase.from('consent_log').insert({
+          subjek_ref: currentUserId,
+          tujuan: 'checkin_data',
+          disetujui: true,
+          versi_kebijakan: CONSENT_VERSION,
+        });
+      }
+
       const { error: insertError } = await supabase
         .from('kunjungan')
         .insert({
@@ -269,10 +295,34 @@ export default function CheckinPage() {
                 </div>
               )}
 
+              {/* I8: PDP consent checkbox — required */}
+              <div className="form-group" style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)' }}>
+                <input
+                  id="consent"
+                  type="checkbox"
+                  checked={consentGiven}
+                  onChange={(e) => setConsentGiven(e.target.checked)}
+                  style={{ marginTop: '4px', width: '18px', height: '18px', cursor: 'pointer', flexShrink: 0 }}
+                  required
+                />
+                <label
+                  htmlFor="consent"
+                  style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', cursor: 'pointer', lineHeight: 1.5 }}
+                >
+                  {CONSENT_TEXT}{' '}
+                  <Link
+                    href="/kebijakan-privasi"
+                    style={{ color: 'var(--color-primary-600)', textDecoration: 'underline' }}
+                  >
+                    Baca kebijakan
+                  </Link>
+                </label>
+              </div>
+
               <button
                 type="submit"
                 className={`btn btn--primary btn--lg ${styles.checkinSubmit}`}
-                disabled={loading || layananOptions.length === 0}
+                disabled={loading || layananOptions.length === 0 || !consentGiven}
                 style={{ width: '100%' }}
               >
                 {loading ? (

@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, cleanup } from '@testing-library/react';
 
 const MIGRATION_PATH = resolve(
   __dirname,
@@ -237,6 +237,13 @@ describe('K2 chat page: handleStartSession includes pengunjung_id', () => {
     }
   });
 
+  afterEach(() => {
+    // I8: cleanup DOM between tests — consent checkbox now adds a 2nd form
+    // instance if previous render is not torn down (causes "multiple elements"
+    // errors in getByRole queries).
+    cleanup();
+  });
+
   it('INSERTs chat_sesi with pengunjung_id when user is logged in', async () => {
     const { inserts } = buildMockSupabase({
       user: { id: 'auth-user-1' },
@@ -256,6 +263,9 @@ describe('K2 chat page: handleStartSession includes pengunjung_id', () => {
     fireEvent.change(screen.getByLabelText('Layanan yang Ditanyakan'), {
       target: { value: 'lay-1' },
     });
+
+    // I8: tick the PDP consent checkbox (required to enable the submit button)
+    fireEvent.click(screen.getByLabelText(/saya setuju data saya diproses/i));
 
     // Submit the setup form
     fireEvent.click(screen.getByRole('button', { name: /mulai sesi chat/i }));
@@ -291,6 +301,10 @@ describe('K2 chat page: handleStartSession includes pengunjung_id', () => {
     fireEvent.change(screen.getByLabelText('Layanan yang Ditanyakan'), {
       target: { value: 'lay-1' },
     });
+
+    // I8: tick the PDP consent checkbox (required to enable the submit button)
+    fireEvent.click(screen.getByLabelText(/saya setuju data saya diproses/i));
+
     fireEvent.click(screen.getByRole('button', { name: /mulai sesi chat/i }));
 
     await waitFor(() => {
