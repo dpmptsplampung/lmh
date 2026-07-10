@@ -8,6 +8,8 @@ import {
   CheckCircle2,
   Loader2,
   Send,
+  LogIn,
+  RefreshCw,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { APP_NAME } from '@/lib/constants';
@@ -19,7 +21,10 @@ interface FormData {
   layanan_id: string;
 }
 
+type AuthState = 'loading' | 'authed' | 'anon-disabled';
+
 export default function CheckinPage() {
+  const [authState, setAuthState] = useState<AuthState>('loading');
   const [form, setForm] = useState<FormData>({
     nama: '',
     keperluan: '',
@@ -31,8 +36,45 @@ export default function CheckinPage() {
   const [error, setError] = useState('');
   const [loadingLayanan, setLoadingLayanan] = useState(true);
 
-  // Load layanan on mount
+  // Auth gate: require a user (Google or anon) before allowing INSERT.
+  // RLS on kunjungan now requires authenticated + rate limit (migration 022).
+  const runAuth = async () => {
+    const supabase = createClient();
+    const { data: userData } = await supabase.auth.getUser();
+    if (userData?.user) {
+      return 'authed' as const;
+    }
+    // No user — attempt anon sign-in (must be enabled in Dashboard).
+    try {
+      const { data: anonData, error: anonError } =
+        await supabase.auth.signInAnonymously();
+      if (anonError || !anonData?.user) {
+        return 'anon-disabled' as const;
+      }
+      return 'authed' as const;
+    } catch {
+      return 'anon-disabled' as const;
+    }
+  };
+
   useEffect(() => {
+    let active = true;
+    runAuth().then((result) => {
+      if (active) setAuthState(result);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const handleRetry = () => {
+    setAuthState('loading');
+    runAuth().then((result) => setAuthState(result));
+  };
+
+  // Load layanan on mount (only once authed)
+  useEffect(() => {
+    if (authState !== 'authed') return;
     async function loadLayanan() {
       try {
         const supabase = createClient();
@@ -50,7 +92,7 @@ export default function CheckinPage() {
       }
     }
     loadLayanan();
-  }, []);
+  }, [authState]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -109,7 +151,40 @@ export default function CheckinPage() {
 
         {/* Body */}
         <div className={styles.checkinBody}>
-          {success ? (
+          {authState === 'loading' ? (
+            <div
+              className="form-hint"
+              style={{ textAlign: 'center', padding: '2rem 0' }}
+              role="status"
+              aria-live="polite"
+            >
+              <Loader2 size={24} className="animate-pulse" />
+              <div style={{ marginTop: '0.5rem' }}>Memuat...</div>
+            </div>
+          ) : authState === 'anon-disabled' ? (
+            <div style={{ textAlign: 'center', padding: '1rem 0' }} role="alert">
+              <p className="form-hint" style={{ marginBottom: '1rem' }}>
+                Silakan login atau coba lagi nanti.
+              </p>
+              <Link
+                href="/login"
+                className="btn btn--primary btn--lg"
+                style={{ width: '100%', marginBottom: '0.75rem' }}
+              >
+                <LogIn size={20} />
+                Login dengan Google
+              </Link>
+              <button
+                type="button"
+                className="btn btn--lg"
+                style={{ width: '100%' }}
+                onClick={handleRetry}
+              >
+                <RefreshCw size={20} />
+                Coba lagi
+              </button>
+            </div>
+          ) : success ? (
             <div className={styles.successState}>
               <div className={styles.successIcon}>
                 <CheckCircle2 size={36} />
