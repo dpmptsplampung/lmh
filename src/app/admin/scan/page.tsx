@@ -163,7 +163,7 @@ export default function AdminScanPage() {
     }
 
     const updateData: CheckInUpdateData = { 
-      status: action === 'hadir' ? 'hadir' : 'batal',
+      status: action === 'hadir' ? 'menunggu' : 'batal',
       updated_at: new Date().toISOString(),
     };
 

@@ -83,7 +83,7 @@ export default function MeDashboard() {
         .select('id, tujuan, nama_yang_ditemui, tanggal_rencana, jam_rencana, keperluan, qr_token, status, layanan(nama)')
         .eq('pengunjung_id', pengunjung?.id || '')
         .eq('asal', 'reservasi')
-        .in('status', ['terjadwal', 'hadir', 'dilayani'])
+        .in('status', ['terjadwal', 'menunggu', 'dilayani'])
         .order('tanggal_rencana', { ascending: true });
 
       const normalized: Reservasi[] = (reservasi || []).map((r) => ({
@@ -109,7 +109,7 @@ export default function MeDashboard() {
   const getStatusLabel = (status: string) => {
     const map: Record<string, { label: string; className: string }> = {
       terjadwal: { label: '📅 Terjadwal', className: 'badge--menunggu' },
-      hadir: { label: '✓ Hadir', className: 'badge--aktif' },
+      menunggu: { label: '✓ Hadir', className: 'badge--aktif' },
       dilayani: { label: '● Dilayani', className: 'badge--published' },
       selesai: { label: '✓ Selesai', className: 'badge--selesai' },
       batal: { label: '✕ Batal', className: 'badge--nonaktif' },
