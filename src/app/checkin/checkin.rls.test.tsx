@@ -155,6 +155,7 @@ const buildMockSupabase = (opts: {
   const chainable = (table: string) => {
     const self: Record<string, ReturnType<typeof vi.fn>> = {};
     self.select = vi.fn(() => self);
+    self.neq = vi.fn(() => self);
     self.order = vi.fn(() => self);
     self.insert = vi.fn((payload: unknown) => {
       inserts.push({ table, payload });

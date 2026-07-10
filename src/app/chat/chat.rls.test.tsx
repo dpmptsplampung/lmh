@@ -146,6 +146,7 @@ const buildMockSupabase = (opts: {
     // Most terminal-ish builders resolve to data; insert captures payload.
     self.select = vi.fn(() => self);
     self.eq = vi.fn(() => self);
+    self.neq = vi.fn(() => self);
     self.order = vi.fn(() => self);
     self.update = vi.fn(() => self);
     self.in = vi.fn(() => self);

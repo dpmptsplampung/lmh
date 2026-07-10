@@ -81,6 +81,7 @@ export default function CheckinPage() {
         const { data, error: fetchError } = await supabase
           .from('layanan')
           .select('id, nama')
+          .neq('tipe', 'modul_publik')
           .order('nama');
 
         if (fetchError) throw fetchError;

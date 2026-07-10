@@ -135,6 +135,7 @@ export default function PublicChatPage() {
         const { data, error } = await supabase
           .from('layanan')
           .select('id, nama, chatbot_aktif')
+          .neq('tipe', 'modul_publik')
           .order('nama');
 
         if (error) throw error;
