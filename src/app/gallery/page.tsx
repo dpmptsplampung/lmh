@@ -11,7 +11,8 @@ import {
   X,
   FileCheck,
   TrendingUp,
-  Loader2,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import styles from './gallery.module.css';
@@ -27,14 +28,14 @@ interface GalleryDoc {
   deskripsi: string | null;
   nilai_investasi: string | null;
   image_url: string | null;
+  halaman_gambar: string[] | null;
 }
 
 export default function GalleryPage() {
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
   const [docs, setDocs] = useState<GalleryDoc[]>([]);
   const [foilaUrl, setFoilaUrl] = useState('https://invest.lampungprov.go.id/');
-  const [signedUrl, setSignedUrl] = useState<string | null>(null);
-  const [loadingSignedUrl, setLoadingSignedUrl] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
     async function loadData() {
@@ -43,7 +44,7 @@ export default function GalleryPage() {
 
         const { data: documents } = await supabase
           .from('investment_documents')
-          .select('id, judul, kategori, urutan_tampil, file_path, jumlah_halaman, status, deskripsi, nilai_investasi, image_url')
+          .select('id, judul, kategori, urutan_tampil, file_path, jumlah_halaman, status, deskripsi, nilai_investasi, image_url, halaman_gambar')
           .eq('status', 'aktif')
           .order('urutan_tampil', { ascending: true });
 
@@ -70,38 +71,14 @@ export default function GalleryPage() {
   }, []);
 
   useEffect(() => {
-    if (!selectedDocId) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setSignedUrl(null);
-      return;
-    }
-    const selectedDoc = docs.find((d) => d.id === selectedDocId);
-    if (!selectedDoc || !selectedDoc.file_path) {
-      setSignedUrl(null);
-      return;
-    }
-    let cancelled = false;
-    setLoadingSignedUrl(true);
-    setSignedUrl(null);
-    fetch('/api/investment-docs/public-view?file_path=' + encodeURIComponent(selectedDoc.file_path))
-      .then((res) => {
-        if (!res.ok) throw new Error('Failed to fetch signed URL');
-        return res.json();
-      })
-      .then((data) => {
-        if (!cancelled) setSignedUrl(data.signedUrl);
-      })
-      .catch((e) => {
-        console.error('Error fetching signed URL:', e);
-        if (!cancelled) setSignedUrl(null);
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingSignedUrl(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedDocId, docs]);
+    // Reset to page 1 whenever a new document is opened.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCurrentPage(1);
+  }, [selectedDocId]);
+
+  const selectedDoc = selectedDocId ? docs.find((d) => d.id === selectedDocId) ?? null : null;
+  const pageCount = selectedDoc?.jumlah_halaman ?? 0;
+  const hasPages = !!(selectedDoc?.halaman_gambar && selectedDoc.halaman_gambar.length > 0);
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -299,20 +276,24 @@ export default function GalleryPage() {
             <div className={styles.secureViewerBody}>
               <style>{`@media print { .no-print { display: none !important; } }`}</style>
               <div className="no-print" style={{ width: '100%', position: 'relative' }}>
-                {loadingSignedUrl ? (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '600px', color: 'var(--color-neutral-400)' }}>
-                    <Loader2 size={32} className="animate-spin" />
+                {!hasPages ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '600px', color: 'var(--color-neutral-400)', gap: 'var(--space-4)' }}>
+                    <FileText size={48} style={{ opacity: 0.4 }} />
+                    <p>Dokumen ini sedang diproses.</p>
+                    <a href="mailto:gallery@lmh.go.id" style={{ color: 'var(--color-primary-400)', fontSize: 'var(--text-sm)' }}>
+                      Hubungi admin untuk informasi lebih lanjut
+                    </a>
                   </div>
-                ) : signedUrl ? (
+                ) : (
                   <>
                     <div style={{
                       position: 'absolute',
                       top: '50%',
                       left: '50%',
-                      transform: 'translate(-50%, -50%) rotate(-45deg)',
-                      fontSize: '36px',
+                      transform: 'translate(-50%, -50%) rotate(-30deg)',
+                      fontSize: '32px',
                       fontWeight: 900,
-                      color: 'rgba(239, 68, 68, 0.06)',
+                      color: 'rgba(239, 68, 68, 0.10)',
                       pointerEvents: 'none',
                       userSelect: 'none',
                       whiteSpace: 'nowrap',
@@ -321,17 +302,40 @@ export default function GalleryPage() {
                     }}>
                       DPMPTSP PROV LAMPUNG — DILINDUNGI
                     </div>
-                    <iframe
-                      src={signedUrl}
-                      style={{ width: '100%', height: '600px', border: 'none', position: 'relative', zIndex: 2 }}
+                    {/* eslint-disable-next-line @next/next/no-img-element -- dynamic watermarked PNG, next/image does not apply */}
+                    <img
+                      src={`/api/investment-docs/page-image?doc_id=${selectedDocId}&page=${currentPage}`}
+                      alt={`Halaman ${currentPage} dari ${pageCount}`}
+                      style={{ width: '100%', maxWidth: '640px', height: 'auto', border: 'none', position: 'relative', zIndex: 2, display: 'block', margin: '0 auto', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}
                       onContextMenu={(e) => e.preventDefault()}
-                      title="Document Viewer"
+                      draggable={false}
                     />
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-4)', marginTop: 'var(--space-4)' }}>
+                      <button
+                        type="button"
+                        className="btn btn--secondary btn--sm"
+                        style={{ display: 'flex', gap: '4px', alignItems: 'center' }}
+                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                        disabled={currentPage <= 1}
+                      >
+                        <ChevronLeft size={14} />
+                        Sebelumnya
+                      </button>
+                      <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-neutral-400)' }}>
+                        Halaman {currentPage} dari {pageCount}
+                      </span>
+                      <button
+                        type="button"
+                        className="btn btn--secondary btn--sm"
+                        style={{ display: 'flex', gap: '4px', alignItems: 'center' }}
+                        onClick={() => setCurrentPage((p) => Math.min(pageCount, p + 1))}
+                        disabled={currentPage >= pageCount}
+                      >
+                        Berikutnya
+                        <ChevronRight size={14} />
+                      </button>
+                    </div>
                   </>
-                ) : (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '600px', color: 'var(--color-neutral-400)' }}>
-                    <p>Dokumen tidak tersedia untuk dilihat.</p>
-                  </div>
                 )}
               </div>
             </div>
