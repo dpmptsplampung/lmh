@@ -46,6 +46,9 @@ export default function PublicChatPage() {
   // Auth States
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  // K2: pengunjung row id — dipakai untuk mengisi chat_sesi.pengunjung_id
+  // supaya RLS bisa verifikasi kepemilikan sesi (pengunjung.auth_user_id = auth.uid()).
+  const [pengunjungId, setPengunjungId] = useState<string | null>(null);
 
   // Sesi Setup States
   const [visitorName, setVisitorName] = useState('');
@@ -68,21 +71,51 @@ export default function PublicChatPage() {
       try {
         const supabase = createClient();
         const { data: { user } } = await supabase.auth.getUser();
-        
+
         if (user) {
           setIsLoggedIn(true);
-          // Ambil nama dari tabel pengunjung
-          const { data: profile } = await supabase
+          // K2: ambil id + nama pengunjung. id dipakai untuk chat_sesi.pengunjung_id
+          // agar RLS (pengunjung.auth_user_id = auth.uid()) dapat verifikasi kepemilikan.
+          let { data: profile } = await supabase
             .from('pengunjung')
-            .select('nama')
+            .select('id, nama')
             .eq('auth_user_id', user.id)
             .single();
-            
+
+          if (!profile) {
+            // Belum ada baris pengunjung (mis. anon sign-in baru diaktifkan).
+            // Buat baris pengunjung untuk user ini — policy pengunjung_self_insert
+            // mengizinkan karena auth_user_id = auth.uid(). Lalu ambil id-nya.
+            const fallbackName =
+              user.user_metadata?.full_name ||
+              user.email?.split('@')[0] ||
+              'Pengunjung Anonim';
+            const provider = user.is_anonymous ? 'anonymous' : 'google';
+            const { data: inserted } = await supabase
+              .from('pengunjung')
+              .insert({
+                auth_user_id: user.id,
+                nama: fallbackName,
+                email: user.email ?? null,
+                provider,
+              })
+              .select('id, nama')
+              .single();
+            profile = inserted;
+          }
+
+          if (profile?.id) {
+            setPengunjungId(profile.id);
+          }
           if (profile?.nama) {
             setVisitorName(profile.nama);
           } else {
             // Fallback to Google name if profile not completed yet
-            setVisitorName(user.user_metadata?.full_name || user.email?.split('@')[0] || '');
+            setVisitorName(
+              user.user_metadata?.full_name ||
+                user.email?.split('@')[0] ||
+                '',
+            );
           }
         }
       } catch (e) {
@@ -265,14 +298,29 @@ export default function PublicChatPage() {
     try {
       const supabase = createClient();
 
+      // K2: sertakan pengunjung_id agar RLS chat_sesi_owner_insert menerima
+      // baris ini (harus dimiliki user: pengunjung.auth_user_id = auth.uid()).
+      // Hanya sertakan bila pengunjungId sudah diketahui; untuk anon tanpa
+      // baris pengunjung, kolom ini NULL dan sesi akan ditolak oleh RLS
+      // (sesuai desain — anon harus membuat baris pengunjung dulu).
+      const insertPayload: {
+        layanan_id: string;
+        kontak_pengunjung: string;
+        status: string;
+        pengunjung_id?: string;
+      } = {
+        layanan_id: selectedLayananId,
+        kontak_pengunjung: nama,
+        status: selectedLayanan?.chatbot_aktif ? 'bot' : 'eskalasi',
+      };
+      if (pengunjungId) {
+        insertPayload.pengunjung_id = pengunjungId;
+      }
+
       // Create session in database
       const { data: session, error } = await supabase
         .from('chat_sesi')
-        .insert({
-          layanan_id: selectedLayananId,
-          kontak_pengunjung: nama,
-          status: selectedLayanan?.chatbot_aktif ? 'bot' : 'eskalasi',
-        })
+        .insert(insertPayload)
         .select()
         .single();
 
