@@ -70,8 +70,7 @@ async function checkRateLimit(
     .select('*', { count: 'exact', head: true })
     .eq('action', RATE_LIMIT_ACTION)
     .gte('created_at', since)
-    .is('user_id', null)
-    .or(`action.eq.${RATE_LIMIT_ACTION}`);
+    .is('user_id', null);
 
   // Lebih aman gagal-terbuka di sisi rate-limit? Tidak — untuk endpoint
   // publik yang mengirim email, fail-CLOSED lebih aman. Jika query error,
@@ -136,6 +135,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Log setiap request yang lulus throttle (owner maupun non-owner)
+  // supaya repeat offenders terblokir. Best-effort: abaikan error insert.
+  await logRateLimit(adminClient);
+
   // Cek apakah email terdaftar sebagai pemilik listing ini.
   const { data: ownerRows, error: ownerError } = await adminClient
     .from('umkm_listing_owner')
@@ -155,8 +158,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ sent: true }, { status: 200 });
   }
 
-  // Email terdaftar sebagai pemilik. Log rate-limit + generate link.
-  await logRateLimit(adminClient);
+  // Email terdaftar sebagai pemilik. Generate link.
 
   // Pastikan user ada di auth.users. Jika belum, buat (no password,
   // email_confirm: true) supaya generateLink(magiclink) berhasil.

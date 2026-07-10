@@ -43,12 +43,11 @@ const mockServiceClient = async (opts: MockServiceOpts = {}) => {
   const supabaseMod = await import('@supabase/supabase-js');
   const createClient = supabaseMod.createClient as unknown as ReturnType<typeof vi.fn>;
 
-  // Rate-limit select chain: .from('anon_rate_limit').select('*',{count:'exact',head:true}).eq(...).gte(...).is(...).or(...)
+  // Rate-limit select chain: .from('anon_rate_limit').select('*',{count:'exact',head:true}).eq(...).gte(...).is(...)
   const rateSelectChain = {
     eq: vi.fn().mockReturnThis(),
     gte: vi.fn().mockReturnThis(),
-    is: vi.fn().mockReturnThis(),
-    or: vi.fn().mockResolvedValue({
+    is: vi.fn().mockResolvedValue({
       count: opts.rateCount ?? 0,
       error: opts.rateError ?? null,
     }),
@@ -73,9 +72,7 @@ const mockServiceClient = async (opts: MockServiceOpts = {}) => {
   };
 
   // rate-limit insert chain
-  const logInsertChain = {
-    error: opts.logError ?? null,
-  };
+  const logInsertMock = vi.fn().mockReturnValue({ error: opts.logError ?? null });
 
   const mock = {
     auth: {
@@ -104,9 +101,10 @@ const mockServiceClient = async (opts: MockServiceOpts = {}) => {
     from: vi.fn().mockImplementation((table: string) => {
       if (table === 'anon_rate_limit') {
         const callCount = mock.from.mock.calls.filter((c: unknown[]) => c[0] === 'anon_rate_limit').length;
-        // Second call to anon_rate_limit is the insert (after owner match)
+        // Second call to anon_rate_limit is the insert (after rate-limit
+        // check passes, before owner lookup — counts every throttled request)
         if (callCount === 2) {
-          return { insert: vi.fn().mockReturnValue(logInsertChain) };
+          return { insert: logInsertMock };
         }
         return { select: vi.fn().mockReturnValue(rateSelectChain) };
       }
@@ -118,6 +116,7 @@ const mockServiceClient = async (opts: MockServiceOpts = {}) => {
       }
       return { select: vi.fn().mockReturnValue({}) };
     }),
+    __logInsert: logInsertMock,
   };
 
   createClient.mockReturnValue(mock);
@@ -185,6 +184,13 @@ describe('POST /api/umkm/request-edit-link — owner check (no leak)', () => {
     expect(json.sent).toBe(true);
     // generateLink must NOT be called (no owner match)
     expect(serviceMock.auth.admin.generateLink).not.toHaveBeenCalled();
+    // Rate-limit insert MUST be called (request passed throttle, counted
+    // even though email is not a registered owner — blocks repeat probes)
+    expect(serviceMock.__logInsert).toHaveBeenCalledTimes(1);
+    expect(serviceMock.__logInsert).toHaveBeenCalledWith({
+      user_id: null,
+      action: 'umkm_request_link',
+    });
   });
 
   it('returns 200 { sent: true } when owner query errors (no leak)', async () => {
@@ -195,6 +201,8 @@ describe('POST /api/umkm/request-edit-link — owner check (no leak)', () => {
     const json = await res.json();
     expect(json.sent).toBe(true);
     expect(serviceMock.auth.admin.generateLink).not.toHaveBeenCalled();
+    // Rate-limit insert is called before owner lookup, so still counted
+    expect(serviceMock.__logInsert).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -220,6 +228,8 @@ describe('POST /api/umkm/request-edit-link — happy path (owner match)', () => 
     expect(linkCall.email).toBe('owner@umkm.id');
     expect(linkCall.type).toBe('magiclink');
     expect(linkCall.options.redirectTo).toBe(`/umkm/edit/${VALID_LISTING_ID}`);
+    // Rate-limit insert is called (now before owner lookup, still once)
+    expect(serviceMock.__logInsert).toHaveBeenCalledTimes(1);
   });
 
   it('creates the auth user first if not present, then retries generateLink', async () => {
@@ -290,6 +300,8 @@ describe('POST /api/umkm/request-edit-link — rate limiting', () => {
     expect(json.error).toMatch(/terlalu banyak|coba lagi/i);
     // generateLink must NOT be called (rate-limited before owner check)
     expect(serviceMock.auth.admin.generateLink).not.toHaveBeenCalled();
+    // Rate-limit insert must NOT be called (check rejected before logging)
+    expect(serviceMock.__logInsert).not.toHaveBeenCalled();
   });
 
   it('allows request when rate limit count is below max (count=2)', async () => {
@@ -305,12 +317,14 @@ describe('POST /api/umkm/request-edit-link — rate limiting', () => {
   });
 
   it('returns 429 when rate-limit query errors (fail-closed)', async () => {
-    await mockServiceClient({
+    const serviceMock = await mockServiceClient({
       ownerRows: [{ id: 'owner-row-1' }],
       rateError: { message: 'connection refused' },
     });
     const { POST } = await import('./route');
     const res = await POST(buildRequest({ listing_id: VALID_LISTING_ID, email: 'owner@umkm.id' }));
     expect(res.status).toBe(429);
+    // Check failed → no insert logged
+    expect(serviceMock.__logInsert).not.toHaveBeenCalled();
   });
 });
