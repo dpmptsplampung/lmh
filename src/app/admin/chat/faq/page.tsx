@@ -51,6 +51,18 @@ export default function AdminFAQPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  // I4: prefill pertanyaan from query param (?prefill_pertanyaan=...)
+  // Used by the admin AI-log page "Tambah ke FAQ" action.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const prefill = params.get('prefill_pertanyaan');
+    if (prefill) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setFormPertanyaan(prefill);
+    }
+  }, []);
+
   // Load Layanan
   useEffect(() => {
     async function loadLayanan() {

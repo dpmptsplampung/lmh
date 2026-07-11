@@ -16,6 +16,7 @@ import {
   X,
   ShieldCheck,
   ClipboardList,
+  Bot,
 } from 'lucide-react';
 import Link from 'next/link';
 import {
@@ -341,6 +342,14 @@ export default function AdminDashboard() {
           >
             <ClipboardList size={20} />
             Dashboard SKM
+          </Link>
+          {/* I4: link ke audit log asisten AI */}
+          <Link
+            href="/admin/chat/ai-log"
+            className={`${styles.walkinTriggerBtn} ${styles.inviteLinkBtn}`}
+          >
+            <Bot size={20} />
+            Log Asisten AI
           </Link>
         </div>
 

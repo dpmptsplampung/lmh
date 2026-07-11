@@ -405,46 +405,54 @@ export default function PublicChatPage() {
       });
     } catch { /* ignore db error in fallback mode */ }
 
-    // If chatbot mode: analyze text for keyword matching FAQ
+    // If chatbot mode: ask RAG AI assistant (/api/chat/ai)
     if (sesiStatus === 'bot') {
       setLoadingSetup(true);
 
-      // Simulasikan delay bot mengetik
-      setTimeout(async () => {
-        // Simple keyword lookup
-        const lowerText = text.toLowerCase();
-        const matchedFaq = faqs.find(
-          (faq) =>
-            lowerText.includes(faq.pertanyaan.toLowerCase()) ||
-            faq.pertanyaan.toLowerCase().split(' ').some((word) => word.length > 3 && lowerText.includes(word))
-        );
+      // Call the RAG AI route. Fail-safe: any error → eskalasi ke petugas.
+      try {
+        const res = await fetch('/api/chat/ai', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            pertanyaan: text.trim(),
+            layanan_id: selectedLayananId,
+            sesi_id: sesiId,
+          }),
+        });
+        const data = await res.json();
 
-        if (matchedFaq) {
+        if (data && data.jawaban && !data.eskalasi) {
+          // AI answered from FAQ context
           const botReply: Message = {
             id: `bot-reply-${msgIdCounter++}`,
             pengirim: 'bot',
-            isi: matchedFaq.jawaban,
+            isi: data.jawaban,
             waktu: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
           };
 
           setMessages((prev) => [...prev, botReply]);
 
-          // Save bot reply to database
+          // Save bot reply to database with sumber_faq_id (first source)
           try {
             const supabase = createClient();
+            const sumberFaqId = Array.isArray(data.sumber) && data.sumber.length > 0
+              ? data.sumber[0].id
+              : null;
             await supabase.from('chat_pesan').insert({
               sesi_id: sesiId,
               pengirim: 'bot',
-              isi: matchedFaq.jawaban,
-              sumber_faq_id: matchedFaq.id,
+              isi: data.jawaban,
+              sumber_faq_id: sumberFaqId,
             });
           } catch { /* ignore */ }
         } else {
-          // No match: explain and escalate
+          // AI unsure or no match: explain and escalate to petugas
+          const eskalasiText = 'Maaf, saya belum yakin, saya akan menghubungkan Anda ke petugas.\n\nSaya akan meneruskan sesi chat ini ke petugas loket untuk dibantu secara manual. Mohon tunggu...';
           const botReply: Message = {
-            id: `bot-escalate-${Date.now()}`,
+            id: `bot-escalate-${msgIdCounter++}`,
             pengirim: 'bot',
-            isi: 'Maaf, saya tidak menemukan jawaban yang cocok untuk pertanyaan Anda di database FAQ.\n\nSaya akan meneruskan sesi chat ini ke petugas loket untuk dibantu secara manual. Mohon tunggu...',
+            isi: eskalasiText,
             waktu: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
           };
 
@@ -457,7 +465,7 @@ export default function PublicChatPage() {
             await supabase.from('chat_pesan').insert({
               sesi_id: sesiId,
               pengirim: 'bot',
-              isi: botReply.isi,
+              isi: eskalasiText,
             });
             await supabase
               .from('chat_sesi')
@@ -465,8 +473,31 @@ export default function PublicChatPage() {
               .eq('id', sesiId);
           } catch { /* ignore */ }
         }
-        setLoadingSetup(false);
-      }, 700);
+      } catch {
+        // Network/fetch error: fail-safe to eskalasi
+        const eskalasiText = 'Maaf, asisten AI sedang tidak tersedia. Saya akan menghubungkan Anda ke petugas loket. Mohon tunggu...';
+        const botReply: Message = {
+          id: `bot-escalate-${msgIdCounter++}`,
+          pengirim: 'bot',
+          isi: eskalasiText,
+          waktu: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+        };
+        setMessages((prev) => [...prev, botReply]);
+        setSesiStatus('eskalasi');
+        try {
+          const supabase = createClient();
+          await supabase.from('chat_pesan').insert({
+            sesi_id: sesiId,
+            pengirim: 'bot',
+            isi: eskalasiText,
+          });
+          await supabase
+            .from('chat_sesi')
+            .update({ status: 'eskalasi' })
+            .eq('id', sesiId);
+        } catch { /* ignore */ }
+      }
+      setLoadingSetup(false);
     }
   };
 
