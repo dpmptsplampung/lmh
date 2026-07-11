@@ -21,6 +21,7 @@ import {
 import { createClient } from '@/lib/supabase/client';
 import { APP_NAME, WA_NUMBER, WA_DEFAULT_MESSAGE } from '@/lib/constants';
 import { waLink } from '@/lib/utils';
+import EstimasiAntrean from '@/components/EstimasiAntrean';
 import styles from './landing.module.css';
 
 const iconMap: Record<string, ElementType> = {
@@ -346,6 +347,9 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
+
+      {/* Estimasi Antrean Realtime */}
+      <EstimasiAntrean />
 
       {/* Services */}
       <section id="layanan" className={styles.services}>

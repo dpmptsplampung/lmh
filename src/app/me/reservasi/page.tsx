@@ -10,6 +10,8 @@ import {
   CheckCircle2,
   Loader2,
   Send,
+  Clock,
+  Users,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import QRCodeDisplay from '@/components/QRCode';
@@ -39,6 +41,10 @@ export default function ReservasiPage() {
   const [loadingInit, setLoadingInit] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState<{ qr_token: string } | null>(null);
+  const [estimasiLayanan, setEstimasiLayanan] = useState<{
+    antre_count: number;
+    estimasi_tunggu_total_menit: number;
+  } | null>(null);
 
   // Set min date ke besok
   const tomorrow = new Date();
@@ -80,6 +86,28 @@ export default function ReservasiPage() {
 
     loadInitData();
   }, []);
+
+  // Fetch estimasi antrean untuk layanan yang dipilih (I2)
+  useEffect(() => {
+    if (!form.layanan_id) {
+      return;
+    }
+    let cancelled = false;
+    const supabase = createClient();
+    supabase
+      .from('v_antrian_loket')
+      .select('antre_count, estimasi_tunggu_total_menit')
+      .eq('layanan_id', form.layanan_id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (cancelled) return;
+        setEstimasiLayanan(data as { antre_count: number; estimasi_tunggu_total_menit: number } | null);
+      });
+    return () => {
+      cancelled = true;
+      setEstimasiLayanan(null);
+    };
+  }, [form.layanan_id]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -279,6 +307,16 @@ export default function ReservasiPage() {
                           <option key={l.id} value={l.id}>{l.nama}</option>
                         ))}
                       </select>
+                    )}
+                    {form.layanan_id && estimasiLayanan && (
+                      <div className={styles.estimasiInline}>
+                        <Clock size={16} />
+                        <span>
+                          Saat ini: ~{estimasiLayanan.estimasi_tunggu_total_menit} menit,&nbsp;
+                          <Users size={14} style={{ verticalAlign: 'middle', display: 'inline' }} />
+                          {' '}{estimasiLayanan.antre_count} antre
+                        </span>
+                      </div>
                     )}
                   </div>
                 )}
