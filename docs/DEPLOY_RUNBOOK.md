@@ -83,7 +83,7 @@ migrations):
 
 ## Section 3: Migration Apply Order (CRITICAL — follow exactly)
 
-Apply migrations `020` → `036` **in order** via Supabase Dashboard →
+Apply migrations `020` → `038` **in order** via Supabase Dashboard →
 SQL Editor (paste each file, run). **Backup the database first**
 (Database → Backup).
 
@@ -107,6 +107,11 @@ SQL Editor (paste each file, run). **Backup the database first**
   function regardless, but the daily cron schedule only registers if
   `pg_cron` is installed. If not installed, the migration prints a NOTICE
   and you must run `SELECT prune_anon_rate_limit();` manually on a schedule.
+- **Before 038:** Safe online ALTER — migration 038 adds
+  `listing_umkm.sisi` column with `NOT NULL DEFAULT 'kebutuhan'`.
+  Existing rows are treated as `kebutuhan` (correct — that was the
+  implicit assumption before two-sided marketplace). No table rewrite
+  (Postgres ≥ 11 optimizes non-volatile defaults).
 
 ### Migration list
 
@@ -122,6 +127,8 @@ SQL Editor (paste each file, run). **Backup the database first**
 | ... | ... | (028–034) |
 | 035 | `035_faq_embedding.sql` | **Requires pgvector — see above** |
 | 036 | `036_anon_rate_prune.sql` | `prune_anon_rate_limit()` + pg_cron |
+| 037 | `037_investasi_lead.sql` | I6 — `investasi_lead` table, RLS, audit trigger |
+| 038 | `038_umkm_dua_sisi.sql` | I7 — `listing_umkm.sisi` column, `umkm_inquiry` table, `v_umkm_match` view |
 
 ---
 
@@ -162,6 +169,23 @@ SQL Editor (paste each file, run). **Backup the database first**
    - Notification send (admin triggers → email/web_push)
    - AI chat eskalasi (ask a question with no FAQ match → bot hands off to
      petugas)
+   - **I6 — Investasi lead funnel:** open Gallery → click "Ajukan Minat
+     Investasi" on an IPRO card → submit form → verify row appears at
+     `/admin/investasi-leads` → update status via dropdown.
+   - **I7 — UMKM inquiry:** open `/umkm` → matchmaking tab → "Kirim Pesan"
+     on a listing → submit → owner logs in via magic-link → `/umkm/inbox`
+     → approve/reject. Verify `kontak_hp`/`kontak_email` NOT visible on
+     public listing cards (only via owner inbox after approval).
+   - **I9 — Offline checkin:** open `/checkin` in DevTools → Application →
+     Service Workers confirms `sw.js` active → toggle "Offline" in
+     Network tab → submit checkin form → verify "tersimpan offline"
+     message → toggle "Online" → verify queue replays and visit appears
+     in admin.
+   - **I9 — Checkin Bantuan:** login as petugas → `/admin/checkin-asist`
+     → submit a visitor on their behalf → verify visit appears in admin
+     antrian with `pengunjung_id = NULL`.
+   - **I9 — PWA install:** DevTools → Application → Manifest confirms
+     metadata; "Install app" prompt works (Chrome/Edge).
 3. **Verify `anon_rate_limit` pruning is scheduled** (migration 036):
    ```sql
    SELECT * FROM cron.job WHERE jobname = 'prune_anon_rate_limit';
