@@ -28,6 +28,7 @@ interface MockServerOpts {
   visitError?: { message: string } | null;
   existingSkm?: { id: string } | null;
   insertError?: { message: string; code?: string } | null;
+  insertThrows?: { code?: string; message?: string };
 }
 
 const mockServerClient = async (opts: MockServerOpts = {}) => {
@@ -40,7 +41,9 @@ const mockServerClient = async (opts: MockServerOpts = {}) => {
   const insertErr = opts.insertError ?? null;
 
   // Persistent skm_respons chain — the route calls from('skm_respons') twice:
-  //   1) select('id').eq('visit_id', v).maybeSingle()  → existing-check
+  //   1) select('id').eq('visit_id', v).maybeSingle()  → existing-check (now via
+  //      service-role, so this chain's maybeSingle is unused for the check, but
+  //      kept for backward-compat with route behavior if service key missing)
   //   2) insert(payload)                                → write
   // Sharing one chain object means both the route and the test assertions
   // reference the same `insert` spy.
@@ -48,7 +51,10 @@ const mockServerClient = async (opts: MockServerOpts = {}) => {
     select: vi.fn().mockReturnThis(),
     eq: vi.fn().mockReturnThis(),
     maybeSingle: vi.fn().mockResolvedValue({ data: existingData, error: null }),
-    insert: vi.fn().mockReturnValue({ error: insertErr }),
+    insert: vi.fn().mockImplementation(() => {
+      if (opts.insertThrows) throw opts.insertThrows;
+      return { error: insertErr };
+    }),
   };
 
   const mock = {
@@ -78,7 +84,9 @@ const mockServerClient = async (opts: MockServerOpts = {}) => {
 };
 
 interface MockServiceOpts {
-  insertError?: { message: string } | null;
+  existingSkm?: { id: string } | null;
+  insertError?: { message: string; code?: string } | null;
+  insertThrows?: { code?: string; message?: string };
 }
 
 const mockServiceClient = async (opts: MockServiceOpts = {}) => {
@@ -86,10 +94,28 @@ const mockServiceClient = async (opts: MockServiceOpts = {}) => {
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-key';
   const supabaseMod = await import('@supabase/supabase-js');
   const createClient = supabaseMod.createClient as unknown as ReturnType<typeof vi.fn>;
-  const mock = {
-    from: vi.fn().mockReturnValue({
-      insert: vi.fn().mockReturnValue({ error: opts.insertError ?? null }),
+
+  const existingData = opts.existingSkm === undefined ? null : opts.existingSkm;
+  const insertErr = opts.insertError ?? null;
+
+  // Service-role client is now used for BOTH the duplicate SELECT check and the
+  // INSERT fallback. Build a chain that supports both.
+  const skmChain = {
+    select: vi.fn().mockReturnThis(),
+    eq: vi.fn().mockReturnThis(),
+    maybeSingle: vi.fn().mockResolvedValue({ data: existingData, error: null }),
+    insert: vi.fn().mockImplementation(() => {
+      if (opts.insertThrows) throw opts.insertThrows;
+      return { error: insertErr };
     }),
+  };
+
+  const mock = {
+    from: vi.fn((table: string) => {
+      if (table === 'skm_respons') return skmChain;
+      return {};
+    }),
+    _skmChain: skmChain,
   };
   createClient.mockReturnValue(mock);
   return mock;
@@ -182,9 +208,12 @@ describe('POST /api/skm/submit — visit state checks', () => {
     expect(json.error).toMatch(/selesai/i);
   });
 
-  it('returns 409 when SKM already submitted for this visit', async () => {
+  it('returns 409 when SKM already submitted for this visit (service-role check)', async () => {
     await mockServerClient({
       visit: { id: validBody.visit_id, layanan_id: validBody.layanan_id, status: 'selesai' },
+      existingSkm: null,
+    });
+    const serviceMock = await mockServiceClient({
       existingSkm: { id: 'existing-skm-id' },
     });
     const { POST } = await import('./route');
@@ -192,6 +221,14 @@ describe('POST /api/skm/submit — visit state checks', () => {
     expect(res.status).toBe(409);
     const json = await res.json();
     expect(json.error).toMatch(/sudah mengisi/i);
+
+    // Verify the duplicate check used the service-role client's skm_respons chain
+    const checkSpy = serviceMock._skmChain.maybeSingle;
+    expect(checkSpy).toHaveBeenCalledTimes(1);
+    const selectSpy = serviceMock._skmChain.select;
+    expect(selectSpy).toHaveBeenCalledWith('id');
+    const eqSpy = serviceMock._skmChain.eq;
+    expect(eqSpy).toHaveBeenCalledWith('visit_id', validBody.visit_id);
   });
 });
 
@@ -208,6 +245,7 @@ describe('POST /api/skm/submit — happy path', () => {
       existingSkm: null,
       insertError: null,
     });
+    await mockServiceClient({ existingSkm: null });
     const { POST } = await import('./route');
     const res = await POST(buildRequest(validBody));
     expect(res.status).toBe(201);
@@ -266,6 +304,7 @@ describe('POST /api/skm/submit — happy path', () => {
       existingSkm: null,
       insertError: null,
     });
+    await mockServiceClient({ existingSkm: null });
     const { POST } = await import('./route');
     const { saran: _omit, ...bodyNoSaran } = validBody;
     void _omit;
@@ -274,5 +313,61 @@ describe('POST /api/skm/submit — happy path', () => {
     const insertSpy = serverMock._skmChain.insert;
     const payload = insertSpy.mock.calls[0][0];
     expect(payload.saran).toBeNull();
+  });
+});
+
+describe('POST /api/skm/submit — DB unique constraint (23505)', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://supabase.local';
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-key';
+  });
+
+  it('returns 409 when authenticated INSERT throws 23505 (unique_violation)', async () => {
+    await mockServerClient({
+      visit: { id: validBody.visit_id, layanan_id: validBody.layanan_id, status: 'selesai' },
+      existingSkm: null,
+      insertThrows: { code: '23505', message: 'duplicate key value violates unique constraint' },
+    });
+    await mockServiceClient({ existingSkm: null });
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest(validBody));
+    expect(res.status).toBe(409);
+    const json = await res.json();
+    expect(json.error).toMatch(/sudah mengisi/i);
+  });
+
+  it('returns 409 when service-role INSERT throws 23505 (unique_violation)', async () => {
+    await mockServerClient({
+      visit: { id: validBody.visit_id, layanan_id: validBody.layanan_id, status: 'selesai' },
+      existingSkm: null,
+      insertError: { message: 'rls denied', code: '42501' },
+    });
+    await mockServiceClient({
+      existingSkm: null,
+      insertThrows: { code: '23505', message: 'duplicate key value violates unique constraint' },
+    });
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest(validBody));
+    expect(res.status).toBe(409);
+    const json = await res.json();
+    expect(json.error).toMatch(/sudah mengisi/i);
+  });
+
+  it('returns 409 when service-role INSERT returns error code 23505 (non-throw)', async () => {
+    await mockServerClient({
+      visit: { id: validBody.visit_id, layanan_id: validBody.layanan_id, status: 'selesai' },
+      existingSkm: null,
+      insertError: { message: 'rls denied', code: '42501' },
+    });
+    await mockServiceClient({
+      existingSkm: null,
+      insertError: { code: '23505', message: 'duplicate key value violates unique constraint' },
+    });
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest(validBody));
+    expect(res.status).toBe(409);
+    const json = await res.json();
+    expect(json.error).toMatch(/sudah mengisi/i);
   });
 });

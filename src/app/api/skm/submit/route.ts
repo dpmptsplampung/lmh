@@ -73,18 +73,26 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Check if already submitted
-  const { data: existing } = await supabase
-    .from('skm_respons')
-    .select('id')
-    .eq('visit_id', visit_id)
-    .maybeSingle();
+  // Check if already submitted. RLS policy `skm_select_staff` is TO authenticated
+  // only, so an anon visitor's SELECT via the cookie-bound server client silently
+  // returns null. Use the service-role client for the duplicate check so it
+  // actually sees existing rows regardless of the caller's auth state. The DB
+  // partial unique index (migration 031) is the real enforcement; this SELECT
+  // is a fast-path UX nicety for authenticated users.
+  const adminCheckClient = getServiceClient();
+  if (adminCheckClient) {
+    const { data: existing } = await adminCheckClient
+      .from('skm_respons')
+      .select('id')
+      .eq('visit_id', visit_id)
+      .maybeSingle();
 
-  if (existing) {
-    return NextResponse.json(
-      { error: 'Anda sudah mengisi survei ini. Terima kasih.' },
-      { status: 409 },
-    );
+    if (existing) {
+      return NextResponse.json(
+        { error: 'Anda sudah mengisi survei ini. Terima kasih.' },
+        { status: 409 },
+      );
+    }
   }
 
   const insertPayload = {
@@ -102,12 +110,28 @@ export async function POST(request: NextRequest) {
     saran: saran ?? null,
   };
 
+  // INSERT path: try authenticated client first (RLS "skm_insert" TO authenticated),
+  // then fall back to service-role. Either path can raise `23505` (unique_violation)
+  // from the partial unique index — map that to 409 so the form can transition to
+  // already_submitted state on a race.
+  type InsertErr = { code?: string; message?: string } | null;
+
   // Try authenticated client first (RLS policy "skm_insert" TO authenticated)
-  const { error: insertErr } = await supabase
-    .from('skm_respons')
-    .insert(insertPayload);
+  let insertErr: InsertErr = null;
+  try {
+    const res = await supabase.from('skm_respons').insert(insertPayload);
+    insertErr = res.error as InsertErr;
+  } catch (err) {
+    insertErr = err as InsertErr;
+  }
 
   if (insertErr) {
+    if (insertErr.code === '23505') {
+      return NextResponse.json(
+        { error: 'Anda sudah mengisi survei ini' },
+        { status: 409 },
+      );
+    }
     // Fallback to service-role client if RLS rejects the public INSERT
     const adminClient = getServiceClient();
     if (!adminClient) {
@@ -117,11 +141,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { error: adminInsertErr } = await adminClient
-      .from('skm_respons')
-      .insert(insertPayload);
+    let adminInsertErr: InsertErr = null;
+    try {
+      const res = await adminClient.from('skm_respons').insert(insertPayload);
+      adminInsertErr = res.error as InsertErr;
+    } catch (err) {
+      adminInsertErr = err as InsertErr;
+    }
 
     if (adminInsertErr) {
+      if (adminInsertErr.code === '23505') {
+        return NextResponse.json(
+          { error: 'Anda sudah mengisi survei ini' },
+          { status: 409 },
+        );
+      }
       return NextResponse.json(
         { error: `Failed to submit SKM: ${adminInsertErr.message}` },
         { status: 500 },

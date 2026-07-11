@@ -83,7 +83,10 @@ function SkmForm() {
         return;
       }
 
-      // Check if already submitted
+      // Check if already submitted. Best-effort only: RLS `skm_select_staff` is
+      // TO authenticated, so anon visitors get null here. The submit route's
+      // service-role check + the DB partial unique index (migration 031) are
+      // the real enforcement; this pre-submit check is just UX for authed users.
       const { data: existing } = await supabase
         .from('skm_respons')
         .select('id')
