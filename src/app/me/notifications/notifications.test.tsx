@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react';
 
 vi.mock('@/lib/supabase/client', () => ({
   createClient: vi.fn(),
@@ -32,9 +32,17 @@ const buildMockSupabase = (rows: NotifRow[] = []) => {
     limit: vi.fn().mockResolvedValue({ data: rows, error: null }),
   };
 
-  const pushSubChain = {
+  const pushSubChain: Record<string, ReturnType<typeof vi.fn>> = {
     select: vi.fn().mockReturnThis(),
     eq: vi.fn().mockResolvedValue({ data: [], error: null }),
+  };
+
+  // Upsert chain for subscribe path: .from('push_subscriptions').upsert(payload, { onConflict })
+  const upsertMock = vi.fn().mockResolvedValue({ error: null });
+
+  // Delete chain for unsubscribe path
+  const deleteChain = {
+    eq: vi.fn().mockResolvedValue({ error: null }),
   };
 
   const mock = {
@@ -46,8 +54,15 @@ const buildMockSupabase = (rows: NotifRow[] = []) => {
     }),
     _notifChain: notifChain,
     _pushSubChain: pushSubChain,
+    _upsertMock: upsertMock,
+    _deleteChain: deleteChain,
     _authUser: authUser,
   };
+
+  // The subscribe handler calls .upsert() on push_subscriptions; we route
+  // that by augmenting the pushSubChain returned for that table.
+  pushSubChain.upsert = upsertMock;
+  pushSubChain.delete = vi.fn().mockReturnValue(deleteChain);
 
   (createClient as unknown as ReturnType<typeof vi.fn>).mockReturnValue(mock);
   return mock;
@@ -113,6 +128,61 @@ describe('I5 /me/notifications page — smoke tests', () => {
     render(<NotificationsPage />);
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Aktifkan notifikasi push/i })).toBeDisabled();
+    });
+  });
+});
+
+describe('I5 /me/notifications page — subscribe uses upsert (23505 fix)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it('calls upsert with onConflict endpoint (not insert) so resubscribe succeeds', async () => {
+    const mock = buildMockSupabase([]);
+
+    // Mock serviceWorker + pushManager so the subscribe path is reachable.
+    const fakeSubscription = {
+      toJSON: () => ({
+        endpoint: 'https://fcm.googleapis.com/fcm/send/abc-123',
+        keys: { p256dh: 'p256dh-val', auth: 'auth-val' },
+      }),
+    };
+    const readyReg = {
+      pushManager: {
+        subscribe: vi.fn().mockResolvedValue(fakeSubscription),
+        getSubscription: vi.fn().mockResolvedValue(null),
+      },
+    };
+    const registerMock = vi.fn().mockResolvedValue(readyReg);
+    // @ts-expect-error narrow test env — inject serviceWorker
+    navigator.serviceWorker = { register: registerMock, ready: Promise.resolve(readyReg) };
+
+    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY = 'test-vapid-key';
+
+    render(<NotificationsPage />);
+    const toggle = await screen.findByRole('button', { name: /Aktifkan notifikasi push/i });
+    await waitFor(() => {
+      expect(toggle).not.toBeDisabled();
+    });
+    fireEvent.click(toggle);
+
+    // The subscribe handler should call upsert with onConflict: 'endpoint'.
+    await waitFor(() => {
+      expect(mock._upsertMock).toHaveBeenCalledTimes(1);
+    });
+    const [payload, options] = mock._upsertMock.mock.calls[0];
+    expect(payload.user_id).toBe('user-1');
+    expect(payload.endpoint).toBe('https://fcm.googleapis.com/fcm/send/abc-123');
+    expect(payload.keys).toEqual({ p256dh: 'p256dh-val', auth: 'auth-val' });
+    expect(options).toEqual({ onConflict: 'endpoint' });
+
+    // Success message should appear.
+    await waitFor(() => {
+      expect(screen.getByText(/Notifikasi push diaktifkan/i)).toBeInTheDocument();
     });
   });
 });

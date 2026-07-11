@@ -96,11 +96,17 @@ export default function NotificationsPage() {
           applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource,
         });
         const parsed = sub.toJSON();
-        await supabase.from('push_subscriptions').insert({
-          user_id: user.id,
-          endpoint: parsed.endpoint,
-          keys: parsed.keys,
-        });
+        // Upsert on endpoint so re-subscribing the same browser (e.g. after
+        // clearing site data) doesn't throw 23505 from the UNIQUE(endpoint)
+        // constraint. Re-inserts simply refresh user_id + keys.
+        await supabase.from('push_subscriptions').upsert(
+          {
+            user_id: user.id,
+            endpoint: parsed.endpoint,
+            keys: parsed.keys,
+          },
+          { onConflict: 'endpoint' },
+        );
         setPushEnabled(true);
         setMessage('Notifikasi push diaktifkan.');
       } else {

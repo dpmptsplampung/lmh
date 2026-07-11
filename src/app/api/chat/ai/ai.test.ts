@@ -1,8 +1,21 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// Server (cookie-bound) client mock — returned by createClient() from
+// @/lib/supabase/server. Its auth.getUser() drives the ownership check.
+const serverState = {
+  callerId: 'auth-user-1' as string | null,
+};
+
 vi.mock('@/lib/supabase/server', () => ({
-  createClient: vi.fn(),
+  createClient: vi.fn(async () => ({
+    auth: {
+      getUser: vi.fn(async () => ({
+        data: { user: serverState.callerId ? { id: serverState.callerId } : null },
+        error: null,
+      })),
+    },
+  })),
 }));
 
 vi.mock('@supabase/supabase-js', () => ({
@@ -92,23 +105,86 @@ interface MockServiceOpts {
   rpcData?: unknown[] | null;
   rpcError?: { message: string } | null;
   insertError?: unknown | null;
+  // Ownership + sesi lookup
+  pengunjungId?: string | null;
+  pengunjungError?: { message: string } | null;
+  pengunjungMissing?: boolean;
+  sesiPengunjungId?: string | null;
+  sesiError?: { message: string } | null;
+  sesiMissing?: boolean;
+  // Rate limit
+  rateCount?: number | null;
+  rateError?: { message: string } | null;
 }
+
+const CALLER_PENGUNJUNG_ID = 'pengunjung-1';
+const CALLER_AUTH_ID = 'auth-user-1';
+const SESI_ID = '660e8400-e29b-41d4-a716-446655440001';
 
 const mockServiceClient = async (opts: MockServiceOpts = {}) => {
   process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://supabase.local';
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-key';
+  serverState.callerId = CALLER_AUTH_ID;
+
   const supabaseMod = await import('@supabase/supabase-js');
   const createClient = supabaseMod.createClient as unknown as ReturnType<
     typeof vi.fn
   >;
-  const insertChain = { error: opts.insertError ?? null };
+
+  // chat_ai_log insert (audit) — best-effort
+  const logInsertChain = { error: opts.insertError ?? null };
+
+  // Rate-limit count chain: .from('anon_rate_limit').select('*',{count,head}).eq(...).eq(...).gte(...)
+  const rateSelectChain = {
+    eq: vi.fn().mockReturnThis(),
+    gte: vi.fn().mockResolvedValue({
+      count: opts.rateCount ?? 0,
+      error: opts.rateError ?? null,
+    }),
+  };
+  // Rate-limit insert chain
+  const rateInsertChain = { error: null };
+
+  // pengunjung lookup: .from('pengunjung').select('id').eq(...).maybeSingle()
+  const pengunjungChain = {
+    eq: vi.fn().mockReturnThis(),
+    maybeSingle: vi.fn().mockResolvedValue({
+      data: opts.pengunjungMissing ? null : { id: opts.pengunjungId ?? CALLER_PENGUNJUNG_ID },
+      error: opts.pengunjungError ?? null,
+    }),
+  };
+
+  // sesi lookup: .from('chat_sesi').select('pengunjung_id').eq(...).maybeSingle()
+  const sesiChain = {
+    eq: vi.fn().mockReturnThis(),
+    maybeSingle: vi.fn().mockResolvedValue({
+      data: opts.sesiMissing ? null : { pengunjung_id: opts.sesiPengunjungId ?? CALLER_PENGUNJUNG_ID },
+      error: opts.sesiError ?? null,
+    }),
+  };
+
   const mock = {
     rpc: vi.fn(async () => ({
       data: opts.rpcData ?? [],
       error: opts.rpcError ?? null,
     })),
-    from: vi.fn().mockReturnValue({
-      insert: vi.fn().mockReturnValue(insertChain),
+    from: vi.fn().mockImplementation((table: string) => {
+      if (table === 'anon_rate_limit') {
+        const callCount = mock.from.mock.calls.filter((c: unknown[]) => c[0] === 'anon_rate_limit').length;
+        // First call = select (count check); second = insert
+        if (callCount === 2) return { insert: vi.fn().mockReturnValue(rateInsertChain) };
+        return { select: vi.fn().mockReturnValue(rateSelectChain) };
+      }
+      if (table === 'pengunjung') {
+        return { select: vi.fn().mockReturnValue(pengunjungChain) };
+      }
+      if (table === 'chat_sesi') {
+        return { select: vi.fn().mockReturnValue(sesiChain) };
+      }
+      if (table === 'chat_ai_log') {
+        return { insert: vi.fn().mockReturnValue(logInsertChain) };
+      }
+      return {};
     }),
   };
   createClient.mockReturnValue(mock);
@@ -118,7 +194,7 @@ const mockServiceClient = async (opts: MockServiceOpts = {}) => {
 const validBody = {
   pertanyaan: 'Apa syarat membuat NIB?',
   layanan_id: '550e8400-e29b-41d4-a716-446655440000',
-  sesi_id: '660e8400-e29b-41d4-a716-446655440001',
+  sesi_id: SESI_ID,
 };
 
 const resetGeminiState = () => {
@@ -137,6 +213,7 @@ describe('POST /api/chat/ai — input validation', () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://supabase.local';
     process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-key';
     process.env.GEMINI_API_KEY = 'test-key';
+    serverState.callerId = CALLER_AUTH_ID;
   });
 
   it('returns 400 when pertanyaan is shorter than 3 chars', async () => {
@@ -172,6 +249,108 @@ describe('POST /api/chat/ai — input validation', () => {
   });
 });
 
+describe('POST /api/chat/ai — sesi ownership', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    resetGeminiState();
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://supabase.local';
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-key';
+    process.env.GEMINI_API_KEY = 'test-key';
+    serverState.callerId = CALLER_AUTH_ID;
+  });
+
+  it('returns 401 when caller is not authenticated', async () => {
+    await mockServiceClient();
+    serverState.callerId = null;
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest(validBody));
+    expect(res.status).toBe(401);
+  });
+
+  it('returns 403 when caller has no pengunjung row', async () => {
+    await mockServiceClient({ pengunjungMissing: true });
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest(validBody));
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 403 when pengunjung lookup errors', async () => {
+    await mockServiceClient({ pengunjungError: { message: 'db down' } });
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest(validBody));
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 403 when sesi does not exist', async () => {
+    await mockServiceClient({ sesiMissing: true });
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest(validBody));
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 403 when sesi pengunjung_id does not match caller', async () => {
+    await mockServiceClient({ sesiPengunjungId: 'someone-else' });
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest(validBody));
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 403 when sesi lookup errors', async () => {
+    await mockServiceClient({ sesiError: { message: 'db down' } });
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest(validBody));
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('POST /api/chat/ai — rate limiting', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    resetGeminiState();
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://supabase.local';
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-key';
+    process.env.GEMINI_API_KEY = 'test-key';
+    serverState.callerId = CALLER_AUTH_ID;
+  });
+
+  it('returns 429 when rate limit exceeded (count >= 10)', async () => {
+    await mockServiceClient({ rateCount: 10 });
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest(validBody));
+    expect(res.status).toBe(429);
+    const json = await res.json();
+    expect(json.error).toMatch(/terlalu banyak|coba lagi/i);
+  });
+
+  it('returns 429 when rate-limit query errors (fail-closed)', async () => {
+    await mockServiceClient({ rateError: { message: 'connection refused' } });
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest(validBody));
+    expect(res.status).toBe(429);
+  });
+
+  it('allows request when rate limit count is below max (count=9)', async () => {
+    await mockServiceClient({
+      rpcData: [
+        {
+          id: 'f-1',
+          layanan_id: validBody.layanan_id,
+          pertanyaan: 'Q1',
+          jawaban: 'A1',
+          similarity: 0.92,
+        },
+      ],
+      rateCount: 9,
+    });
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest(validBody));
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.eskalasi).toBe(false);
+    expect(json.jawaban).toBe('Jawaban dari AI [1]');
+  });
+});
+
 describe('POST /api/chat/ai — RAG flow', () => {
   beforeEach(() => {
     vi.resetModules();
@@ -179,6 +358,7 @@ describe('POST /api/chat/ai — RAG flow', () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://supabase.local';
     process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-key';
     process.env.GEMINI_API_KEY = 'test-key';
+    serverState.callerId = CALLER_AUTH_ID;
   });
 
   it('escalates (reason no_match) when no FAQ matches returned', async () => {
@@ -212,7 +392,7 @@ describe('POST /api/chat/ai — RAG flow', () => {
     expect(json.reason).toBe('no_match');
   });
 
-  it('returns jawaban + sumber when top similarity >= 0.7', async () => {
+  it('returns jawaban + sumber when top similarity >= 0.7 (valid ownership + under rate limit)', async () => {
     await mockServiceClient({
       rpcData: [
         {
