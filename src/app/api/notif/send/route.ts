@@ -93,17 +93,17 @@ async function sendPush(row: NotifikasiRow): Promise<{ ok: boolean; error?: stri
   return { ok: false, error: lastError || 'all push attempts failed' };
 }
 
-function updateStatus(
+async function updateStatus(
   adminClient: ReturnType<typeof getServiceClient>,
   id: string,
   status: 'sent' | 'failed' | 'skipped',
   error?: string,
-): void {
+): Promise<void> {
   if (!adminClient) return;
   const patch: Record<string, unknown> = { status };
   if (status === 'sent') patch.sent_at = new Date().toISOString();
   if (error) patch.error = error;
-  adminClient.from('notifikasi').update(patch).eq('id', id);
+  await adminClient.from('notifikasi').update(patch).eq('id', id);
 }
 
 export async function POST(request: NextRequest) {
@@ -148,44 +148,44 @@ export async function POST(request: NextRequest) {
   for (const row of rows) {
     if (row.kanal === 'email') {
       if (!row.tujuan_email) {
-        updateStatus(adminClient, row.id, 'skipped', 'no tujuan_email');
+        await updateStatus(adminClient, row.id, 'skipped', 'no tujuan_email');
         skipped++;
         continue;
       }
       if (!resend) {
-        updateStatus(adminClient, row.id, 'failed', 'RESEND_API_KEY not configured');
+        await updateStatus(adminClient, row.id, 'failed', 'RESEND_API_KEY not configured');
         failed++;
         continue;
       }
       const result = await sendEmail(resend, row);
       if (result.ok) {
-        updateStatus(adminClient, row.id, 'sent');
+        await updateStatus(adminClient, row.id, 'sent');
         sent++;
       } else {
-        updateStatus(adminClient, row.id, 'failed', result.error);
+        await updateStatus(adminClient, row.id, 'failed', result.error);
         failed++;
       }
     } else if (row.kanal === 'web_push') {
       if (!row.tujuan_user_id) {
-        updateStatus(adminClient, row.id, 'skipped', 'no tujuan_user_id');
+        await updateStatus(adminClient, row.id, 'skipped', 'no tujuan_user_id');
         skipped++;
         continue;
       }
       const result = await sendPush(row);
       if (result.ok) {
         if ('skipped' in result && result.skipped) {
-          updateStatus(adminClient, row.id, 'skipped', 'no subscriptions');
+          await updateStatus(adminClient, row.id, 'skipped', 'no subscriptions');
           skipped++;
         } else {
-          updateStatus(adminClient, row.id, 'sent');
+          await updateStatus(adminClient, row.id, 'sent');
           sent++;
         }
       } else {
-        updateStatus(adminClient, row.id, 'failed', result.error);
+        await updateStatus(adminClient, row.id, 'failed', result.error);
         failed++;
       }
     } else {
-      updateStatus(adminClient, row.id, 'skipped', `unknown kanal: ${row.kanal}`);
+      await updateStatus(adminClient, row.id, 'skipped', `unknown kanal: ${row.kanal}`);
       skipped++;
     }
   }

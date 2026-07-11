@@ -94,21 +94,19 @@ async function sendPush(row: FailedRow): Promise<{ ok: boolean; error?: string; 
   return { ok: false, error: lastError || 'all push attempts failed' };
 }
 
-function updateStatus(
+async function updateStatus(
   adminClient: ReturnType<typeof getServiceClient>,
   id: string,
   status: 'sent' | 'failed' | 'skipped',
   retryCount: number,
   error?: string,
-): void {
+): Promise<void> {
   if (!adminClient) return;
-  const patch: Record<string, unknown> = {
-    status,
-    retry_count: retryCount + 1,
-  };
+  const patch: Record<string, unknown> = { status };
+  if (status === 'failed') patch.retry_count = retryCount + 1;
   if (status === 'sent') patch.sent_at = new Date().toISOString();
   if (error) patch.error = error;
-  adminClient.from('notifikasi').update(patch).eq('id', id);
+  await adminClient.from('notifikasi').update(patch).eq('id', id);
 }
 
 export async function POST(request: NextRequest) {
@@ -153,35 +151,35 @@ export async function POST(request: NextRequest) {
   for (const row of rows) {
     if (row.kanal === 'email') {
       if (!row.tujuan_email) {
-        updateStatus(adminClient, row.id, 'skipped', row.retry_count, 'no tujuan_email');
+        await updateStatus(adminClient, row.id, 'skipped', row.retry_count, 'no tujuan_email');
         continue;
       }
       if (!resend) {
-        updateStatus(adminClient, row.id, 'failed', row.retry_count, 'RESEND_API_KEY not configured');
+        await updateStatus(adminClient, row.id, 'failed', row.retry_count, 'RESEND_API_KEY not configured');
         failedAgain++;
         continue;
       }
       const result = await sendEmail(resend, row);
       if (result.ok) {
-        updateStatus(adminClient, row.id, 'sent', row.retry_count);
+        await updateStatus(adminClient, row.id, 'sent', row.retry_count);
         sent++;
       } else {
-        updateStatus(adminClient, row.id, 'failed', row.retry_count, result.error);
+        await updateStatus(adminClient, row.id, 'failed', row.retry_count, result.error);
         failedAgain++;
       }
     } else if (row.kanal === 'web_push') {
       if (!row.tujuan_user_id) {
-        updateStatus(adminClient, row.id, 'skipped', row.retry_count, 'no tujuan_user_id');
+        await updateStatus(adminClient, row.id, 'skipped', row.retry_count, 'no tujuan_user_id');
         continue;
       }
       const result = await sendPush(row);
       if (result.ok && !result.skipped) {
-        updateStatus(adminClient, row.id, 'sent', row.retry_count);
+        await updateStatus(adminClient, row.id, 'sent', row.retry_count);
         sent++;
       } else if (result.skipped) {
-        updateStatus(adminClient, row.id, 'skipped', row.retry_count, 'no subscriptions');
+        await updateStatus(adminClient, row.id, 'skipped', row.retry_count, 'no subscriptions');
       } else {
-        updateStatus(adminClient, row.id, 'failed', row.retry_count, result.error);
+        await updateStatus(adminClient, row.id, 'failed', row.retry_count, result.error);
         failedAgain++;
       }
     }

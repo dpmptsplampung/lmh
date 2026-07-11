@@ -340,3 +340,92 @@ describe('POST /api/notif/send — mixed batch', () => {
     expect(json.failed).toBe(0);
   });
 });
+
+describe('POST /api/notif/send — updateStatus await regression', () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  it('awaits the supabase update() Promise (mock returns a real Promise)', async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://supabase.local';
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-key';
+    process.env.CRON_SECRET = 'cron-secret';
+    process.env.RESEND_API_KEY = 're_test';
+    process.env.VAPID_PUBLIC_KEY = 'BPubxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';
+    process.env.VAPID_PRIVATE_KEY = 'privxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';
+    process.env.RESEND_FROM = 'Test <noreply@test.example>';
+
+    const supabaseMod = await import('@supabase/supabase-js');
+    const createClient = supabaseMod.createClient as unknown as ReturnType<typeof vi.fn>;
+
+    const pendingRows: PendingRow[] = [sampleEmailRow];
+
+    // The update Promise resolves on a macrotask (setTimeout). If
+    // updateStatus does NOT await it, POST returns before the timer
+    // fires, so updateResolved is still false synchronously after
+    // POST resolves. If updateStatus DOES await it, POST cannot return
+    // until the timer fires, so updateResolved is true by then.
+    let updateResolved = false;
+    const updateEqSpy = vi.fn().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          setTimeout(() => {
+            updateResolved = true;
+            resolve({ data: null, error: null });
+          }, 10);
+        }),
+    );
+    const updateMock = vi.fn().mockReturnValue({ eq: updateEqSpy });
+
+    const mock = {
+      from: vi.fn((table: string) => {
+        if (table === 'notifikasi') {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                limit: vi.fn().mockResolvedValue({ data: pendingRows, error: null }),
+              }),
+            }),
+            update: updateMock,
+          };
+        }
+        if (table === 'push_subscriptions') {
+          return {
+            eq: vi.fn().mockReturnThis(),
+            select: vi.fn().mockReturnThis(),
+            data: [],
+            error: null,
+          };
+        }
+        return {};
+      }),
+    };
+
+    createClient.mockReturnValue(mock);
+
+    const resendMod = await import('resend');
+    const Resend = resendMod.Resend as unknown as ReturnType<typeof vi.fn>;
+    const sendMock = vi.fn().mockResolvedValue({ data: { id: 're-msg-1' }, error: null });
+    function ResendCtor(this: { emails: { send: typeof sendMock } }) {
+      this.emails = { send: sendMock };
+    }
+    Resend.mockImplementation(ResendCtor as unknown as () => unknown);
+
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest('Bearer cron-secret'));
+
+    expect(res.status).toBe(200);
+    // Check synchronously BEFORE any further await: if updateStatus
+    // awaited the macrotask Promise, POST could only have returned
+    // after the timer fired (updateResolved === true). If it didn't
+    // await, POST returned immediately and the 10ms timer has not
+    // fired yet (updateResolved === false).
+    expect(updateResolved).toBe(true);
+
+    const json = await res.json();
+    expect(json.sent).toBe(1);
+
+    expect(updateMock).toHaveBeenCalled();
+    expect(updateEqSpy).toHaveBeenCalledWith('id', 'n1');
+  });
+});
