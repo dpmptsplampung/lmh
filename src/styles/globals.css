@@ -69,7 +69,7 @@
   /* Text */
   --text-primary: var(--color-neutral-900);
   --text-secondary: var(--color-neutral-600);
-  --text-tertiary: var(--color-neutral-400);
+  --text-tertiary: var(--color-neutral-500);
   --text-inverse: #ffffff;
   --text-link: var(--color-primary-600);
 
@@ -152,6 +152,33 @@
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+}
+
+/* I9: Visible focus for keyboard users (WCAG 2.4.7) */
+*:focus-visible {
+  outline: 2px solid var(--color-primary-600);
+  outline-offset: 2px;
+}
+
+/* I9: Skip-to-content link (WCAG 2.4.1) */
+.skip-link {
+  position: absolute;
+  top: -100px;
+  left: 0;
+  z-index: var(--z-overlay);
+  padding: var(--space-3) var(--space-5);
+  background: var(--color-primary-600);
+  color: var(--text-inverse);
+  font-weight: 600;
+  font-size: var(--text-sm);
+  text-decoration: none;
+  border-radius: 0 0 var(--radius-md) 0;
+  transition: top var(--transition-fast);
+}
+
+.skip-link:focus {
+  top: 0;
+  color: var(--text-inverse);
 }
 
 html {

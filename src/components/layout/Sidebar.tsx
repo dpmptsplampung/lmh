@@ -21,6 +21,7 @@ import {
   Settings,
   LayoutTemplate,
   TrendingUp,
+  HandHelping,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
@@ -57,6 +58,13 @@ const navItems: NavItem[] = [
     icon: <QrCode size={20} />,
     fase: 'Fase 1',
     roles: ['admin'],
+  },
+  {
+    label: 'Checkin Bantuan',
+    href: '/admin/checkin-asist',
+    icon: <HandHelping size={20} />,
+    fase: 'Fase 4',
+    roles: ['admin', 'petugas'],
   },
   {
     label: 'Antrian',

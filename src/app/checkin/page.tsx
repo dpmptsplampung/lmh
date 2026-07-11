@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { APP_NAME } from '@/lib/constants';
+import { enqueueAction } from '@/lib/offline/queue';
+import { replayQueue } from '@/lib/offline/replay';
 import styles from './checkin.module.css';
 
 interface FormData {
@@ -124,6 +126,32 @@ export default function CheckinPage() {
 
     setLoading(true);
     try {
+      const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
+
+      if (isOffline) {
+        await enqueueAction({
+          type: 'checkin',
+          payload: {
+            nama: form.nama.trim(),
+            layanan_id: form.layanan_id,
+            keperluan: form.keperluan.trim() || undefined,
+          },
+        });
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.ready
+            .then((reg) => {
+              if ('sync' in reg) {
+                (reg as ServiceWorkerRegistration & { sync: { register: (tag: string) => Promise<void> } }).sync.register('checkin-sync');
+              }
+            })
+            .catch(() => {
+              // background sync not supported — replay on next 'online' event
+            });
+        }
+        setSuccess(true);
+        return;
+      }
+
       const supabase = createClient();
 
       // I8: Record PDP consent BEFORE inserting kunjungan.
@@ -158,6 +186,17 @@ export default function CheckinPage() {
       setLoading(false);
     }
   };
+
+  // I9: replay queued actions when connection is restored.
+  useEffect(() => {
+    const handleOnline = () => {
+      replayQueue().catch(() => {
+        // non-fatal — will retry on next online event
+      });
+    };
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, []);
 
   const handleReset = () => {
     setForm({ nama: '', keperluan: '', layanan_id: '' });
@@ -222,8 +261,9 @@ export default function CheckinPage() {
               </div>
               <h2 className={styles.successTitle}>Check-in Berhasil!</h2>
               <p className={styles.successDescription}>
-                Terima kasih telah mendaftar. Silakan menunggu,
-                petugas akan segera melayani Anda.
+                {typeof navigator !== 'undefined' && navigator.onLine === false
+                  ? 'Checkin Anda tersimpan offline dan akan disinkronkan saat online kembali. Silakan menunggu, petugas akan segera melayani Anda.'
+                  : 'Terima kasih telah mendaftar. Silakan menunggu, petugas akan segera melayani Anda.'}
               </p>
               <button
                 className="btn btn--primary btn--lg"

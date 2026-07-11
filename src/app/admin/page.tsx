@@ -598,7 +598,7 @@ export default function AdminDashboard() {
 
             <div className={styles.chartsGrid}>
               <div className={styles.chartCard}>
-                <h3 className={styles.chartTitle}>Volume Kunjungan Mingguan</h3>
+                <h2 className={styles.chartTitle}>Volume Kunjungan Mingguan</h2>
                 <div className={styles.chartBody}>
                   {dailyVisitsState.length > 0 ? (
                     <ResponsiveContainer width="100%" height="100%">
@@ -628,7 +628,7 @@ export default function AdminDashboard() {
               </div>
 
               <div className={styles.chartCard}>
-                <h3 className={styles.chartTitle}>Breakdown per Layanan</h3>
+                <h2 className={styles.chartTitle}>Breakdown per Layanan</h2>
                 <div className={styles.chartBody}>
                   {layananBreakdownState.length > 0 ? (
                     <ResponsiveContainer width="100%" height="100%">
@@ -665,7 +665,7 @@ export default function AdminDashboard() {
 
             <div className={styles.recentSection}>
               <div className={styles.recentHeader}>
-                <h3 className={styles.recentTitle}>Kunjungan Terbaru</h3>
+                <h2 className={styles.recentTitle}>Kunjungan Terbaru</h2>
                 <Link href="/admin/kunjungan" className="btn btn--ghost btn--sm">
                   Lihat Semua <ArrowRight size={14} />
                 </Link>

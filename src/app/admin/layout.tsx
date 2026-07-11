@@ -18,9 +18,9 @@ export default function AdminLayout({
   return (
     <div className={styles.adminLayout}>
       <Sidebar />
-      <main className={styles.adminContent}>
+      <div className={styles.adminContent}>
         {children}
-      </main>
+      </div>
     </div>
   );
 }

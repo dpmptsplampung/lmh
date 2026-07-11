@@ -396,6 +396,7 @@ export default function UMKMPage() {
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
                       style={{ paddingLeft: '42px' }}
+                      aria-label="Cari kebutuhan atau penawaran UMKM"
                     />
                   </div>
                 </div>
@@ -478,6 +479,7 @@ export default function UMKMPage() {
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
                       style={{ paddingLeft: '42px' }}
+                      aria-label="Cari UMKM atau kebutuhan"
                     />
                   </div>
                 </div>

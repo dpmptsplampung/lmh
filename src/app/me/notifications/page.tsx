@@ -70,7 +70,7 @@ export default function NotificationsPage() {
   useEffect(() => {
     if (!pushSupported) return;
     navigator.serviceWorker
-      .register('/sw-push.js')
+      .register('/sw.js')
       .catch(() => {
         // non-fatal; push toggle still surfaced but may fail on enable
       });

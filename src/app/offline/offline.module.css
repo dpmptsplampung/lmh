@@ -1,0 +1,43 @@
+.offlinePage {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8);
+  background: linear-gradient(135deg, var(--color-primary-50) 0%, #fff 50%, var(--color-accent-50) 100%);
+}
+
+.offlineCard {
+  max-width: 480px;
+  text-align: center;
+  background: var(--surface-elevated);
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow-xl);
+  padding: var(--space-12) var(--space-8);
+}
+
+.offlineIcon {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  background: var(--color-accent-100);
+  color: var(--color-accent-600);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto var(--space-6);
+}
+
+.offlineTitle {
+  font-size: var(--text-2xl);
+  font-weight: 800;
+  margin-bottom: var(--space-3);
+  color: var(--text-primary);
+}
+
+.offlineDesc {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: var(--space-8);
+}

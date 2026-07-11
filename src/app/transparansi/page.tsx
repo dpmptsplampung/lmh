@@ -197,7 +197,7 @@ export default function TransparansiPage() {
             </div>
 
             <div className={styles.tChartCard}>
-              <h3 className={styles.tChartTitle}>Grafik IKM per Layanan</h3>
+              <h2 className={styles.tChartTitle}>Grafik IKM per Layanan</h2>
               <div className={styles.tChartBody}>
                 {chartData.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
