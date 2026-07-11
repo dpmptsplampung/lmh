@@ -20,6 +20,7 @@ import {
   HelpCircle,
   Settings,
   LayoutTemplate,
+  TrendingUp,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
@@ -96,6 +97,13 @@ const navItems: NavItem[] = [
     label: 'Investment Gallery',
     href: '/admin/gallery',
     icon: <FileText size={20} />,
+    fase: 'Fase 4',
+    roles: ['admin'],
+  },
+  {
+    label: 'Lead Investasi',
+    href: '/admin/investasi-leads',
+    icon: <TrendingUp size={20} />,
     fase: 'Fase 4',
     roles: ['admin'],
   },

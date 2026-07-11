@@ -13,6 +13,9 @@ import {
   TrendingUp,
   ChevronLeft,
   ChevronRight,
+  Mail,
+  Loader2,
+  CheckCircle,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import styles from './gallery.module.css';
@@ -36,6 +39,12 @@ export default function GalleryPage() {
   const [docs, setDocs] = useState<GalleryDoc[]>([]);
   const [foilaUrl, setFoilaUrl] = useState('https://invest.lampungprov.go.id/');
   const [currentPage, setCurrentPage] = useState(1);
+
+  const [leadModalDoc, setLeadModalDoc] = useState<GalleryDoc | null>(null);
+  const [leadForm, setLeadForm] = useState({ nama: '', email: '', instansi: '', minat: '', catatan: '' });
+  const [leadSending, setLeadSending] = useState(false);
+  const [leadSent, setLeadSent] = useState(false);
+  const [leadError, setLeadError] = useState('');
 
   useEffect(() => {
     async function loadData() {
@@ -86,6 +95,50 @@ export default function GalleryPage() {
 
   const handleCloseViewer = () => {
     setSelectedDocId(null);
+  };
+
+  const handleOpenLeadModal = (doc: GalleryDoc) => {
+    setLeadModalDoc(doc);
+    setLeadForm({ nama: '', email: '', instansi: '', minat: '', catatan: '' });
+    setLeadSent(false);
+    setLeadError('');
+    setLeadSending(false);
+  };
+
+  const handleCloseLeadModal = () => {
+    setLeadModalDoc(null);
+    setLeadSent(false);
+    setLeadError('');
+  };
+
+  const handleSubmitLead = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!leadModalDoc) return;
+    setLeadSending(true);
+    setLeadError('');
+    try {
+      const res = await fetch('/api/investasi/lead', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          doc_id: leadModalDoc.id,
+          nama: leadForm.nama,
+          email: leadForm.email,
+          instansi: leadForm.instansi || undefined,
+          minat: leadForm.minat || undefined,
+          catatan: leadForm.catatan || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Gagal mengirim permintaan');
+      }
+      setLeadSent(true);
+    } catch (err) {
+      setLeadError(err instanceof Error ? err.message : 'Gagal mengirim permintaan');
+    } finally {
+      setLeadSending(false);
+    }
   };
 
   const getSelectedDocTitle = () => {
@@ -236,6 +289,15 @@ export default function GalleryPage() {
                       Lihat Dokumen
                     </button>
                   </div>
+
+                  <button
+                    type="button"
+                    className={styles.leadCtaBtn}
+                    onClick={() => handleOpenLeadModal(project)}
+                  >
+                    <Mail size={14} />
+                    Ajukan Minat Investasi
+                  </button>
                 </div>
               ))}
             </div>
@@ -340,6 +402,137 @@ export default function GalleryPage() {
               </div>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {leadModalDoc && (
+        <div
+          className={styles.leadModal}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Formulir Minat Investasi"
+        >
+          <div className={styles.leadModalContent}>
+            <div className={styles.leadModalHeader}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <Mail size={18} style={{ color: 'var(--color-primary-400)' }} />
+                <span className={styles.leadModalTitle}>Ajukan Minat Investasi</span>
+              </div>
+              <button
+                type="button"
+                className={styles.secureCloseBtn}
+                onClick={handleCloseLeadModal}
+                aria-label="Tutup"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className={styles.leadModalBody}>
+              {leadSent ? (
+                <div className={styles.leadSuccess}>
+                  <CheckCircle size={48} style={{ color: '#10b981', marginBottom: 'var(--space-4)' }} />
+                  <p className={styles.leadSuccessText}>
+                    Permintaan Anda tercatat. Tim kami akan menghubungi Anda.
+                  </p>
+                  <button
+                    type="button"
+                    className="btn btn--primary"
+                    onClick={handleCloseLeadModal}
+                  >
+                    Tutup
+                  </button>
+                </div>
+              ) : (
+                <form className={styles.leadForm} onSubmit={handleSubmitLead}>
+                  <p className={styles.leadContext}>
+                    Untuk dokumen: <strong>{leadModalDoc.judul}</strong>
+                  </p>
+
+                  {leadError && (
+                    <div className={styles.leadError} role="alert">
+                      <Info size={14} />
+                      {leadError}
+                    </div>
+                  )}
+
+                  <div className={styles.leadField}>
+                    <label htmlFor="lead-nama" className={styles.leadLabel}>Nama <span style={{ color: '#f87171' }}>*</span></label>
+                    <input
+                      id="lead-nama"
+                      type="text"
+                      className={styles.leadInput}
+                      value={leadForm.nama}
+                      onChange={(e) => setLeadForm({ ...leadForm, nama: e.target.value })}
+                      required
+                      maxLength={200}
+                      autoFocus
+                    />
+                  </div>
+
+                  <div className={styles.leadField}>
+                    <label htmlFor="lead-email" className={styles.leadLabel}>Email <span style={{ color: '#f87171' }}>*</span></label>
+                    <input
+                      id="lead-email"
+                      type="email"
+                      className={styles.leadInput}
+                      value={leadForm.email}
+                      onChange={(e) => setLeadForm({ ...leadForm, email: e.target.value })}
+                      required
+                    />
+                  </div>
+
+                  <div className={styles.leadField}>
+                    <label htmlFor="lead-instansi" className={styles.leadLabel}>Instansi</label>
+                    <input
+                      id="lead-instansi"
+                      type="text"
+                      className={styles.leadInput}
+                      value={leadForm.instansi}
+                      onChange={(e) => setLeadForm({ ...leadForm, instansi: e.target.value })}
+                      maxLength={200}
+                    />
+                  </div>
+
+                  <div className={styles.leadField}>
+                    <label htmlFor="lead-minat" className={styles.leadLabel}>Minat</label>
+                    <textarea
+                      id="lead-minat"
+                      className={styles.leadTextarea}
+                      value={leadForm.minat}
+                      onChange={(e) => setLeadForm({ ...leadForm, minat: e.target.value })}
+                      rows={3}
+                      maxLength={1000}
+                    />
+                  </div>
+
+                  <div className={styles.leadField}>
+                    <label htmlFor="lead-catatan" className={styles.leadLabel}>Catatan</label>
+                    <textarea
+                      id="lead-catatan"
+                      className={styles.leadTextarea}
+                      value={leadForm.catatan}
+                      onChange={(e) => setLeadForm({ ...leadForm, catatan: e.target.value })}
+                      rows={3}
+                      maxLength={2000}
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    className={styles.leadSubmit}
+                    disabled={leadSending}
+                  >
+                    {leadSending ? (
+                      <><Loader2 size={16} className="animate-pulse" /> Mengirim...</>
+                    ) : (
+                      <><Mail size={16} /> Kirim Permintaan</>
+                    )}
+                  </button>
+                </form>
+              )}
+            </div>
           </div>
         </div>
       )}

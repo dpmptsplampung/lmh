@@ -8,7 +8,6 @@ import {
   Store,
   Search,
   User,
-  Phone,
   ArrowLeft,
   Building2,
   MapPin,
@@ -18,9 +17,12 @@ import {
   X,
   Loader2,
   CheckCircle2,
+  Send,
+  Sparkles,
+  ArrowRight,
 } from 'lucide-react';
 import { KATEGORI_UMKM, type KategoriUMKM } from '@/lib/constants';
-import { cn, waLink } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 import styles from './umkm.module.css';
 
@@ -30,12 +32,24 @@ interface UMKMListing {
   kategori_kebutuhan: string;
   deskripsi: string | null;
   kontak_nama: string | null;
-  kontak_hp: string | null;
   foto_produk: string[] | null;
   status: string;
+  sisi: string;
   created_at: string;
   image: string | null;
 }
+
+interface UMKMMatch {
+  kebutuhan_id: string;
+  kebutuhan_nama: string;
+  kategori: string;
+  kebutuhan_deskripsi: string | null;
+  penawaran_id: string;
+  penawaran_nama: string;
+  penawaran_deskripsi: string | null;
+}
+
+type SisiTab = 'kebutuhan' | 'penawaran' | 'match';
 
 const bankLampungBranches = [
   { nama: 'Kantor Cabang Utama Bandar Lampung', alamat: 'Jl. Wolter Monginsidi No.182, Bandar Lampung' },
@@ -44,8 +58,6 @@ const bankLampungBranches = [
   { nama: 'Kantor Cabang Kotabumi', alamat: 'Jl. Jend. Sudirman No. 240, Kotabumi' },
 ];
 
-// K5: extracted so useSearchParams is wrapped in a Suspense boundary
-// (required by Next.js for prerendering). See page.tsx usage.
 function LoginNotice() {
   const searchParams = useSearchParams();
   const showLoginNotice = searchParams?.get('edit_login_required') === '1';
@@ -63,40 +75,51 @@ function LoginNotice() {
 
 export default function UMKMPage() {
   const [activeTab, setActiveTab] = useState<'matchmaking' | 'pembiayaan'>('matchmaking');
+  const [sisiTab, setSisiTab] = useState<SisiTab>('kebutuhan');
   const [search, setSearch] = useState('');
   const [activeKategori, setActiveKategori] = useState<string>('semua');
   const [listings, setListings] = useState<UMKMListing[]>([]);
+  const [matches, setMatches] = useState<UMKMMatch[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // K5: magic-link edit request state
   const [editModalListing, setEditModalListing] = useState<UMKMListing | null>(null);
   const [editEmail, setEditEmail] = useState('');
   const [editSending, setEditSending] = useState(false);
   const [editSent, setEditSent] = useState(false);
 
+  const [inquiryModalListing, setInquiryModalListing] = useState<UMKMListing | null>(null);
+  const [inquiryForm, setInquiryForm] = useState({ from_nama: '', from_email: '', pesan: '' });
+  const [inquirySending, setInquirySending] = useState(false);
+  const [inquiryResult, setInquiryResult] = useState<
+    { kind: 'success'; message: string } | { kind: 'error'; message: string } | null
+  >(null);
+
   useEffect(() => {
     async function fetchListings() {
+      setLoading(true);
       try {
         const supabase = createClient();
         const { data } = await supabase
           .from('listing_umkm')
-          .select('id, nama_umkm, kategori_kebutuhan, deskripsi, kontak_nama, kontak_hp, foto_produk, status, created_at')
+          .select('id, nama_umkm, kategori_kebutuhan, deskripsi, kontak_nama, foto_produk, status, sisi, created_at')
           .eq('status', 'published')
           .order('created_at', { ascending: false });
 
         if (data && data.length > 0) {
           setListings(data.map((l) => {
             const row = l as Record<string, unknown>;
+            const foto = row.foto_produk as string[] | null;
             return {
               id: row.id as string,
               nama_umkm: row.nama_umkm as string,
               kategori_kebutuhan: row.kategori_kebutuhan as string,
               deskripsi: (row.deskripsi as string) ?? null,
               kontak_nama: (row.kontak_nama as string) ?? null,
-              kontak_hp: (row.kontak_hp as string) ?? null,
-              foto_produk: (row.foto_produk as string[]) ?? null,
+              foto_produk: foto ?? null,
               status: row.status as string,
+              sisi: (row.sisi as string) ?? 'kebutuhan',
               created_at: row.created_at as string,
-              image: (row.foto_produk && Array.isArray(row.foto_produk) && row.foto_produk.length > 0) ? row.foto_produk[0] : null,
+              image: (foto && Array.isArray(foto) && foto.length > 0) ? foto[0] : null,
             };
           }));
         } else {
@@ -105,19 +128,64 @@ export default function UMKMPage() {
       } catch (e) {
         console.error('Error fetching UMKM listings:', e);
         setListings([]);
+      } finally {
+        setLoading(false);
       }
     }
     fetchListings();
   }, []);
 
+  useEffect(() => {
+    async function fetchMatches() {
+      if (sisiTab !== 'match') return;
+      try {
+        const supabase = createClient();
+        const { data } = await supabase
+          .from('v_umkm_match')
+          .select('kebutuhan_id, kebutuhan_nama, kategori, kebutuhan_deskripsi, penawaran_id, penawaran_nama, penawaran_deskripsi')
+          .order('kategori', { ascending: true });
+
+        if (data && data.length > 0) {
+          setMatches(data.map((m) => {
+            const row = m as Record<string, unknown>;
+            return {
+              kebutuhan_id: row.kebutuhan_id as string,
+              kebutuhan_nama: row.kebutuhan_nama as string,
+              kategori: row.kategori as string,
+              kebutuhan_deskripsi: (row.kebutuhan_deskripsi as string) ?? null,
+              penawaran_id: row.penawaran_id as string,
+              penawaran_nama: row.penawaran_nama as string,
+              penawaran_deskripsi: (row.penawaran_deskripsi as string) ?? null,
+            };
+          }));
+        } else {
+          setMatches([]);
+        }
+      } catch (e) {
+        console.error('Error fetching UMKM matches:', e);
+        setMatches([]);
+      }
+    }
+    fetchMatches();
+  }, [sisiTab]);
+
   const filtered = listings.filter((l) => {
+    if (sisiTab !== 'kebutuhan' && sisiTab !== 'penawaran') return false;
+    if (l.sisi !== sisiTab) return false;
     const matchSearch = l.nama_umkm.toLowerCase().includes(search.toLowerCase()) ||
       (l.deskripsi && l.deskripsi.toLowerCase().includes(search.toLowerCase()));
     const matchKategori = activeKategori === 'semua' || l.kategori_kebutuhan === activeKategori;
     return matchSearch && matchKategori;
   });
 
-  // K5: magic-link edit request handlers
+  const filteredMatches = matches.filter((m) => {
+    const matchKategori = activeKategori === 'semua' || m.kategori === activeKategori;
+    const matchSearch = !search ||
+      m.kebutuhan_nama.toLowerCase().includes(search.toLowerCase()) ||
+      m.penawaran_nama.toLowerCase().includes(search.toLowerCase());
+    return matchKategori && matchSearch;
+  });
+
   const openEditModal = (listing: UMKMListing) => {
     setEditModalListing(listing);
     setEditEmail('');
@@ -141,19 +209,63 @@ export default function UMKMPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ listing_id: editModalListing.id, email: editEmail }),
       });
-      // Selalu tampilkan pesan generik (jangan leak apakah email terdaftar).
       setEditSent(true);
     } catch {
-      // Bahkan pada error network, tampilkan pesan generik (no leak).
       setEditSent(true);
     } finally {
       setEditSending(false);
     }
   };
 
+  const openInquiryModal = (listing: UMKMListing) => {
+    setInquiryModalListing(listing);
+    setInquiryForm({ from_nama: '', from_email: '', pesan: '' });
+    setInquiryResult(null);
+  };
+
+  const closeInquiryModal = () => {
+    setInquiryModalListing(null);
+    setInquiryForm({ from_nama: '', from_email: '', pesan: '' });
+    setInquiryResult(null);
+  };
+
+  const submitInquiry = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inquiryModalListing) return;
+    setInquirySending(true);
+    setInquiryResult(null);
+    try {
+      const res = await fetch('/api/umkm/inquiry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          listing_id: inquiryModalListing.id,
+          from_email: inquiryForm.from_email,
+          from_nama: inquiryForm.from_nama || undefined,
+          pesan: inquiryForm.pesan,
+        }),
+      });
+      const json = await res.json();
+      if (res.ok) {
+        setInquiryResult({ kind: 'success', message: json.message ?? 'Pesan terkirim.' });
+      } else {
+        setInquiryResult({
+          kind: 'error',
+          message: json?.error ?? 'Gagal mengirim pesan. Coba lagi.',
+        });
+      }
+    } catch {
+      setInquiryResult({
+        kind: 'error',
+        message: 'Gagal mengirim pesan. Periksa koneksi Anda.',
+      });
+    } finally {
+      setInquirySending(false);
+    }
+  };
+
   return (
     <div className={styles.umkmPage}>
-      {/* Navbar */}
       <nav style={{
         position: 'sticky',
         top: 0,
@@ -197,7 +309,6 @@ export default function UMKMPage() {
         </Link>
       </nav>
 
-      {/* Header */}
       <div className={styles.umkmHeader}>
         <h1 className={styles.umkmHeaderTitle}>
           <Store size={36} style={{ display: 'inline', marginRight: '12px', verticalAlign: 'middle' }} />
@@ -208,15 +319,12 @@ export default function UMKMPage() {
         </p>
       </div>
 
-      {/* Body */}
       <div className={styles.umkmBody}>
 
-        {/* K5: login-required notice (from /umkm/edit redirect) */}
         <Suspense fallback={null}>
           <LoginNotice />
         </Suspense>
 
-        {/* Tab Navigation */}
         <div className={styles.tabContainer}>
           <button
             type="button"
@@ -235,126 +343,254 @@ export default function UMKMPage() {
         </div>
 
         {activeTab === 'matchmaking' ? (
-          /* TAB 1: MATCHMAKING KEMITRAAN */
           <>
-            {/* Search */}
-            <div className={styles.umkmFilters}>
-              <div style={{ position: 'relative', flex: 1, minWidth: '240px' }}>
-                <Search size={18} style={{
-                  position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)',
-                  color: 'var(--text-tertiary)'
-                }} />
-                <input
-                  type="text"
-                  className="form-input"
-                  placeholder="Cari UMKM atau kebutuhan..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  style={{ paddingLeft: '42px' }}
-                />
-              </div>
-            </div>
-
-            {/* Category Pills */}
-            <div className={styles.categoryPills} style={{ marginBottom: 'var(--space-8)' }}>
+            <div className={styles.sisiToggle}>
               <button
-                className={cn(styles.categoryPill, activeKategori === 'semua' && styles.categoryPillActive)}
-                onClick={() => setActiveKategori('semua')}
+                type="button"
+                className={cn(styles.sisiToggleBtn, sisiTab === 'kebutuhan' && styles.sisiToggleBtnActive)}
+                onClick={() => setSisiTab('kebutuhan')}
+                aria-pressed={sisiTab === 'kebutuhan'}
               >
-                Semua
+                <Search size={16} />
+                Kebutuhan
               </button>
-              {Object.entries(KATEGORI_UMKM).map(([key, label]) => (
-                <button
-                  key={key}
-                  className={cn(styles.categoryPill, activeKategori === key && styles.categoryPillActive)}
-                  onClick={() => setActiveKategori(key)}
-                >
-                  {label}
-                </button>
-              ))}
+              <button
+                type="button"
+                className={cn(styles.sisiToggleBtn, sisiTab === 'penawaran' && styles.sisiToggleBtnActive)}
+                onClick={() => setSisiTab('penawaran')}
+                aria-pressed={sisiTab === 'penawaran'}
+              >
+                <Store size={16} />
+                Penawaran
+              </button>
+              <button
+                type="button"
+                className={cn(styles.sisiToggleBtn, sisiTab === 'match' && styles.sisiToggleBtnActive)}
+                onClick={() => setSisiTab('match')}
+                aria-pressed={sisiTab === 'match'}
+              >
+                <Sparkles size={16} />
+                Cocok (Match)
+              </button>
             </div>
 
-            {/* Listing Grid */}
-            {listings.length === 0 ? (
-              <div className="empty-state">
-                <Store size={48} className="empty-state__icon" />
-                <h3 className="empty-state__title">Belum ada listing UMKM tersedia</h3>
-                <p>Listing UMKM akan muncul di sini setelah diverifikasi oleh admin.</p>
-              </div>
-            ) : filtered.length === 0 ? (
-              <div className="empty-state">
-                <Store size={48} className="empty-state__icon" />
-                <h3 className="empty-state__title">Belum Ada Listing</h3>
-                <p>Tidak ada UMKM yang sesuai dengan filter Anda.</p>
-              </div>
-            ) : (
-              <div className={styles.listingGrid}>
-                {filtered.map((listing) => {
-                  const kategoriLabel = KATEGORI_UMKM[listing.kategori_kebutuhan as KategoriUMKM] || listing.kategori_kebutuhan;
-                  return (
-                    <div key={listing.id} className={styles.listingCard}>
-                      <div className={styles.listingImage}>
-                        {listing.image ? (
-                          <Image
-                            src={listing.image}
-                            alt={listing.nama_umkm}
-                            fill
-                            style={{ objectFit: 'cover' }}
-                            unoptimized
-                          />
-                        ) : (
-                          <Store size={40} />
-                        )}
-                      </div>
-                      <div className={styles.listingBody}>
-                        <span className={styles.listingCategory}>
-                          {kategoriLabel}
-                        </span>
-                        <h3 className={styles.listingName}>{listing.nama_umkm}</h3>
-                        {listing.deskripsi && (
-                          <p className={styles.listingDesc}>{listing.deskripsi}</p>
-                        )}
-                        <div className={styles.listingFooter}>
-                          <span className={styles.listingContact}>
-                            <User size={14} />
-                            {listing.kontak_nama || '—'}
-                          </span>
-                          <div className={styles.listingActions}>
-                            {listing.kontak_hp && (
-                              <a
-                                href={waLink(listing.kontak_hp)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className={styles.contactBtn}
-                              >
-                                <Phone size={14} />
-                                Hubungi
-                              </a>
-                            )}
-                            <button
-                              type="button"
-                              className={styles.editLinkBtn}
-                              onClick={() => openEditModal(listing)}
-                              aria-label={`Minta link edit untuk ${listing.nama_umkm}`}
-                            >
-                              <Mail size={14} />
-                              Minta link edit
-                            </button>
+            {sisiTab !== 'match' && (
+              <p className={styles.contactNote}>
+                <ShieldCheck size={14} />
+                Kontak pemilik ditampilkan setelah permintaan Anda disetujui.
+              </p>
+            )}
+
+            {sisiTab === 'match' ? (
+              <>
+                <div className={styles.umkmFilters}>
+                  <div style={{ position: 'relative', flex: 1, minWidth: '240px' }}>
+                    <Search size={18} style={{
+                      position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)',
+                      color: 'var(--text-tertiary)'
+                    }} />
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="Cari kebutuhan atau penawaran..."
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      style={{ paddingLeft: '42px' }}
+                    />
+                  </div>
+                </div>
+
+                <div className={styles.categoryPills} style={{ marginBottom: 'var(--space-8)' }}>
+                  <button
+                    className={cn(styles.categoryPill, activeKategori === 'semua' && styles.categoryPillActive)}
+                    onClick={() => setActiveKategori('semua')}
+                  >
+                    Semua
+                  </button>
+                  {Object.entries(KATEGORI_UMKM).map(([key, label]) => (
+                    <button
+                      key={key}
+                      className={cn(styles.categoryPill, activeKategori === key && styles.categoryPillActive)}
+                      onClick={() => setActiveKategori(key)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                {loading ? (
+                  <div className="empty-state">
+                    <Loader2 size={48} className={styles.spinner} />
+                    <h3 className="empty-state__title">Memuat pencocokan…</h3>
+                  </div>
+                ) : filteredMatches.length === 0 ? (
+                  <div className="empty-state">
+                    <Sparkles size={48} className="empty-state__icon" />
+                    <h3 className="empty-state__title">Belum Ada Pasangan Match</h3>
+                    <p>Belum ada pasangan kebutuhan + penawaran dalam kategori yang sama.</p>
+                  </div>
+                ) : (
+                  <div className={styles.matchGrid}>
+                    {filteredMatches.map((m) => {
+                      const kategoriLabel = KATEGORI_UMKM[m.kategori as KategoriUMKM] || m.kategori;
+                      return (
+                        <div key={`${m.kebutuhan_id}-${m.penawaran_id}`} className={styles.matchCard}>
+                          <span className={styles.matchCategory}>{kategoriLabel}</span>
+                          <div className={styles.matchPair}>
+                            <div className={styles.matchSide}>
+                              <span className={styles.matchSideLabel}>
+                                <Search size={12} /> Kebutuhan
+                              </span>
+                              <h4 className={styles.matchSideName}>{m.kebutuhan_nama}</h4>
+                              {m.kebutuhan_deskripsi && (
+                                <p className={styles.matchSideDesc}>{m.kebutuhan_deskripsi}</p>
+                              )}
+                            </div>
+                            <ArrowRight size={20} className={styles.matchArrow} />
+                            <div className={styles.matchSide}>
+                              <span className={styles.matchSideLabel}>
+                                <Store size={12} /> Penawaran
+                              </span>
+                              <h4 className={styles.matchSideName}>{m.penawaran_nama}</h4>
+                              {m.penawaran_deskripsi && (
+                                <p className={styles.matchSideDesc}>{m.penawaran_deskripsi}</p>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <div className={styles.umkmFilters}>
+                  <div style={{ position: 'relative', flex: 1, minWidth: '240px' }}>
+                    <Search size={18} style={{
+                      position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)',
+                      color: 'var(--text-tertiary)'
+                    }} />
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="Cari UMKM atau kebutuhan..."
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      style={{ paddingLeft: '42px' }}
+                    />
+                  </div>
+                </div>
+
+                <div className={styles.categoryPills} style={{ marginBottom: 'var(--space-8)' }}>
+                  <button
+                    className={cn(styles.categoryPill, activeKategori === 'semua' && styles.categoryPillActive)}
+                    onClick={() => setActiveKategori('semua')}
+                  >
+                    Semua
+                  </button>
+                  {Object.entries(KATEGORI_UMKM).map(([key, label]) => (
+                    <button
+                      key={key}
+                      className={cn(styles.categoryPill, activeKategori === key && styles.categoryPillActive)}
+                      onClick={() => setActiveKategori(key)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                {loading ? (
+                  <div className="empty-state">
+                    <Loader2 size={48} className={styles.spinner} />
+                    <h3 className="empty-state__title">Memuat listing…</h3>
+                  </div>
+                ) : listings.length === 0 ? (
+                  <div className="empty-state">
+                    <Store size={48} className="empty-state__icon" />
+                    <h3 className="empty-state__title">Belum ada listing UMKM tersedia</h3>
+                    <p>Listing UMKM akan muncul di sini setelah diverifikasi oleh admin.</p>
+                  </div>
+                ) : filtered.length === 0 ? (
+                  <div className="empty-state">
+                    <Store size={48} className="empty-state__icon" />
+                    <h3 className="empty-state__title">Belum Ada Listing</h3>
+                    <p>Tidak ada UMKM yang sesuai dengan filter Anda.</p>
+                  </div>
+                ) : (
+                  <div className={styles.listingGrid}>
+                    {filtered.map((listing) => {
+                      const kategoriLabel = KATEGORI_UMKM[listing.kategori_kebutuhan as KategoriUMKM] || listing.kategori_kebutuhan;
+                      return (
+                        <div key={listing.id} className={styles.listingCard}>
+                          <div className={styles.listingImage}>
+                            {listing.image ? (
+                              <Image
+                                src={listing.image}
+                                alt={listing.nama_umkm}
+                                fill
+                                style={{ objectFit: 'cover' }}
+                                unoptimized
+                              />
+                            ) : (
+                              <Store size={40} />
+                            )}
+                          </div>
+                          <div className={styles.listingBody}>
+                            <div className={styles.listingTagRow}>
+                              <span className={styles.listingCategory}>
+                                {kategoriLabel}
+                              </span>
+                              <span className={cn(
+                                styles.sisiBadge,
+                                listing.sisi === 'penawaran' ? styles.sisiBadgePenawaran : styles.sisiBadgeKebutuhan,
+                              )}>
+                                {listing.sisi === 'penawaran' ? 'Penawaran' : 'Kebutuhan'}
+                              </span>
+                            </div>
+                            <h3 className={styles.listingName}>{listing.nama_umkm}</h3>
+                            {listing.deskripsi && (
+                              <p className={styles.listingDesc}>{listing.deskripsi}</p>
+                            )}
+                            <div className={styles.listingFooter}>
+                              <span className={styles.listingContact}>
+                                <User size={14} />
+                                {listing.kontak_nama || '—'}
+                              </span>
+                              <div className={styles.listingActions}>
+                                <button
+                                  type="button"
+                                  className={styles.inquiryBtn}
+                                  onClick={() => openInquiryModal(listing)}
+                                  aria-label={`Kirim pesan ke pemilik ${listing.nama_umkm}`}
+                                >
+                                  <Send size={14} />
+                                  Kirim Pesan
+                                </button>
+                                <button
+                                  type="button"
+                                  className={styles.editLinkBtn}
+                                  onClick={() => openEditModal(listing)}
+                                  aria-label={`Minta link edit untuk ${listing.nama_umkm}`}
+                                >
+                                  <Mail size={14} />
+                                  Minta link edit
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
             )}
           </>
         ) : (
-          /* TAB 2: PEMBIAYAAN UMKM */
           <div className={styles.pembiayaanSection}>
             <div className={styles.pembiayaanGrid}>
 
-              {/* Syarat & Overview */}
               <div className={styles.pembiayaanCard}>
                 <h2 className={styles.cardTitle}>
                   <ShieldCheck size={20} style={{ display: 'inline', marginRight: '8px', verticalAlign: 'middle', color: 'var(--color-primary-600)' }} />
@@ -377,7 +613,6 @@ export default function UMKMPage() {
                 </ul>
               </div>
 
-              {/* Bank Callout Panel */}
               <div className={styles.bankCallout}>
                 <div className={styles.bankCalloutTitle}>
                   <Building2 size={24} />
@@ -388,7 +623,6 @@ export default function UMKMPage() {
                   Konsultasikan kebutuhan permodalan usaha Anda secara instan dan dapatkan panduan langsung dari perwakilan Bank Lampung melalui chat interaktif kami.
                 </p>
 
-                {/* Hubungi Bank Lampung (Livechat Integration) */}
                 <Link
                   href="/chat?layanan=Bank+Lampung"
                   className="btn btn--accent btn--lg"
@@ -400,7 +634,6 @@ export default function UMKMPage() {
               </div>
             </div>
 
-            {/* Nearest Branch Section */}
             <div className={styles.branchSection}>
               <h2 className={styles.cardTitle} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
                 <MapPin size={20} style={{ color: 'var(--color-primary-600)' }} />
@@ -429,7 +662,6 @@ export default function UMKMPage() {
 
       </div>
 
-      {/* K5: Request edit-link modal */}
       {editModalListing && (
         <div
           className={styles.editModalOverlay}
@@ -500,6 +732,107 @@ export default function UMKMPage() {
                   type="button"
                   className="btn btn--primary"
                   onClick={closeEditModal}
+                >
+                  Tutup
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {inquiryModalListing && (
+        <div
+          className={styles.editModalOverlay}
+          onClick={closeInquiryModal}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Kirim pesan ke pemilik listing UMKM"
+        >
+          <div className={styles.editModal} onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              className={styles.editModalClose}
+              onClick={closeInquiryModal}
+              aria-label="Tutup"
+            >
+              <X size={18} />
+            </button>
+
+            {!inquiryResult || inquiryResult.kind === 'error' ? (
+              <>
+                <h3 className={styles.editModalTitle}>
+                  <Send size={20} />
+                  Kirim Pesan
+                </h3>
+                <p className={styles.editModalListing}>
+                  Untuk listing: <strong>{inquiryModalListing.nama_umkm}</strong>
+                </p>
+                <p className={styles.editModalDesc}>
+                  Pesan Anda akan diteruskan ke pemilik listing. Kontak pemilik
+                  akan dibagikan setelah permintaan Anda disetujui.
+                </p>
+                {inquiryResult?.kind === 'error' && (
+                  <p className={styles.inquiryError}>{inquiryResult.message}</p>
+                )}
+                <form className={styles.editModalForm} onSubmit={submitInquiry}>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="Nama Anda (opsional)"
+                    value={inquiryForm.from_nama}
+                    onChange={(e) => setInquiryForm({ ...inquiryForm, from_nama: e.target.value })}
+                    maxLength={200}
+                    disabled={inquirySending}
+                  />
+                  <input
+                    type="email"
+                    className="form-input"
+                    placeholder="Email Anda *"
+                    value={inquiryForm.from_email}
+                    onChange={(e) => setInquiryForm({ ...inquiryForm, from_email: e.target.value })}
+                    required
+                    disabled={inquirySending}
+                  />
+                  <textarea
+                    className="form-input"
+                    placeholder="Tulis pesan Anda… *"
+                    value={inquiryForm.pesan}
+                    onChange={(e) => setInquiryForm({ ...inquiryForm, pesan: e.target.value })}
+                    required
+                    maxLength={2000}
+                    rows={4}
+                    disabled={inquirySending}
+                    autoFocus
+                  />
+                  <button
+                    type="submit"
+                    className="btn btn--primary"
+                    disabled={inquirySending || !inquiryForm.from_email || !inquiryForm.pesan}
+                  >
+                    {inquirySending ? (
+                      <>
+                        <Loader2 size={16} className={styles.spinner} />
+                        Mengirim…
+                      </>
+                    ) : (
+                      <>
+                        <Send size={16} />
+                        Kirim Pesan
+                      </>
+                    )}
+                  </button>
+                </form>
+              </>
+            ) : (
+              <div className={styles.editModalSuccess}>
+                <CheckCircle2 size={32} />
+                <h3>Pesan Terkirim</h3>
+                <p>{inquiryResult.message}</p>
+                <button
+                  type="button"
+                  className="btn btn--primary"
+                  onClick={closeInquiryModal}
                 >
                   Tutup
                 </button>
