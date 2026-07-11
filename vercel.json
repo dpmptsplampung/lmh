@@ -1,0 +1,6 @@
+{
+  "crons": [
+    { "path": "/api/notif/send", "schedule": "*/2 * * * *" },
+    { "path": "/api/notif/retry", "schedule": "*/10 * * * *" }
+  ]
+}
