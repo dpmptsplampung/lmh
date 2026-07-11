@@ -271,6 +271,7 @@ export default function LandingPage() {
           <li><Link href="/umkm" className={styles.navLink}>UMKM</Link></li>
           <li><Link href="/gallery" className={styles.navLink}>Investasi</Link></li>
           <li><Link href="/chat" className={styles.navLink}>Live Chat</Link></li>
+          <li><Link href="/transparansi" className={styles.navLink}>Transparansi</Link></li>
         </ul>
 
         <div className={styles.navActions}>

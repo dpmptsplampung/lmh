@@ -15,6 +15,7 @@ import {
   Loader2,
   X,
   ShieldCheck,
+  ClipboardList,
 } from 'lucide-react';
 import Link from 'next/link';
 import {
@@ -332,6 +333,14 @@ export default function AdminDashboard() {
           >
             <ShieldCheck size={20} />
             Tata Kelola Data (DPO)
+          </Link>
+          {/* I3: link ke SKM dashboard */}
+          <Link
+            href="/admin/skm"
+            className={`${styles.walkinTriggerBtn} ${styles.inviteLinkBtn}`}
+          >
+            <ClipboardList size={20} />
+            Dashboard SKM
           </Link>
         </div>
 
