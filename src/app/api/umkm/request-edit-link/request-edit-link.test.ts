@@ -5,6 +5,10 @@ vi.mock('@supabase/supabase-js', () => ({
   createClient: vi.fn(),
 }));
 
+vi.mock('resend', () => ({
+  Resend: vi.fn(),
+}));
+
 import type { NextRequest } from 'next/server';
 
 const buildRequest = (body: unknown): NextRequest => {
@@ -35,10 +39,31 @@ interface MockServiceOpts {
   logError?: unknown | null;
 }
 
+const mockResend = async (opts: { error?: { message: string } | null } = {}) => {
+  process.env.RESEND_API_KEY = 're_test';
+  process.env.RESEND_FROM = 'Test <noreply@test.example>';
+  process.env.NEXT_PUBLIC_PUBLIC_URL = 'https://layanan.example.test';
+  const resendMod = await import('resend');
+  const Resend = resendMod.Resend as unknown as ReturnType<typeof vi.fn>;
+  const sendMock = vi.fn().mockResolvedValue({
+    data: opts.error ? null : { id: 'email-1' },
+    error: opts.error ?? null,
+  });
+  function ResendCtor(this: { emails: { send: typeof sendMock } }) {
+    this.emails = { send: sendMock };
+  }
+  Resend.mockImplementation(ResendCtor as unknown as () => unknown);
+  return { sendMock };
+};
+
 const mockServiceClient = async (opts: MockServiceOpts = {}) => {
   process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://supabase.local';
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-key';
+  process.env.APP_ENV = 'test';
   delete process.env.LMH_DEV_RETURN_LINK;
+  process.env.RESEND_API_KEY = 're_test';
+  process.env.RESEND_FROM = 'Test <noreply@test.example>';
+  process.env.NEXT_PUBLIC_PUBLIC_URL = 'https://layanan.example.test';
 
   const supabaseMod = await import('@supabase/supabase-js');
   const createClient = supabaseMod.createClient as unknown as ReturnType<typeof vi.fn>;
@@ -216,6 +241,7 @@ describe('POST /api/umkm/request-edit-link — happy path (owner match)', () => 
       ownerRows: [{ id: 'owner-row-1' }],
       existingUser: { id: 'auth-user-1' },
     });
+    const { sendMock } = await mockResend();
     const { POST } = await import('./route');
     const res = await POST(buildRequest({ listing_id: VALID_LISTING_ID, email: 'owner@umkm.id' }));
     expect(res.status).toBe(200);
@@ -227,9 +253,15 @@ describe('POST /api/umkm/request-edit-link — happy path (owner match)', () => 
     const linkCall = serviceMock.auth.admin.generateLink.mock.calls[0][0];
     expect(linkCall.email).toBe('owner@umkm.id');
     expect(linkCall.type).toBe('magiclink');
-    expect(linkCall.options.redirectTo).toBe(`/umkm/edit/${VALID_LISTING_ID}`);
+    expect(String(linkCall.options.redirectTo)).toContain(
+      `/auth/callback?next=/umkm/edit/${VALID_LISTING_ID}`,
+    );
     // Rate-limit insert is called (now before owner lookup, still once)
     expect(serviceMock.__logInsert).toHaveBeenCalledTimes(1);
+    expect(sendMock).toHaveBeenCalledTimes(1);
+    const emailArg = sendMock.mock.calls[0][0] as { to: string; html: string };
+    expect(emailArg.to).toBe('owner@umkm.id');
+    expect(emailArg.html).toMatch(/magiclink|token|klik|edit/i);
   });
 
   it('creates the auth user first if not present, then retries generateLink', async () => {
@@ -239,6 +271,7 @@ describe('POST /api/umkm/request-edit-link — happy path (owner match)', () => 
       generateLinkError: { message: 'User not found' },
       createUserData: { user: { id: 'new-umkm-user' } },
     });
+    await mockResend();
     const { POST } = await import('./route');
     const res = await POST(buildRequest({ listing_id: VALID_LISTING_ID, email: 'owner@umkm.id' }));
     expect(res.status).toBe(200);
@@ -252,11 +285,13 @@ describe('POST /api/umkm/request-edit-link — happy path (owner match)', () => 
     expect(serviceMock.auth.admin.generateLink).toHaveBeenCalledTimes(2);
   });
 
-  it('returns 200 { sent: true } with dev_link when LMH_DEV_RETURN_LINK=set', async () => {
+  it('returns 200 { sent: true } with dev_link only when APP_ENV=development AND LMH_DEV_RETURN_LINK=set', async () => {
     await mockServiceClient({
       ownerRows: [{ id: 'owner-row-1' }],
       existingUser: { id: 'auth-user-1' },
     });
+    await mockResend();
+    process.env.APP_ENV = 'development';
     process.env.LMH_DEV_RETURN_LINK = 'set';
     const { POST } = await import('./route');
     const res = await POST(buildRequest({ listing_id: VALID_LISTING_ID, email: 'owner@umkm.id' }));
@@ -265,21 +300,46 @@ describe('POST /api/umkm/request-edit-link — happy path (owner match)', () => 
     expect(json.sent).toBe(true);
     expect(json.dev_link).toMatch(/magiclink/);
   });
-});
 
-describe('POST /api/umkm/request-edit-link — service key missing (dev fallback)', () => {
-  beforeEach(() => {
-    vi.resetModules();
-  });
-
-  it('returns 200 with dev_note when SUPABASE_SERVICE_ROLE_KEY missing (no-op)', async () => {
-    await mockNoServiceKey();
+  it('never returns action link when APP_ENV is production even if LMH_DEV_RETURN_LINK=set', async () => {
+    await mockServiceClient({
+      ownerRows: [{ id: 'owner-row-1' }],
+      existingUser: { id: 'auth-user-1' },
+    });
+    await mockResend();
+    process.env.APP_ENV = 'production';
+    process.env.LMH_DEV_RETURN_LINK = 'set';
     const { POST } = await import('./route');
     const res = await POST(buildRequest({ listing_id: VALID_LISTING_ID, email: 'owner@umkm.id' }));
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json.sent).toBe(true);
-    expect(json.dev_note).toMatch(/service role/i);
+    expect(json.dev_link).toBeUndefined();
+  });
+
+  it('returns 503 when Resend/config missing (no fake success)', async () => {
+    await mockServiceClient({
+      ownerRows: [{ id: 'owner-row-1' }],
+      existingUser: { id: 'auth-user-1' },
+    });
+    delete process.env.RESEND_API_KEY;
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest({ listing_id: VALID_LISTING_ID, email: 'owner@umkm.id' }));
+    expect(res.status).toBe(503);
+    const json = await res.json();
+    expect(json.sent).not.toBe(true);
+  });
+});
+
+describe('POST /api/umkm/request-edit-link — service key missing', () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  it('returns 503 when SUPABASE_SERVICE_ROLE_KEY missing (cannot send email)', async () => {
+    await mockNoServiceKey();
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest({ listing_id: VALID_LISTING_ID, email: 'owner@umkm.id' }));
+    expect(res.status).toBe(503);
   });
 });
 
@@ -310,6 +370,7 @@ describe('POST /api/umkm/request-edit-link — rate limiting', () => {
       existingUser: { id: 'auth-user-1' },
       rateCount: 2,
     });
+    await mockResend();
     const { POST } = await import('./route');
     const res = await POST(buildRequest({ listing_id: VALID_LISTING_ID, email: 'owner@umkm.id' }));
     expect(res.status).toBe(200);

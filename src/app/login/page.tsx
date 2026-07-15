@@ -2,6 +2,7 @@
 
 import { useState, Suspense } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { AlertCircle, Loader2, Shield, Lock, Mail, ArrowLeft } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
@@ -237,6 +238,9 @@ function LoginContent() {
 
       {/* Footer tersembunyi di bawah kanan (harus scroll di handphone) */}
       <div className={styles.loginFooter}>
+        <Link href="/kebijakan-privasi" className={styles.privacyLink}>
+          Kebijakan Privasi
+        </Link>
         {!isAdminLogin && (
           <button
             type="button"

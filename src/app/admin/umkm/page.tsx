@@ -27,6 +27,7 @@ interface UMKMListing {
   id: string;
   nama_umkm: string;
   kategori_kebutuhan: KategoriUMKM;
+  sisi: 'kebutuhan' | 'penawaran';
   deskripsi: string | null;
   foto_produk: string[] | null;
   kontak_nama: string;
@@ -49,6 +50,7 @@ const STATUS_LABELS: Record<string, string> = {
 interface FormData {
   nama_umkm: string;
   kategori_kebutuhan: KategoriUMKM | '';
+  sisi: 'kebutuhan' | 'penawaran';
   deskripsi: string;
   kontak_nama: string;
   kontak_hp: string;
@@ -59,6 +61,7 @@ interface FormData {
 const emptyForm: FormData = {
   nama_umkm: '',
   kategori_kebutuhan: '',
+  sisi: 'kebutuhan',
   deskripsi: '',
   kontak_nama: '',
   kontak_hp: '',
@@ -181,6 +184,7 @@ export default function AdminUMKMPage() {
     setForm({
       nama_umkm: item.nama_umkm,
       kategori_kebutuhan: item.kategori_kebutuhan,
+      sisi: item.sisi === 'penawaran' ? 'penawaran' : 'kebutuhan',
       deskripsi: item.deskripsi || '',
       kontak_nama: item.kontak_nama,
       kontak_hp: item.kontak_hp || '',
@@ -289,6 +293,7 @@ export default function AdminUMKMPage() {
       const payload = {
         nama_umkm: form.nama_umkm.trim(),
         kategori_kebutuhan: form.kategori_kebutuhan,
+        sisi: form.sisi,
         deskripsi: form.deskripsi.trim() || null,
         foto_produk: form.foto_produk,
         kontak_nama: form.kontak_nama.trim(),
@@ -538,8 +543,9 @@ export default function AdminUMKMPage() {
 
             <form onSubmit={handleSubmitForm} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
               <div className="form-group">
-                <label className="form-label form-label--required">Nama UMKM</label>
+                <label className="form-label form-label--required" htmlFor="admin-umkm-nama">Nama UMKM</label>
                 <input
+                  id="admin-umkm-nama"
                   className="form-input"
                   value={form.nama_umkm}
                   onChange={e => setForm(f => ({ ...f, nama_umkm: e.target.value }))}
@@ -549,8 +555,9 @@ export default function AdminUMKMPage() {
               </div>
 
               <div className="form-group">
-                <label className="form-label form-label--required">Kategori Kebutuhan</label>
+                <label className="form-label form-label--required" htmlFor="admin-umkm-kategori">Kategori Kebutuhan</label>
                 <select
+                  id="admin-umkm-kategori"
                   className="form-input"
                   value={form.kategori_kebutuhan}
                   onChange={e => setForm(f => ({ ...f, kategori_kebutuhan: e.target.value as KategoriUMKM }))}
@@ -560,6 +567,20 @@ export default function AdminUMKMPage() {
                   {Object.entries(KATEGORI_UMKM).map(([value, label]) => (
                     <option key={value} value={value}>{label}</option>
                   ))}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label form-label--required" htmlFor="admin-umkm-sisi">Sisi</label>
+                <select
+                  id="admin-umkm-sisi"
+                  className="form-input"
+                  value={form.sisi}
+                  onChange={e => setForm(f => ({ ...f, sisi: e.target.value as 'kebutuhan' | 'penawaran' }))}
+                  required
+                >
+                  <option value="kebutuhan">Kebutuhan</option>
+                  <option value="penawaran">Penawaran</option>
                 </select>
               </div>
 
@@ -574,16 +595,17 @@ export default function AdminUMKMPage() {
                 />
               </div>
 
-              <div className="form-group">
-                <label className="form-label form-label--required">Nama Kontak</label>
-                <input
-                  className="form-input"
-                  value={form.kontak_nama}
-                  onChange={e => setForm(f => ({ ...f, kontak_nama: e.target.value }))}
-                  placeholder="Nama orang yang bisa dihubungi"
-                  required
-                />
-              </div>
+                <div className="form-group">
+                  <label className="form-label form-label--required" htmlFor="admin-umkm-kontak">Nama Kontak</label>
+                  <input
+                    id="admin-umkm-kontak"
+                    className="form-input"
+                    value={form.kontak_nama}
+                    onChange={e => setForm(f => ({ ...f, kontak_nama: e.target.value }))}
+                    placeholder="Nama orang yang bisa dihubungi"
+                    required
+                  />
+                </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
                 <div className="form-group">

@@ -59,6 +59,16 @@ export const KATEGORI_UMKM = {
 
 export type KategoriUMKM = keyof typeof KATEGORI_UMKM;
 
+// Kategori pengunjung — must match pengunjung.kategori CHECK exactly
+export const KATEGORI_PENGUNJUNG = {
+  Umum: 'Masyarakat Umum',
+  UMKM: 'Pelaku Usaha / UMKM',
+  Investor: 'Investor / Pelaku Bisnis',
+  Instansi: 'Instansi Pemerintah / Swasta',
+} as const;
+
+export type KategoriPengunjung = keyof typeof KATEGORI_PENGUNJUNG;
+
 // Status chat
 export const STATUS_CHAT = {
   BOT: 'bot',

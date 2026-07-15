@@ -6,7 +6,7 @@ import { render, screen, waitFor, fireEvent, cleanup } from '@testing-library/re
 
 const MIGRATION_PATH = resolve(
   __dirname,
-  '../../../supabase/migrations/021_chat_idor_fix.sql',
+  '../../../supabase/migrations/202607140004_security_and_automation.sql',
 );
 
 const readMigration = (): string => {
@@ -17,83 +17,174 @@ const readMigration = (): string => {
   }
 };
 
-describe('K2 migration: 021_chat_idor_fix.sql — file-level assertions', () => {
+const OWNER_CHECK = String.raw`pengunjung_id\s+IN\s*\(\s*SELECT\s+id\s+FROM\s+(?:public\.)?pengunjung\s+WHERE\s+auth_user_id\s*=\s*auth\.uid\s*\(\s*\)\s*\)`;
+const SERVICE_CHECK = String.raw`layanan_id\s*=\s*(?:public\.)?get_my_layanan_id\s*\(\s*\)`;
+const ADMIN_CHECK = String.raw`(?:public\.)?get_my_role\s*\(\s*\)\s*=\s*'admin'`;
+
+const CHAT_SELECT_POLICIES = [
+  {
+    name: 'chat_sesi_owner_select',
+    table: '(?:public\\.)?chat_sesi',
+    usingPattern: new RegExp(
+      `^\\s*${OWNER_CHECK}\\s+OR\\s+${SERVICE_CHECK}\\s+OR\\s+${ADMIN_CHECK}\\s*$`,
+      'i',
+    ),
+  },
+  {
+    name: 'chat_pesan_owner_select',
+    table: '(?:public\\.)?chat_pesan',
+    usingPattern: new RegExp(
+      `^\\s*EXISTS\\s*\\(\\s*SELECT\\s+1\\s+FROM\\s+(?:public\\.)?chat_sesi\\s+WHERE\\s+id\\s*=\\s*chat_pesan\\.sesi_id\\s+AND\\s*\\(\\s*${OWNER_CHECK}\\s+OR\\s+${SERVICE_CHECK}\\s+OR\\s+${ADMIN_CHECK}\\s*\\)\\s*\\)\\s*$`,
+      'i',
+    ),
+  },
+] as const;
+
+function stripSqlComments(sql: string) {
+  let result = '';
+  let quote: "'" | '"' | null = null;
+  let lineComment = false;
+  let blockComment = false;
+
+  for (let i = 0; i < sql.length; i++) {
+    const char = sql[i];
+    const next = sql[i + 1];
+    if (lineComment) {
+      if (char === '\n') {
+        lineComment = false;
+        result += char;
+      }
+    } else if (blockComment) {
+      if (char === '*' && next === '/') {
+        blockComment = false;
+        i++;
+      }
+    } else if (quote) {
+      result += char;
+      if (char === quote && next === quote) {
+        result += next;
+        i++;
+      } else if (char === quote) {
+        quote = null;
+      }
+    } else if (char === "'" || char === '"') {
+      quote = char;
+      result += char;
+    } else if (char === '-' && next === '-') {
+      lineComment = true;
+      i++;
+    } else if (char === '/' && next === '*') {
+      blockComment = true;
+      i++;
+    } else {
+      result += char;
+    }
+  }
+
+  return result;
+}
+
+function extractFinalActivePolicy(sql: string, name: string, table: string) {
+  const activeSql = stripSqlComments(sql);
+  const matches = activeSql.matchAll(
+    new RegExp(
+      `CREATE\\s+POLICY\\s+"${name}"\\s+ON\\s+${table}[\\s\\S]*?;`,
+      'gi',
+    ),
+  );
+  return Array.from(matches).at(-1)?.[0];
+}
+
+function extractUsingExpression(statement: string) {
+  const clause = /\bUSING\s*\(/i.exec(statement);
+  if (!clause) return undefined;
+
+  const start = clause.index + clause[0].length;
+  let depth = 1;
+  for (let i = start; i < statement.length; i++) {
+    if (statement[i] === '(') depth++;
+    if (statement[i] === ')' && --depth === 0) return statement.slice(start, i);
+  }
+  return undefined;
+}
+
+function isSecureChatSelectPolicy(
+  sql: string,
+  policy: (typeof CHAT_SELECT_POLICIES)[number],
+) {
+  const statement = extractFinalActivePolicy(sql, policy.name, policy.table);
+  const usingExpression = statement && extractUsingExpression(statement);
+  return Boolean(
+    statement &&
+    usingExpression &&
+    /FOR\s+SELECT\s+TO\s+authenticated/i.test(statement) &&
+    !/\btrue\b/i.test(usingExpression) &&
+    policy.usingPattern.test(usingExpression),
+  );
+}
+
+describe('final chat RLS baseline contract', () => {
   const sql = readMigration();
 
   it('exists at the expected path', () => {
     expect(sql.length).toBeGreaterThan(0);
   });
 
-  it('adds the pengunjung_id column to chat_sesi', () => {
-    expect(sql).toMatch(
-      /ALTER\s+TABLE\s+chat_sesi\s+ADD\s+COLUMN\s+pengunjung_id/i,
-    );
-  });
-
-  it('references pengunjung(id) with ON DELETE SET NULL', () => {
-    expect(sql).toMatch(
-      /REFERENCES\s+pengunjung\s*\(\s*id\s*\)\s+ON\s+DELETE\s+SET\s+NULL/i,
-    );
-  });
-
-  it('creates an index on chat_sesi(pengunjung_id)', () => {
-    expect(sql).toMatch(
-      /CREATE\s+INDEX\s+idx_chat_sesi_pengunjung\s+ON\s+chat_sesi\s*\(\s*pengunjung_id\s*\)/i,
-    );
-  });
-
-  it('drops the vulnerable chat_sesi_anon_select_own policy', () => {
-    expect(sql).toMatch(
-      /DROP\s+POLICY\s+IF\s+EXISTS\s+"chat_sesi_anon_select_own"\s+ON\s+chat_sesi/i,
-    );
-  });
-
-  it('drops the vulnerable chat_pesan_select policy', () => {
-    expect(sql).toMatch(
-      /DROP\s+POLICY\s+IF\s+EXISTS\s+"chat_pesan_select"\s+ON\s+chat_pesan/i,
-    );
-  });
-
-  it('drops the vulnerable chat_sesi_anon_insert policy', () => {
-    expect(sql).toMatch(
-      /DROP\s+POLICY\s+IF\s+EXISTS\s+"chat_sesi_anon_insert"\s+ON\s+chat_sesi/i,
-    );
-  });
-
-  it('drops the vulnerable chat_pesan_anon_insert policy', () => {
-    expect(sql).toMatch(
-      /DROP\s+POLICY\s+IF\s+EXISTS\s+"chat_pesan_anon_insert"\s+ON\s+chat_pesan/i,
-    );
-  });
-
-  it('drops the old chat_sesi_petugas_update policy (will be recreated)', () => {
-    expect(sql).toMatch(
-      /DROP\s+POLICY\s+IF\s+EXISTS\s+"chat_sesi_petugas_update"\s+ON\s+chat_sesi/i,
-    );
-  });
-
   it('does NOT contain the vulnerable USING (true) pattern for chat SELECT', () => {
-    // The vulnerable pattern was `FOR SELECT USING (true)`.
-    // After the fix, no ACTIVE (uncommented) SQL may use FOR SELECT USING (true).
-    // We strip SQL line comments (-- ...) so the ROLLBACK documentation block
-    // (which references the old vulnerable policy as a comment) is ignored.
-    const stripLineComments = sql
-      .split('\n')
-      .map((line) => line.replace(/--.*$/, ''))
-      .join('\n');
-    const selectUsingTrue = /FOR\s+SELECT\s+USING\s*\(\s*true\s*\)/i;
-    expect(selectUsingTrue.test(stripLineComments)).toBe(false);
+    for (const policy of CHAT_SELECT_POLICIES) {
+      expect(isSecureChatSelectPolicy(sql, policy)).toBe(true);
+    }
+  });
+
+  it('rejects true OR ownership_check in a chat SELECT policy', () => {
+    const insecureSql = `
+      CREATE POLICY "chat_sesi_owner_select" ON chat_sesi
+        FOR SELECT TO authenticated
+        USING (
+          pengunjung_id IN (SELECT id FROM pengunjung WHERE auth_user_id = auth.uid())
+          OR layanan_id = get_my_layanan_id()
+          OR get_my_role() = 'admin'
+        );
+      CREATE POLICY "chat_sesi_owner_select" ON chat_sesi
+        FOR SELECT TO authenticated
+        USING (
+          true OR
+          pengunjung_id IN (SELECT id FROM pengunjung WHERE auth_user_id = auth.uid())
+          OR layanan_id = get_my_layanan_id()
+          OR get_my_role() = 'admin'
+        );
+    `;
+
+    expect(isSecureChatSelectPolicy(insecureSql, CHAT_SELECT_POLICIES[0])).toBe(false);
+  });
+
+  it('ignores commented policy SQL when selecting the active statement', () => {
+    const sqlWithCommentedPolicy = `
+      /* CREATE POLICY "chat_sesi_owner_select" ON chat_sesi
+         FOR SELECT USING (true); */
+      CREATE POLICY "chat_sesi_owner_select" ON chat_sesi
+        FOR SELECT TO authenticated
+        USING (
+          pengunjung_id IN (SELECT id FROM pengunjung WHERE auth_user_id = auth.uid())
+          OR layanan_id = get_my_layanan_id()
+          OR get_my_role() = 'admin'
+        );
+    `;
+
+    expect(
+      isSecureChatSelectPolicy(sqlWithCommentedPolicy, CHAT_SELECT_POLICIES[0]),
+    ).toBe(true);
   });
 
   it('enforces ownership via pengunjung.auth_user_id = auth.uid()', () => {
     expect(sql).toMatch(
-      /pengunjung_id\s+IN\s+\(\s*SELECT\s+id\s+FROM\s+pengunjung\s+WHERE\s+auth_user_id\s*=\s*auth\.uid\s*\(\s*\)\s*\)/i,
+      /pengunjung_id\s+IN\s+\(\s*SELECT\s+id\s+FROM\s+(?:public\.)?pengunjung\s+WHERE\s+auth_user_id\s*=\s*auth\.uid\s*\(\s*\)\s*\)/i,
     );
   });
 
   it('scopes chat_pesan SELECT through the session ownership check', () => {
     expect(sql).toMatch(
-      /EXISTS\s*\(\s*SELECT\s+1\s+FROM\s+chat_sesi\s+WHERE\s+id\s*=\s*chat_pesan\.sesi_id/i,
+      /EXISTS\s*\(\s*SELECT\s+1\s+FROM\s+(?:public\.)?chat_sesi\s+WHERE\s+id\s*=\s*chat_pesan\.sesi_id/i,
     );
   });
 
@@ -101,17 +192,12 @@ describe('K2 migration: 021_chat_idor_fix.sql — file-level assertions', () => 
     // The INSERT WITH CHECK must include a petugas branch keyed on
     // pengirim = 'petugas' AND layanan_id = get_my_layanan_id().
     expect(sql).toMatch(
-      /pengirim\s*=\s*'petugas'\s+AND\s+layanan_id\s*=\s*get_my_layanan_id\s*\(\s*\)/i,
+      /pengirim\s*=\s*'petugas'\s+AND\s+layanan_id\s*=\s*(?:public\.)?get_my_layanan_id\s*\(\s*\)/i,
     );
   });
 
-  it('includes a ROLLBACK section', () => {
-    expect(sql).toMatch(/--\s*ROLLBACK:/i);
-  });
-
-  it('has the required header comment', () => {
-    expect(sql).toMatch(/Fase 0\s*\/\s*K2/i);
-    expect(sql).toMatch(/IDOR/i);
+  it('contains no historical policy drop/recreate cycle', () => {
+    expect(stripSqlComments(sql)).not.toMatch(/DROP\s+POLICY/i);
   });
 });
 

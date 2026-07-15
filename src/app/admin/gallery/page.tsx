@@ -71,6 +71,7 @@ export default function AdminGalleryPage() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
 
   // Detail modal
   const [viewingDoc, setViewingDoc] = useState<GalleryDoc | null>(null);
@@ -118,9 +119,11 @@ export default function AdminGalleryPage() {
   const handleDelete = async (id: string, judul: string) => {
     if (!confirm(`Hapus dokumen "${judul}"? Tindakan ini tidak dapat dibatalkan.`)) return;
     try {
-      const supabase = createClient();
-      const { error } = await supabase.from('investment_documents').delete().eq('id', id);
-      if (error) throw error;
+      const res = await fetch(`/api/investment-docs/${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(typeof body.error === 'string' ? body.error : 'delete failed');
+      }
       setDocs(prev => prev.filter(d => d.id !== id));
       toast('Dokumen berhasil dihapus.', 'success');
     } catch {
@@ -128,33 +131,17 @@ export default function AdminGalleryPage() {
     }
   };
 
-  const handlePdfUpload = async (file: File) => {
+  const handlePdfSelect = (file: File) => {
     if (file.type !== 'application/pdf') {
       toast('File harus berupa PDF.', 'warning');
       return;
     }
-    if (file.size > 10 * 1024 * 1024) {
-      toast('Ukuran file maksimal 10MB.', 'warning');
+    if (file.size > 50 * 1024 * 1024) {
+      toast('Ukuran file maksimal 50MB.', 'warning');
       return;
     }
-
-    setUploadingFile(true);
-    try {
-      const supabase = createClient();
-      const path = `${crypto.randomUUID()}.pdf`;
-      const { error: uploadError } = await supabase.storage
-        .from('investment-docs')
-        .upload(path, file);
-
-      if (uploadError) throw uploadError;
-
-      setForm(prev => ({ ...prev, file_path: path }));
-      toast('PDF berhasil diunggah.', 'success');
-    } catch {
-      toast('Gagal mengunggah PDF. Silakan coba lagi.', 'error');
-    } finally {
-      setUploadingFile(false);
-    }
+    setPdfFile(file);
+    setForm(prev => ({ ...prev, file_path: file.name }));
   };
 
   const handleMoveUp = async (doc: GalleryDoc) => {
@@ -253,9 +240,11 @@ export default function AdminGalleryPage() {
         file_path: doc.file_path,
         status: doc.status,
       });
+      setPdfFile(null);
     } else {
       setEditingId(null);
       setForm({ ...emptyForm, urutan_tampil: docs.length + 1 });
+      setPdfFile(null);
     }
     setFormError('');
     setShowForm(true);
@@ -267,40 +256,54 @@ export default function AdminGalleryPage() {
       setFormError('Judul wajib diisi.');
       return;
     }
-    if (!editingId && !form.file_path) {
+    if (!editingId && !pdfFile) {
       setFormError('File PDF wajib diunggah.');
       return;
     }
     setSaving(true);
+    setUploadingFile(true);
     setFormError('');
     try {
-      const supabase = createClient();
-      const payload = {
-        judul: form.judul.trim(),
-        kategori: form.kategori.trim() || null,
-        urutan_tampil: form.urutan_tampil,
-        jumlah_halaman: form.jumlah_halaman,
-        deskripsi: form.deskripsi.trim() || null,
-        nilai_investasi: form.nilai_investasi.trim() || null,
-        image_url: form.image_url.trim() || null,
-        status: form.status,
-        updated_at: new Date().toISOString(),
-        ...(!editingId ? { file_path: form.file_path } : {}),
-      };
+      if (!editingId) {
+        // Create via PDF pipeline API (raw PDF + PNG pages + DB row)
+        const body = new FormData();
+        body.append('pdf', pdfFile as File);
+        body.append('judul', form.judul.trim());
+        if (form.kategori.trim()) body.append('kategori', form.kategori.trim());
+        if (form.deskripsi.trim()) body.append('deskripsi', form.deskripsi.trim());
+        if (form.nilai_investasi.trim()) body.append('nilai_investasi', form.nilai_investasi.trim());
+        if (form.image_url.trim()) body.append('image_url', form.image_url.trim());
+        body.append('urutan_tampil', String(form.urutan_tampil));
 
-      if (editingId) {
+        const res = await fetch('/api/investment-docs/upload', {
+          method: 'POST',
+          body,
+        });
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => ({})) as { error?: string };
+          throw new Error(errBody.error || 'Gagal mengunggah dokumen via pipeline.');
+        }
+      } else {
+        // Metadata-only update (no PDF re-upload on edit for this gate)
+        const supabase = createClient();
+        const payload = {
+          judul: form.judul.trim(),
+          kategori: form.kategori.trim() || null,
+          urutan_tampil: form.urutan_tampil,
+          deskripsi: form.deskripsi.trim() || null,
+          nilai_investasi: form.nilai_investasi.trim() || null,
+          image_url: form.image_url.trim() || null,
+          status: form.status,
+          updated_at: new Date().toISOString(),
+        };
         const { error } = await supabase
           .from('investment_documents')
           .update(payload)
           .eq('id', editingId);
         if (error) throw error;
-      } else {
-        const { error } = await supabase
-          .from('investment_documents')
-          .insert(payload);
-        if (error) throw error;
       }
       setShowForm(false);
+      setPdfFile(null);
       toast('Dokumen berhasil disimpan.', 'success');
       loadData();
     } catch (err) {
@@ -309,6 +312,7 @@ export default function AdminGalleryPage() {
       toast(message, 'error');
     } finally {
       setSaving(false);
+      setUploadingFile(false);
     }
   };
 
@@ -483,8 +487,8 @@ export default function AdminGalleryPage() {
             </div>
             <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
               <div className="form-group">
-                <label className="form-label form-label--required">Judul Proyek / Dokumen</label>
-                <input className="form-input" value={form.judul} onChange={e => setForm(f => ({ ...f, judul: e.target.value }))} required />
+                <label className="form-label form-label--required" htmlFor="gallery-judul">Judul Proyek / Dokumen</label>
+                <input id="gallery-judul" className="form-input" value={form.judul} onChange={e => setForm(f => ({ ...f, judul: e.target.value }))} required />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
                 <div className="form-group">
@@ -505,32 +509,33 @@ export default function AdminGalleryPage() {
                 <input className="form-input" type="url" placeholder="https://..." value={form.image_url} onChange={e => setForm(f => ({ ...f, image_url: e.target.value }))} />
               </div>
               <div className="form-group">
-                <label className="form-label form-label--required">File PDF</label>
+                <label className="form-label form-label--required" htmlFor="gallery-pdf">File PDF</label>
                 <input
+                  id="gallery-pdf"
                   type="file"
                   accept="application/pdf"
                   className="form-input"
                   onChange={e => {
                     const file = e.target.files?.[0];
-                    if (file) handlePdfUpload(file);
+                    if (file) handlePdfSelect(file);
                   }}
-                  disabled={uploadingFile}
+                  disabled={uploadingFile || !!editingId}
                 />
-                <span className="form-hint">Maksimal 10MB, format PDF</span>
+                <span className="form-hint">Maksimal 50MB, format PDF — diproses via pipeline (PNG per halaman)</span>
                 {uploadingFile && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', color: 'var(--text-secondary)', fontSize: 'var(--text-sm)' }}>
                     <Loader2 size={16} className="animate-spin" />
-                    Mengunggah PDF...
+                    Memproses PDF via pipeline...
                   </div>
                 )}
-                {form.file_path && !uploadingFile && (
+                {pdfFile && !uploadingFile && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', color: 'var(--color-success-700)', fontSize: 'var(--text-sm)' }}>
                     <FileText size={16} />
-                    {form.file_path.split('/').pop()}
+                    {pdfFile.name}
                   </div>
                 )}
                 {editingId && form.file_path && (
-                  <span className="form-hint">File saat ini: {form.file_path.split('/').pop()}</span>
+                  <span className="form-hint">File saat ini: {form.file_path.split('/').pop()} (ganti PDF belum didukung di form edit)</span>
                 )}
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 'var(--space-4)' }}>

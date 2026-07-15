@@ -19,6 +19,7 @@ interface Listing {
   id: string;
   nama_umkm: string;
   kategori_kebutuhan: string;
+  sisi: 'kebutuhan' | 'penawaran';
   deskripsi: string | null;
   kontak_nama: string;
   kontak_hp: string | null;
@@ -42,6 +43,7 @@ export default function UmkmEditPage() {
   const [form, setForm] = useState({
     nama_umkm: '',
     kategori_kebutuhan: '' as KategoriUMKM | '',
+    sisi: 'kebutuhan' as 'kebutuhan' | 'penawaran',
     deskripsi: '',
     kontak_nama: '',
     kontak_hp: '',
@@ -63,7 +65,7 @@ export default function UmkmEditPage() {
 
       const { data, error } = await supabase
         .from('listing_umkm')
-        .select('id, nama_umkm, kategori_kebutuhan, deskripsi, kontak_nama, kontak_hp, kontak_email, foto_produk, status')
+        .select('id, nama_umkm, kategori_kebutuhan, sisi, deskripsi, kontak_nama, kontak_hp, kontak_email, foto_produk, status')
         .eq('id', id)
         .maybeSingle();
 
@@ -81,6 +83,7 @@ export default function UmkmEditPage() {
         id: row.id as string,
         nama_umkm: row.nama_umkm as string,
         kategori_kebutuhan: row.kategori_kebutuhan as string,
+        sisi: (row.sisi as 'kebutuhan' | 'penawaran') === 'penawaran' ? 'penawaran' : 'kebutuhan',
         deskripsi: (row.deskripsi as string) ?? null,
         kontak_nama: row.kontak_nama as string,
         kontak_hp: (row.kontak_hp as string) ?? null,
@@ -92,6 +95,7 @@ export default function UmkmEditPage() {
       setForm({
         nama_umkm: listing.nama_umkm ?? '',
         kategori_kebutuhan: listing.kategori_kebutuhan as KategoriUMKM | '',
+        sisi: listing.sisi,
         deskripsi: listing.deskripsi ?? '',
         kontak_nama: listing.kontak_nama ?? '',
         kontak_hp: listing.kontak_hp ?? '',
@@ -115,6 +119,7 @@ export default function UmkmEditPage() {
       .update({
         nama_umkm: form.nama_umkm,
         kategori_kebutuhan: form.kategori_kebutuhan,
+        sisi: form.sisi,
         deskripsi: form.deskripsi || null,
         kontak_nama: form.kontak_nama,
         kontak_hp: form.kontak_hp || null,
@@ -276,6 +281,22 @@ export default function UmkmEditPage() {
                   {label}
                 </option>
               ))}
+            </select>
+          </div>
+
+          <div className={styles.field}>
+            <label htmlFor="sisi">Sisi</label>
+            <select
+              id="sisi"
+              className="form-input"
+              value={form.sisi}
+              onChange={(e) =>
+                setForm({ ...form, sisi: e.target.value as 'kebutuhan' | 'penawaran' })
+              }
+              required
+            >
+              <option value="kebutuhan">Kebutuhan</option>
+              <option value="penawaran">Penawaran</option>
             </select>
           </div>
 

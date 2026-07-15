@@ -25,6 +25,12 @@ describe('I9.3 replayQueue', () => {
     expect(result).toEqual({ synced: 0, failed: 0 });
   });
 
+  it('passes owner filter to getPending when provided', async () => {
+    (getPending as unknown as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    await replayQueue('user-a');
+    expect(getPending).toHaveBeenCalledWith('user-a');
+  });
+
   it('replays checkin action via POST /api/checkin', async () => {
     (getPending as unknown as ReturnType<typeof vi.fn>).mockResolvedValue([
       { id: 'a1', type: 'checkin', payload: { nama: 'Budi' }, created_at: 1, synced: 0 },

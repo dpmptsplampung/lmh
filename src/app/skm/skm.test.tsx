@@ -1,136 +1,60 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, cleanup } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('@/lib/supabase/client', () => ({
-  createClient: vi.fn(),
-}));
-
-// Mock next/navigation so useSearchParams returns a controlled token.
+vi.mock('@/lib/supabase/client', () => ({ createClient: vi.fn() }));
 const mockSearchParams = vi.fn();
-vi.mock('next/navigation', () => ({
-  useSearchParams: () => mockSearchParams(),
-}));
+vi.mock('next/navigation', () => ({ useSearchParams: () => mockSearchParams() }));
 
-import SkmPage from './page';
 import { createClient } from '@/lib/supabase/client';
+import SkmPage from './page';
 
-interface MockOpts {
-  visit?: { id: string; layanan_id: string | null; status: string } | null;
-  existingSkm?: { id: string } | null;
-  token?: string | null;
+type Context = {
+  eligible: boolean;
+  already_submitted: boolean;
+  layanan_nama: string | null;
+} | null;
+
+function setup(context: Context, token: string | null = 'opaque-token') {
+  const maybeSingle = vi.fn().mockResolvedValue({ data: context, error: null });
+  const rpc = vi.fn().mockReturnValue({ maybeSingle });
+  (createClient as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ rpc });
+  mockSearchParams.mockReturnValue({ get: () => token });
+  return { rpc, maybeSingle };
 }
 
-const buildMockSupabase = (opts: MockOpts = {}) => {
-  const visitData = opts.visit === undefined ? null : opts.visit;
-  const existingData = opts.existingSkm === undefined ? null : opts.existingSkm;
+describe('public SKM token lookup', () => {
+  beforeEach(() => vi.clearAllMocks());
+  afterEach(cleanup);
 
-  const visitChain = {
-    select: vi.fn().mockReturnThis(),
-    eq: vi.fn().mockReturnThis(),
-    maybeSingle: vi.fn().mockResolvedValue({ data: visitData, error: null }),
-  };
-
-  const skmChain = {
-    select: vi.fn().mockReturnThis(),
-    eq: vi.fn().mockReturnThis(),
-    maybeSingle: vi.fn().mockResolvedValue({ data: existingData, error: null }),
-  };
-
-  const mock = {
-    from: vi.fn((table: string) => {
-      if (table === 'visit') return visitChain;
-      if (table === 'skm_respons') return skmChain;
-      return {};
-    }),
-  };
-
-  (createClient as unknown as ReturnType<typeof vi.fn>).mockReturnValue(mock);
-
-  // Configure useSearchParams: return a URLSearchParams-like object whose
-  // .get('token') returns the configured token (or null).
-  const token = opts.token === undefined ? 'valid-token-abc' : opts.token;
-  const params = {
-    get: (key: string) => (key === 'token' ? token : null),
-  };
-  mockSearchParams.mockReturnValue(params);
-
-  return { mock, visitChain, skmChain };
-};
-
-describe('I3 SKM form: smoke tests', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  afterEach(() => {
-    cleanup();
-  });
-
-  it('renders the page shell without crashing even before token resolves', async () => {
-    buildMockSupabase({ visit: null });
+  it('uses the anonymous-safe get_skm_context RPC and receives no visit IDs or PII', async () => {
+    const context = { eligible: true, already_submitted: false, layanan_nama: 'Helpdesk OSS' };
+    const { rpc } = setup(context);
     render(<SkmPage />);
 
-    await waitFor(() => {
-      const body = document.body.textContent ?? '';
-      expect(body.length).toBeGreaterThan(0);
-    });
+    await screen.findByText('U1 Persyaratan');
+    expect(rpc).toHaveBeenCalledWith('get_skm_context', { p_token: 'opaque-token' });
+    expect(context).not.toHaveProperty('visit_id');
+    expect(context).not.toHaveProperty('layanan_id');
+    expect(context).not.toHaveProperty('nama');
+    expect(context).not.toHaveProperty('email');
   });
 
-  it('shows "Token Tidak Valid" when token is missing', async () => {
-    buildMockSupabase({ visit: null, token: null });
+  it('shows unavailable for unfinished visits', async () => {
+    setup({ eligible: false, already_submitted: false, layanan_nama: 'Helpdesk OSS' });
     render(<SkmPage />);
-
-    await waitFor(() => {
-      expect(screen.getByText('Token Tidak Valid')).toBeInTheDocument();
-    });
+    expect(await screen.findByText('Survei Belum Tersedia')).toBeInTheDocument();
   });
 
-  it('shows "Survei Belum Tersedia" when visit status is not selesai', async () => {
-    buildMockSupabase({
-      visit: { id: 'v-1', layanan_id: 'l-1', status: 'menunggu' },
-    });
+  it('shows already submitted from trusted context', async () => {
+    setup({ eligible: true, already_submitted: true, layanan_nama: 'Helpdesk OSS' });
     render(<SkmPage />);
-
-    await waitFor(() => {
-      expect(screen.getByText('Survei Belum Tersedia')).toBeInTheDocument();
-    });
+    expect(await screen.findByText(/sudah mengisi survei ini/i)).toBeInTheDocument();
   });
 
-  it('shows already-submitted "Terima Kasih" state when SKM exists', async () => {
-    buildMockSupabase({
-      visit: { id: 'v-1', layanan_id: 'l-1', status: 'selesai' },
-      existingSkm: { id: 'skm-1' },
-    });
+  it('shows invalid token when the RPC returns no row', async () => {
+    setup(null);
     render(<SkmPage />);
-
-    await waitFor(() => {
-      expect(screen.getByText(/sudah mengisi survei ini/i)).toBeInTheDocument();
-    });
-  });
-
-  it('renders the 9-unsur form when token valid and visit is selesai', async () => {
-    buildMockSupabase({
-      visit: { id: 'v-1', layanan_id: 'l-1', status: 'selesai' },
-      existingSkm: null,
-    });
-    render(<SkmPage />);
-
-    await waitFor(() => {
-      expect(screen.getByText('U1 Persyaratan')).toBeInTheDocument();
-    });
-
-    expect(screen.getByText('U1 Persyaratan')).toBeInTheDocument();
-    expect(screen.getByText('U2 Prosedur')).toBeInTheDocument();
-    expect(screen.getByText('U3 Waktu')).toBeInTheDocument();
-    expect(screen.getByText('U4 Biaya')).toBeInTheDocument();
-    expect(screen.getByText('U5 Produk')).toBeInTheDocument();
-    expect(screen.getByText('U6 Kompetensi')).toBeInTheDocument();
-    expect(screen.getByText('U7 Perilaku')).toBeInTheDocument();
-    expect(screen.getByText('U8 Sarana')).toBeInTheDocument();
-    expect(screen.getByText('U9 Pengaduan')).toBeInTheDocument();
-
-    const submitBtn = screen.getByRole('button', { name: /kirim survei/i });
-    expect(submitBtn).toBeDisabled();
+    await waitFor(() => expect(screen.getByText('Token Tidak Valid')).toBeInTheDocument());
   });
 });

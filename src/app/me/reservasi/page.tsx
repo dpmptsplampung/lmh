@@ -37,6 +37,7 @@ export default function ReservasiPage() {
   });
   const [layananOptions, setLayananOptions] = useState<{ id: string; nama: string }[]>([]);
   const [pengunjungId, setPengunjungId] = useState<string | null>(null);
+  const [pengunjungNama, setPengunjungNama] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingInit, setLoadingInit] = useState(true);
   const [error, setError] = useState('');
@@ -60,11 +61,14 @@ export default function ReservasiPage() {
       if (user) {
         const { data: pengunjung } = await supabase
           .from('pengunjung')
-          .select('id')
+          .select('id, nama')
           .eq('auth_user_id', user.id)
           .single();
 
-        if (pengunjung) setPengunjungId(pengunjung.id);
+        if (pengunjung) {
+          setPengunjungId(pengunjung.id);
+          setPengunjungNama(pengunjung.nama);
+        }
       }
 
       // Get layanan
@@ -130,7 +134,7 @@ export default function ReservasiPage() {
       setError('Pilih tanggal kedatangan');
       return;
     }
-    if (!pengunjungId) {
+    if (!pengunjungId || !pengunjungNama) {
       setError('Sesi login tidak ditemukan. Silakan login ulang.');
       return;
     }
@@ -142,6 +146,7 @@ export default function ReservasiPage() {
       const insertData: Record<string, unknown> = {
         asal: 'reservasi',
         pengunjung_id: pengunjungId,
+        nama: pengunjungNama,
         tujuan: form.tujuan,
         tanggal_rencana: form.tanggal_rencana,
         keperluan: form.keperluan.trim() || null,
@@ -254,34 +259,54 @@ export default function ReservasiPage() {
                 {/* Tujuan */}
                 <div className="form-group">
                   <label className="form-label form-label--required">Tujuan Kunjungan</label>
-                  <div className={styles.tujuanGroup}>
-                    <div
+                  <div className={styles.tujuanGroup} role="radiogroup" aria-label="Tujuan Kunjungan">
+                    <label
                       className={`${styles.tujuanOption} ${form.tujuan === 'loket' ? styles.tujuanOptionActive : ''}`}
-                      onClick={() => setForm({ ...form, tujuan: 'loket', nama_yang_ditemui: '' })}
                     >
-                      <div className={`${styles.tujuanRadio} ${form.tujuan === 'loket' ? styles.tujuanRadioActive : ''}`} />
-                      <div className={`${styles.tujuanIcon} ${styles.tujuanIconLoket}`}>
+                      <input
+                        type="radio"
+                        name="tujuan"
+                        value="loket"
+                        checked={form.tujuan === 'loket'}
+                        onChange={() => setForm({ ...form, tujuan: 'loket', nama_yang_ditemui: '' })}
+                        className={styles.tujuanRadioInput}
+                      />
+                      <span
+                        className={`${styles.tujuanRadio} ${form.tujuan === 'loket' ? styles.tujuanRadioActive : ''}`}
+                        aria-hidden
+                      />
+                      <span className={`${styles.tujuanIcon} ${styles.tujuanIconLoket}`} aria-hidden>
                         <MapPin size={20} />
-                      </div>
-                      <div>
-                        <div className={styles.tujuanLabel}>Menuju Loket Layanan</div>
-                        <div className={styles.tujuanHint}>Helpdesk OSS, Sertifikasi Halal, CS BPJS</div>
-                      </div>
-                    </div>
+                      </span>
+                      <span>
+                        <span className={styles.tujuanLabel}>Menuju Loket Layanan</span>
+                        <span className={styles.tujuanHint}>Helpdesk OSS, Sertifikasi Halal, CS BPJS</span>
+                      </span>
+                    </label>
 
-                    <div
+                    <label
                       className={`${styles.tujuanOption} ${form.tujuan === 'bertemu_seseorang' ? styles.tujuanOptionActive : ''}`}
-                      onClick={() => setForm({ ...form, tujuan: 'bertemu_seseorang', layanan_id: '' })}
                     >
-                      <div className={`${styles.tujuanRadio} ${form.tujuan === 'bertemu_seseorang' ? styles.tujuanRadioActive : ''}`} />
-                      <div className={`${styles.tujuanIcon} ${styles.tujuanIconBertemu}`}>
+                      <input
+                        type="radio"
+                        name="tujuan"
+                        value="bertemu_seseorang"
+                        checked={form.tujuan === 'bertemu_seseorang'}
+                        onChange={() => setForm({ ...form, tujuan: 'bertemu_seseorang', layanan_id: '' })}
+                        className={styles.tujuanRadioInput}
+                      />
+                      <span
+                        className={`${styles.tujuanRadio} ${form.tujuan === 'bertemu_seseorang' ? styles.tujuanRadioActive : ''}`}
+                        aria-hidden
+                      />
+                      <span className={`${styles.tujuanIcon} ${styles.tujuanIconBertemu}`} aria-hidden>
                         <User size={20} />
-                      </div>
-                      <div>
-                        <div className={styles.tujuanLabel}>Bertemu Seseorang</div>
-                        <div className={styles.tujuanHint}>Ketik nama orang yang ingin ditemui</div>
-                      </div>
-                    </div>
+                      </span>
+                      <span>
+                        <span className={styles.tujuanLabel}>Bertemu Seseorang</span>
+                        <span className={styles.tujuanHint}>Ketik nama orang yang ingin ditemui</span>
+                      </span>
+                    </label>
                   </div>
                 </div>
 

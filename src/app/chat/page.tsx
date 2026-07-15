@@ -305,18 +305,25 @@ export default function PublicChatPage() {
     try {
       const supabase = createClient();
 
-      // I8: Record PDP consent BEFORE creating chat session.
-      // subjek_ref = pengunjung id (preferred) or auth user id as fallback.
-      const consentRef = pengunjungId ?? (await supabase.auth.getUser()).data?.user?.id ?? 'anon';
-      try {
-        await supabase.from('consent_log').insert({
-          subjek_ref: consentRef,
-          tujuan: 'chat_followup',
-          disetujui: true,
-          versi_kebijakan: CONSENT_VERSION,
-        });
-      } catch {
-        // Consent logging is best-effort: don't block the session if it fails.
+      // I8: Record PDP consent only when user asserted consent checkbox.
+      // subjek_ref must bind to auth.uid or owned pengunjung row (RLS).
+      if (!consentGiven) {
+        setLoadingSetup(false);
+        return;
+      }
+      const authUserId = (await supabase.auth.getUser()).data?.user?.id;
+      const consentRef = pengunjungId ?? authUserId;
+      if (consentRef) {
+        try {
+          await supabase.from('consent_log').insert({
+            subjek_ref: consentRef,
+            tujuan: 'chat_followup',
+            disetujui: true,
+            versi_kebijakan: CONSENT_VERSION,
+          });
+        } catch {
+          // Consent logging is best-effort: don't block the session if it fails.
+        }
       }
 
       // K2: sertakan pengunjung_id agar RLS chat_sesi_owner_insert menerima

@@ -8,6 +8,7 @@ export const maxDuration = 60;
 
 interface FailedRow {
   id: string;
+  claim_token: string;
   kanal: 'email' | 'web_push';
   tujuan_email: string | null;
   tujuan_user_id: string | null;
@@ -64,10 +65,10 @@ async function sendEmail(resend: Resend, row: FailedRow): Promise<{ ok: boolean;
   return { ok: true };
 }
 
-async function sendPush(row: FailedRow): Promise<{ ok: boolean; error?: string; skipped?: boolean }> {
-  const adminClient = getServiceClient();
-  if (!adminClient) return { ok: false, error: 'service client unavailable' };
-
+async function sendPush(
+  adminClient: NonNullable<ReturnType<typeof getServiceClient>>,
+  row: FailedRow,
+): Promise<{ ok: boolean; error?: string; skipped?: boolean }> {
   const { data: subs, error: subErr } = await adminClient
     .from('push_subscriptions')
     .select('endpoint, keys')
@@ -94,22 +95,22 @@ async function sendPush(row: FailedRow): Promise<{ ok: boolean; error?: string; 
   return { ok: false, error: lastError || 'all push attempts failed' };
 }
 
-async function updateStatus(
-  adminClient: ReturnType<typeof getServiceClient>,
+async function completeNotifikasi(
+  adminClient: NonNullable<ReturnType<typeof getServiceClient>>,
   id: string,
+  claimToken: string,
   status: 'sent' | 'failed' | 'skipped',
-  retryCount: number,
   error?: string,
 ): Promise<void> {
-  if (!adminClient) return;
-  const patch: Record<string, unknown> = { status };
-  if (status === 'failed') patch.retry_count = retryCount + 1;
-  if (status === 'sent') patch.sent_at = new Date().toISOString();
-  if (error) patch.error = error;
-  await adminClient.from('notifikasi').update(patch).eq('id', id);
+  await adminClient.rpc('complete_notifikasi', {
+    p_id: id,
+    p_claim_token: claimToken,
+    p_status: status,
+    p_error: error ?? null,
+  });
 }
 
-export async function POST(request: NextRequest) {
+async function processFailed(request: NextRequest) {
   if (!process.env.CRON_SECRET) {
     return NextResponse.json(
       { error: 'CRON_SECRET not configured' },
@@ -128,21 +129,19 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { data: failed, error: fetchErr } = await adminClient
-    .from('notifikasi')
-    .select('id, kanal, tujuan_email, tujuan_user_id, subjek, body, payload, retry_count')
-    .eq('status', 'failed')
-    .lt('retry_count', 3)
-    .limit(10);
+  const { data: claimed, error: claimErr } = await adminClient.rpc('claim_notifikasi', {
+    p_limit: 10,
+    p_status: 'failed',
+  });
 
-  if (fetchErr) {
+  if (claimErr) {
     return NextResponse.json(
-      { error: `Failed to fetch failed: ${fetchErr.message}` },
+      { error: `Failed to claim failed: ${claimErr.message}` },
       { status: 500 },
     );
   }
 
-  const rows: FailedRow[] = (failed ?? []) as FailedRow[];
+  const rows: FailedRow[] = (claimed ?? []) as FailedRow[];
   let sent = 0;
   let failedAgain = 0;
 
@@ -151,39 +150,48 @@ export async function POST(request: NextRequest) {
   for (const row of rows) {
     if (row.kanal === 'email') {
       if (!row.tujuan_email) {
-        await updateStatus(adminClient, row.id, 'skipped', row.retry_count, 'no tujuan_email');
+        await completeNotifikasi(adminClient, row.id, row.claim_token, 'skipped', 'no tujuan_email');
         continue;
       }
       if (!resend) {
-        await updateStatus(adminClient, row.id, 'failed', row.retry_count, 'RESEND_API_KEY not configured');
+        await completeNotifikasi(adminClient, row.id, row.claim_token, 'failed', 'RESEND_API_KEY not configured');
         failedAgain++;
         continue;
       }
       const result = await sendEmail(resend, row);
       if (result.ok) {
-        await updateStatus(adminClient, row.id, 'sent', row.retry_count);
+        await completeNotifikasi(adminClient, row.id, row.claim_token, 'sent');
         sent++;
       } else {
-        await updateStatus(adminClient, row.id, 'failed', row.retry_count, result.error);
+        await completeNotifikasi(adminClient, row.id, row.claim_token, 'failed', result.error);
         failedAgain++;
       }
     } else if (row.kanal === 'web_push') {
       if (!row.tujuan_user_id) {
-        await updateStatus(adminClient, row.id, 'skipped', row.retry_count, 'no tujuan_user_id');
+        await completeNotifikasi(adminClient, row.id, row.claim_token, 'skipped', 'no tujuan_user_id');
         continue;
       }
-      const result = await sendPush(row);
+      const result = await sendPush(adminClient, row);
       if (result.ok && !result.skipped) {
-        await updateStatus(adminClient, row.id, 'sent', row.retry_count);
+        await completeNotifikasi(adminClient, row.id, row.claim_token, 'sent');
         sent++;
       } else if (result.skipped) {
-        await updateStatus(adminClient, row.id, 'skipped', row.retry_count, 'no subscriptions');
+        await completeNotifikasi(adminClient, row.id, row.claim_token, 'skipped', 'no subscriptions');
       } else {
-        await updateStatus(adminClient, row.id, 'failed', row.retry_count, result.error);
+        await completeNotifikasi(adminClient, row.id, row.claim_token, 'failed', result.error);
         failedAgain++;
       }
     }
   }
 
   return NextResponse.json({ sent, failed: failedAgain, retried: rows.length });
+}
+
+export async function POST(request: NextRequest) {
+  return processFailed(request);
+}
+
+/** Vercel Cron invokes scheduled paths with GET + Authorization: Bearer CRON_SECRET */
+export async function GET(request: NextRequest) {
+  return processFailed(request);
 }

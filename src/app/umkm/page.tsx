@@ -7,7 +7,6 @@ import { useSearchParams } from 'next/navigation';
 import {
   Store,
   Search,
-  User,
   ArrowLeft,
   Building2,
   MapPin,
@@ -31,7 +30,6 @@ interface UMKMListing {
   nama_umkm: string;
   kategori_kebutuhan: string;
   deskripsi: string | null;
-  kontak_nama: string | null;
   foto_produk: string[] | null;
   status: string;
   sisi: string;
@@ -100,9 +98,8 @@ export default function UMKMPage() {
       try {
         const supabase = createClient();
         const { data } = await supabase
-          .from('listing_umkm')
-          .select('id, nama_umkm, kategori_kebutuhan, deskripsi, kontak_nama, foto_produk, status, sisi, created_at')
-          .eq('status', 'published')
+          .from('v_umkm_public')
+          .select('id, nama_umkm, kategori_kebutuhan, deskripsi, foto_produk, status, sisi, created_at')
           .order('created_at', { ascending: false });
 
         if (data && data.length > 0) {
@@ -114,7 +111,6 @@ export default function UMKMPage() {
               nama_umkm: row.nama_umkm as string,
               kategori_kebutuhan: row.kategori_kebutuhan as string,
               deskripsi: (row.deskripsi as string) ?? null,
-              kontak_nama: (row.kontak_nama as string) ?? null,
               foto_produk: foto ?? null,
               status: row.status as string,
               sisi: (row.sisi as string) ?? 'kebutuhan',
@@ -555,10 +551,6 @@ export default function UMKMPage() {
                               <p className={styles.listingDesc}>{listing.deskripsi}</p>
                             )}
                             <div className={styles.listingFooter}>
-                              <span className={styles.listingContact}>
-                                <User size={14} />
-                                {listing.kontak_nama || '—'}
-                              </span>
                               <div className={styles.listingActions}>
                                 <button
                                   type="button"

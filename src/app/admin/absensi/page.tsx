@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   BookOpen,
   LogIn,
@@ -42,13 +42,8 @@ export default function AbsensiPage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
 
-  useEffect(() => {
-    fetchData();
-  }, [filterTanggal]);
-
-  async function fetchData() {
+  const fetchData = useCallback(async () => {
     try {
-      setLoading(true);
       const supabase = createClient();
       
       // Get current user role
@@ -101,7 +96,11 @@ export default function AbsensiPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [filterTanggal]);
+
+  useEffect(() => {
+    void Promise.resolve().then(fetchData);
+  }, [fetchData]);
 
   const handleAbsenHadir = async () => {
     if (!currentUser) return;
@@ -113,6 +112,7 @@ export default function AbsensiPage() {
         tanggal: filterTanggal,
         jam_masuk: new Date().toISOString(),
       });
+      setLoading(true);
       await fetchData();
     } catch (e) {
       console.error(e);
@@ -132,6 +132,7 @@ export default function AbsensiPage() {
       await supabase.from('absensi_petugas')
         .update({ jam_pulang: new Date().toISOString() })
         .eq('id', todayAbsensi.id);
+      setLoading(true);
       await fetchData();
     } catch (e) {
       console.error(e);
@@ -147,6 +148,7 @@ export default function AbsensiPage() {
       await supabase.from('absensi_petugas')
         .update({ status: 'approved', approved_by: currentUser.id })
         .eq('id', id);
+      setLoading(true);
       await fetchData();
     } catch (e) {
       console.error(e);
@@ -169,7 +171,10 @@ export default function AbsensiPage() {
              type="date"
              className="form-input"
              value={filterTanggal}
-             onChange={(e) => setFilterTanggal(e.target.value)}
+             onChange={(e) => {
+               setLoading(true);
+               setFilterTanggal(e.target.value);
+             }}
              style={{ width: '160px', padding: 'var(--space-2) var(--space-3)', fontSize: 'var(--text-sm)' }}
            />
         </div>

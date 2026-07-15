@@ -1,194 +1,161 @@
 # LMH 2.0 Deploy Runbook
 
-Single ordered checklist for deploying LMH 2.0 to production. Follow each
-section in order. **Backup the database before applying migrations
-(Section 3).**
+Ordered checklist for staging/production. **Backup before any schema apply**
+(`docs/BACKUP_RESTORE.md`).
+
+Baseline schema is **five** final-state migrations + production seed — **not**
+a paste loop of historical files `020`–`038`.
 
 ---
 
 ## Section 1: Environment Variables
 
-All required env vars. Copy `.env.example` to `.env.local` (local) and set
-the same values in Vercel Project Settings → Environment Variables (prod).
+Copy `.env.example` → `.env.local` (local) and set the same keys in Vercel
+(Production / Preview as needed). Full notes: `docs/ENVIRONMENT_VARIABLES.md`.
 
 ```
-# Core Supabase
+APP_ENV=production
+APP_VERSION=<git sha or release tag>
+
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 SUPABASE_SERVICE_ROLE_KEY=...
 
-# I5: Notifikasi
 RESEND_API_KEY=re_...
-RESEND_FROM=DPMPTSP Lampung <noreply@lampungprov.go.id>
-CRON_SECRET=...   # Vercel Cron sends Authorization: Bearer <CRON_SECRET>
-NEXT_PUBLIC_PUBLIC_URL=https://lmh.lampungprov.go.id
+RESEND_FROM=DPMPTSP Lampung <noreply@your-verified-domain>
+CRON_SECRET=...
+NEXT_PUBLIC_PUBLIC_URL=https://lmh.example
 
-# I5: Web Push (generate with: npx web-push generate-vapid-keys)
 VAPID_PUBLIC_KEY=...
 VAPID_PRIVATE_KEY=...
-NEXT_PUBLIC_VAPID_PUBLIC_KEY=...   # same as VAPID_PUBLIC_KEY, exposed to browser
+NEXT_PUBLIC_VAPID_PUBLIC_KEY=...   # same as VAPID_PUBLIC_KEY
 
-# I4: AI RAG
 GEMINI_API_KEY=...
 GEMINI_MODEL=gemini-1.5-flash
 GEMINI_EMBEDDING_MODEL=text-embedding-004
 ```
 
-### Variable reference
-
-| Variable | Purpose | Where to get it |
-|---|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL | Supabase Dashboard → Project Settings → API |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Anon public key (browser-safe) | Supabase Dashboard → Project Settings → API → `anon` `public` |
-| `SUPABASE_SERVICE_ROLE_KEY` | Service role key (server-only, bypasses RLS) | Supabase Dashboard → Project Settings → API → `service_role` |
-| `RESEND_API_KEY` | Resend transactional email | Resend Dashboard → API Keys |
-| `RESEND_FROM` | From address (must be a verified domain) | Resend Dashboard → Domains |
-| `CRON_SECRET` | Shared secret for Vercel Cron → internal endpoints | Generate a random 32+ char string |
-| `NEXT_PUBLIC_PUBLIC_URL` | Public base URL used in notification bodies | Your production URL |
-| `VAPID_PUBLIC_KEY` | Web Push VAPID public key | `npx web-push generate-vapid-keys` |
-| `VAPID_PRIVATE_KEY` | Web Push VAPID private key (server-only) | same command |
-| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | Same as `VAPID_PUBLIC_KEY` (browser-exposed) | same command |
-| `GEMINI_API_KEY` | Google Gemini API key | Google AI Studio → API keys |
-| `GEMINI_MODEL` | Chat model | default `gemini-1.5-flash` |
-| `GEMINI_EMBEDDING_MODEL` | Embedding model (768-dim) | default `text-embedding-004` |
-
-> **Security:** `SUPABASE_SERVICE_ROLE_KEY` and `VAPID_PRIVATE_KEY` must
-> NEVER be prefixed with `NEXT_PUBLIC_`. They are server-only.
+> **Security:** Never expose `SUPABASE_SERVICE_ROLE_KEY` or `VAPID_PRIVATE_KEY`
+> with a `NEXT_PUBLIC_` prefix.
 
 ---
 
-## Section 2: Supabase Dashboard Configuration
+## Section 2: Supabase Dashboard (before first traffic)
 
-Perform these in order in the Supabase Dashboard (before applying
-migrations):
-
-1. **Enable extensions** — Database → Extensions → enable:
-   - `pgvector` (required by migration 035 for FAQ embeddings)
-   - `pg_cron` (required by migration 036 for `anon_rate_limit` pruning)
-2. **Enable Anonymous Sign-In** — Authentication → Providers → Anonymous →
-   toggle On. (Required for check-in flow — anon visitors get a temp auth
-   session before INSERT.)
-3. **Configure Auth Hook (JWT claim)** — Authentication → Hooks → JWT Hook →
-   select `public.set_user_role_claim()` (installed by migration 027). This
-   injects the user's role (`petugas` / `admin` / `pengunjung`) into the JWT
-   so RLS policies can call `get_my_role()` without an extra round-trip.
-4. **Set Site URL** — Authentication → URL Configuration → Site URL = your
-   production app URL (e.g. `https://lmh.lampungprov.go.id`). Used for
-   magic-link redirects (UMKM edit flow).
-5. **Verify Resend domain** — Resend Dashboard → Domains → confirm
-   `lampungprov.go.id` (or the subdomain you send from) is verified. Without
-   this, Resend refuses to send.
+1. **Extensions** — enable what baseline preflight requires (typically
+   `pgvector`, `pg_cron` / related). Confirm against
+   `202607140001_extensions_and_preflight.sql`.
+2. **Anonymous Sign-In** — Authentication → Providers → Anonymous → On  
+   (check-in and public flows that mint temp sessions).
+3. **Auth Hook (JWT role claim)** — wire `public.set_user_role_claim` (or the
+   function name installed by baseline) so staff RLS can use role claims.
+4. **Site URL + redirect allow-list** — production app origin (magic-link
+   redirects for UMKM edit / invites).
+5. **Resend domain** — domain in `RESEND_FROM` must be **verified** in Resend.
+   Magic-link and notification email **will fail** without this.
+6. **Consent / privacy URL** — confirm `https://<prod>/kebijakan-privasi`
+   loads and matches checkin/chat consent links (`CONSENT_VERSION` / policy
+   version `1.0`).
 
 ---
 
-## Section 3: Migration Apply Order (CRITICAL — follow exactly)
+## Section 3: Apply migrations (5 baselines — CLI)
 
-Apply migrations `020` → `038` **in order** via Supabase Dashboard →
-SQL Editor (paste each file, run). **Backup the database first**
-(Database → Backup).
+**Do not** paste legacy `001`–`038` SQL in the Dashboard.
 
-### Warnings (read before applying)
+On a **fresh / empty** linked project (Supabase CLI ≥ 2.107 recommended):
 
-- **Before 023:** Provision replacement petugas accounts via the invite
-  flow (`POST /api/admin/petugas/invite`). Migration 023 **DELETES** the 9
-  hardcoded `password123` accounts created in 013. If you apply 023 without
-  replacements, **you lock yourself out of admin**.
-- **Before 026:** Confirm the real DPMPTSP WhatsApp number. Migration 026
-  sets `site_settings.wa_number` to a placeholder (`6281277000000`). After
-  applying 026, run:
-  ```sql
-  UPDATE site_settings SET value = '<real number>' WHERE key = 'wa_number';
-  ```
-- **Before 035:** The `pgvector` extension **MUST** be enabled (Section 2,
-  step 1). Migration 035 adds a `vector(768)` column and an ivfflat index —
-  it will fail hard without pgvector.
-- **Before 036:** (Optional but recommended) `pg_cron` should be enabled
-  (Section 2, step 1). Migration 036 creates the `prune_anon_rate_limit()`
-  function regardless, but the daily cron schedule only registers if
-  `pg_cron` is installed. If not installed, the migration prints a NOTICE
-  and you must run `SELECT prune_anon_rate_limit();` manually on a schedule.
-- **Before 038:** Safe online ALTER — migration 038 adds
-  `listing_umkm.sisi` column with `NOT NULL DEFAULT 'kebutuhan'`.
-  Existing rows are treated as `kebutuhan` (correct — that was the
-  implicit assumption before two-sided marketplace). No table rewrite
-  (Postgres ≥ 11 optimizes non-volatile defaults).
+```bash
+supabase link --project-ref <ref>
+supabase db push --include-all --include-seed
+```
 
-### Migration list
+This applies, in order:
 
-| # | File | Notes |
-|---|---|---|
-| 020 | `020_*.sql` | |
-| 021 | `021_*.sql` | K2 chat ownership |
-| 022 | `022_anon_rate_limit.sql` | K3 rate limiting |
-| 023 | `023_*.sql` | **WARNING — deletes petugas accounts, see above** |
-| ... | ... | (024–025) |
-| 026 | `026_*.sql` | **WARNING — placeholder WA number, see above** |
-| 027 | `027_*.sql` | `set_user_role_claim()` — wire up in Section 2 step 3 |
-| ... | ... | (028–034) |
-| 035 | `035_faq_embedding.sql` | **Requires pgvector — see above** |
-| 036 | `036_anon_rate_prune.sql` | `prune_anon_rate_limit()` + pg_cron |
-| 037 | `037_investasi_lead.sql` | I6 — `investasi_lead` table, RLS, audit trigger |
-| 038 | `038_umkm_dua_sisi.sql` | I7 — `listing_umkm.sisi` column, `umkm_inquiry` table, `v_umkm_match` view |
+1. `202607140001_extensions_and_preflight.sql`
+2. `202607140002_core_schema.sql`
+3. `202607140003_feature_schema.sql`
+4. `202607140004_security_and_automation.sql`
+5. `202607140005_views_and_jobs.sql`
+6. Production seed: `supabase/seed.sql` (services/config only — **no** demo
+   passwords, **no** fake WA, **no** Auth users)
+
+Local full reset:
+
+```bash
+supabase db reset
+```
+
+Rules: `docs/MIGRATIONS.md`. After first apply, baselines are immutable;
+further schema changes are **new** timestamped forward migrations only.
+
+**Never** run `seed-demo.sql` in production.
+
+### First staff accounts
+
+There is no shared `password123` seed. Create admins/petugas via the invite
+flow (`POST /api/admin/petugas/invite` as an existing admin, or bootstrap per
+your org process). Complete magic-link / set password before go-live.
 
 ---
 
-## Section 4: Vercel Deployment
+## Section 4: Vercel (or host) deployment
 
-1. Set **all** env vars from Section 1 in Vercel Project Settings →
-   Environment Variables (for the Production environment; repeat for Preview
-   if you want a staging deploy).
-2. Generate VAPID keys locally and set them in Vercel:
-   ```bash
-   npx web-push generate-vapid-keys
-   ```
-   Copy the public key into both `VAPID_PUBLIC_KEY` and
-   `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, and the private key into
-   `VAPID_PRIVATE_KEY`.
-3. Deploy the branch (Vercel Git integration auto-deploys on push, or run
-   `vercel --prod` manually).
-4. Configure Vercel Cron to send the auth header. The `vercel.json` schedules
-   are already defined in-repo; in Vercel Dashboard → Cron Jobs, ensure each
-   cron job sends `Authorization: Bearer <CRON_SECRET>` so the internal
-   endpoints (`/api/notif/send`, `/api/notif/retry`) accept the request.
+1. Set all Section 1 env vars for Production (and Preview if used).
+2. Generate VAPID: `npx web-push generate-vapid-keys`.
+3. Deploy (`git push` with Git integration or `vercel --prod`).
+4. Cron: `vercel.json` schedules `/api/notif/send` and `/api/notif/retry` —
+   ensure `Authorization: Bearer <CRON_SECRET>`.
 
 ---
 
-## Section 5: Post-Deploy
+## Section 5: Post-deploy health + smoke
 
-1. **FAQ embedding backfill** — as an admin, POST to
-   `/api/admin/faq/embed` repeatedly until the response returns
-   `{ remaining: 0 }`. This generates vector embeddings for every active
-   FAQ row so the RAG chatbot can match. Without this, the AI chat will
-   always eskalasi (no matches).
-2. **Smoke test** the end-to-end flows:
-   - Check-in (anon visitor → kunjungan INSERT)
-   - Chat (anon + Google sign-in → chat_sesi + chat_pesan)
-   - SKM submission (post-service survey)
-   - UMKM magic-link (request edit link → email → edit page)
-   - Gallery page-image (image upload + display)
-   - Notification send (admin triggers → email/web_push)
-   - AI chat eskalasi (ask a question with no FAQ match → bot hands off to
-     petugas)
-   - **I6 — Investasi lead funnel:** open Gallery → click "Ajukan Minat
-     Investasi" on an IPRO card → submit form → verify row appears at
-     `/admin/investasi-leads` → update status via dropdown.
-   - **I7 — UMKM inquiry:** open `/umkm` → matchmaking tab → "Kirim Pesan"
-     on a listing → submit → owner logs in via magic-link → `/umkm/inbox`
-     → approve/reject. Verify `kontak_hp`/`kontak_email` NOT visible on
-     public listing cards (only via owner inbox after approval).
-   - **I9 — Offline checkin:** open `/checkin` in DevTools → Application →
-     Service Workers confirms `sw.js` active → toggle "Offline" in
-     Network tab → submit checkin form → verify "tersimpan offline"
-     message → toggle "Online" → verify queue replays and visit appears
-     in admin.
-   - **I9 — Checkin Bantuan:** login as petugas → `/admin/checkin-asist`
-     → submit a visitor on their behalf → verify visit appears in admin
-     antrian with `pengunjung_id = NULL`.
-   - **I9 — PWA install:** DevTools → Application → Manifest confirms
-     metadata; "Install app" prompt works (Chrome/Edge).
-3. **Verify `anon_rate_limit` pruning is scheduled** (migration 036):
-   ```sql
-   SELECT * FROM cron.job WHERE jobname = 'prune_anon_rate_limit';
-   ```
-   If `pg_cron` is not installed, set up an external scheduler to run
-   `SELECT prune_anon_rate_limit();` daily.
+### Health endpoints
+
+```bash
+# Liveness (process up)
+curl -sS "$BASE_URL/api/health/live"
+# Expect 200 + JSON status live
+
+# Readiness (deps / config as implemented)
+curl -sS "$BASE_URL/api/health/ready"
+```
+
+Or:
+
+```bash
+BASE_URL=https://your-app.example npm run smoke
+```
+
+(`scripts/smoke.mjs` — skips network if `BASE_URL` unset.)
+
+### Functional smoke (manual)
+
+- [ ] Anon check-in → appears in admin antrian  
+- [ ] Chat session isolation  
+- [ ] SKM submit → IKM path  
+- [ ] UMKM / petugas magic-link email arrives (**Resend domain required**)  
+- [ ] Gallery page-images watermarked; no raw PDF exfil  
+- [ ] Privacy page `/kebijakan-privasi` from consent UIs  
+- [ ] Invite admin login works  
+
+### Optional backfills
+
+- FAQ embeddings: `POST /api/admin/faq/embed` until `{ remaining: 0 }`  
+- Investment PDF pages: `npx tsx scripts/backfill-investment-pdf.ts` (if legacy PDFs)
+
+### Cron / jobs
+
+If `pg_cron` is available, verify scheduled jobs from baseline
+(`docs/MIGRATIONS.md` / SQL in `202607140005_*`). Otherwise schedule
+equivalent maintenance externally.
+
+---
+
+## Section 6: Rollback notes
+
+- **App only:** redeploy previous Vercel deployment.  
+- **Schema:** restore from Supabase backup (see `docs/BACKUP_RESTORE.md`).  
+- Do not re-apply old numbered migrations from git history into the live
+  `supabase/migrations/` folder.

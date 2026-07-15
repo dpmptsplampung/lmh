@@ -11,6 +11,11 @@ const PRECACHE_URLS = [
   '/manifest.json',
 ];
 
+function isCacheableResponse(response) {
+  const cacheControl = response.headers.get('cache-control') || '';
+  return !cacheControl.toLowerCase().includes('no-store');
+}
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_VERSION).then((cache) => cache.addAll(PRECACHE_URLS)).then(() => self.skipWaiting()),
@@ -30,7 +35,7 @@ async function networkFirst(request) {
   const cache = await caches.open(CACHE_VERSION);
   try {
     const fresh = await fetch(request);
-    if (fresh && fresh.ok && fresh.type === 'basic') {
+    if (fresh && fresh.ok && fresh.type === 'basic' && isCacheableResponse(fresh)) {
       cache.put(request, fresh.clone());
     }
     return fresh;
@@ -50,7 +55,7 @@ async function cacheFirst(request) {
   if (cached) return cached;
   try {
     const fresh = await fetch(request);
-    if (fresh && fresh.ok) {
+    if (fresh && fresh.ok && isCacheableResponse(fresh)) {
       cache.put(request, fresh.clone());
     }
     return fresh;
@@ -67,6 +72,9 @@ self.addEventListener('fetch', (event) => {
 
   // Skip cross-origin requests (e.g. Supabase, Google Fonts) — let them go to network.
   if (url.origin !== self.location.origin) return;
+
+  // Health probes must always reach the runtime and must never use offline data.
+  if (url.pathname.startsWith('/api/health/')) return;
 
   // Static assets: cache-first
   if (url.pathname.startsWith('/_next/static/') || url.pathname === '/logo.png' || url.pathname === '/manifest.json') {
@@ -87,7 +95,7 @@ self.addEventListener('fetch', (event) => {
       const cached = await cache.match(req);
       const network = fetch(req)
         .then((fresh) => {
-          if (fresh && fresh.ok) cache.put(req, fresh.clone());
+          if (fresh && fresh.ok && isCacheableResponse(fresh)) cache.put(req, fresh.clone());
           return fresh;
         })
         .catch(() => cached);

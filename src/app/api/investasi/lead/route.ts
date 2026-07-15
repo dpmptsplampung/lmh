@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 
 const bodySchema = z.object({
@@ -11,13 +10,6 @@ const bodySchema = z.object({
   minat: z.string().max(1000).optional(),
   catatan: z.string().max(2000).optional(),
 });
-
-function getServiceClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) return null;
-  return createServiceClient(url, key);
-}
 
 export async function POST(request: NextRequest) {
   let parsedBody: unknown;
@@ -38,6 +30,14 @@ export async function POST(request: NextRequest) {
   const { doc_id, nama, email, instansi, minat, catatan } = parsed.data;
 
   const supabase = await createClient();
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json(
+      { error: 'Sesi diperlukan. Silakan masuk terlebih dahulu.', code: 'AUTH_REQUIRED' },
+      { status: 401 },
+    );
+  }
 
   const { data: doc, error: docErr } = await supabase
     .from('investment_documents')
@@ -87,43 +87,18 @@ export async function POST(request: NextRequest) {
         { status: 409 },
       );
     }
-    const adminClient = getServiceClient();
-    if (!adminClient) {
+    if (
+      insertErr.code === '42501' ||
+      /row-level security|rate|check_anon_rate/i.test(insertErr.message ?? '')
+    ) {
       return NextResponse.json(
-        { error: `Failed to submit lead: ${insertErr.message}` },
-        { status: 500 },
+        { error: 'Terlalu banyak permintaan. Coba lagi nanti.', code: 'RATE_LIMIT' },
+        { status: 429 },
       );
     }
-
-    let adminInsertErr: InsertErr = null;
-    let adminInsertData: { id: string } | null = null;
-    try {
-      const res = await adminClient.from('investasi_lead').insert(insertPayload).select('id').maybeSingle();
-      adminInsertErr = res.error as InsertErr;
-      adminInsertData = res.data as { id: string } | null;
-    } catch (err) {
-      adminInsertErr = err as InsertErr;
-    }
-
-    if (adminInsertErr) {
-      if (adminInsertErr.code === '23505') {
-        return NextResponse.json(
-          { error: 'Permintaan sudah tercatat' },
-          { status: 409 },
-        );
-      }
-      return NextResponse.json(
-        { error: `Failed to submit lead: ${adminInsertErr.message}` },
-        { status: 500 },
-      );
-    }
-
     return NextResponse.json(
-      {
-        id: adminInsertData?.id,
-        message: 'Permintaan minat investasi Anda tercatat. Tim kami akan menghubungi Anda.',
-      },
-      { status: 201 },
+      { error: `Failed to submit lead: ${insertErr.message}` },
+      { status: 500 },
     );
   }
 

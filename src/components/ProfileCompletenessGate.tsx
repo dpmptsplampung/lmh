@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { KATEGORI_PENGUNJUNG } from '@/lib/constants';
 import { AlertCircle, Loader2, Sparkles } from 'lucide-react';
 import styles from './profile-gate.module.css';
 
@@ -205,11 +206,9 @@ export default function ProfileCompletenessGate({ children }: ProfileCompletenes
                 required
               >
                 <option value="">-- Pilih Kategori --</option>
-                <option value="umum">Masyarakat Umum</option>
-                <option value="umkm">Pelaku Usaha / UMKM</option>
-                <option value="investor">Investor / Pelaku Bisnis</option>
-                <option value="instansi">Instansi Pemerintah / Swasta</option>
-                <option value="akademisi">Akademisi / Mahasiswa</option>
+                {Object.entries(KATEGORI_PENGUNJUNG).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
               </select>
             </div>
 

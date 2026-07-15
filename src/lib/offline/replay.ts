@@ -38,8 +38,8 @@ async function replayOne(action: QueuedAction): Promise<boolean> {
   }
 }
 
-export async function replayQueue(): Promise<ReplayResult> {
-  const pending = await getPending();
+export async function replayQueue(ownerUserId?: string | null): Promise<ReplayResult> {
+  const pending = await getPending(ownerUserId);
   let synced = 0;
   let failed = 0;
 

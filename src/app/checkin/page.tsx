@@ -45,7 +45,7 @@ export default function CheckinPage() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   // Auth gate: require a user (Google or anon) before allowing INSERT.
-  // RLS on visit (walk_in) requires authenticated + rate limit (migration 029).
+  // Final baseline RLS requires authenticated, rate-limited walk-in inserts.
   // I8: also capture user id for consent_log.subjek_ref (returned, not set here,
   // to avoid setState-in-effect lint violation).
   const runAuth = async (): Promise<{ state: AuthState; userId: string | null }> => {
@@ -135,7 +135,10 @@ export default function CheckinPage() {
             nama: form.nama.trim(),
             layanan_id: form.layanan_id,
             keperluan: form.keperluan.trim() || undefined,
+            consent_given: true,
+            versi_kebijakan: CONSENT_VERSION,
           },
+          owner_user_id: currentUserId,
         });
         if ('serviceWorker' in navigator) {
           navigator.serviceWorker.ready
@@ -154,9 +157,9 @@ export default function CheckinPage() {
 
       const supabase = createClient();
 
-      // I8: Record PDP consent BEFORE inserting kunjungan.
-      // subjek_ref = auth user id (RLS allows authenticated INSERT).
-      if (currentUserId) {
+      // I8: Record PDP consent BEFORE inserting visit (only when user asserted consent).
+      // subjek_ref = auth user id (RLS ownership policy).
+      if (currentUserId && consentGiven) {
         await supabase.from('consent_log').insert({
           subjek_ref: currentUserId,
           tujuan: 'checkin_data',

@@ -14,10 +14,10 @@ import {
 import { createClient } from '@/lib/supabase/client';
 import styles from './skm.module.css';
 
-interface VisitInfo {
-  id: string;
-  layanan_id: string | null;
-  status: string;
+interface SkmContext {
+  eligible: boolean;
+  already_submitted: boolean;
+  layanan_nama: string | null;
 }
 
 type Phase = 'loading' | 'invalid_token' | 'not_selesai' | 'already_submitted' | 'form' | 'submitting' | 'submitted' | 'error';
@@ -47,7 +47,7 @@ function SkmForm() {
   const searchParams = useSearchParams();
   const token = searchParams?.get('token') ?? '';
 
-  const [visit, setVisit] = useState<VisitInfo | null>(null);
+  const [context, setContext] = useState<SkmContext | null>(null);
   const [phase, setPhase] = useState<Phase>('loading');
   const [ratings, setRatings] = useState<Ratings>({});
   const [saran, setSaran] = useState('');
@@ -61,9 +61,7 @@ function SkmForm() {
     try {
       const supabase = createClient();
       const { data, error } = await supabase
-        .from('visit')
-        .select('id, layanan_id, status')
-        .eq('qr_token', token)
+        .rpc('get_skm_context', { p_token: token })
         .maybeSingle();
 
       if (error || !data) {
@@ -71,34 +69,17 @@ function SkmForm() {
         return;
       }
 
-      const visitInfo: VisitInfo = {
-        id: data.id,
-        layanan_id: data.layanan_id,
-        status: data.status,
-      };
-
-      if (visitInfo.status !== 'selesai') {
-        setVisit(visitInfo);
+      const trustedContext = data as SkmContext;
+      if (!trustedContext.eligible) {
+        setContext(trustedContext);
         setPhase('not_selesai');
         return;
       }
-
-      // Check if already submitted. Best-effort only: RLS `skm_select_staff` is
-      // TO authenticated, so anon visitors get null here. The submit route's
-      // service-role check + the DB partial unique index (migration 031) are
-      // the real enforcement; this pre-submit check is just UX for authed users.
-      const { data: existing } = await supabase
-        .from('skm_respons')
-        .select('id')
-        .eq('visit_id', visitInfo.id)
-        .maybeSingle();
-
-      if (existing) {
+      if (trustedContext.already_submitted) {
         setPhase('already_submitted');
         return;
       }
-
-      setVisit(visitInfo);
+      setContext(trustedContext);
       setPhase('form');
     } catch {
       setPhase('invalid_token');
@@ -113,7 +94,7 @@ function SkmForm() {
   const allRated = UNSUR.every((u) => ratings[u.key] !== undefined);
 
   const handleSubmit = async () => {
-    if (!visit || !allRated) return;
+    if (!context || !allRated) return;
     setPhase('submitting');
     setErrorMsg('');
 
@@ -122,8 +103,7 @@ function SkmForm() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          visit_id: visit.id,
-          layanan_id: visit.layanan_id,
+          token,
           u1: ratings.u1,
           u2: ratings.u2,
           u3: ratings.u3,

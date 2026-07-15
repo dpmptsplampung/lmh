@@ -18,7 +18,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: npm
 
       - name: Install dependencies
@@ -36,5 +36,13 @@ jobs:
       - name: Build
         run: npm run build
         env:
+          APP_ENV: test
+          APP_VERSION: ci
           NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
+          NEXT_PUBLIC_PUBLIC_URL: https://placeholder.example
+          NEXT_PUBLIC_VAPID_PUBLIC_KEY: placeholder-vapid-public
+
+      - name: Audit (high+)
+        run: npm audit --audit-level=high
+        continue-on-error: true

@@ -1,68 +1,89 @@
 // @vitest-environment node
-import { describe, it, expect } from 'vitest';
-import { readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+import {
+  BASELINE_FILES,
+  listMigrationFiles,
+  readAllBaseline,
+  readBaseline,
+  stripSqlComments,
+} from './migration-test-utils';
 
-const MIGRATIONS_DIR = join(process.cwd(), 'supabase', 'migrations');
-
-// Regression guard for K4: no ACTIVE migration may contain the hardcoded
-// password `password123`. Migrations 013 and 015 are historical and contain
-// the credential — they are explicitly excluded here (they cannot be edited
-// without causing drift on instances that already applied them; migration 023
-// cleans up the accounts going forward). Any NEW migration that reintroduces
-// `password123` (outside of 013/015) must fail this test.
-const HISTORICAL_EXCEPTIONS = new Set([
-  '013_create_petugas_accounts.sql',
-  '015_update_layanan.sql',
-]);
-
-const FORBIDDEN_TOKEN = 'password123';
-
-function stripSqlComments(sql: string): string {
-  return sql
-    .split('\n')
-    .map((line) => {
-      const idx = line.indexOf('--');
-      if (idx === -1) return line;
-      return line.slice(0, idx);
-    })
-    .join('\n');
-}
-
-function listMigrationFiles(): string[] {
-  return readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql'));
-}
-
-describe('regression: no active migration may contain hardcoded password123', () => {
-  it('every migration file (except 013/015) is free of password123 after stripping comments', () => {
-    const files = listMigrationFiles();
-    expect(files.length).toBeGreaterThan(0);
-
-    const offenders: string[] = [];
-    for (const file of files) {
-      if (HISTORICAL_EXCEPTIONS.has(file)) continue;
-      const raw = readFileSync(join(MIGRATIONS_DIR, file), 'utf8');
-      const stripped = stripSqlComments(raw);
-      if (stripped.toLowerCase().includes(FORBIDDEN_TOKEN)) {
-        offenders.push(file);
-      }
-    }
-
-    expect(offenders).toEqual([]);
-  });
-
-  it('historical exceptions list only contains files that actually exist', () => {
-    const files = listMigrationFiles();
-    for (const ex of HISTORICAL_EXCEPTIONS) {
-      expect(files).toContain(ex);
+describe('production baseline migration inventory', () => {
+  it('contains exactly the five approved timestamped SQL files', () => {
+    expect(listMigrationFiles()).toEqual([...BASELINE_FILES]);
+    for (const file of listMigrationFiles()) {
+      expect(file).toMatch(/^\d{12}_[a-z0-9_]+\.sql$/);
     }
   });
 
-  it('the forbidden token is genuinely absent from migration 023 (the K4 cleanup)', () => {
-    const files = listMigrationFiles();
-    const k4 = files.find((f) => f.startsWith('023_'));
-    expect(k4).toBeDefined();
-    const raw = readFileSync(join(MIGRATIONS_DIR, k4!), 'utf8');
-    expect(stripSqlComments(raw).toLowerCase()).not.toContain(FORBIDDEN_TOKEN);
+  it('can read every approved baseline file and none is empty', () => {
+    BASELINE_FILES.forEach((_, index) => {
+      expect(readBaseline(index as 0 | 1 | 2 | 3 | 4).trim().length).toBeGreaterThan(0);
+    });
+  });
+
+  it('contains no credentials, demo data, auth-user mutation, or placeholder phone', () => {
+    const sql = readAllBaseline().toLowerCase();
+    expect(sql).not.toContain('password123');
+    expect(sql).not.toContain('unsplash.com');
+    expect(sql).not.toMatch(/(?:insert\s+into|delete\s+from)\s+auth\.(?:users|identities)/i);
+    expect(sql).not.toMatch(/6281234567890|6281277000000/);
+  });
+
+  it('never creates retired objects or edit_token', () => {
+    const sql = stripSqlComments(readAllBaseline());
+    for (const name of ['kunjungan', 'reservasi', 'kehadiran_layanan', 'antrian_helpdesk']) {
+      expect(sql).not.toMatch(new RegExp(`CREATE\\s+(?:TABLE|VIEW)\\s+(?:public\\.)?${name}\\b`, 'i'));
+    }
+    expect(sql).not.toMatch(/sync_(?:kunjungan|reservasi)_to_visit|sync_kunjungan_update_to_visit/i);
+    expect(sql).not.toMatch(/\bedit_token\b/i);
+  });
+
+  it('orders extensions, schemas, security, and views/jobs by dependency', () => {
+    const extensions = readBaseline(0);
+    const core = readBaseline(1);
+    const features = readBaseline(2);
+    const security = readBaseline(3);
+    const views = readBaseline(4);
+    expect(extensions).toMatch(/CREATE\s+EXTENSION[\s\S]*vector/i);
+    expect(features).toMatch(/embedding\s+extensions\.vector\s*\(768\)/i);
+    expect(core).toMatch(/CREATE\s+TABLE\s+public\.layanan/i);
+    expect(features).toMatch(/CREATE\s+TABLE\s+public\.chat_sesi/i);
+    expect(security).toMatch(/CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION/i);
+    expect(security).toMatch(/CREATE\s+POLICY/i);
+    expect(views).toMatch(/CREATE\s+(?:MATERIALIZED\s+)?VIEW/i);
+    expect(views).toMatch(/cron\.schedule/i);
+  });
+
+  it('keeps all SECURITY DEFINER functions on fixed paths with deny-by-default execute', () => {
+    const sql = stripSqlComments(readAllBaseline());
+    const definitions = [...sql.matchAll(/CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+([\w.]+)\s*\([^;]*?SECURITY\s+DEFINER[\s\S]*?;/gi)];
+    expect(definitions.length).toBeGreaterThan(0);
+    for (const definition of definitions) {
+      expect(definition[0]).toMatch(/SET\s+search_path\s*=\s*(?:''|pg_catalog(?:\s*,\s*public)?)/i);
+      const fn = definition[1].split('.').at(-1)!;
+      expect(sql).toMatch(new RegExp(`REVOKE\\s+EXECUTE\\s+ON\\s+FUNCTION\\s+(?:public\\.)?${fn}\\s*\\(`, 'i'));
+    }
+  });
+
+  it('forbids insecure chat SELECT and public base-table UMKM SELECT', () => {
+    const sql = stripSqlComments(readAllBaseline());
+    expect(sql).not.toMatch(/ON\s+public\.chat_(?:sesi|pesan)[\s\S]{0,120}FOR\s+SELECT[\s\S]{0,120}USING\s*\(\s*true\s*\)/i);
+    expect(sql).not.toMatch(/GRANT\s+SELECT\s+ON\s+(?:TABLE\s+)?public\.listing_umkm\s+TO\s+(?:anon|PUBLIC)/i);
+    expect(sql).not.toMatch(/CREATE\s+POLICY\s+"listing_public_read"\s+ON\s+public\.listing_umkm/i);
+  });
+
+  it('keeps investment storage private and path-scoped without broad policies', () => {
+    const sql = stripSqlComments(readBaseline(3));
+    expect(sql).toMatch(/'investment-docs'\s*,\s*'investment-docs'\s*,\s*false/i);
+    expect(sql).toMatch(/storage\.foldername\(name\)[\s\S]*'_raw'[\s\S]*'pages'/i);
+    expect(sql).not.toMatch(/USING\s*\(\s*bucket_id\s*=\s*'investment-docs'\s+AND\s+public\.get_my_role\(\)\s*=\s*'admin'\s*\)/i);
+    expect(sql).toMatch(/'umkm-photos'\s*,\s*'umkm-photos'\s*,\s*true/i);
+  });
+
+  it('returns the correct audit row and counts only walk-in visit inserts', () => {
+    const sql = stripSqlComments(readBaseline(3));
+    expect(sql).toMatch(/IF\s+TG_OP\s*=\s*'DELETE'\s+THEN\s+RETURN\s+OLD;\s+END\s+IF;\s+RETURN\s+NEW;/i);
+    expect(sql).toMatch(/CREATE\s+TRIGGER\s+trg_log_visit_insert[\s\S]*WHEN\s*\(NEW\.asal\s*=\s*'walk_in'\)/i);
   });
 });

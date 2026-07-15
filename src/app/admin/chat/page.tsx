@@ -354,15 +354,23 @@ export default function AdminChatPage() {
                 ? unreadCount(session)
                 : (session.last_message_at && !lastReadTimestamps[session.id] ? 1 : 0);
               return (
-                <div
+                <button
+                  type="button"
                   key={session.id}
                   onClick={() => handleSelectSession(session)}
                   style={{
+                    display: 'block',
+                    width: '100%',
+                    textAlign: 'left',
+                    border: 'none',
+                    font: 'inherit',
+                    color: 'inherit',
                     padding: 'var(--space-4)',
                     borderBottom: '1px solid var(--color-neutral-100)',
                     cursor: 'pointer',
                     background: selectedSession?.id === session.id ? 'var(--color-primary-50)' : 'transparent',
                     transition: 'background var(--transition-fast)',
+                    minHeight: '44px',
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
@@ -402,7 +410,7 @@ export default function AdminChatPage() {
                       </span>
                     </div>
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>

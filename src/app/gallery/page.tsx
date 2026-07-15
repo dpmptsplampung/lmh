@@ -184,10 +184,14 @@ export default function GalleryPage() {
         <div className={styles.topGrid}>
 
           {/* Peta Potensi Investasi Card */}
-          <div className={styles.petaCard} onClick={() => {
-            const petaDoc = docs.find((d) => d.kategori === 'Peta Potensi' || d.judul.toLowerCase().includes('peta potensi'));
-            if (petaDoc) setSelectedDocId(petaDoc.id);
-          }}>
+          <button
+            type="button"
+            className={styles.petaCard}
+            onClick={() => {
+              const petaDoc = docs.find((d) => d.kategori === 'Peta Potensi' || d.judul.toLowerCase().includes('peta potensi'));
+              if (petaDoc) setSelectedDocId(petaDoc.id);
+            }}
+          >
             <div className={styles.petaHeader}>
               <div className={styles.petaIcon}>
                 <FileText size={24} />
@@ -200,7 +204,7 @@ export default function GalleryPage() {
             <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-primary-400)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
               Buka Peta Potensi (PDF) &rarr;
             </span>
-          </div>
+          </button>
 
           {/* FOILA Portal Link Card */}
           <div className={styles.foilaCard}>

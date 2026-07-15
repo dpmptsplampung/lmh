@@ -213,4 +213,27 @@ describe('I2 EstimasiAntrean component: smoke tests', () => {
     const badge = container.querySelector('[data-wait-level="normal"]');
     expect(badge).not.toBeNull();
   });
+
+  it('does not claim historical accuracy when sample is zero / provisional', async () => {
+    buildMockSupabase([
+      {
+        layanan_id: 'l-1',
+        layanan_nama: 'Helpdesk OSS',
+        tipe: 'konsultatif',
+        antre_count: 2,
+        dilayani_count: 0,
+        estimasi_durasi_menit: 15,
+        estimasi_tunggu_total_menit: 30,
+        sample_count: 0,
+      } as LoketRow & { sample_count: number },
+    ]);
+    render(<EstimasiAntrean />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Helpdesk OSS')).toBeInTheDocument();
+    });
+    expect(
+      screen.getAllByText(/perkiraan sementara|belum ada data histori|provisional/i).length,
+    ).toBeGreaterThan(0);
+  });
 });

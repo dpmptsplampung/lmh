@@ -13,6 +13,16 @@ export interface LoketEstimasi {
   dilayani_count: number;
   estimasi_durasi_menit: number;
   estimasi_tunggu_total_menit: number;
+  /** Present when view/API exposes history sample size; 0 or missing → provisional */
+  sample_count?: number | null;
+}
+
+function isProvisional(row: LoketEstimasi): boolean {
+  // View may not expose sample_count; default duration 15 with no history is provisional.
+  // Treat explicit 0 as provisional; missing sample_count also treated as provisional
+  // so we never claim "14-day history accuracy" without evidence.
+  if (row.sample_count != null) return row.sample_count === 0;
+  return true;
 }
 
 type WaitLevel = 'normal' | 'warning' | 'danger' | 'empty';
@@ -78,7 +88,7 @@ export default function EstimasiAntrean() {
           Estimasi Antrean Sekarang
         </h2>
         <p className={styles.subtitle}>
-          Perkiraan waktu tunggu realtime berdasarkan riwayat layanan 14 hari terakhir.
+          Perkiraan waktu tunggu realtime. Jika belum ada data histori durasi, angka ditandai sebagai perkiraan sementara.
         </p>
       </div>
 
@@ -136,7 +146,9 @@ export default function EstimasiAntrean() {
                     </span>
                   )}
                   <span className={styles.metricMeta}>
-                    rata-rata {loket.estimasi_durasi_menit} menit/layanan
+                    {isProvisional(loket)
+                      ? `perkiraan sementara · default ${loket.estimasi_durasi_menit} menit/layanan (belum ada data histori)`
+                      : `rata-rata ${loket.estimasi_durasi_menit} menit/layanan`}
                   </span>
                 </div>
               </div>

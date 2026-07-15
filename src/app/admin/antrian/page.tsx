@@ -7,6 +7,7 @@ import {
   Users,
   TrendingUp,
   CheckCircle2,
+  Play,
   Loader2
 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
@@ -20,20 +21,22 @@ interface PetugasData {
   layanan?: { nama: string };
 }
 
-interface Kunjungan {
+interface VisitRow {
   id: string;
   nama: string;
   keperluan: string;
-  status: 'menunggu' | 'selesai';
+  status: 'menunggu' | 'dilayani' | 'selesai' | 'terjadwal' | 'batal';
+  asal: 'walk_in' | 'reservasi';
   waktu_masuk: string;
   waktu_selesai: string | null;
+  waktu_mulai_layan: string | null;
   layanan: { nama: string };
 }
 
 export default function AntrianPage() {
   const { toast } = useToast();
   const [tanggal, setTanggal] = useState(new Date().toISOString().split('T')[0]);
-  const [antrian, setAntrian] = useState<Kunjungan[]>([]);
+  const [antrian, setAntrian] = useState<VisitRow[]>([]);
   const [currentUser, setCurrentUser] = useState<PetugasData | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -68,10 +71,11 @@ export default function AntrianPage() {
       const startOfDay = new Date(`${tanggal}T00:00:00`);
       const endOfDay = new Date(`${tanggal}T23:59:59.999`);
 
+      // Operational queue: both walk_in and scanned reservations (reservasi)
       let query = supabase
         .from('visit')
-        .select('id, nama, keperluan, status, waktu_masuk, waktu_selesai, layanan:layanan_id(nama)')
-        .eq('asal', 'walk_in')
+        .select('id, nama, keperluan, status, asal, waktu_masuk, waktu_selesai, waktu_mulai_layan, layanan:layanan_id(nama)')
+        .in('asal', ['walk_in', 'reservasi'])
         .gte('waktu_masuk', startOfDay.toISOString())
         .lte('waktu_masuk', endOfDay.toISOString())
         .order('waktu_masuk', { ascending: true });
@@ -90,6 +94,30 @@ export default function AntrianPage() {
       setLoading(false);
     }
   }
+
+  const handleMulaiLayanan = async (id: string) => {
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from('visit')
+        .update({
+          status: 'dilayani',
+          waktu_mulai_layan: new Date().toISOString(),
+        })
+        .eq('id', id);
+      
+      if (error) {
+        console.error('Gagal memulai layanan:', error);
+        toast('Gagal memulai layanan', 'error');
+      } else {
+        toast('Layanan dimulai', 'success');
+        await fetchData();
+      }
+    } catch (e) {
+      console.error(e);
+      toast('Gagal memulai layanan', 'error');
+    }
+  };
 
   const handleSelesaikan = async (id: string) => {
     try {
@@ -121,9 +149,11 @@ export default function AntrianPage() {
   const rataWaktu = selesai.length > 0
     ? Math.round(selesai.reduce((sum, a) => {
         if (!a.waktu_selesai) return sum;
-        const masuk = new Date(a.waktu_masuk).getTime();
+        const start = a.waktu_mulai_layan
+          ? new Date(a.waktu_mulai_layan).getTime()
+          : new Date(a.waktu_masuk).getTime();
         const kluar = new Date(a.waktu_selesai).getTime();
-        return sum + ((kluar - masuk) / 60000);
+        return sum + ((kluar - start) / 60000);
       }, 0) / selesai.length)
     : 0;
 
@@ -131,11 +161,22 @@ export default function AntrianPage() {
     ? `Log Antrian ${Array.isArray(currentUser.layanan) ? currentUser.layanan[0]?.nama : currentUser.layanan.nama}`
     : "Log Antrian Semua Layanan";
 
+  const statusLabel = (status: string) => {
+    switch (status) {
+      case 'menunggu': return '● Menunggu';
+      case 'dilayani': return '▶ Dilayani';
+      case 'selesai': return '✓ Selesai';
+      default: return status;
+    }
+  };
+
+  const asalLabel = (asal: string) => (asal === 'reservasi' ? 'Reservasi' : 'Walk-in');
+
   return (
     <>
       <PageHeader
         title={headerTitle}
-        description="Urutan kedatangan harian pengunjung walk-in"
+        description="Urutan kedatangan harian — walk-in dan reservasi (setelah scan)"
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
           <Calendar size={16} style={{ color: 'var(--text-tertiary)' }} />
@@ -189,6 +230,7 @@ export default function AntrianPage() {
                   <th>No. Urut</th>
                   {currentUser?.role === 'admin' && <th>Layanan</th>}
                   <th>Nama</th>
+                  <th>Asal</th>
                   <th>Keperluan</th>
                   <th>Waktu Masuk</th>
                   <th>Status</th>
@@ -199,7 +241,10 @@ export default function AntrianPage() {
                 {antrian.map((a, idx) => {
                   let durasi = '—';
                   if (a.waktu_selesai) {
-                    const diff = Math.round((new Date(a.waktu_selesai).getTime() - new Date(a.waktu_masuk).getTime()) / 60000);
+                    const start = a.waktu_mulai_layan
+                      ? new Date(a.waktu_mulai_layan).getTime()
+                      : new Date(a.waktu_masuk).getTime();
+                    const diff = Math.round((new Date(a.waktu_selesai).getTime() - start) / 60000);
                     durasi = `${diff} menit`;
                   }
                   
@@ -226,22 +271,36 @@ export default function AntrianPage() {
                       </td>
                       {currentUser?.role === 'admin' && <td style={{ fontWeight: 600 }}>{layananNama}</td>}
                       <td style={{ fontWeight: 600 }}>{a.nama}</td>
+                      <td>
+                        <span className={`badge badge--${a.asal === 'reservasi' ? 'pending' : 'draft'}`}>
+                          {asalLabel(a.asal)}
+                        </span>
+                      </td>
                       <td style={{ color: 'var(--text-secondary)' }}>{a.keperluan}</td>
                       <td>{new Date(a.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</td>
                       <td>
                         <span className={`badge badge--${a.status}`}>
-                          {a.status === 'menunggu' ? '● Menunggu' : '✓ Selesai'}
+                          {statusLabel(a.status)}
                         </span>
                       </td>
                       <td>
                         {a.status === 'menunggu' ? (
+                          <button 
+                            className="btn btn--primary btn--sm"
+                            onClick={() => handleMulaiLayanan(a.id)}
+                            style={{ padding: '4px 12px', fontSize: '12px' }}
+                          >
+                            <Play size={14} style={{ marginRight: '4px' }} />
+                            Mulai Layanan
+                          </button>
+                        ) : a.status === 'dilayani' ? (
                           <button 
                             className="btn btn--secondary btn--sm"
                             onClick={() => handleSelesaikan(a.id)}
                             style={{ padding: '4px 12px', fontSize: '12px' }}
                           >
                             <CheckCircle2 size={14} style={{ marginRight: '4px', color: 'var(--color-success-600)' }} />
-                            Selesaikan
+                            Selesai
                           </button>
                         ) : (
                           <span style={{ color: 'var(--text-secondary)' }}>{durasi}</span>
@@ -252,11 +311,11 @@ export default function AntrianPage() {
                 })}
                 {antrian.length === 0 && (
                   <tr>
-                    <td colSpan={currentUser?.role === 'admin' ? 7 : 6}>
+                    <td colSpan={currentUser?.role === 'admin' ? 8 : 7}>
                       <div className="empty-state" style={{ padding: 'var(--space-8)' }}>
                         <Users size={40} className="empty-state__icon" />
                         <h3 className="empty-state__title">Belum Ada Antrian</h3>
-                        <p>Belum ada pengunjung walk-in untuk tanggal ini.</p>
+                        <p>Belum ada pengunjung walk-in atau reservasi untuk tanggal ini.</p>
                       </div>
                     </td>
                   </tr>

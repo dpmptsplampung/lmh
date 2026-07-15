@@ -10,10 +10,12 @@ export interface QueuedAction {
   payload: Record<string, unknown>;
   created_at: number;
   synced: 0 | 1;
+  /** Auth user id when known — used to isolate multi-user browser queues */
+  owner_user_id?: string | null;
 }
 
 const DB_NAME = 'lmh-offline';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = 'queue';
 
 function isIndexedDBAvailable(): boolean {
@@ -29,10 +31,16 @@ function openDB(): Promise<IDBDatabase> {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
     request.onupgradeneeded = () => {
       const db = request.result;
+      let store: IDBObjectStore;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
-        const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+        store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
         store.createIndex('synced', 'synced', { unique: false });
         store.createIndex('type', 'type', { unique: false });
+      } else {
+        store = request.transaction!.objectStore(STORE_NAME);
+      }
+      if (!store.indexNames.contains('owner_user_id')) {
+        store.createIndex('owner_user_id', 'owner_user_id', { unique: false });
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -57,6 +65,7 @@ export async function enqueueAction(
     payload: action.payload,
     created_at: Date.now(),
     synced: 0,
+    owner_user_id: action.owner_user_id ?? null,
   };
   const db = await openDB();
   return new Promise<string>((resolve, reject) => {
@@ -94,9 +103,11 @@ export async function getQueue(): Promise<QueuedAction[]> {
   }
 }
 
-export async function getPending(): Promise<QueuedAction[]> {
+export async function getPending(ownerUserId?: string | null): Promise<QueuedAction[]> {
   const all = await getQueue();
-  return all.filter((a) => a.synced === 0);
+  const pending = all.filter((a) => a.synced === 0);
+  if (ownerUserId == null || ownerUserId === '') return pending;
+  return pending.filter((a) => a.owner_user_id === ownerUserId);
 }
 
 export async function markSynced(id: string): Promise<void> {

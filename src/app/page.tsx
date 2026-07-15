@@ -395,6 +395,9 @@ export default function LandingPage() {
       {/* Footer */}
       <footer className={styles.footer}>
         <p>© {new Date().getFullYear()} {APP_NAME} — {footerCopyright}</p>
+        <p className={styles.footerLinks}>
+          <Link href="/kebijakan-privasi">Kebijakan Privasi</Link>
+        </p>
       </footer>
 
       {/* Floating Chat Widget */}

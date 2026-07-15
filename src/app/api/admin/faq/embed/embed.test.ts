@@ -34,18 +34,6 @@ vi.mock('@/lib/gemini', () => ({
   SYSTEM_PROMPT_RAG: '',
 }));
 
-import type { NextRequest } from 'next/server';
-
-const buildRequest = (): NextRequest => {
-  const req = new Request('http://localhost/api/admin/faq/embed', {
-    method: 'POST',
-  });
-  (req as unknown as { nextUrl: URL }).nextUrl = new URL(
-    'http://localhost/api/admin/faq/embed',
-  );
-  return req as unknown as NextRequest;
-};
-
 interface MockServerOpts {
   user: { id: string } | null;
   role: string | null;
@@ -179,7 +167,7 @@ describe('POST /api/admin/faq/embed — auth', () => {
     await mockServerClient({ user: null, role: null });
     await mockServiceClient();
     const { POST } = await import('./route');
-    const res = await POST(buildRequest());
+    const res = await POST();
     expect(res.status).toBe(401);
   });
 
@@ -187,7 +175,7 @@ describe('POST /api/admin/faq/embed — auth', () => {
     await mockServerClient({ user: { id: 'u-1' }, role: 'petugas' });
     await mockServiceClient();
     const { POST } = await import('./route');
-    const res = await POST(buildRequest());
+    const res = await POST();
     expect(res.status).toBe(403);
   });
 
@@ -195,7 +183,7 @@ describe('POST /api/admin/faq/embed — auth', () => {
     await mockServerClient({ user: { id: 'u-1' }, role: null });
     await mockServiceClient();
     const { POST } = await import('./route');
-    const res = await POST(buildRequest());
+    const res = await POST();
     expect(res.status).toBe(403);
   });
 });
@@ -213,7 +201,7 @@ describe('POST /api/admin/faq/embed — backfill', () => {
     await mockServerClient({ user: { id: 'u-1' }, role: 'admin' });
     await mockServiceClient({ pendingFaqs: [], remainingCount: 0 });
     const { POST } = await import('./route');
-    const res = await POST(buildRequest());
+    const res = await POST();
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.embedded).toBe(0);
@@ -230,7 +218,7 @@ describe('POST /api/admin/faq/embed — backfill', () => {
       remainingCount: 0,
     });
     const { POST } = await import('./route');
-    const res = await POST(buildRequest());
+    const res = await POST();
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.embedded).toBe(2);
@@ -246,7 +234,7 @@ describe('POST /api/admin/faq/embed — backfill', () => {
     await mockServerClient({ user: { id: 'u-1' }, role: 'admin' });
     await mockServiceClient();
     const { POST } = await import('./route');
-    const res = await POST(buildRequest());
+    const res = await POST();
     expect(res.status).toBe(500);
     const json = await res.json();
     expect(json.error).toMatch(/GEMINI_API_KEY/i);
@@ -256,7 +244,7 @@ describe('POST /api/admin/faq/embed — backfill', () => {
     delete process.env.SUPABASE_SERVICE_ROLE_KEY;
     await mockServerClient({ user: { id: 'u-1' }, role: 'admin' });
     const { POST } = await import('./route');
-    const res = await POST(buildRequest());
+    const res = await POST();
     expect(res.status).toBe(500);
   });
 
@@ -268,7 +256,7 @@ describe('POST /api/admin/faq/embed — backfill', () => {
       remainingCount: 1,
     });
     const { POST } = await import('./route');
-    const res = await POST(buildRequest());
+    const res = await POST();
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.embedded).toBe(0);
@@ -280,7 +268,7 @@ describe('POST /api/admin/faq/embed — backfill', () => {
     await mockServerClient({ user: { id: 'u-1' }, role: 'admin' });
     await mockServiceClient({ fetchError: { message: 'connection refused' } });
     const { POST } = await import('./route');
-    const res = await POST(buildRequest());
+    const res = await POST();
     expect(res.status).toBe(500);
   });
 });

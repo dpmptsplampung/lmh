@@ -17,8 +17,8 @@
 --   - Password `password123` hanya aman di lingkungan terisolasi.
 --   - Akun produksi harus dibuat via invite Route Handler:
 --       POST /api/admin/petugas/invite
---   - Migration 023 menghapus akun hardcode dari history migrations;
---     file ini menggantikan kebutuhan seeding di dev.
+--   - Baseline produksi tidak membuat akun demo;
+--     file ini menyediakan data eksplisit khusus dev/staging.
 -- ========================================================
 
 DO $$
@@ -105,8 +105,8 @@ END $$;
 -- ========================================================
 -- B4: Demo investment documents (Unsplash URLs) — DEV/STAGING ONLY
 -- ========================================================
--- Dipindahkan dari migration 017 (yang sudah historical/applied).
--- Instance baru tidak akan mendapat demo data ini dari migration;
+-- Data demo sengaja dipisahkan dari baseline produksi.
+-- Instance baru tidak akan mendapat demo data ini secara otomatis;
 -- jalankan file ini secara manual di dev/staging jika ingin gallery
 -- tidak kosong:
 --   supabase db execute --file supabase/seed-demo.sql

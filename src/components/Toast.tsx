@@ -98,8 +98,13 @@ function ToastCard({ toast, onClose }: { toast: ToastItem; onClose: () => void }
   const config = toastConfig[toast.type];
   const Icon = config.icon;
 
+  const isError = toast.type === 'error';
+
   return (
     <div
+      role={isError ? 'alert' : 'status'}
+      aria-live={isError ? 'assertive' : 'polite'}
+      aria-atomic="true"
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -115,7 +120,7 @@ function ToastCard({ toast, onClose }: { toast: ToastItem; onClose: () => void }
         animation: 'toastSlideIn 0.3s ease-out',
       }}
     >
-      <Icon size={20} color={config.iconColor} style={{ flexShrink: 0 }} />
+      <Icon size={20} color={config.iconColor} style={{ flexShrink: 0 }} aria-hidden />
       <span
         style={{
           fontSize: '0.875rem',
@@ -127,20 +132,24 @@ function ToastCard({ toast, onClose }: { toast: ToastItem; onClose: () => void }
         {toast.message}
       </span>
       <button
+        type="button"
         onClick={onClose}
         style={{
           background: 'none',
           border: 'none',
           cursor: 'pointer',
-          padding: '0.125rem',
+          padding: '0.5rem',
           display: 'flex',
           alignItems: 'center',
+          justifyContent: 'center',
           color: 'var(--color-neutral-400)',
           flexShrink: 0,
+          minWidth: '44px',
+          minHeight: '44px',
         }}
-        aria-label="Close notification"
+        aria-label="Tutup notifikasi"
       >
-        <X size={16} />
+        <X size={16} aria-hidden />
       </button>
     </div>
   );

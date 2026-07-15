@@ -262,13 +262,15 @@ img, video {
   border: 1px solid rgba(255, 255, 255, 0.3);
 }
 
-/* Buttons */
+/* Buttons — min 44×44 touch target (WCAG 2.5.5) */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
   padding: var(--space-3) var(--space-5);
+  min-height: 44px;
+  min-width: 44px;
   font-family: var(--font-sans);
   font-size: var(--text-sm);
   font-weight: 600;
@@ -357,8 +359,10 @@ img, video {
 
 .btn--icon {
   padding: var(--space-2);
-  width: 36px;
-  height: 36px;
+  min-width: 44px;
+  min-height: 44px;
+  width: 44px;
+  height: 44px;
 }
 
 /* Form Elements */
@@ -749,7 +753,9 @@ img, video {
   }
   
   .btn {
-    padding: var(--space-2) var(--space-4); /* Smaller buttons on mobile */
+    padding: var(--space-2) var(--space-4);
+    min-height: 44px;
+    min-width: 44px;
   }
 
   .grid-cards {
@@ -760,5 +766,21 @@ img, video {
 @media (max-width: 480px) {
   .grid-stats {
     grid-template-columns: 1fr;
+  }
+}
+
+/* WCAG 2.3.3 / 2.2.2 — respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

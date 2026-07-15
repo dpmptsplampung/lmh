@@ -106,4 +106,39 @@ describe('I9.2 offline queue (IndexedDB)', () => {
       globalThis.indexedDB = original;
     }
   });
+
+  it('stores owner_user_id when provided on enqueue', async () => {
+    const id = await enqueueAction({
+      type: 'checkin',
+      payload: { nama: 'Owned' },
+      owner_user_id: 'user-a',
+    });
+    const queue = await getQueue();
+    const action = queue.find((a) => a.id === id) as QueuedAction;
+    expect(action.owner_user_id).toBe('user-a');
+  });
+
+  it('getPending(owner) returns only that owner actions', async () => {
+    await enqueueAction({
+      type: 'checkin',
+      payload: { nama: 'A' },
+      owner_user_id: 'user-a',
+    });
+    await enqueueAction({
+      type: 'checkin',
+      payload: { nama: 'B' },
+      owner_user_id: 'user-b',
+    });
+    await enqueueAction({
+      type: 'checkin',
+      payload: { nama: 'Anon' },
+    });
+
+    const pendingA = await getPending('user-a');
+    expect(pendingA).toHaveLength(1);
+    expect(pendingA[0]?.payload.nama).toBe('A');
+
+    const pendingAll = await getPending();
+    expect(pendingAll).toHaveLength(3);
+  });
 });

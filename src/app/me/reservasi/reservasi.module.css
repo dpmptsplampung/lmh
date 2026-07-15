@@ -90,7 +90,17 @@
   gap: var(--space-3);
 }
 
+.tujuanRadioInput {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  pointer-events: none;
+}
+
 .tujuanOption {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--space-3);
@@ -99,6 +109,12 @@
   border-radius: var(--radius-lg);
   cursor: pointer;
   transition: all var(--transition-fast);
+  min-height: 44px;
+}
+
+.tujuanOption:has(.tujuanRadioInput:focus-visible) {
+  outline: 2px solid var(--color-primary-600);
+  outline-offset: 2px;
 }
 
 .tujuanOption:hover {
@@ -158,12 +174,14 @@
 }
 
 .tujuanLabel {
+  display: block;
   font-weight: 600;
   font-size: var(--text-sm);
   color: var(--text-primary);
 }
 
 .tujuanHint {
+  display: block;
   font-size: var(--text-xs);
   color: var(--text-secondary);
 }

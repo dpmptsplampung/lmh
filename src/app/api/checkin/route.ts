@@ -11,6 +11,8 @@ const bodySchema = z.object({
   layanan_id: z.uuid(),
   keperluan: z.string().max(2000).optional(),
   pengunjung_id: z.uuid().optional(),
+  consent_given: z.boolean().optional(),
+  versi_kebijakan: z.string().min(1).max(32).optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -29,19 +31,35 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { nama, layanan_id, keperluan } = parsed.data;
+  const { nama, layanan_id, keperluan, consent_given, versi_kebijakan } = parsed.data;
 
   const supabase = await createClient();
 
   const { data: { user } } = await supabase.auth.getUser();
 
+  // Authenticated callers must explicitly assert consent before any consent_log write.
+  // Offline replay must carry the same assertion from the offline form.
   if (user) {
-    await supabase.from('consent_log').insert({
+    if (consent_given !== true) {
+      return NextResponse.json(
+        { error: 'Consent required', code: 'CONSENT_REQUIRED' },
+        { status: 400 },
+      );
+    }
+
+    const { error: consentError } = await supabase.from('consent_log').insert({
       subjek_ref: user.id,
       tujuan: 'checkin_data',
       disetujui: true,
-      versi_kebijakan: '1.0',
+      versi_kebijakan: versi_kebijakan ?? '1.0',
     });
+
+    if (consentError) {
+      return NextResponse.json(
+        { error: 'Gagal mencatat consent', code: 'CONSENT_FAILED' },
+        { status: 500 },
+      );
+    }
   }
 
   const { error: insertError, data: insertData } = await supabase

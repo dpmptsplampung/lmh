@@ -4,6 +4,8 @@ import { z } from 'zod';
 import crypto from 'node:crypto';
 
 const MAX_PDF_BYTES = 50 * 1024 * 1024;
+const MAX_PDF_PAGES = 50;
+const PDF_MAGIC = new TextEncoder().encode('%PDF');
 
 const bodySchema = z.object({
   judul: z.string().min(1).max(255),
@@ -13,6 +15,27 @@ const bodySchema = z.object({
   image_url: z.string().url().optional(),
   urutan_tampil: z.coerce.number().int().min(0).default(0),
 });
+
+function hasPdfMagic(bytes: Uint8Array): boolean {
+  if (bytes.length < PDF_MAGIC.length) return false;
+  for (let i = 0; i < PDF_MAGIC.length; i++) {
+    if (bytes[i] !== PDF_MAGIC[i]) return false;
+  }
+  return true;
+}
+
+function looksEncrypted(bytes: Uint8Array): boolean {
+  const head = new TextDecoder('latin1').decode(bytes.subarray(0, Math.min(bytes.length, 2048)));
+  return /\/Encrypt[\s\/<]/.test(head);
+}
+
+async function cleanupStorage(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  paths: string[],
+): Promise<void> {
+  if (paths.length === 0) return;
+  await supabase.storage.from('investment-docs').remove(paths);
+}
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -68,10 +91,25 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const pdfBytes = new Uint8Array(await pdfFile.arrayBuffer());
+
+  if (!hasPdfMagic(pdfBytes)) {
+    return NextResponse.json(
+      { error: 'Invalid PDF magic bytes — file is not a PDF' },
+      { status: 400 },
+    );
+  }
+
+  if (looksEncrypted(pdfBytes)) {
+    return NextResponse.json(
+      { error: 'Encrypted PDF is not supported' },
+      { status: 400 },
+    );
+  }
+
   const docId = crypto.randomUUID();
   const rawPath = `_raw/${docId}.pdf`;
-
-  const pdfBytes = new Uint8Array(await pdfFile.arrayBuffer());
+  const uploadedPaths: string[] = [];
 
   const { error: rawUploadError } = await supabase.storage
     .from('investment-docs')
@@ -83,14 +121,34 @@ export async function POST(request: NextRequest) {
       { status: 500 },
     );
   }
+  uploadedPaths.push(rawPath);
 
   let pngBuffers: Buffer[];
   try {
     pngBuffers = await convertPdfToPngBuffers(pdfBytes);
   } catch (err) {
+    await cleanupStorage(supabase, uploadedPaths);
+    const message = err instanceof Error ? err.message : String(err);
+    if (
+      (err && typeof err === 'object' && 'code' in err && (err as { code?: string }).code === 'PAGE_LIMIT') ||
+      /halaman|page|50/i.test(message)
+    ) {
+      return NextResponse.json(
+        { error: `PDF melebihi batas ${MAX_PDF_PAGES} halaman` },
+        { status: 400 },
+      );
+    }
     return NextResponse.json(
-      { error: 'PDF conversion failed', details: err instanceof Error ? err.message : String(err) },
+      { error: 'PDF conversion failed', details: message },
       { status: 500 },
+    );
+  }
+
+  if (pngBuffers.length > MAX_PDF_PAGES) {
+    await cleanupStorage(supabase, uploadedPaths);
+    return NextResponse.json(
+      { error: `PDF melebihi batas ${MAX_PDF_PAGES} halaman` },
+      { status: 400 },
     );
   }
 
@@ -102,11 +160,13 @@ export async function POST(request: NextRequest) {
       .upload(pagePath, pngBuffers[i], { contentType: 'image/png', upsert: false });
 
     if (pageUploadError) {
+      await cleanupStorage(supabase, uploadedPaths);
       return NextResponse.json(
         { error: `Failed to store page ${i + 1} PNG`, details: String(pageUploadError) },
         { status: 500 },
       );
     }
+    uploadedPaths.push(pagePath);
     halamanGambar.push(pagePath);
   }
 
@@ -125,6 +185,7 @@ export async function POST(request: NextRequest) {
   });
 
   if (insertError) {
+    await cleanupStorage(supabase, uploadedPaths);
     return NextResponse.json(
       { error: 'Failed to insert document row', details: String(insertError) },
       { status: 500 },
@@ -144,14 +205,19 @@ export async function convertPdfToPngBuffers(pdfBytes: Uint8Array): Promise<Buff
   });
   const doc = await loadingTask.promise;
 
+  if (doc.numPages > MAX_PDF_PAGES) {
+    await doc.cleanup();
+    const err = new Error(`PDF melebihi batas ${MAX_PDF_PAGES} halaman`);
+    (err as Error & { code?: string }).code = 'PAGE_LIMIT';
+    throw err;
+  }
+
   const buffers: Buffer[] = [];
   for (let i = 1; i <= doc.numPages; i++) {
     const page = await doc.getPage(i);
     const viewport = page.getViewport({ scale: 1.5 });
     const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
     const ctx = canvas.getContext('2d');
-    // pdfjs-dist types expect an HTMLCanvasElement; we pass a node-canvas Canvas.
-    // Cast through unknown to satisfy TS without resorting to `any`.
     const renderParams = { canvasContext: ctx, viewport, canvas } as unknown as Parameters<typeof page.render>[0];
     await page.render(renderParams).promise;
     buffers.push(canvas.toBuffer('image/png'));

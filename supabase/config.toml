@@ -1,0 +1,12 @@
+# Minimal Supabase CLI skeleton for future local/CLI use.
+# Does not require Docker for unit/contract tests in CI.
+# See docs/MIGRATIONS.md for apply flow.
+
+project_id = "lmh-placeholder"
+
+[db]
+major_version = 15
+
+[db.seed]
+enabled = true
+sql_paths = ["./seed.sql"]

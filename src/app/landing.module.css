@@ -294,6 +294,16 @@
   background: var(--surface-primary);
 }
 
+.footerLinks {
+  margin-top: var(--space-3);
+}
+
+.footerLinks a {
+  color: var(--color-primary-600);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 @media (max-width: 768px) {
   .heroTitle {
     font-size: var(--text-3xl);
