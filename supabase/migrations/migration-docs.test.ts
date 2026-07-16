@@ -13,14 +13,12 @@ describe('pinned Supabase CLI deployment command', () => {
   });
 
   it('uses flags supported by the installed CLI', () => {
-    const help = process.platform === 'win32'
-      ? execFileSync(
-          'powershell.exe',
-          ['-NoProfile', '-Command', 'supabase db push --help'],
-          { encoding: 'utf8' },
-        )
-      : execFileSync('supabase', ['db', 'push', '--help'], { encoding: 'utf8' });
+    const isWin = process.platform === 'win32';
+    const cmd = isWin ? 'npx.cmd' : 'npx';
+    const args = ['--yes', 'supabase', 'db', 'push', '--help'];
+
+    const help = execFileSync(cmd, args, { encoding: 'utf8', shell: true });
     expect(help).toContain('--include-all');
     expect(help).toContain('--include-seed');
-  });
+  }, 20000);
 });

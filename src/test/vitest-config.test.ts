@@ -49,13 +49,13 @@ describe('baseline verification metadata', () => {
     );
   });
 
-  it('pins the supported Node 20 runtime', () => {
+  it('pins the supported Node 22 runtime', () => {
     const nvmrcPath = resolve(process.cwd(), '.nvmrc');
 
-    expect(packageJson.engines?.node).toBe('>=20.19 <21');
+    expect(packageJson.engines?.node).toBe('>=22');
     expect(existsSync(nvmrcPath)).toBe(true);
     if (existsSync(nvmrcPath)) {
-      expect(readFileSync(nvmrcPath, 'utf8').trim()).toBe('20.19');
+      expect(readFileSync(nvmrcPath, 'utf8').trim()).toBe('22');
     }
   });
 });
