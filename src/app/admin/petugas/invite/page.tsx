@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { Loader2, Copy, Check, Mail, UserPlus, ArrowLeft } from 'lucide-react';
+import { Loader2, Check, UserPlus, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import PageHeader from '@/components/layout/PageHeader';
 import { createClient } from '@/lib/supabase/client';

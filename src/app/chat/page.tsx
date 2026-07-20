@@ -848,7 +848,8 @@ export default function PublicChatPage() {
                 placeholder={sesiStatus === 'selesai' ? 'Sesi chat ditutup...' : 'Ketik pertanyaan Anda...'}
                 value={messageInput}
                 onChange={(e) => setMessageInput(e.target.value)}
-                disabled={sesiStatus === 'selesai'}
+                disabled={sesiStatus === 'selesai' || loadingSetup}
+                maxLength={1000}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
@@ -858,12 +859,13 @@ export default function PublicChatPage() {
                 rows={1}
               />
               <button
-                className="btn btn--primary"
+                className="btn btn--primary flex-center"
                 onClick={() => handleSendMessage(messageInput)}
-                disabled={!messageInput.trim() || sesiStatus === 'selesai'}
+                disabled={!messageInput.trim() || sesiStatus === 'selesai' || loadingSetup}
                 style={{ height: '44px', width: '44px', padding: 0 }}
+                aria-label="Kirim Pesan"
               >
-                <Send size={18} />
+                {loadingSetup ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
               </button>
             </div>
           </>

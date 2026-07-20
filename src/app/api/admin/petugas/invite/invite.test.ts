@@ -53,8 +53,6 @@ const mockServerClient = async ({ user, role }: MockServerOpts) => {
 interface MockServiceOpts {
   createUserError?: { message: string } | null;
   createUserData?: { user?: { id: string } | null } | null;
-  generateLinkError?: { message: string } | null;
-  generateLinkData?: { properties?: { action_link?: string } } | null;
   insertError?: unknown | null;
 }
 
@@ -73,12 +71,6 @@ const mockServiceClient = async (opts: MockServiceOpts = {}) => {
           data: opts.createUserData ?? { user: { id: 'new-user-id' } },
           error: opts.createUserError ?? null,
         }),
-        generateLink: vi.fn().mockResolvedValue({
-          data: opts.generateLinkData ?? {
-            properties: { action_link: 'http://supabase.local/recovery?token=abc' },
-          },
-          error: opts.generateLinkError ?? null,
-        }),
       },
     },
     from: vi.fn().mockReturnValue({
@@ -94,6 +86,7 @@ const validBody = {
   nama: 'Petugas Baru',
   layanan_id: '550e8400-e29b-41d4-a716-446655440000',
   role: 'petugas',
+  password: 'securepassword123',
 };
 
 describe('POST /api/admin/petugas/invite — auth', () => {
@@ -219,7 +212,7 @@ describe('POST /api/admin/petugas/invite — server config & conflicts', () => {
     const res = await POST(buildRequest(validBody));
     expect(res.status).toBe(409);
     const json = await res.json();
-    expect(json.error).toMatch(/already|exists|registered/i);
+    expect(json.error).toMatch(/terdaftar|already|exists/i);
   });
 });
 
@@ -230,7 +223,7 @@ describe('POST /api/admin/petugas/invite — happy path', () => {
     process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-key';
   });
 
-  it('returns 201 with user_id and recovery_url, inserts petugas row', async () => {
+  it('returns 201 with user_id, inserts petugas row', async () => {
     const serverMock = await mockServerClient({ user: { id: 'u-1' }, role: 'admin' });
     const serviceMock = await mockServiceClient();
     const { POST } = await import('./route');
@@ -238,17 +231,12 @@ describe('POST /api/admin/petugas/invite — happy path', () => {
     expect(res.status).toBe(201);
     const json = await res.json();
     expect(json.user_id).toBe('new-user-id');
-    expect(json.recovery_url).toMatch(/recovery/);
 
     expect(serviceMock.auth.admin.createUser).toHaveBeenCalledTimes(1);
     const createCall = serviceMock.auth.admin.createUser.mock.calls[0][0];
     expect(createCall.email).toBe('newpetugas@lmh.go.id');
     expect(createCall.email_confirm).toBe(true);
-
-    expect(serviceMock.auth.admin.generateLink).toHaveBeenCalledTimes(1);
-    const linkCall = serviceMock.auth.admin.generateLink.mock.calls[0][0];
-    expect(linkCall.email).toBe('newpetugas@lmh.go.id');
-    expect(linkCall.type).toBe('recovery');
+    expect(createCall.password).toBe('securepassword123');
 
     expect(serviceMock.from).toHaveBeenCalledWith('petugas');
     expect(serverMock.from).toHaveBeenCalledTimes(1);
@@ -268,14 +256,14 @@ describe('POST /api/admin/petugas/invite — happy path', () => {
     expect(insertArg.role).toBe('petugas');
   });
 
-  it('returns 500 when generateLink fails after createUser succeeds', async () => {
+  it('returns 400 when password is missing', async () => {
     await mockServerClient({ user: { id: 'u-1' }, role: 'admin' });
-    await mockServiceClient({
-      generateLinkError: { message: 'rate limited' },
-    });
+    await mockServiceClient();
     const { POST } = await import('./route');
-    const res = await POST(buildRequest(validBody));
-    expect(res.status).toBe(500);
+    const { password: _omit, ...bodyWithoutPassword } = validBody;
+    void _omit;
+    const res = await POST(buildRequest(bodyWithoutPassword));
+    expect(res.status).toBe(400);
   });
 
   it('returns 500 when petugas insert fails', async () => {

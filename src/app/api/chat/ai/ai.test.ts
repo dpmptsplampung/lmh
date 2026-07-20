@@ -184,6 +184,14 @@ const mockServiceClient = async (opts: MockServiceOpts = {}) => {
       if (table === 'chat_ai_log') {
         return { insert: vi.fn().mockReturnValue(logInsertChain) };
       }
+      if (table === 'layanan') {
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnThis(),
+            single: vi.fn().mockResolvedValue({ data: { nama: 'Dinas A' }, error: null }),
+          })
+        };
+      }
       return {};
     }),
   };
