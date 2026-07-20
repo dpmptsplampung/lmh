@@ -173,10 +173,18 @@ export async function POST(request: NextRequest) {
   const context = buildRagContext(faqMatches);
   const faqIds = faqMatches.map((m) => m.id);
 
+  // 6b. Fetch layanan nama for dynamic persona
+  const { data: layananData } = await adminClient
+    .from('layanan')
+    .select('nama')
+    .eq('id', layanan_id)
+    .single();
+  const layananNama = layananData?.nama;
+
   // 7. Call Gemini with the strict system prompt
   let jawaban: string;
   try {
-    const chatModel = getChatModel(genAI);
+    const chatModel = getChatModel(genAI, layananNama);
     const result = await chatModel.generateContent([
       context,
       pertanyaan,

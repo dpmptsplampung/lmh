@@ -326,7 +326,7 @@ export default function AdminDashboard() {
             className={`${styles.walkinTriggerBtn} ${styles.inviteLinkBtn}`}
           >
             <UserPlus size={20} />
-            Undang Petugas
+            Tambah Petugas
           </Link>
           {/* I8: link ke DPO mini-dashboard */}
           <Link

@@ -59,13 +59,7 @@ const navItems: NavItem[] = [
     fase: 'Fase 1',
     roles: ['admin'],
   },
-  {
-    label: 'Checkin Bantuan',
-    href: '/admin/checkin-asist',
-    icon: <HandHelping size={20} />,
-    fase: 'Fase 4',
-    roles: ['admin', 'petugas'],
-  },
+
   {
     label: 'Antrian',
     href: '/admin/antrian',

@@ -5,8 +5,9 @@ import { z } from 'zod';
 
 const bodySchema = z.object({
   email: z.email(),
+  password: z.string().min(6),
   nama: z.string().min(2).max(200),
-  layanan_id: z.uuid(),
+  layanan_id: z.string().uuid(),
   role: z.enum(['petugas', 'admin']).default('petugas'),
 });
 
@@ -50,7 +51,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { email, nama, layanan_id, role } = parsed.data;
+  const { email, password, nama, layanan_id, role } = parsed.data;
 
   const adminClient = getServiceClient();
   if (!adminClient) {
@@ -62,6 +63,7 @@ export async function POST(request: NextRequest) {
 
   const { data: created, error: createError } = await adminClient.auth.admin.createUser({
     email,
+    password,
     email_confirm: true,
   });
 
@@ -69,7 +71,7 @@ export async function POST(request: NextRequest) {
     const msg = createError.message.toLowerCase();
     if (msg.includes('already') || msg.includes('exists') || msg.includes('registered')) {
       return NextResponse.json(
-        { error: createError.message },
+        { error: 'Email sudah terdaftar di sistem.' },
         { status: 409 },
       );
     }
@@ -83,27 +85,6 @@ export async function POST(request: NextRequest) {
   if (!userId) {
     return NextResponse.json(
       { error: 'Failed to create user: no user id returned' },
-      { status: 500 },
-    );
-  }
-
-  const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({
-    email,
-    type: 'recovery',
-    options: { redirectTo: '/admin' },
-  });
-
-  if (linkError) {
-    return NextResponse.json(
-      { error: `Failed to generate recovery link: ${linkError.message}` },
-      { status: 500 },
-    );
-  }
-
-  const recoveryUrl = linkData.properties?.action_link;
-  if (!recoveryUrl) {
-    return NextResponse.json(
-      { error: 'Failed to generate recovery link: no action_link returned' },
       { status: 500 },
     );
   }
@@ -125,7 +106,7 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json(
-    { user_id: userId, recovery_url: recoveryUrl },
+    { user_id: userId, success: true },
     { status: 201 },
   );
 }

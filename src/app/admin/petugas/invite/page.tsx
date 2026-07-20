@@ -19,13 +19,13 @@ export default function InvitePetugasPage() {
   const { toast } = useToast();
   const [email, setEmail] = useState('');
   const [nama, setNama] = useState('');
+  const [password, setPassword] = useState('');
   const [layananId, setLayananId] = useState('');
   const [role, setRole] = useState<Role>('petugas');
   const [layananList, setLayananList] = useState<LayananOption[]>([]);
   const [loadingLayanan, setLoadingLayanan] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [recoveryUrl, setRecoveryUrl] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
 
   const loadLayanan = useCallback(async () => {
     setLoadingLayanan(true);
@@ -53,25 +53,24 @@ export default function InvitePetugasPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
-    setRecoveryUrl(null);
-    setCopied(false);
+    setIsSuccess(false);
 
     try {
       const res = await fetch('/api/admin/petugas/invite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, nama, layanan_id: layananId, role }),
+        body: JSON.stringify({ email, password, nama, layanan_id: layananId, role }),
       });
       const json = await res.json();
 
       if (!res.ok) {
-        const msg = json?.error ?? 'Gagal membuat undangan.';
+        const msg = json?.error ?? 'Gagal membuat akun petugas.';
         toast(msg, 'error');
         return;
       }
 
-      setRecoveryUrl(json.recovery_url ?? null);
-      toast('Undangan berhasil dibuat.', 'success');
+      setIsSuccess(true);
+      toast('Akun petugas berhasil dibuat.', 'success');
     } catch {
       toast('Gagal menghubungi server.', 'error');
     } finally {
@@ -79,32 +78,20 @@ export default function InvitePetugasPage() {
     }
   };
 
-  const handleCopy = async () => {
-    if (!recoveryUrl) return;
-    try {
-      await navigator.clipboard.writeText(recoveryUrl);
-      setCopied(true);
-      toast('Link disalin ke clipboard.', 'success');
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      toast('Gagal menyalin. Salin manual.', 'error');
-    }
-  };
-
   const handleReset = () => {
     setEmail('');
     setNama('');
+    setPassword('');
     setLayananId('');
     setRole('petugas');
-    setRecoveryUrl(null);
-    setCopied(false);
+    setIsSuccess(false);
   };
 
   return (
     <>
       <PageHeader
-        title="Undang Petugas"
-        description="Buat akun petugas baru via magic-link recovery (tanpa password hardcode)."
+        title="Tambah Petugas"
+        description="Buat akun petugas baru dengan menentukan email dan password."
       >
         <Link href="/admin" className="btn btn--ghost btn--sm">
           <ArrowLeft size={14} /> Kembali ke Dashboard
@@ -112,38 +99,24 @@ export default function InvitePetugasPage() {
       </PageHeader>
 
       <div className={styles.container}>
-        {recoveryUrl ? (
+        {isSuccess ? (
           <div className={styles.successCard}>
             <div className={styles.successIcon}>
               <Check size={28} />
             </div>
-            <h2 className={styles.successTitle}>Undangan Berhasil Dibuat</h2>
+            <h2 className={styles.successTitle}>Akun Berhasil Dibuat</h2>
             <p className={styles.successText}>
-              Akun petugas telah dibuat. Kirim link recovery berikut ke email
-              petugas bersangkutan. Link ini hanya berlaku sekali pakai.
+              Akun petugas telah berhasil dibuat. Petugas sekarang dapat login 
+              menggunakan email dan password yang baru saja Anda atur.
             </p>
-            <div className={styles.linkBox}>
-              <code className={styles.linkText}>{recoveryUrl}</code>
-              <button
-                type="button"
-                className={`btn btn--secondary btn--sm ${styles.copyBtn}`}
-                onClick={handleCopy}
-              >
-                {copied ? <Check size={14} /> : <Copy size={14} />}
-                {copied ? 'Tersalin' : 'Salin'}
-              </button>
-            </div>
-            <p className={styles.warning}>
-              Peringatan: link ini memberikan akses login. Jangan bagikan di
-              channel publik. Petugas akan menetapkan password sendiri setelah
-              klik link.
-            </p>
+            
             <button
               type="button"
               className="btn btn--primary"
               onClick={handleReset}
+              style={{ marginTop: 'var(--space-6)' }}
             >
-              <UserPlus size={16} /> Undang Petugas Lain
+              <UserPlus size={16} /> Tambah Petugas Lain
             </button>
           </div>
         ) : (
@@ -178,6 +151,23 @@ export default function InvitePetugasPage() {
                 autoComplete="off"
                 required
                 minLength={2}
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label form-label--required" htmlFor="invitePassword">
+                Password
+              </label>
+              <input
+                id="invitePassword"
+                type="password"
+                className="form-input"
+                placeholder="Minimal 6 karakter"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="new-password"
+                required
+                minLength={6}
               />
             </div>
 
@@ -242,9 +232,9 @@ export default function InvitePetugasPage() {
                 disabled={submitting || loadingLayanan || layananList.length === 0}
               >
                 {submitting ? (
-                  <><Loader2 size={16} className="animate-pulse" /> Membuat undangan...</>
+                  <><Loader2 size={16} className="animate-pulse" /> Memproses...</>
                 ) : (
-                  <><Mail size={16} /> Buat Undangan</>
+                  <><UserPlus size={16} /> Tambah Petugas</>
                 )}
               </button>
             </div>

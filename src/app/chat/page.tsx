@@ -158,8 +158,8 @@ export default function PublicChatPage() {
   // Restore Session
   useEffect(() => {
     async function restoreSession() {
-      const savedSesiId = sessionStorage.getItem('lmh_chat_sesi_id');
-      const savedLayananId = sessionStorage.getItem('lmh_chat_layanan_id');
+      const savedSesiId = localStorage.getItem('lmh_chat_sesi_id');
+      const savedLayananId = localStorage.getItem('lmh_chat_layanan_id');
 
       if (savedSesiId && savedLayananId) {
         try {
@@ -173,8 +173,8 @@ export default function PublicChatPage() {
             .single();
 
           if (sessionErr || !sessionData || sessionData.status === 'selesai') {
-            sessionStorage.removeItem('lmh_chat_sesi_id');
-            sessionStorage.removeItem('lmh_chat_layanan_id');
+            localStorage.removeItem('lmh_chat_sesi_id');
+            localStorage.removeItem('lmh_chat_layanan_id');
             return;
           }
 
@@ -338,8 +338,8 @@ export default function PublicChatPage() {
                 waktu: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
               },
             ]);
-            sessionStorage.removeItem('lmh_chat_sesi_id');
-            sessionStorage.removeItem('lmh_chat_layanan_id');
+            localStorage.removeItem('lmh_chat_sesi_id');
+            localStorage.removeItem('lmh_chat_layanan_id');
           }
         }
       )
@@ -421,9 +421,9 @@ export default function PublicChatPage() {
       setSesiId(session.id);
       setSesiStatus(session.status);
       
-      // Save to session storage
-      sessionStorage.setItem('lmh_chat_sesi_id', session.id);
-      sessionStorage.setItem('lmh_chat_layanan_id', selectedLayananId);
+      // Save to local storage
+      localStorage.setItem('lmh_chat_sesi_id', session.id);
+      localStorage.setItem('lmh_chat_layanan_id', selectedLayananId);
 
       // Welcome Message
       const welcomeText = `Halo Bapak/Ibu ${nama}.\nSelamat datang di layanan Live Chat ${selectedLayanan?.nama || 'DPMPTSP'}.\n` +
