@@ -275,6 +275,7 @@ export default function AdminDashboard() {
         layanan_id: selectedLayananId,
         tujuan: 'loket',
         status: 'menunggu',
+        waktu_masuk: new Date().toISOString(),
       });
 
       if (error) throw error;

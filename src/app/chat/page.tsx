@@ -133,6 +133,90 @@ export default function PublicChatPage() {
     checkUser();
   }, []);
 
+  // Fetch FAQ knowledge base for selected service
+  const fetchFAQs = useCallback(async (layananId: string) => {
+    try {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from('faq_knowledge_base')
+        .select('id, pertanyaan, jawaban')
+        .eq('layanan_id', layananId)
+        .eq('aktif', true)
+        .order('urutan', { ascending: true });
+
+      setFaqs(data || []);
+    } catch {
+      // Fallback FAQs if database table doesn't exist yet or is empty
+      setFaqs([
+        { id: 'f1', pertanyaan: 'Apa saja syarat membuat NIB?', jawaban: 'Syarat utama pembuatan Nomor Induk Berusaha (NIB) adalah:\n1. KTP pemilik usaha\n2. NPWP pemilik usaha (opsional)\n3. Deskripsi kegiatan usaha.\n\nSemua proses dapat diakses online melalui sistem OSS RBA.' },
+        { id: 'f2', pertanyaan: 'Berapa biaya pengurusan sertifikat Halal?', jawaban: 'Pengurusan sertifikat Halal dengan skema Self Declare untuk UMK mikro/kecil adalah GRATIS (tidak dipungut biaya) melalui program Sehati.' },
+        { id: 'f3', pertanyaan: 'Bagaimana cara mendaftar BPJS Kesehatan?', jawaban: 'Pendaftaran BPJS Kesehatan Mandiri memerlukan:\n1. Kartu Keluarga (KK)\n2. KTP seluruh anggota keluarga\n3. Buku Rekening bank yang bekerja sama untuk autodebet.' },
+      ]);
+    }
+  }, []);
+
+  // Restore Session
+  useEffect(() => {
+    async function restoreSession() {
+      const savedSesiId = sessionStorage.getItem('lmh_chat_sesi_id');
+      const savedLayananId = sessionStorage.getItem('lmh_chat_layanan_id');
+
+      if (savedSesiId && savedLayananId) {
+        try {
+          const supabase = createClient();
+          
+          // Verify session is still active
+          const { data: sessionData, error: sessionErr } = await supabase
+            .from('chat_sesi')
+            .select('status, kontak_pengunjung')
+            .eq('id', savedSesiId)
+            .single();
+
+          if (sessionErr || !sessionData || sessionData.status === 'selesai') {
+            sessionStorage.removeItem('lmh_chat_sesi_id');
+            sessionStorage.removeItem('lmh_chat_layanan_id');
+            return;
+          }
+
+          setSesiId(savedSesiId);
+          setSelectedLayananId(savedLayananId);
+          setSesiStatus(sessionData.status);
+          if (sessionData.kontak_pengunjung) {
+            setVisitorName(sessionData.kontak_pengunjung);
+          }
+          setIsSessionActive(true);
+          setConsentGiven(true);
+
+          await fetchFAQs(savedLayananId);
+
+          // Fetch previous messages
+          const { data: previousMessages, error: msgErr } = await supabase
+            .from('chat_pesan')
+            .select('id, pengirim, isi, created_at')
+            .eq('sesi_id', savedSesiId)
+            .order('created_at', { ascending: true });
+
+          if (!msgErr && previousMessages) {
+            const formattedMessages: Message[] = previousMessages.map(m => ({
+              id: m.id,
+              pengirim: m.pengirim as 'pengunjung' | 'bot' | 'petugas',
+              isi: m.isi,
+              waktu: new Date(m.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+            }));
+            setMessages(formattedMessages);
+          }
+        } catch (e) {
+          console.error('Error restoring session:', e);
+        }
+      }
+    }
+    
+    // Only run if auth checking is finished and we are logged in (or we support anon)
+    if (!isCheckingAuth) {
+      restoreSession();
+    }
+  }, [isCheckingAuth, fetchFAQs]);
+
   // Load layanan
   useEffect(() => {
     async function loadLayanan() {
@@ -180,28 +264,6 @@ export default function PublicChatPage() {
       }
     }
   }, [layananList]);
-
-  // Fetch FAQ knowledge base for selected service
-  const fetchFAQs = useCallback(async (layananId: string) => {
-    try {
-      const supabase = createClient();
-      const { data } = await supabase
-        .from('faq_knowledge_base')
-        .select('id, pertanyaan, jawaban')
-        .eq('layanan_id', layananId)
-        .eq('aktif', true)
-        .order('urutan', { ascending: true });
-
-      setFaqs(data || []);
-    } catch {
-      // Fallback FAQs if database table doesn't exist yet or is empty
-      setFaqs([
-        { id: 'f1', pertanyaan: 'Apa saja syarat membuat NIB?', jawaban: 'Syarat utama pembuatan Nomor Induk Berusaha (NIB) adalah:\n1. KTP pemilik usaha\n2. NPWP pemilik usaha (opsional)\n3. Deskripsi kegiatan usaha.\n\nSemua proses dapat diakses online melalui sistem OSS RBA.' },
-        { id: 'f2', pertanyaan: 'Berapa biaya pengurusan sertifikat Halal?', jawaban: 'Pengurusan sertifikat Halal dengan skema Self Declare untuk UMK mikro/kecil adalah GRATIS (tidak dipungut biaya) melalui program Sehati.' },
-        { id: 'f3', pertanyaan: 'Bagaimana cara mendaftar BPJS Kesehatan?', jawaban: 'Pendaftaran BPJS Kesehatan Mandiri memerlukan:\n1. Kartu Keluarga (KK)\n2. KTP seluruh anggota keluarga\n3. Buku Rekening bank yang bekerja sama untuk autodebet.' },
-      ]);
-    }
-  }, []);
 
   // Setup Real-time listener for incoming messages from staff
   useEffect(() => {
@@ -276,6 +338,8 @@ export default function PublicChatPage() {
                 waktu: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
               },
             ]);
+            sessionStorage.removeItem('lmh_chat_sesi_id');
+            sessionStorage.removeItem('lmh_chat_layanan_id');
           }
         }
       )
@@ -356,6 +420,10 @@ export default function PublicChatPage() {
 
       setSesiId(session.id);
       setSesiStatus(session.status);
+      
+      // Save to session storage
+      sessionStorage.setItem('lmh_chat_sesi_id', session.id);
+      sessionStorage.setItem('lmh_chat_layanan_id', selectedLayananId);
 
       // Welcome Message
       const welcomeText = `Halo Bapak/Ibu ${nama}.\nSelamat datang di layanan Live Chat ${selectedLayanan?.nama || 'DPMPTSP'}.\n` +

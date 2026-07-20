@@ -510,6 +510,15 @@ export default function AdminUMKMPage() {
                             </button>
                           </>
                         )}
+                        {l.status === 'draft' && (
+                          <button
+                            className="btn btn--primary btn--sm"
+                            title="Publish"
+                            onClick={() => handleUpdateStatus(l.id, 'published')}
+                          >
+                            <CheckCircle2 size={14} /> Publish
+                          </button>
+                        )}
                         <button
                           className="btn btn--ghost btn--sm"
                           title="Hapus"

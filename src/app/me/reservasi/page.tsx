@@ -47,10 +47,9 @@ export default function ReservasiPage() {
     estimasi_tunggu_total_menit: number;
   } | null>(null);
 
-  // Set min date ke besok
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const minDate = tomorrow.toISOString().split('T')[0];
+  // Set min date ke hari ini
+  const today = new Date();
+  const minDate = today.toISOString().split('T')[0];
 
   useEffect(() => {
     const supabase = createClient();
