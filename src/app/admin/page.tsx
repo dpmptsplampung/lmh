@@ -89,6 +89,14 @@ function resolveLayananName(layanan: LayananRef | LayananRef[] | null): string {
   return layanan.nama ?? '—';
 }
 
+// Pengelompokan layanan untuk wizard walk-in (berdasarkan nama di tabel layanan)
+const LAYANAN_DPMPTSP = new Set([
+  'Layanan Perizinan DPMPTSP Provinsi Lampung',
+  'Helpdesk OSS',
+  'Investment Gallery',
+  'Matchmaking UMKM',
+]);
+
 export default function AdminDashboard() {
   const { toast } = useToast();
   const [totalHariIni, setTotalHariIni] = useState(0);
@@ -479,19 +487,37 @@ const [visitorAsal, setVisitorAsal] = useState('');
                         {layananList.length === 0 ? (
                           <p className="form-error" role="alert">Gagal memuat daftar layanan</p>
                         ) : (
-                          <div className={styles.wizardLayananGrid}>
-                            {layananList.map((layanan) => (
-                              <button
-                                type="button"
-                                key={layanan.id}
-                                className={`${styles.wizardLayananButton} ${selectedLayananId === layanan.id ? styles.wizardLayananButtonActive : ''}`}
-                                onClick={() => handleLayananSelect(layanan.id)}
-                              >
-                                <Building2 size={24} style={{ color: 'var(--color-primary-500)' }} />
-                                <div style={{ fontSize: 'var(--text-sm)' }}>{layanan.nama}</div>
-                              </button>
-                            ))}
-                          </div>
+                          (() => {
+                            const dpmptsp = layananList.filter((l) => LAYANAN_DPMPTSP.has(l.nama));
+                            const p4 = layananList.filter((l) => !LAYANAN_DPMPTSP.has(l.nama));
+                            const renderGrid = (items: typeof layananList) => (
+                              <div className={styles.wizardLayananGrid}>
+                                {items.map((layanan) => (
+                                  <button
+                                    type="button"
+                                    key={layanan.id}
+                                    className={`${styles.wizardLayananButton} ${selectedLayananId === layanan.id ? styles.wizardLayananButtonActive : ''}`}
+                                    onClick={() => handleLayananSelect(layanan.id)}
+                                  >
+                                    <Building2 size={24} style={{ color: 'var(--color-primary-500)' }} />
+                                    <div style={{ fontSize: 'var(--text-sm)' }}>{layanan.nama}</div>
+                                  </button>
+                                ))}
+                              </div>
+                            );
+                            return (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+                                <div>
+                                  <div className={styles.wizardLayananSectionTitle}>Layanan DPMPTSP</div>
+                                  {renderGrid(dpmptsp)}
+                                </div>
+                                <div>
+                                  <div className={styles.wizardLayananSectionTitle}>Layanan P4 (Instansi Mitra)</div>
+                                  {renderGrid(p4)}
+                                </div>
+                              </div>
+                            );
+                          })()
                         )}
 
                         <div className="form-group" style={{ marginTop: 'var(--space-2)' }}>

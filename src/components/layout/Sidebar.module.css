@@ -151,6 +151,11 @@
   .sidebar {
     transform: translateX(-100%);
     z-index: var(--z-modal);
+    /* --sidebar-width di-override jadi 0 di mobile untuk menghapus margin
+       konten; sidebar sendiri butuh lebar nyata agar terlihat saat dibuka. */
+    width: 280px;
+    max-width: 85vw;
+    box-shadow: var(--shadow-xl);
   }
 
   .sidebarOpen {
