@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Tooling/skills folders are not application code:
+    ".opencode/**",
+    ".superpowers/**",
+    ".codex/**",
+    ".github/prompts/**",
   ]),
 ]);
 

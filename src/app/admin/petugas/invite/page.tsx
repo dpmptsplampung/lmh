@@ -19,7 +19,6 @@ export default function InvitePetugasPage() {
   const { toast } = useToast();
   const [email, setEmail] = useState('');
   const [nama, setNama] = useState('');
-  const [password, setPassword] = useState('');
   const [layananId, setLayananId] = useState('');
   const [role, setRole] = useState<Role>('petugas');
   const [layananList, setLayananList] = useState<LayananOption[]>([]);
@@ -59,7 +58,7 @@ export default function InvitePetugasPage() {
       const res = await fetch('/api/admin/petugas/invite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, nama, layanan_id: layananId, role }),
+        body: JSON.stringify({ email, nama, layanan_id: layananId, role }),
       });
       const json = await res.json();
 
@@ -70,7 +69,7 @@ export default function InvitePetugasPage() {
       }
 
       setIsSuccess(true);
-      toast('Akun petugas berhasil dibuat.', 'success');
+      toast('Akun petugas berhasil dibuat. Tautan pengaturan kata sandi dikirim ke email petugas.', 'success');
     } catch {
       toast('Gagal menghubungi server.', 'error');
     } finally {
@@ -81,7 +80,6 @@ export default function InvitePetugasPage() {
   const handleReset = () => {
     setEmail('');
     setNama('');
-    setPassword('');
     setLayananId('');
     setRole('petugas');
     setIsSuccess(false);
@@ -91,7 +89,7 @@ export default function InvitePetugasPage() {
     <>
       <PageHeader
         title="Tambah Petugas"
-        description="Buat akun petugas baru dengan menentukan email dan password."
+        description="Buat akun petugas baru. Tautan pengaturan kata sandi akan dikirim ke email petugas."
       >
         <Link href="/admin" className="btn btn--ghost btn--sm">
           <ArrowLeft size={14} /> Kembali ke Dashboard
@@ -106,8 +104,8 @@ export default function InvitePetugasPage() {
             </div>
             <h2 className={styles.successTitle}>Akun Berhasil Dibuat</h2>
             <p className={styles.successText}>
-              Akun petugas telah berhasil dibuat. Petugas sekarang dapat login 
-              menggunakan email dan password yang baru saja Anda atur.
+              Tautan pengaturan kata sandi dikirim ke email petugas.
+              Petugas dapat mengatur kata sandi melalui tautan tersebut lalu masuk.
             </p>
             
             <button
@@ -151,23 +149,6 @@ export default function InvitePetugasPage() {
                 autoComplete="off"
                 required
                 minLength={2}
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label form-label--required" htmlFor="invitePassword">
-                Password
-              </label>
-              <input
-                id="invitePassword"
-                type="password"
-                className="form-input"
-                placeholder="Minimal 6 karakter"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete="new-password"
-                required
-                minLength={6}
               />
             </div>
 

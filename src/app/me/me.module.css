@@ -169,6 +169,35 @@
   color: white;
 }
 
+.actionIconWebsite {
+  background: linear-gradient(135deg, var(--color-neutral-500), var(--color-neutral-700));
+  color: white;
+}
+
+.floatingChat {
+  position: fixed;
+  bottom: var(--space-6);
+  right: var(--space-6);
+  z-index: var(--z-sticky);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
+  background: linear-gradient(135deg, var(--color-primary-600), var(--color-primary-700));
+  color: white;
+  border-radius: var(--radius-full);
+  box-shadow: var(--shadow-lg), 0 10px 25px rgba(99, 102, 241, 0.4);
+  text-decoration: none;
+  font-weight: 700;
+  font-size: var(--text-sm);
+  transition: transform var(--transition-base), box-shadow var(--transition-base);
+}
+
+.floatingChat:hover {
+  transform: translateY(-4px);
+  background: linear-gradient(135deg, var(--color-primary-500), var(--color-primary-600));
+}
+
 .actionTitle {
   font-weight: 700;
   font-size: var(--text-base);

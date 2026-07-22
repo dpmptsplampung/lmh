@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ElementType } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { usePathname } from 'next/navigation';
 import {
   Building2,
   ClipboardCheck,
@@ -17,9 +18,15 @@ import {
   LogOut,
   User,
   MessageSquare,
+  Menu,
+  X,
+  MapPin,
+  Clock,
+  Mail,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { APP_NAME, WA_NUMBER, WA_DEFAULT_MESSAGE } from '@/lib/constants';
+import { getSiteSettings } from '@/lib/site-settings';
 import { waLink } from '@/lib/utils';
 import EstimasiAntrean from '@/components/EstimasiAntrean';
 import styles from './landing.module.css';
@@ -108,7 +115,7 @@ const FALLBACK_SECTION_HEADER = {
 
 const FALLBACK_CTA = {
   title: 'Siap Berkunjung?',
-  description: 'Booking kedatangan online terlebih dahulu untuk mempercepat pelayanan Anda di kantor DPMPTSP Provinsi Lampung.',
+  description: 'Reservasi kedatangan online terlebih dahulu untuk mempercepat pelayanan Anda di kantor DPMPTSP Provinsi Lampung.',
   button_text: 'Rencanakan Kedatangan',
   button_link: '/me/reservasi',
 };
@@ -184,6 +191,28 @@ interface UserInfo {
 export default function LandingPage() {
   const [user, setUser] = useState<UserInfo | null>(null);
   const [landingData, setLandingData] = useState<LandingData | null>(null);
+  const [waHref, setWaHref] = useState(() => waLink(WA_NUMBER, WA_DEFAULT_MESSAGE));
+  const [contact, setContact] = useState({ address: '', hours: '', email: '' });
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const pathname = usePathname();
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMobileMenuOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setMobileMenuOpen(false);
+        menuButtonRef.current?.focus();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [mobileMenuOpen]);
 
   useEffect(() => {
     async function checkUser() {
@@ -218,8 +247,25 @@ export default function LandingPage() {
       }
     }
 
+    async function fetchSiteSettings() {
+      const settings = await getSiteSettings([
+        'wa_number',
+        'wa_default_message',
+        'contact_address',
+        'contact_hours',
+        'contact_email',
+      ]);
+      setWaHref(waLink(settings.wa_number, settings.wa_default_message));
+      setContact({
+        address: settings.contact_address,
+        hours: settings.contact_hours,
+        email: settings.contact_email,
+      });
+    }
+
     checkUser();
     fetchLandingContent();
+    fetchSiteSettings();
   }, []);
 
   const hero = landingData?.hero ?? {};
@@ -277,7 +323,7 @@ export default function LandingPage() {
 
         <div className={styles.navActions}>
           {user ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+            <div className={styles.navUserActions}>
               {user.role === 'admin' || user.role === 'petugas' ? (
                 <Link href="/admin" className="btn btn--primary btn--sm">
                   <User size={16} />
@@ -289,7 +335,7 @@ export default function LandingPage() {
                   Dashboard Saya
                 </Link>
               )}
-              <button className="btn btn--ghost btn--sm" onClick={handleLogout}>
+              <button className="btn btn--ghost btn--sm" onClick={handleLogout} aria-label="Keluar">
                 <LogOut size={16} />
               </button>
             </div>
@@ -299,8 +345,42 @@ export default function LandingPage() {
               Masuk
             </Link>
           )}
+          <button
+            ref={menuButtonRef}
+            type="button"
+            className={styles.menuToggle}
+            aria-expanded={mobileMenuOpen}
+            aria-controls="mobile-nav-menu"
+            aria-label={mobileMenuOpen ? 'Tutup menu navigasi' : 'Buka menu navigasi'}
+            onClick={() => setMobileMenuOpen((open) => !open)}
+          >
+            {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
+          </button>
         </div>
       </nav>
+
+      {mobileMenuOpen && (
+        <div id="mobile-nav-menu" className={styles.mobileMenu}>
+          <ul className={styles.mobileMenuList}>
+            <li><a href="#layanan" className={styles.mobileMenuLink} onClick={() => setMobileMenuOpen(false)}>Layanan</a></li>
+            <li><Link href="/umkm" className={styles.mobileMenuLink}>UMKM</Link></li>
+            <li><Link href="/gallery" className={styles.mobileMenuLink}>Investasi</Link></li>
+            <li><Link href="/chat" className={styles.mobileMenuLink}>Live Chat</Link></li>
+            <li><Link href="/transparansi" className={styles.mobileMenuLink}>Transparansi</Link></li>
+            <li>
+              {user ? (
+                user.role === 'admin' || user.role === 'petugas' ? (
+                  <Link href="/admin" className={styles.mobileMenuLink}>Panel Admin</Link>
+                ) : (
+                  <Link href="/me" className={styles.mobileMenuLink}>Dashboard Saya</Link>
+                )
+              ) : (
+                <Link href="/login" className={styles.mobileMenuLink}>Masuk</Link>
+              )}
+            </li>
+          </ul>
+        </div>
+      )}
 
       {/* Hero Section */}
       <section className={styles.hero}>
@@ -310,15 +390,19 @@ export default function LandingPage() {
             <Sparkles size={14} />
             {heroBadgeText}
           </div>
-          <h1 className={styles.heroTitle} style={{ display: 'flex', justifyContent: 'center' }}>
-            <Image 
-              src="/logo.png" 
-              alt="Pelayanan Terpadu Satu Pintu untuk Lampung Maju" 
-              width={500} 
-              height={220} 
-              style={{ objectFit: 'contain', maxWidth: '100%', height: 'auto' }} 
+          <div className={styles.heroLogo}>
+            <Image
+              src="/logo.png"
+              alt=""
+              width={240}
+              height={100}
+              style={{ objectFit: 'contain', maxWidth: '100%', height: 'auto' }}
               priority
             />
+          </div>
+          <h1 className={styles.heroTitle}>
+            Pelayanan Terpadu Satu Pintu untuk{' '}
+            <span className={styles.heroTitleAccent}>Lampung Maju</span>
           </h1>
           <p className={styles.heroDescription}>
             {heroDescription}
@@ -330,7 +414,7 @@ export default function LandingPage() {
             </Link>
             {heroCtaSecondaryLink === 'wa' ? (
               <a
-                href={waLink(WA_NUMBER, WA_DEFAULT_MESSAGE)}
+                href={waHref}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="btn btn--secondary btn--lg"
@@ -394,6 +478,28 @@ export default function LandingPage() {
 
       {/* Footer */}
       <footer className={styles.footer}>
+        {(contact.address || contact.hours || contact.email) && (
+          <div className={styles.footerContact}>
+            {contact.address && (
+              <p className={styles.footerContactItem}>
+                <MapPin size={14} />
+                <span>{contact.address}</span>
+              </p>
+            )}
+            {contact.hours && (
+              <p className={styles.footerContactItem}>
+                <Clock size={14} />
+                <span>{contact.hours}</span>
+              </p>
+            )}
+            {contact.email && (
+              <p className={styles.footerContactItem}>
+                <Mail size={14} />
+                <a href={`mailto:${contact.email}`}>{contact.email}</a>
+              </p>
+            )}
+          </div>
+        )}
         <p>© {new Date().getFullYear()} {APP_NAME} — {footerCopyright}</p>
         <p className={styles.footerLinks}>
           <Link href="/kebijakan-privasi">Kebijakan Privasi</Link>

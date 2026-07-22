@@ -102,8 +102,9 @@ export default function AdminDashboard() {
 
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [wizardStep, setWizardStep] = useState(1);
-  const [visitorName, setVisitorName] = useState('');
-  const [visitorAsal, setVisitorAsal] = useState('');
+const [visitorName, setVisitorName] = useState('');
+const [visitorPhone, setVisitorPhone] = useState('');
+const [visitorAsal, setVisitorAsal] = useState('');
   const [visitorKeperluan, setVisitorKeperluan] = useState('');
   const [selectedLayananId, setSelectedLayananId] = useState('');
   const [layananList, setLayananList] = useState<{ id: string; nama: string }[]>([]);
@@ -192,7 +193,7 @@ export default function AdminDashboard() {
       const { data: weekly } = await supabase
         .from('visit')
         .select('waktu_masuk')
-        .eq('asal', 'walk_in')
+        .in('status', ['menunggu', 'dilayani', 'selesai'])
         .gte('waktu_masuk', sevenDaysAgo.toISOString());
 
       const counts: Record<string, number> = {};
@@ -216,7 +217,7 @@ export default function AdminDashboard() {
       const { data: breakdown } = await supabase
         .from('visit')
         .select('layanan:layanan_id(nama)')
-        .eq('asal', 'walk_in')
+        .in('status', ['menunggu', 'dilayani', 'selesai'])
         .gte('waktu_masuk', startOfToday);
 
       const counts2: Record<string, number> = {};
@@ -248,6 +249,10 @@ export default function AdminDashboard() {
       setWizardError('Nama pengunjung wajib diisi');
       return;
     }
+    if (visitorPhone.trim() && !/^(\+?62|0)\d{8,14}$/.test(visitorPhone.trim().replace(/[\s-]/g, ''))) {
+      setWizardError('Nomor handphone tidak valid. Contoh: 0812xxxxxxx');
+      return;
+    }
     if (!visitorAsal.trim()) {
       setWizardError('Asal instansi / alamat wajib diisi');
       return;
@@ -270,6 +275,7 @@ export default function AdminDashboard() {
       const { error } = await supabase.from('visit').insert({
         asal: 'walk_in',
         nama: visitorName.trim(),
+        kontak_hp: visitorPhone.trim() || null,
         asal_instansi: visitorAsal.trim(),
         keperluan: visitorKeperluan.trim() || null,
         layanan_id: selectedLayananId,
@@ -292,6 +298,7 @@ export default function AdminDashboard() {
     setIsWizardOpen(false);
     setWizardStep(1);
     setVisitorName('');
+    setVisitorPhone('');
     setVisitorAsal('');
     setVisitorKeperluan('');
     setSelectedLayananId('');
@@ -323,7 +330,7 @@ export default function AdminDashboard() {
           </button>
           <Link
             href="/admin/petugas/invite"
-            className={`${styles.walkinTriggerBtn} ${styles.inviteLinkBtn}`}
+            className="btn btn--secondary"
           >
             <UserPlus size={20} />
             Tambah Petugas
@@ -331,7 +338,7 @@ export default function AdminDashboard() {
           {/* I8: link ke DPO mini-dashboard */}
           <Link
             href="/admin/data-governance"
-            className={`${styles.walkinTriggerBtn} ${styles.inviteLinkBtn}`}
+            className="btn btn--secondary"
           >
             <ShieldCheck size={20} />
             Tata Kelola Data (DPO)
@@ -339,7 +346,7 @@ export default function AdminDashboard() {
           {/* I3: link ke SKM dashboard */}
           <Link
             href="/admin/skm"
-            className={`${styles.walkinTriggerBtn} ${styles.inviteLinkBtn}`}
+            className="btn btn--secondary"
           >
             <ClipboardList size={20} />
             Dashboard SKM
@@ -347,7 +354,7 @@ export default function AdminDashboard() {
           {/* I4: link ke audit log asisten AI */}
           <Link
             href="/admin/chat/ai-log"
-            className={`${styles.walkinTriggerBtn} ${styles.inviteLinkBtn}`}
+            className="btn btn--secondary"
           >
             <Bot size={20} />
             Log Asisten AI
@@ -428,6 +435,18 @@ export default function AdminDashboard() {
                           />
                         </div>
                         <div className="form-group">
+                          <label className="form-label" htmlFor="walkinPhone">Nomor Handphone</label>
+                          <input
+                            id="walkinPhone"
+                            type="tel"
+                            className="form-input"
+                            placeholder="Contoh: 0812xxxxxxx (opsional)"
+                            value={visitorPhone}
+                            onChange={(e) => setVisitorPhone(e.target.value)}
+                            autoComplete="off"
+                          />
+                        </div>
+                        <div className="form-group">
                           <label className="form-label form-label--required" htmlFor="walkinAsal">Asal Instansi / Alamat</label>
                           <input
                             id="walkinAsal"
@@ -440,7 +459,7 @@ export default function AdminDashboard() {
                             required
                           />
                         </div>
-                        {wizardError && <p className="form-error">{wizardError}</p>}
+                        {wizardError && <p className="form-error" role="alert">{wizardError}</p>}
                         <div className={styles.wizardActions}>
                           <button className="btn btn--primary" onClick={handleNextStep}>
                             Lanjut Pilih Layanan
@@ -458,7 +477,7 @@ export default function AdminDashboard() {
                         </p>
 
                         {layananList.length === 0 ? (
-                          <p className="form-error">Gagal memuat daftar layanan</p>
+                          <p className="form-error" role="alert">Gagal memuat daftar layanan</p>
                         ) : (
                           <div className={styles.wizardLayananGrid}>
                             {layananList.map((layanan) => (
@@ -507,6 +526,13 @@ export default function AdminDashboard() {
                           <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>NAMA PENGUNJUNG</div>
                           <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>Bapak/Ibu {visitorName}</div>
 
+                          {visitorPhone.trim() && (
+                            <>
+                              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '4px' }}>NOMOR HANDPHONE</div>
+                              <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{visitorPhone}</div>
+                            </>
+                          )}
+
                           <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '4px' }}>ASAL / INSTANSI</div>
                           <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{visitorAsal}</div>
 
@@ -521,7 +547,7 @@ export default function AdminDashboard() {
                           <div style={{ fontWeight: 700, color: 'var(--color-primary-700)' }}>{getSelectedLayananName()}</div>
                         </div>
 
-                        {wizardError && <p className="form-error">{wizardError}</p>}
+                        {wizardError && <p className="form-error" role="alert">{wizardError}</p>}
 
                         <div className={styles.wizardActions}>
                           <button className="btn btn--secondary" onClick={() => setWizardStep(2)} disabled={savingWizard}>
@@ -562,7 +588,7 @@ export default function AdminDashboard() {
                 </div>
                 <div className={styles.statInfo}>
                   <span className={styles.statValue}>{totalHariIni}</span>
-                  <span className={styles.statLabel}>Kunjungan Hari Ini</span>
+                  <span className={styles.statLabel}>Hadir Hari Ini (Walk-in + Reservasi)</span>
                 </div>
               </div>
 
@@ -690,7 +716,7 @@ export default function AdminDashboard() {
                           <td>{visit.waktu}</td>
                           <td>
                             <span className={`badge badge--${visit.status}`}>
-                              {visit.status === 'menunggu' ? '● Menunggu' : '✓ Selesai'}
+                              {visit.status === 'menunggu' ? '● Menunggu' : visit.status === 'dilayani' ? 'Sedang Dilayani' : '✓ Selesai'}
                             </span>
                           </td>
                         </tr>

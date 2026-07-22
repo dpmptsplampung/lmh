@@ -62,8 +62,8 @@ Buka [http://localhost:3000](http://localhost:3000).
 ```
 src/
   app/
-    admin/          # Dashboard petugas (12 sub-pages)
-    api/            # Route Handlers (17 endpoints)
+    admin/          # Dashboard petugas
+    api/            # Route Handlers
     auth/           # Callback Google OAuth
     chat/           # Live chat publik + AI
     checkin/        # Check-in walk-in
@@ -82,12 +82,13 @@ src/
   proxy.ts          # Middleware (auth + role guard)
 supabase/
   config.toml       # Minimal CLI skeleton (project_id placeholder)
-  migrations/       # 5 final-state baseline migrations only:
+  migrations/       # 5 final-state baseline migrations:
                     #   202607140001_extensions_and_preflight.sql
                     #   202607140002_core_schema.sql
                     #   202607140003_feature_schema.sql
                     #   202607140004_security_and_automation.sql
                     #   202607140005_views_and_jobs.sql
+                    # + migration incremental (mis. 202607200001_p0_security_governance.sql)
   seed.sql          # Production-safe reference/config (via --include-seed)
   seed-demo.sql     # Data demo (DEV/STAGING ONLY — never production)
 docs/               # Dokumentasi
@@ -117,6 +118,7 @@ See `docs/MIGRATIONS.md`. Do **not** paste historical `001`–`038` SQL.
 | `docs/CHANGELOG.md` | Riwayat perubahan per versi |
 | `docs/DECISION_LOG.md` | Log keputusan teknis di setiap gate |
 | `docs/AUDIT_DAN_ROADMAP_INOVASI.md` | Audit LMH 1.0 + roadmap inovasi LMH 2.0 |
+| `docs/archive/` | Arsip historis pra-LMH 2.0 (PRD, ARCHITECTURE, AUDIT_RESULTS) — tidak lagi akurat |
 
 ## Testing
 

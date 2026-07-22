@@ -64,8 +64,9 @@ export async function POST() {
     .limit(50);
 
   if (fetchErr) {
+    console.error('[admin/faq/embed] gagal mengambil FAQ pending', fetchErr);
     return NextResponse.json(
-      { error: `Failed to fetch pending FAQs: ${fetchErr.message}` },
+      { error: 'Gagal memuat FAQ yang belum di-embed.' },
       { status: 500 },
     );
   }

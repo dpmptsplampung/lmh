@@ -35,8 +35,8 @@ integritas (B2/B4/B5) + arsitektur (A1).
 - B5: Model akun mitra individual (bukan shared per instansi)
 **Dampak**: 10 migration (025-034), Auth Hook wajib dikonfigurasi di
 Dashboard, tabel `visit` menjadi source of truth.
-**Status**: Code-complete. Tabel `kunjungan`/`reservasi` belum di-retire
-(deferred ke I1.c setelah dual-write terverifikasi di produksi).
+**Status**: Code-complete. Tabel `kunjungan`/`reservasi` sudah di-retire
+di baseline (item I1.c selesai; lihat entri Gate 5).
 
 ---
 
@@ -85,6 +85,37 @@ di-enable.
 
 ---
 
+## Gate 5 — Gelombang Perbaikan Audit 2026-07-20
+
+**Tanggal**: 20 Juli 2026
+**Konteks**: Audit pasca-rilis menemukan celah keamanan/governance P0 (RLS
+visit, column guard chat, publish guard listing, eskalasi role petugas,
+absensi backdate, notifikasi gagal berulang, retensi chat_ai_log) plus
+kebutuhan posisi antrean dan notifikasi balasan.
+**Keputusan**:
+- Terapkan migration `202607200001_p0_security_governance.sql`:
+  - RLS `visit` ownership (pengunjung hanya melihat kunjungannya sendiri)
+  - Column guard `chat_sesi` (batasi kolom yang dapat diubah pengunjung)
+  - Publish guard `listing_umkm` (petugas terbatas `draft`/`pending_review`;
+    hanya admin yang publish)
+  - Trigger audit `trg_audit_petugas_role` untuk UPDATE `role` petugas
+  - Absensi anti-backdate (`trg_guard_absensi_tanggal`)
+  - Dead-letter notifikasi (`claim_notifikasi` berhenti claim baris gagal
+    retried ≥ 5x)
+  - Retensi `chat_ai_log` 90 hari (`prune_chat_ai_log()` + cron harian)
+  - Fungsi `get_queue_position(qr_token)` untuk posisi antrean publik
+  - Trigger notifikasi balasan: chat petugas → pengunjung, status
+    `umkm_inquiry`, konfirmasi reservasi
+- Reafirmasi K5: edit UMKM via **magic-link Supabase Auth**
+  (`/api/umkm/request-edit-link`) — MENIMPA skema edit-token mentah /
+  Edge Function yang tercantum di dokumen arsip.
+**Dampak**: 1 migration baru, workflow migrasi resmi = 5 baseline
+`20260714*` via Supabase CLI + migration incremental (lihat
+`docs/MIGRATIONS.md`).
+**Status**: Code-complete.
+
+---
+
 ## Keputusan Teknis Lain
 
 ### Bisnis logic server: Next.js Route Handler
@@ -92,10 +123,11 @@ di-enable.
 - **Keputusan**: Route Handler (familiar, konsisten, deploy Vercel)
 - **Pengecualian**: Tidak ada — semua logic di Route Handler
 
-### Migration: Manual via SQL Editor
+### Migration: Supabase CLI (5 baseline)
 - **Konteks**: Supabase CLI vs manual
-- **Keputusan**: Manual via Dashboard SQL Editor (lanjut praktik eksisting)
-- **Alasan**: Tidak ada `config.toml`, tidak ada CLI workflow
+- **Keputusan**: Supabase CLI (`supabase db push --include-all --include-seed`)
+  dengan `supabase/config.toml` dan 5 file baseline `202607140001`–`005`
+- **Catatan**: MENIMPA keputusan lama "Manual via SQL Editor" (2026-07-20)
 
 ### WhatsApp Cloud API: Ditangguhkan
 - **Konteks**: Email + web-push vs tambah WhatsApp

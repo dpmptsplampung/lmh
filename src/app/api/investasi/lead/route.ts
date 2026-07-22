@@ -46,8 +46,9 @@ export async function POST(request: NextRequest) {
     .maybeSingle();
 
   if (docErr) {
+    console.error('[investasi/lead] gagal mengambil dokumen', docErr);
     return NextResponse.json(
-      { error: `Failed to fetch document: ${docErr.message}` },
+      { error: 'Gagal memuat dokumen. Silakan coba lagi.' },
       { status: 500 },
     );
   }
@@ -96,8 +97,9 @@ export async function POST(request: NextRequest) {
         { status: 429 },
       );
     }
+    console.error('[investasi/lead] gagal menyimpan lead', insertErr);
     return NextResponse.json(
-      { error: `Failed to submit lead: ${insertErr.message}` },
+      { error: 'Gagal mengirim permintaan. Silakan coba lagi.' },
       { status: 500 },
     );
   }

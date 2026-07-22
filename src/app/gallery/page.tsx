@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import {
@@ -16,8 +16,11 @@ import {
   Mail,
   Loader2,
   CheckCircle,
+  LogIn,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { getSiteSettings } from '@/lib/site-settings';
+import { CONTACT_EMAIL_FALLBACK } from '@/lib/constants';
 import styles from './gallery.module.css';
 
 interface GalleryDoc {
@@ -45,6 +48,12 @@ export default function GalleryPage() {
   const [leadSending, setLeadSending] = useState(false);
   const [leadSent, setLeadSent] = useState(false);
   const [leadError, setLeadError] = useState('');
+  const [leadLoggedIn, setLeadLoggedIn] = useState<boolean | null>(null);
+  const [contactEmail, setContactEmail] = useState(CONTACT_EMAIL_FALLBACK);
+  const viewerCloseRef = useRef<HTMLButtonElement>(null);
+  const leadCloseRef = useRef<HTMLButtonElement>(null);
+  const viewerPrevFocusRef = useRef<HTMLElement | null>(null);
+  const leadPrevFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     async function loadData() {
@@ -63,13 +72,12 @@ export default function GalleryPage() {
           setDocs([]);
         }
 
-        const { data: setting } = await supabase
-          .from('site_settings')
-          .select('value')
-          .eq('key', 'foila_url')
-          .single();
-        if (setting?.value) {
-          setFoilaUrl(setting.value);
+        const settings = await getSiteSettings(['foila_url', 'contact_email']);
+        if (settings.foila_url) {
+          setFoilaUrl(settings.foila_url);
+        }
+        if (settings.contact_email) {
+          setContactEmail(settings.contact_email);
         }
       } catch (e) {
         console.error('Error loading gallery data:', e);
@@ -95,20 +103,52 @@ export default function GalleryPage() {
 
   const handleCloseViewer = () => {
     setSelectedDocId(null);
-  };
-
-  const handleOpenLeadModal = (doc: GalleryDoc) => {
-    setLeadModalDoc(doc);
-    setLeadForm({ nama: '', email: '', instansi: '', minat: '', catatan: '' });
-    setLeadSent(false);
-    setLeadError('');
-    setLeadSending(false);
+    viewerPrevFocusRef.current?.focus();
   };
 
   const handleCloseLeadModal = () => {
     setLeadModalDoc(null);
     setLeadSent(false);
     setLeadError('');
+    leadPrevFocusRef.current?.focus();
+  };
+
+  useEffect(() => {
+    if (!selectedDocId) return;
+    viewerPrevFocusRef.current = document.activeElement as HTMLElement | null;
+    viewerCloseRef.current?.focus();
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') handleCloseViewer();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [selectedDocId]);
+
+  useEffect(() => {
+    if (!leadModalDoc) return;
+    leadPrevFocusRef.current = document.activeElement as HTMLElement | null;
+    leadCloseRef.current?.focus();
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') handleCloseLeadModal();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [leadModalDoc]);
+
+  const handleOpenLeadModal = async (doc: GalleryDoc) => {
+    setLeadModalDoc(doc);
+    setLeadForm({ nama: '', email: '', instansi: '', minat: '', catatan: '' });
+    setLeadSent(false);
+    setLeadError('');
+    setLeadSending(false);
+    setLeadLoggedIn(null);
+    try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      setLeadLoggedIn(!!user);
+    } catch {
+      setLeadLoggedIn(false);
+    }
   };
 
   const handleSubmitLead = async (e: React.FormEvent) => {
@@ -147,7 +187,7 @@ export default function GalleryPage() {
   };
 
   return (
-    <div className={styles.galleryPage} onContextMenu={handleContextMenu}>
+    <div className={styles.galleryPage}>
       {/* Navbar */}
       <nav className={styles.galleryNav}>
         <Link href="/" className={styles.galleryNavBrand}>
@@ -260,7 +300,6 @@ export default function GalleryPage() {
                       height={180}
                       className={styles.iproCardImage}
                       style={{ objectFit: 'cover' }}
-                      unoptimized
                     />
                   )}
                   <div className={styles.iproCardHeader}>
@@ -312,7 +351,12 @@ export default function GalleryPage() {
 
       {/* SECURE VIEW-ONLY MODAL VIEWER */}
       {selectedDocId && (
-        <div className={styles.secureModal}>
+        <div
+          className={styles.secureModal}
+          role="dialog"
+          aria-modal="true"
+          aria-label={getSelectedDocTitle()}
+        >
           <div className={styles.secureViewerContent}>
 
             {/* Header */}
@@ -330,23 +374,25 @@ export default function GalleryPage() {
 
               {/* Close Button */}
               <button
+                ref={viewerCloseRef}
                 type="button"
                 className={styles.secureCloseBtn}
                 onClick={handleCloseViewer}
+                aria-label="Tutup"
               >
                 <X size={20} />
               </button>
             </div>
 
             {/* Body */}
-            <div className={styles.secureViewerBody}>
-              <style>{`@media print { .no-print { display: none !important; } }`}</style>
+            <div className={styles.secureViewerBody} onContextMenu={handleContextMenu}>
+              <style>{`@media print { .no-print { display: none !important; }`}</style>
               <div className="no-print" style={{ width: '100%', position: 'relative' }}>
                 {!hasPages ? (
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '600px', color: 'var(--color-neutral-400)', gap: 'var(--space-4)' }}>
                     <FileText size={48} style={{ opacity: 0.4 }} />
                     <p>Dokumen ini sedang diproses.</p>
-                    <a href="mailto:gallery@lmh.go.id" style={{ color: 'var(--color-primary-400)', fontSize: 'var(--text-sm)' }}>
+                    <a href={`mailto:${contactEmail}`} style={{ color: 'var(--color-primary-400)', fontSize: 'var(--text-sm)' }}>
                       Hubungi admin untuk informasi lebih lanjut
                     </a>
                   </div>
@@ -424,6 +470,7 @@ export default function GalleryPage() {
                 <span className={styles.leadModalTitle}>Ajukan Minat Investasi</span>
               </div>
               <button
+                ref={leadCloseRef}
                 type="button"
                 className={styles.secureCloseBtn}
                 onClick={handleCloseLeadModal}
@@ -434,7 +481,17 @@ export default function GalleryPage() {
             </div>
 
             <div className={styles.leadModalBody}>
-              {leadSent ? (
+              {leadLoggedIn === false ? (
+                <div className={styles.leadSuccess}>
+                  <LogIn size={48} style={{ color: 'var(--color-primary-400)', marginBottom: 'var(--space-4)' }} />
+                  <p className={styles.leadSuccessText}>
+                    Silakan masuk untuk mengajukan minat investasi.
+                  </p>
+                  <Link href="/login?next=/gallery" className="btn btn--primary">
+                    Masuk
+                  </Link>
+                </div>
+              ) : leadSent ? (
                 <div className={styles.leadSuccess}>
                   <CheckCircle size={48} style={{ color: '#10b981', marginBottom: 'var(--space-4)' }} />
                   <p className={styles.leadSuccessText}>

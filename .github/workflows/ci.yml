@@ -30,8 +30,8 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Test
-        run: npm test
+      - name: Test (coverage gate)
+        run: npm run test:coverage
 
       - name: Build
         run: npm run build
@@ -45,4 +45,3 @@ jobs:
 
       - name: Audit (high+)
         run: npm audit --audit-level=high
-        continue-on-error: true

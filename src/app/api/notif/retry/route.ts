@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import webpush from 'web-push';
+import crypto from 'node:crypto';
+import { bodyToEmailHtml } from '@/lib/email-html';
+
+// Dead-letter threshold — must stay in sync with claim_notifikasi in
+// supabase/migrations/202607200001_p0_security_governance.sql
+const MAX_RETRY_COUNT = 5;
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -35,7 +41,10 @@ function verifyCronSecret(request: NextRequest): boolean {
   if (!secret) return false;
   const auth = request.headers.get('authorization');
   if (!auth) return false;
-  return auth === `Bearer ${secret}`;
+  const expected = Buffer.from(`Bearer ${secret}`, 'utf8');
+  const actual = Buffer.from(auth, 'utf8');
+  if (expected.length !== actual.length) return false;
+  return crypto.timingSafeEqual(expected, actual);
 }
 
 function getResend(): Resend | null {
@@ -59,7 +68,7 @@ async function sendEmail(resend: Resend, row: FailedRow): Promise<{ ok: boolean;
     from,
     to: row.tujuan_email!,
     subject: row.subjek || 'Notifikasi DPMPTSP Lampung',
-    html: row.body,
+    html: bodyToEmailHtml(row.body),
   });
   if (error) return { ok: false, error: error.message };
   return { ok: true };
@@ -144,10 +153,17 @@ async function processFailed(request: NextRequest) {
   const rows: FailedRow[] = (claimed ?? []) as FailedRow[];
   let sent = 0;
   let failedAgain = 0;
+  let deadLettered = 0;
 
   const resend = getResend();
 
   for (const row of rows) {
+    // Dead-letter: claim_notifikasi no longer returns these rows, but guard
+    // here too so the rule stays consistent if the RPC threshold changes.
+    if (row.retry_count >= MAX_RETRY_COUNT) {
+      deadLettered++;
+      continue;
+    }
     if (row.kanal === 'email') {
       if (!row.tujuan_email) {
         await completeNotifikasi(adminClient, row.id, row.claim_token, 'skipped', 'no tujuan_email');
@@ -184,7 +200,7 @@ async function processFailed(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ sent, failed: failedAgain, retried: rows.length });
+  return NextResponse.json({ sent, failed: failedAgain, dead_lettered: deadLettered, retried: rows.length });
 }
 
 export async function POST(request: NextRequest) {

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import webpush from 'web-push';
+import crypto from 'node:crypto';
+import { bodyToEmailHtml } from '@/lib/email-html';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -34,7 +36,10 @@ function verifyCronSecret(request: NextRequest): boolean {
   if (!secret) return false;
   const auth = request.headers.get('authorization');
   if (!auth) return false;
-  return auth === `Bearer ${secret}`;
+  const expected = Buffer.from(`Bearer ${secret}`, 'utf8');
+  const actual = Buffer.from(auth, 'utf8');
+  if (expected.length !== actual.length) return false;
+  return crypto.timingSafeEqual(expected, actual);
 }
 
 function getResend(): Resend | null {
@@ -58,7 +63,7 @@ async function sendEmail(resend: Resend, row: NotifikasiRow): Promise<{ ok: bool
     from,
     to: row.tujuan_email!,
     subject: row.subjek || 'Notifikasi DPMPTSP Lampung',
-    html: row.body,
+    html: bodyToEmailHtml(row.body),
   });
   if (error) return { ok: false, error: error.message };
   return { ok: true };

@@ -10,6 +10,51 @@ const querySchema = z.object({
   page: z.coerce.number().int().positive(),
 });
 
+// Per-IP rate limit (in-memory, best-effort) — protects the watermark/CPU
+// path from scraping loops.
+const RATE_LIMIT_MAX = 30;
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const rateBuckets = new Map<string, { windowStart: number; count: number }>();
+
+// In-memory watermark cache keyed per doc+page+ipHash+minute. Bounded with
+// oldest-first eviction; responses still carry Cache-Control: no-store.
+const CACHE_MAX_ENTRIES = 200;
+const watermarkCache = new Map<string, Buffer>();
+
+function cacheKey(docId: string, page: number, ipHash: string): string {
+  const minute = Math.floor(Date.now() / 60_000);
+  return `${docId}:${page}:${ipHash}:${minute}`;
+}
+
+function cacheGet(key: string): Buffer | undefined {
+  const hit = watermarkCache.get(key);
+  if (hit) {
+    // Refresh recency so frequently-read entries are not evicted early.
+    watermarkCache.delete(key);
+    watermarkCache.set(key, hit);
+  }
+  return hit;
+}
+
+function cacheSet(key: string, value: Buffer): void {
+  if (watermarkCache.size >= CACHE_MAX_ENTRIES) {
+    const oldest = watermarkCache.keys().next().value;
+    if (oldest !== undefined) watermarkCache.delete(oldest);
+  }
+  watermarkCache.set(key, value);
+}
+
+function checkIpRate(ipHash: string): boolean {
+  const now = Date.now();
+  const bucket = rateBuckets.get(ipHash);
+  if (!bucket || now - bucket.windowStart >= RATE_LIMIT_WINDOW_MS) {
+    rateBuckets.set(ipHash, { windowStart: now, count: 1 });
+    return true;
+  }
+  bucket.count += 1;
+  return bucket.count <= RATE_LIMIT_MAX;
+}
+
 function getServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -72,6 +117,25 @@ export async function GET(request: NextRequest) {
 
   const { doc_id, page } = parsed.data;
 
+  const ipHash = await hashIp(getClientIp(request));
+  if (!checkIpRate(ipHash)) {
+    return NextResponse.json(
+      { error: 'Terlalu banyak permintaan. Coba lagi nanti.' },
+      { status: 429 },
+    );
+  }
+
+  const key = cacheKey(doc_id, page, ipHash);
+  const cached = cacheGet(key);
+  if (cached) {
+    return new Response(new Uint8Array(cached), {
+      headers: {
+        'Content-Type': 'image/png',
+        'Cache-Control': 'no-store',
+      },
+    });
+  }
+
   const supabase = await createClient();
   const { data: docRow, error: docError } = await supabase
     .from('investment_documents')
@@ -119,7 +183,6 @@ export async function GET(request: NextRequest) {
 
   const pageBuffer = Buffer.from(await downloadData.arrayBuffer());
 
-  const ipHash = await hashIp(getClientIp(request));
   const ts = new Date().toISOString();
   const watermarkText = `DPMPTSP-LAMPUNG | ${ipHash} | ${ts}`;
 
@@ -131,7 +194,9 @@ export async function GET(request: NextRequest) {
     .png()
     .toBuffer();
 
-  return new Response(watermarked, {
+  cacheSet(key, watermarked);
+
+  return new Response(new Uint8Array(watermarked), {
     headers: {
       'Content-Type': 'image/png',
       'Cache-Control': 'no-store',

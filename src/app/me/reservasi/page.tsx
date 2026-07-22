@@ -26,6 +26,10 @@ interface FormData {
   keperluan: string;
 }
 
+const CONSENT_VERSION = '1.0';
+const CONSENT_TEXT = 'Saya setuju data saya diproses sesuai Kebijakan Privasi.';
+const MAX_BOOKING_DAYS = 30;
+
 export default function ReservasiPage() {
   const [form, setForm] = useState<FormData>({
     tujuan: '',
@@ -38,18 +42,24 @@ export default function ReservasiPage() {
   const [layananOptions, setLayananOptions] = useState<{ id: string; nama: string }[]>([]);
   const [pengunjungId, setPengunjungId] = useState<string | null>(null);
   const [pengunjungNama, setPengunjungNama] = useState<string | null>(null);
+  const [authUserId, setAuthUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingInit, setLoadingInit] = useState(true);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState<{ qr_token: string } | null>(null);
+  const [success, setSuccess] = useState<{ qr_token: string; tanggal_rencana: string } | null>(null);
+  const [consentGiven, setConsentGiven] = useState(false);
+  const [queuePos, setQueuePos] = useState<{ posisi: number; total_menunggu: number } | null>(null);
   const [estimasiLayanan, setEstimasiLayanan] = useState<{
     antre_count: number;
     estimasi_tunggu_total_menit: number;
   } | null>(null);
 
-  // Set min date ke hari ini
+  // Set min date ke hari ini, max 30 hari ke depan
   const today = new Date();
   const minDate = today.toISOString().split('T')[0];
+  const maxDate = new Date(today.getTime() + MAX_BOOKING_DAYS * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .split('T')[0];
 
   useEffect(() => {
     const supabase = createClient();
@@ -58,6 +68,7 @@ export default function ReservasiPage() {
       // Get pengunjung id
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
+        setAuthUserId(user.id);
         const { data: pengunjung } = await supabase
           .from('pengunjung')
           .select('id, nama')
@@ -133,6 +144,20 @@ export default function ReservasiPage() {
       setError('Pilih tanggal kedatangan');
       return;
     }
+    if (form.tanggal_rencana > maxDate) {
+      setError(`Tanggal kedatangan maksimal ${MAX_BOOKING_DAYS} hari ke depan.`);
+      return;
+    }
+    // 0 = Minggu, 6 = Sabtu (parse eksplisit agar tidak tergantung timezone)
+    const dayOfWeek = new Date(`${form.tanggal_rencana}T00:00:00`).getDay();
+    if (dayOfWeek === 0 || dayOfWeek === 6) {
+      setError('Reservasi hanya tersedia pada hari kerja (Senin–Jumat).');
+      return;
+    }
+    if (!consentGiven) {
+      setError('Anda harus menyetujui pemrosesan data sesuai Kebijakan Privasi.');
+      return;
+    }
     if (!pengunjungId || !pengunjungNama) {
       setError('Sesi login tidak ditemukan. Silakan login ulang.');
       return;
@@ -141,6 +166,16 @@ export default function ReservasiPage() {
     setLoading(true);
     try {
       const supabase = createClient();
+
+      // Catat consent PDP sebelum insert visit (konsisten dengan check-in & chat)
+      if (authUserId && consentGiven) {
+        await supabase.from('consent_log').insert({
+          subjek_ref: authUserId,
+          tujuan: 'reservasi_data',
+          disetujui: true,
+          versi_kebijakan: CONSENT_VERSION,
+        });
+      }
 
       const insertData: Record<string, unknown> = {
         asal: 'reservasi',
@@ -169,7 +204,26 @@ export default function ReservasiPage() {
         .single();
 
       if (insertError) throw insertError;
-      setSuccess({ qr_token: data.qr_token });
+      setSuccess({ qr_token: data.qr_token, tanggal_rencana: form.tanggal_rencana });
+      setQueuePos(null);
+      // Tampilkan posisi antrean hanya bila reservasi untuk hari ini.
+      // Defensif: rpc mungkin belum tersedia — sembunyikan blok bila gagal.
+      if (form.tanggal_rencana === minDate) {
+        try {
+          const { data: pos } = await supabase
+            .rpc('get_queue_position', { p_qr_token: data.qr_token })
+            .maybeSingle();
+          if (
+            pos &&
+            typeof (pos as { posisi?: unknown }).posisi === 'number' &&
+            typeof (pos as { total_menunggu?: unknown }).total_menunggu === 'number'
+          ) {
+            setQueuePos(pos as { posisi: number; total_menunggu: number });
+          }
+        } catch {
+          // posisi antrean opsional — abaikan
+        }
+      }
     } catch (err) {
       setError('Gagal membuat reservasi. Silakan coba lagi.');
       console.error('Reservasi error:', err);
@@ -215,6 +269,14 @@ export default function ReservasiPage() {
                 <p className={styles.qrHint}>
                   Tunjukkan QR code ini ke petugas saat scan di kantor
                 </p>
+                <p className={styles.qrHint}>
+                  Setelah layanan selesai, Anda akan menerima tautan Survei Kepuasan (SKM).
+                </p>
+                {queuePos && success.tanggal_rencana === minDate && (
+                  <p role="status" style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--color-primary-700)' }}>
+                    Posisi antrean Anda: {queuePos.posisi} dari {queuePos.total_menunggu} menunggu
+                  </p>
+                )}
               </div>
 
               <div className={styles.successActions}>
@@ -372,9 +434,13 @@ export default function ReservasiPage() {
                     type="date"
                     className="form-input"
                     min={minDate}
+                    max={maxDate}
                     value={form.tanggal_rencana}
                     onChange={(e) => setForm({ ...form, tanggal_rencana: e.target.value })}
                   />
+                  <span className="form-hint">
+                    Reservasi hanya tersedia pada hari kerja (Senin–Jumat), maksimal {MAX_BOOKING_DAYS} hari ke depan.
+                  </span>
                 </div>
 
                 {/* Jam (opsional) */}
@@ -413,10 +479,34 @@ export default function ReservasiPage() {
                   </div>
                 )}
 
+                {/* Consent PDP — wajib sebelum submit */}
+                <div className="form-group" style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)' }}>
+                  <input
+                    id="consent"
+                    type="checkbox"
+                    checked={consentGiven}
+                    onChange={(e) => setConsentGiven(e.target.checked)}
+                    style={{ marginTop: '4px', width: '18px', height: '18px', cursor: 'pointer', flexShrink: 0 }}
+                    required
+                  />
+                  <label
+                    htmlFor="consent"
+                    style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', cursor: 'pointer', lineHeight: 1.5 }}
+                  >
+                    {CONSENT_TEXT}{' '}
+                    <Link
+                      href="/kebijakan-privasi"
+                      style={{ color: 'var(--color-primary-600)', textDecoration: 'underline' }}
+                    >
+                      Baca kebijakan
+                    </Link>
+                  </label>
+                </div>
+
                 <button
                   type="submit"
                   className="btn btn--primary btn--lg"
-                  disabled={loading || (form.tujuan === 'loket' && layananOptions.length === 0)}
+                  disabled={loading || !consentGiven || (form.tujuan === 'loket' && layananOptions.length === 0)}
                   style={{ width: '100%' }}
                 >
                   {loading ? (

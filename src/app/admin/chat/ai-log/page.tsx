@@ -11,8 +11,11 @@ import {
   Bot,
 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
+import Pagination from '@/components/Pagination';
 import { createClient } from '@/lib/supabase/client';
 import styles from './ai-log.module.css';
+
+const PAGE_SIZE = 25;
 
 interface AiLogRow {
   id: string;
@@ -33,29 +36,37 @@ export default function AdminAiLogPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [filter, setFilter] = useState<FilterMode>('all');
+  const [page, setPage] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
       const supabase = createClient();
-      const { data, error: fetchErr } = await supabase
+      const from = page * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+      const query = supabase
         .from('chat_ai_log')
         .select(
           'id, sesi_id, pertanyaan, context_faq_ids, jawaban, top_similarity, eskalasi, reason, created_at',
+          { count: 'exact' },
         )
-        .order('created_at', { ascending: false })
-        .limit(100);
+        .order('created_at', { ascending: false });
+
+      const paged = typeof query.range === 'function' ? query.range(from, to) : query.limit(PAGE_SIZE);
+      const { data, count, error: fetchErr } = await paged;
 
       if (fetchErr) throw fetchErr;
       setRows((data ?? []) as AiLogRow[]);
+      setTotalCount(count ?? (data?.length ?? 0));
     } catch {
       setError('Gagal memuat log AI. Pastikan Anda login sebagai admin.');
       setRows([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [page]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -114,7 +125,7 @@ export default function AdminAiLogPage() {
               value={filter}
               onChange={(e) => setFilter(e.target.value as FilterMode)}
             >
-              <option value="all">Semua ({rows.length})</option>
+              <option value="all">Semua ({totalCount})</option>
               <option value="eskalasi">
                 Eskalasi saja ({rows.filter((r) => r.eskalasi).length})
               </option>
@@ -141,6 +152,7 @@ export default function AdminAiLogPage() {
             <p>Belum ada log asisten AI. Log akan muncul setelah pengunjung menggunakan mode chatbot.</p>
           </div>
         ) : (
+          <>
           <div className="table-wrapper">
             <table className="table">
               <thead>
@@ -198,6 +210,8 @@ export default function AdminAiLogPage() {
               </tbody>
             </table>
           </div>
+          <Pagination page={page} pageSize={PAGE_SIZE} total={totalCount} onPageChange={setPage} />
+          </>
         )}
       </div>
     </>

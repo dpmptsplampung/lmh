@@ -11,6 +11,11 @@ export const BASELINE_FILES = [
   '202607140005_views_and_jobs.sql',
 ] as const;
 
+export const FORWARD_MIGRATION_FILES = [
+  '202607200001_p0_security_governance.sql',
+  '202607210001_walkin_kontak_dan_layanan_perizinan.sql',
+] as const;
+
 export function listMigrationFiles(): string[] {
   return readdirSync(MIGRATIONS_DIR)
     .filter((file) => file.endsWith('.sql'))

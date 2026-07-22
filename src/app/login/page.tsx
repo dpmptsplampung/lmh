@@ -16,7 +16,11 @@ function LoginContent() {
   const [password, setPassword] = useState('');
   const router = useRouter();
   const searchParams = useSearchParams();
-  const error = searchParams.get('error') === 'auth' ? 'Gagal login. Silakan coba lagi.' : errorMessage;
+  const error = searchParams.get('error') === 'auth' ? 'Gagal masuk. Silakan coba lagi.' : errorMessage;
+
+  // Tujuan setelah login (mis. ?next=/chat dari halaman yang butuh login)
+  const rawNext = searchParams.get('next');
+  const nextPath = rawNext && rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : null;
 
   const handleGoogleLogin = async () => {
     setLoading(true);
@@ -26,7 +30,7 @@ function LoginContent() {
       const supabase = createClient();
 
       const redirectTo = typeof window !== 'undefined'
-        ? `${window.location.origin}/auth/callback`
+        ? `${window.location.origin}/auth/callback${nextPath ? `?next=${encodeURIComponent(nextPath)}` : ''}`
         : '/auth/callback';
 
       const { error: authError } = await supabase.auth.signInWithOAuth({
@@ -44,7 +48,7 @@ function LoginContent() {
         throw authError;
       }
     } catch {
-      setErrorMessage('Gagal memulai proses login. Silakan coba lagi.');
+      setErrorMessage('Gagal memulai proses masuk. Silakan coba lagi.');
       setLoading(false);
     }
   };
@@ -52,7 +56,7 @@ function LoginContent() {
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() || !password) {
-      setErrorMessage('Email dan Password wajib diisi');
+      setErrorMessage('Email dan kata sandi wajib diisi');
       return;
     }
 
@@ -76,15 +80,15 @@ function LoginContent() {
           .single();
 
         if (dbError || !petugas) {
-          router.push('/me');
+          router.push(nextPath ?? '/me');
         } else if (petugas.role === 'admin' || petugas.role === 'petugas') {
           router.push('/admin');
         } else {
-          router.push('/me');
+          router.push(nextPath ?? '/me');
         }
       }
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Email atau Password salah. Silakan coba lagi.';
+      const errorMsg = err instanceof Error ? err.message : 'Email atau kata sandi salah. Silakan coba lagi.';
       setErrorMessage(errorMsg);
       setLoading(false);
     }
@@ -113,7 +117,7 @@ function LoginContent() {
           <p className={styles.loginSubtitle}>
             {isAdminLogin 
               ? 'Masuk ke Panel Operator & Admin DPMPTSP Provinsi Lampung'
-              : 'Silakan login dengan Google untuk mengakses layanan digital DPMPTSP Provinsi Lampung'}
+              : 'Silakan masuk dengan Google untuk mengakses layanan digital DPMPTSP Provinsi Lampung'}
           </p>
         </div>
 
@@ -128,12 +132,12 @@ function LoginContent() {
           {loading ? (
             <div className={styles.loadingState}>
               <Loader2 size={32} className="animate-pulse" />
-              <span>{isAdminLogin ? 'Memproses login...' : 'Mengarahkan ke Google...'}</span>
+              <span>{isAdminLogin ? 'Memproses masuk...' : 'Mengarahkan ke Google...'}</span>
             </div>
           ) : (
             <>
               {isAdminLogin ? (
-                /* Form Login Email/Password untuk Admin/Petugas */
+                /* Form masuk email/kata sandi untuk Admin/Petugas */
                 <form onSubmit={handleEmailLogin} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
                   <div className="form-group">
                     <label className="form-label form-label--required" htmlFor="email">
@@ -154,7 +158,7 @@ function LoginContent() {
                   <div className="form-group">
                     <label className="form-label form-label--required" htmlFor="password">
                       <Lock size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }} />
-                      Password
+                      Kata sandi
                     </label>
                     <input
                       id="password"
@@ -185,14 +189,14 @@ function LoginContent() {
                     }}
                   >
                     <ArrowLeft size={14} />
-                    Kembali ke Login Pengunjung
+                    Kembali ke Masuk Pengunjung
                   </button>
                 </form>
               ) : (
-                /* Login Pengunjung (Google OAuth) */
+                /* Masuk Pengunjung (Google OAuth) */
                 <>
                   <div style={{ textAlign: 'center', marginBottom: 'var(--space-5)', fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
-                    Gunakan akun Google aktif Anda untuk memulai check-in atau membuat reservasi kunjungan.
+                    Gunakan akun Google aktif Anda untuk mendaftarkan kedatangan atau membuat reservasi kunjungan.
                   </div>
 
                   <button
@@ -236,7 +240,7 @@ function LoginContent() {
         </div>
       </div>
 
-      {/* Footer tersembunyi di bawah kanan (harus scroll di handphone) */}
+      {/* Footer halaman login */}
       <div className={styles.loginFooter}>
         <Link href="/kebijakan-privasi" className={styles.privacyLink}>
           Kebijakan Privasi

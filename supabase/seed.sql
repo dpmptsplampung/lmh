@@ -10,7 +10,8 @@ INSERT INTO public.layanan (nama, tipe, chatbot_aktif) VALUES
   ('Investment Gallery', 'modul_publik', false),
   ('BALMON', 'mitra', true),
   ('Sertifikasi Mutu Keamanan Hasil Perikanan', 'konsultatif', true),
-  ('Layanan Jasa Industri', 'konsultatif', true)
+  ('Layanan Jasa Industri', 'konsultatif', true),
+  ('Layanan Perizinan DPMPTSP Provinsi Lampung', 'konsultatif', false)
 ON CONFLICT (nama) DO UPDATE SET
   tipe = EXCLUDED.tipe,
   chatbot_aktif = EXCLUDED.chatbot_aktif;

@@ -90,6 +90,7 @@
 }
 
 .scaleOption {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -106,6 +107,23 @@
 .scaleOption:hover {
   border-color: var(--color-primary-400, #818cf8);
   background: var(--color-primary-50, #eef2ff);
+}
+
+.scaleOption:has(.scaleInput:focus-visible) {
+  outline: 2px solid var(--color-primary-600, #4f46e5);
+  outline-offset: 2px;
+}
+
+.scaleInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .scaleOptionChecked {

@@ -10,8 +10,11 @@ import {
   Search,
 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
+import Pagination from '@/components/Pagination';
 import { createClient } from '@/lib/supabase/client';
 import styles from './investasi-leads.module.css';
+
+const PAGE_SIZE = 25;
 
 type LeadStatus = 'baru' | 'dihubungi' | 'berlanjut' | 'ditolak' | 'selesai';
 
@@ -70,26 +73,32 @@ export default function InvestasiLeadsAdminPage() {
   const [statusFilter, setStatusFilter] = useState<'semua' | LeadStatus>('semua');
   const [search, setSearch] = useState('');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
       const supabase = createClient();
-      const { data, error: fetchErr } = await supabase
+      const from = page * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+      const { data, count, error: fetchErr } = await supabase
         .from('investasi_lead')
-        .select('id, doc_id, nama, email, instansi, minat, catatan, status, created_at, investment_documents(judul)')
-        .order('created_at', { ascending: false });
+        .select('id, doc_id, nama, email, instansi, minat, catatan, status, created_at, investment_documents(judul)', { count: 'exact' })
+        .order('created_at', { ascending: false })
+        .range(from, to);
 
       if (fetchErr) throw fetchErr;
       setRows((data ?? []) as LeadRow[]);
+      setTotalCount(count ?? (data?.length ?? 0));
     } catch (e) {
       console.error('Investasi leads error:', e);
       setError('Gagal memuat data lead. Pastikan Anda login sebagai admin/petugas.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [page]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -143,7 +152,7 @@ export default function InvestasiLeadsAdminPage() {
               Daftar Lead
             </h2>
             <p className={styles.subtitle}>
-              {filtered.length} dari {rows.length} lead
+              {filtered.length} dari {totalCount} lead
             </p>
           </div>
           <Link href="/admin" className={styles.backLink}>
@@ -251,6 +260,7 @@ export default function InvestasiLeadsAdminPage() {
                 </tbody>
               </table>
             </div>
+            <Pagination page={page} pageSize={PAGE_SIZE} total={totalCount} onPageChange={setPage} />
           </div>
         )}
       </div>

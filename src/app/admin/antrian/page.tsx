@@ -8,11 +8,14 @@ import {
   TrendingUp,
   CheckCircle2,
   Play,
-  Loader2
+  AlertCircle
 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
+import Pagination from '@/components/Pagination';
 import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/components/Toast';
+
+const PAGE_SIZE = 25;
 
 interface PetugasData {
   id: string;
@@ -24,7 +27,7 @@ interface PetugasData {
 interface VisitRow {
   id: string;
   nama: string;
-  keperluan: string;
+  keperluan: string | null;
   status: 'menunggu' | 'dilayani' | 'selesai' | 'terjadwal' | 'batal';
   asal: 'walk_in' | 'reservasi';
   waktu_masuk: string;
@@ -38,12 +41,15 @@ export default function AntrianPage() {
   const [tanggal, setTanggal] = useState(new Date().toISOString().split('T')[0]);
   const [antrian, setAntrian] = useState<VisitRow[]>([]);
   const [currentUser, setCurrentUser] = useState<PetugasData | null>(null);
+  const [unassigned, setUnassigned] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
 
   useEffect(() => {
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tanggal]);
+  }, [tanggal, page]);
 
   async function fetchData() {
     try {
@@ -67,14 +73,25 @@ export default function AntrianPage() {
         }
       }
 
+      // Petugas tanpa layanan tidak boleh melihat antrian layanan lain
+      if (myRole === 'petugas' && !myLayananId) {
+        setUnassigned(true);
+        setAntrian([]);
+        setTotalCount(0);
+        return;
+      }
+      setUnassigned(false);
+
       // Gunakan waktu lokal, lalu convert ke UTC ISO untuk query ke Supabase
       const startOfDay = new Date(`${tanggal}T00:00:00`);
       const endOfDay = new Date(`${tanggal}T23:59:59.999`);
+      const from = page * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
 
       // Operational queue: both walk_in and scanned reservations (reservasi)
       let query = supabase
         .from('visit')
-        .select('id, nama, keperluan, status, asal, waktu_masuk, waktu_selesai, waktu_mulai_layan, layanan:layanan_id(nama)')
+        .select('id, nama, keperluan, status, asal, waktu_masuk, waktu_selesai, waktu_mulai_layan, layanan:layanan_id(nama)', { count: 'exact' })
         .in('asal', ['walk_in', 'reservasi'])
         .gte('waktu_masuk', startOfDay.toISOString())
         .lte('waktu_masuk', endOfDay.toISOString())
@@ -84,9 +101,11 @@ export default function AntrianPage() {
         query = query.eq('layanan_id', myLayananId);
       }
 
-      const { data } = await query;
+      const paged = typeof query.range === 'function' ? query.range(from, to) : query;
+      const { data, count } = await paged;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       setAntrian((data || []) as any);
+      setTotalCount(count ?? (data?.length ?? 0));
     } catch (e) {
       console.error(e);
       toast('Gagal memuat data antrian', 'error');
@@ -184,20 +203,30 @@ export default function AntrianPage() {
             type="date"
             className="form-input"
             value={tanggal}
-            onChange={(e) => setTanggal(e.target.value)}
+            onChange={(e) => { setTanggal(e.target.value); setPage(0); }}
             style={{ width: '160px', padding: 'var(--space-2) var(--space-3)', fontSize: 'var(--text-sm)' }}
           />
         </div>
       </PageHeader>
 
       <div style={{ padding: 'var(--space-8)' }}>
+        {unassigned ? (
+          <div className="table-wrapper">
+            <div className="empty-state" style={{ padding: 'var(--space-8)' }}>
+              <AlertCircle size={40} className="empty-state__icon" />
+              <h3 className="empty-state__title">Belum Ditugaskan</h3>
+              <p>Akun Anda belum ditugaskan ke layanan. Hubungi admin.</p>
+            </div>
+          </div>
+        ) : (
+        <>
         {/* Stats */}
         <div className="grid-stats" style={{ marginBottom: 'var(--space-8)' }}>
           <div className="stat-card">
             <div className="stat-card__icon" style={{ background: 'var(--color-primary-50)', color: 'var(--color-primary-600)' }}>
               <Users size={22} />
             </div>
-            <span className="stat-card__value">{antrian.length}</span>
+            <span className="stat-card__value">{totalCount}</span>
             <span className="stat-card__label">Total Hari Ini</span>
           </div>
           <div className="stat-card">
@@ -219,10 +248,17 @@ export default function AntrianPage() {
         {/* Table */}
         <div className="table-wrapper">
           {loading ? (
-             <div style={{ padding: 'var(--space-8)', textAlign: 'center', color: 'var(--text-tertiary)' }}>
-               <Loader2 size={24} className="animate-pulse" style={{ margin: '0 auto' }} />
-               <p style={{ marginTop: 'var(--space-2)' }}>Memuat antrian...</p>
-             </div>
+             <table className="table" aria-hidden="true">
+               <tbody>
+                 {Array.from({ length: 5 }).map((_, i) => (
+                   <tr key={i}>
+                     <td colSpan={currentUser?.role === 'admin' ? 8 : 7} style={{ padding: 'var(--space-3) var(--space-4)' }}>
+                       <div className="skeleton" style={{ height: '20px', width: '100%' }} />
+                     </td>
+                   </tr>
+                 ))}
+               </tbody>
+             </table>
           ) : (
             <table className="table">
               <thead>
@@ -276,7 +312,7 @@ export default function AntrianPage() {
                           {asalLabel(a.asal)}
                         </span>
                       </td>
-                      <td style={{ color: 'var(--text-secondary)' }}>{a.keperluan}</td>
+                      <td style={{ color: 'var(--text-secondary)' }}>{a.keperluan || '—'}</td>
                       <td>{new Date(a.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</td>
                       <td>
                         <span className={`badge badge--${a.status}`}>
@@ -320,10 +356,13 @@ export default function AntrianPage() {
                     </td>
                   </tr>
                 )}
-              </tbody>
-            </table>
-          )}
+               </tbody>
+             </table>
+           )}
+           {!loading && <Pagination page={page} pageSize={PAGE_SIZE} total={totalCount} onPageChange={setPage} />}
         </div>
+        </>
+        )}
       </div>
     </>
   );

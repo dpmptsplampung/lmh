@@ -20,7 +20,7 @@ export default function OfflinePage() {
         </p>
         <Link href="/" className="btn btn--primary btn--lg">
           <ArrowLeft size={20} />
-          Coba Muat Ulang
+          Kembali ke Beranda
         </Link>
       </div>
     </div>

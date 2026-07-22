@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   BASELINE_FILES,
+  FORWARD_MIGRATION_FILES,
   listMigrationFiles,
   readAllBaseline,
   readBaseline,
@@ -9,8 +10,8 @@ import {
 } from './migration-test-utils';
 
 describe('production baseline migration inventory', () => {
-  it('contains exactly the five approved timestamped SQL files', () => {
-    expect(listMigrationFiles()).toEqual([...BASELINE_FILES]);
+  it('contains exactly the approved timestamped SQL files', () => {
+    expect(listMigrationFiles()).toEqual([...BASELINE_FILES, ...FORWARD_MIGRATION_FILES]);
     for (const file of listMigrationFiles()) {
       expect(file).toMatch(/^\d{12}_[a-z0-9_]+\.sql$/);
     }

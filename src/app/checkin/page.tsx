@@ -12,6 +12,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import QRCodeDisplay from '@/components/QRCode';
 import { APP_NAME } from '@/lib/constants';
 import { enqueueAction } from '@/lib/offline/queue';
 import { replayQueue } from '@/lib/offline/replay';
@@ -43,6 +44,10 @@ export default function CheckinPage() {
   // I8: PDP consent — required before submit
   const [consentGiven, setConsentGiven] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  // Walk-in online: qr_token digenerate di klien agar bisa ditampilkan tanpa SELECT
+  // (SELECT row visit mungkin tertahan RLS untuk anon).
+  const [successToken, setSuccessToken] = useState<string | null>(null);
+  const [queuePos, setQueuePos] = useState<{ posisi: number; total_menunggu: number } | null>(null);
 
   // Auth gate: require a user (Google or anon) before allowing INSERT.
   // Final baseline RLS requires authenticated, rate-limited walk-in inserts.
@@ -168,6 +173,7 @@ export default function CheckinPage() {
         });
       }
 
+      const qrToken = crypto.randomUUID();
       const { error: insertError } = await supabase
         .from('visit')
         .insert({
@@ -178,9 +184,27 @@ export default function CheckinPage() {
           tujuan: 'loket',
           status: 'menunggu',
           waktu_masuk: new Date().toISOString(),
+          qr_token: qrToken,
         });
 
       if (insertError) throw insertError;
+      setSuccessToken(qrToken);
+      setQueuePos(null);
+      // Defensif: fungsi rpc mungkin belum tersedia — sembunyikan blok posisi bila gagal.
+      try {
+        const { data: pos } = await supabase
+          .rpc('get_queue_position', { p_qr_token: qrToken })
+          .maybeSingle();
+        if (
+          pos &&
+          typeof (pos as { posisi?: unknown }).posisi === 'number' &&
+          typeof (pos as { total_menunggu?: unknown }).total_menunggu === 'number'
+        ) {
+          setQueuePos(pos as { posisi: number; total_menunggu: number });
+        }
+      } catch {
+        // posisi antrean opsional — abaikan
+      }
       setSuccess(true);
     } catch (err) {
       setError('Gagal menyimpan data. Silakan coba lagi.');
@@ -205,6 +229,8 @@ export default function CheckinPage() {
     setForm({ nama: '', keperluan: '', layanan_id: '' });
     setSuccess(false);
     setError('');
+    setSuccessToken(null);
+    setQueuePos(null);
   };
 
   return (
@@ -268,6 +294,24 @@ export default function CheckinPage() {
                   ? 'Checkin Anda tersimpan offline dan akan disinkronkan saat online kembali. Silakan menunggu, petugas akan segera melayani Anda.'
                   : 'Terima kasih telah mendaftar. Silakan menunggu, petugas akan segera melayani Anda.'}
               </p>
+              {successToken && (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-6)' }}>
+                  <QRCodeDisplay value={successToken} size={180} />
+                  <p style={{ fontSize: 'var(--text-xs)', fontFamily: 'monospace', wordBreak: 'break-all', color: 'var(--text-tertiary)' }}>
+                    {successToken}
+                  </p>
+                  <p className="form-hint" style={{ textAlign: 'center', lineHeight: 1.6 }}>
+                    Simpan atau tunjukkan QR ini — dipakai petugas dan untuk mengisi Survei
+                    Kepuasan (SKM) setelah layanan selesai melalui tautan{' '}
+                    <span style={{ fontFamily: 'monospace' }}>/skm?token={successToken}</span>
+                  </p>
+                  {queuePos && (
+                    <p role="status" style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--color-primary-700)' }}>
+                      Posisi antrean Anda: {queuePos.posisi} dari {queuePos.total_menunggu} menunggu
+                    </p>
+                  )}
+                </div>
+              )}
               <button
                 className="btn btn--primary btn--lg"
                 onClick={handleReset}

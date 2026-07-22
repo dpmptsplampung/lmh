@@ -9,10 +9,13 @@ import {
   UserCheck,
   CheckCircle2,
   Clock,
-  Loader2
+  XCircle
 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
+import Pagination from '@/components/Pagination';
 import { createClient } from '@/lib/supabase/client';
+
+const PAGE_SIZE = 25;
 
 interface PetugasData {
   id: string;
@@ -26,7 +29,7 @@ interface Absensi {
   tanggal: string;
   jam_masuk: string | null;
   jam_pulang: string | null;
-  status: 'pending' | 'approved';
+  status: 'pending' | 'approved' | 'ditolak';
   petugas: {
     nama: string;
     layanan: {
@@ -41,6 +44,8 @@ export default function AbsensiPage() {
   const [currentUser, setCurrentUser] = useState<PetugasData | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const [page, setPage] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
 
   const fetchData = useCallback(async () => {
     try {
@@ -65,6 +70,8 @@ export default function AbsensiPage() {
       }
 
       // Fetch absensi
+      const from = page * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
       let query = supabase
         .from('absensi_petugas')
         .select(`
@@ -73,9 +80,10 @@ export default function AbsensiPage() {
             nama,
             layanan:layanan_id ( nama )
           )
-        `)
+        `, { count: 'exact' })
         .eq('tanggal', filterTanggal)
-        .order('jam_masuk', { ascending: false });
+        .order('jam_masuk', { ascending: false })
+        .range(from, to);
 
       // If just a regular petugas, only show their own attendance for the day?
       // Wait, the UI allows them to see others? Let's just show theirs if petugas, or all if admin
@@ -83,7 +91,7 @@ export default function AbsensiPage() {
          query = query.eq('petugas_id', myPetugasId);
       }
 
-      const { data } = await query;
+      const { data, count } = await query;
       // Handle the case where the join returns array or object due to how supabase types work
       const formattedData = (data || []).map(d => ({
         ...d,
@@ -91,12 +99,13 @@ export default function AbsensiPage() {
       })) as unknown as Absensi[];
       
       setAbsensi(formattedData);
+      setTotalCount(count ?? formattedData.length);
     } catch (e) {
       console.error(e);
     } finally {
       setLoading(false);
     }
-  }, [filterTanggal]);
+  }, [filterTanggal, page]);
 
   useEffect(() => {
     void Promise.resolve().then(fetchData);
@@ -109,7 +118,7 @@ export default function AbsensiPage() {
       const supabase = createClient();
       await supabase.from('absensi_petugas').insert({
         petugas_id: currentUser.id,
-        tanggal: filterTanggal,
+        tanggal: new Date().toISOString().split('T')[0],
         jam_masuk: new Date().toISOString(),
       });
       setLoading(true);
@@ -155,6 +164,20 @@ export default function AbsensiPage() {
     }
   };
 
+  const handleReject = async (id: string) => {
+    if (!currentUser || currentUser.role !== 'admin') return;
+    try {
+      const supabase = createClient();
+      await supabase.from('absensi_petugas')
+        .update({ status: 'ditolak', approved_by: currentUser.id })
+        .eq('id', id);
+      setLoading(true);
+      await fetchData();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const hadirHariIni = absensi.length;
   const sudahPulang = absensi.filter(a => a.jam_pulang).length;
   const myTodayAbsensi = absensi.find(a => a.petugas_id === currentUser?.id);
@@ -171,10 +194,11 @@ export default function AbsensiPage() {
              type="date"
              className="form-input"
              value={filterTanggal}
-             onChange={(e) => {
-               setLoading(true);
-               setFilterTanggal(e.target.value);
-             }}
+              onChange={(e) => {
+                setLoading(true);
+                setFilterTanggal(e.target.value);
+                setPage(0);
+              }}
              style={{ width: '160px', padding: 'var(--space-2) var(--space-3)', fontSize: 'var(--text-sm)' }}
            />
         </div>
@@ -236,10 +260,17 @@ export default function AbsensiPage() {
         {/* Table */}
         <div className="table-wrapper">
           {loading ? (
-             <div style={{ padding: 'var(--space-8)', textAlign: 'center', color: 'var(--text-tertiary)' }}>
-               <Loader2 size={24} className="animate-pulse" style={{ margin: '0 auto' }} />
-               <p style={{ marginTop: 'var(--space-2)' }}>Memuat data absensi...</p>
-             </div>
+             <table className="table" aria-hidden="true">
+               <tbody>
+                 {Array.from({ length: 5 }).map((_, i) => (
+                   <tr key={i}>
+                     <td colSpan={currentUser?.role === 'admin' ? 6 : 5} style={{ padding: 'var(--space-3) var(--space-4)' }}>
+                       <div className="skeleton" style={{ height: '20px', width: '100%' }} />
+                     </td>
+                   </tr>
+                 ))}
+               </tbody>
+             </table>
           ) : (
             <table className="table">
               <thead>
@@ -280,20 +311,31 @@ export default function AbsensiPage() {
                     </td>
                     <td>
                       {a.status === 'approved' ? (
-                        <span className="badge badge--selesai">Approved</span>
+                        <span className="badge badge--selesai">Disetujui</span>
+                      ) : a.status === 'ditolak' ? (
+                        <span className="badge badge--nonaktif">Ditolak</span>
                       ) : (
-                        <span className="badge badge--eskalasi">Pending</span>
+                        <span className="badge badge--eskalasi">Menunggu</span>
                       )}
                     </td>
                     {currentUser?.role === 'admin' && (
                       <td>
                         {a.status === 'pending' && (
-                           <button 
-                             className="btn btn--secondary btn--sm" 
-                             onClick={() => handleApprove(a.id)}
-                           >
-                             Approve
-                           </button>
+                          <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                            <button
+                              className="btn btn--secondary btn--sm"
+                              onClick={() => handleApprove(a.id)}
+                            >
+                              Setujui
+                            </button>
+                            <button
+                              className="btn btn--danger btn--sm"
+                              onClick={() => handleReject(a.id)}
+                            >
+                              <XCircle size={14} />
+                              Tolak
+                            </button>
+                          </div>
                         )}
                       </td>
                     )}
@@ -313,6 +355,7 @@ export default function AbsensiPage() {
               </tbody>
             </table>
           )}
+          {!loading && <Pagination page={page} pageSize={PAGE_SIZE} total={totalCount} onPageChange={setPage} />}
         </div>
       </div>
     </>

@@ -2,7 +2,7 @@
 
 > Dokumen strategis-teknis untuk DPMPTSP Provinsi Lampung.
 > Menyatukan hasil audit sistem nyata (kode + database) dengan rencana inovasi produk.
-> Menjadi acuan tunggal (single source of truth) menggantikan PRD.md & ARCHITECTURE.md yang sudah tertinggal.
+> Menjadi acuan tunggal (single source of truth) menggantikan docs/archive/PRD.md & docs/archive/ARCHITECTURE.md yang sudah tertinggal (diarsipkan 2026-07-20).
 
 | | |
 |---|---|
@@ -11,7 +11,7 @@
 | **Status** | Draft untuk ditinjau pimpinan |
 | **Penyusun** | Audit System Analyst |
 | **Lingkup** | Seluruh proyek: `src/`, `supabase/migrations/` (001–019), dokumentasi |
-| **Dokumen digantikan** | `PRD.md`, `ARCHITECTURE.md` (jadikan arsip historis) |
+| **Dokumen digantikan** | `docs/archive/PRD.md`, `docs/archive/ARCHITECTURE.md` (arsip historis) |
 
 ---
 
@@ -112,7 +112,7 @@ PRD.md & ARCHITECTURE.md mendeskripsikan arsitektur yang **secara fundamental be
 | Insert publik | Via Anonymous Sign-In (bukan policy terbuka) | Policy `WITH CHECK (true)` terbuka bebas |
 | Investment Gallery | PDF dirender jadi gambar, tak pernah mentah | Pipeline gambar **tak dibangun**; PDF mentah bocor (K1) |
 
-**Rekomendasi:** arsipkan PRD.md & ARCHITECTURE.md sebagai catatan historis. Dokumen ini menjadi acuan tunggal ke depan, dengan changelog dan aturan "update dokumen = bagian dari definition of done setiap fase".
+**Rekomendasi (terlaksana 2026-07-20):** PRD.md & ARCHITECTURE.md telah diarsipkan sebagai catatan historis di `docs/archive/`. Dokumen ini menjadi acuan tunggal ke depan, dengan changelog dan aturan "update dokumen = bagian dari definition of done setiap fase".
 
 ---
 

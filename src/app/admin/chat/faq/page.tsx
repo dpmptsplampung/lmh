@@ -11,6 +11,7 @@ import {
   Loader2,
   MessageSquare,
   AlertCircle,
+  Sparkles,
 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import { createClient } from '@/lib/supabase/client';
@@ -50,6 +51,36 @@ export default function AdminFAQPage() {
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  // Embedding RAG: generate ulang embedding FAQ yang belum punya (max 50/panggilan)
+  const [embedding, setEmbedding] = useState(false);
+
+  const generateEmbeddings = async (): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/admin/faq/embed', { method: 'POST' });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        toast(data?.error || 'Gagal membuat embedding FAQ', 'error');
+        return false;
+      }
+      toast(
+        `Embedding diperbarui: ${data?.embedded ?? 0} berhasil, ${data?.failed ?? 0} gagal` +
+          (data?.remaining ? ` (sisa ${data.remaining} belum di-embed)` : ''),
+        'success',
+      );
+      return true;
+    } catch {
+      toast('Gagal membuat embedding FAQ', 'error');
+      return false;
+    }
+  };
+
+  const handleGenerateEmbeddings = async () => {
+    if (embedding) return;
+    setEmbedding(true);
+    await generateEmbeddings();
+    setEmbedding(false);
+  };
 
   // I4: prefill pertanyaan from query param (?prefill_pertanyaan=...)
   // Used by the admin AI-log page "Tambah ke FAQ" action.
@@ -176,6 +207,10 @@ export default function AdminFAQPage() {
             jawaban: formJawaban.trim(),
             aktif: formAktif,
             urutan: formUrutan,
+            // Konten berubah → embedding lama tidak valid; null-kan supaya
+            // di-embed ulang oleh /api/admin/faq/embed (yang hanya memproses
+            // baris embedding IS NULL).
+            embedding: null,
             updated_at: new Date().toISOString(),
           })
           .eq('id', editingFaqId);
@@ -197,6 +232,9 @@ export default function AdminFAQPage() {
 
       handleResetForm();
       setRefreshTrigger((prev) => prev + 1);
+
+      // Auto-generate embedding RAG untuk FAQ baru/diubah (best-effort).
+      await generateEmbeddings();
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Gagal menyimpan FAQ.';
       setError(errorMsg);
@@ -308,6 +346,18 @@ export default function AdminFAQPage() {
                     <MessageSquare size={18} style={{ color: 'var(--color-primary-600)' }} />
                     <span className={styles.faqListTitle}>Database Knowledge Base FAQ</span>
                   </div>
+                  <button
+                    type="button"
+                    className="btn btn--secondary btn--sm"
+                    onClick={handleGenerateEmbeddings}
+                    disabled={embedding || loading}
+                  >
+                    {embedding ? (
+                      <><Loader2 size={14} className="animate-pulse" /> Membuat Embedding...</>
+                    ) : (
+                      <><Sparkles size={14} /> Generate Embedding</>
+                    )}
+                  </button>
                 </div>
 
                 {loading ? (

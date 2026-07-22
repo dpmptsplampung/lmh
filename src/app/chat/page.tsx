@@ -41,6 +41,10 @@ let msgIdCounter = 0;
 
 const CONSENT_VERSION = '1.0';
 const CONSENT_TEXT = 'Saya setuju data saya diproses sesuai Kebijakan Privasi.';
+const PII_DISCLAIMER =
+  'Asisten virtual menjawab berdasarkan FAQ resmi. Jangan membagikan data pribadi sensitif (NIK, nomor dokumen, kata sandi) melalui chat.';
+const OFFLINE_BANNER_TEXT =
+  'Anda sedang offline. Pesan tidak dapat dikirim dan tidak akan diterima petugas. Silakan coba lagi saat koneksi kembali.';
 
 export default function PublicChatPage() {
   const [layananList, setLayananList] = useState<Layanan[]>([]);
@@ -69,7 +73,26 @@ export default function PublicChatPage() {
   // I8: PDP consent — required before starting chat session
   const [consentGiven, setConsentGiven] = useState(false);
 
+  // Offline detection: pesan TIDAK boleh disimpan ke sesi palsu — tampilkan
+  // banner jujur + nonaktifkan input selama offline.
+  const [isOnline, setIsOnline] = useState(() =>
+    typeof navigator === 'undefined' ? true : navigator.onLine,
+  );
+  const [setupError, setSetupError] = useState('');
+
   const threadEndRef = useRef<HTMLDivElement>(null);
+
+  // Track koneksi browser (online/offline events)
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   // Cek Auth dan Profil Pengunjung
   useEffect(() => {
@@ -359,8 +382,13 @@ export default function PublicChatPage() {
   const handleStartSession = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedLayananId) return;
+    if (!isOnline) {
+      setSetupError(OFFLINE_BANNER_TEXT);
+      return;
+    }
 
     setLoadingSetup(true);
+    setSetupError('');
     await fetchFAQs(selectedLayananId);
 
     const nama = visitorName.trim() || 'Pengunjung';
@@ -439,26 +467,21 @@ export default function PublicChatPage() {
           waktu: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
         },
       ]);
+
+      setIsSessionActive(true);
     } catch {
-      // Offline fallback session
-      setSesiId(`fallback-session-${Date.now()}`);
-      setSesiStatus(selectedLayanan?.chatbot_aktif ? 'bot' : 'eskalasi');
-      setMessages([
-        {
-          id: 'welcome',
-          pengirim: 'bot',
-          isi: `Halo Bapak/Ibu ${nama}. (Mode Offline)\nSelamat datang di layanan Live Chat ${selectedLayanan?.nama || 'DPMPTSP'}.\nSilakan pilih FAQ di bawah atau ketik pertanyaan Anda.`,
-          waktu: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-        },
-      ]);
+      // Offline jujur: JANGAN buat sesi palsu. Jika sesi gagal dibuat (umumnya
+      // karena jaringan), beri tahu pengguna dan suruh coba lagi — pesan tidak
+      // akan diterima petugas bila tidak tersimpan di database.
+      setSetupError('Gagal memulai sesi chat. Periksa koneksi internet Anda lalu coba lagi.');
     }
 
-    setIsSessionActive(true);
     setLoadingSetup(false);
   };
 
   const handleSendMessage = async (text: string) => {
     if (!text.trim() || !sesiId) return;
+    if (!isOnline) return; // Offline: input seharusnya nonaktif; abaikan kirim.
 
     const userMsg: Message = {
       id: `user-${msgIdCounter++}`,
@@ -467,18 +490,27 @@ export default function PublicChatPage() {
       waktu: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
     };
 
-    setMessages((prev) => [...prev, userMsg]);
-    setMessageInput('');
-
-    // Insert user message to database
+    // Insert user message to database — pesan hanya boleh tampil setelah
+    // benar-benar tersimpan, supaya petugas pasti melihatnya.
     try {
       const supabase = createClient();
-      await supabase.from('chat_pesan').insert({
+      const { error: insertErr } = await supabase.from('chat_pesan').insert({
         sesi_id: sesiId,
         pengirim: 'pengunjung',
         isi: text.trim(),
       });
-    } catch { /* ignore db error in fallback mode */ }
+      if (insertErr) throw insertErr;
+    } catch {
+      // Insert gagal (umumnya jaringan putus): jangan tampilkan pesan
+      // seolah-olah terkirim — petugas tidak akan pernah melihatnya.
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        setIsOnline(false);
+      }
+      return;
+    }
+
+    setMessages((prev) => [...prev, userMsg]);
+    setMessageInput('');
 
     // If chatbot mode: ask RAG AI assistant (/api/chat/ai)
     if (sesiStatus === 'bot') {
@@ -549,6 +581,13 @@ export default function PublicChatPage() {
           } catch { /* ignore */ }
         }
       } catch {
+        // Offline saat memanggil AI: jangan eskalasi — tandai offline saja,
+        // pesan pengunjung sudah tersimpan dan bisa dijawab ulang saat online.
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          setIsOnline(false);
+          setLoadingSetup(false);
+          return;
+        }
         // Network/fetch error: fail-safe to eskalasi
         const eskalasiText = 'Maaf, asisten AI sedang tidak tersedia. Saya akan menghubungkan Anda ke petugas loket. Mohon tunggu...';
         const botReply: Message = {
@@ -643,7 +682,31 @@ export default function PublicChatPage() {
               <p className={styles.setupDesc}>
                 Silakan isi data diri singkat dan pilih layanan tujuan Anda untuk memulai sesi chat dengan petugas atau bot FAQ.
               </p>
+              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', lineHeight: 1.5, margin: 0 }}>
+                {PII_DISCLAIMER}
+              </p>
             </div>
+
+            {!isOnline && (
+              <div
+                role="alert"
+                className="form-error"
+                style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}
+              >
+                <AlertCircle size={16} />
+                {OFFLINE_BANNER_TEXT}
+              </div>
+            )}
+            {setupError && (
+              <div
+                role="alert"
+                className="form-error"
+                style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}
+              >
+                <AlertCircle size={16} />
+                {setupError}
+              </div>
+            )}
 
             <form onSubmit={handleStartSession} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
               <div className="form-group">
@@ -661,7 +724,7 @@ export default function PublicChatPage() {
                         await supabase.auth.signInWithOAuth({
                           provider: 'google',
                           options: {
-                            redirectTo: `${window.location.origin}/auth/callback?redirect=/chat`,
+                            redirectTo: `${window.location.origin}/auth/callback?next=/chat`,
                           },
                         });
                       }}
@@ -672,7 +735,7 @@ export default function PublicChatPage() {
                         <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
                         <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
                       </svg>
-                      Login dengan Google
+                      Masuk dengan Google
                     </button>
                   </div>
                 ) : (
@@ -737,7 +800,7 @@ export default function PublicChatPage() {
                 type="submit"
                 className="btn btn--primary btn--lg"
                 style={{ width: '100%', marginTop: 'var(--space-2)' }}
-                disabled={loadingSetup || loadingLayanan || !isLoggedIn || !consentGiven}
+                disabled={loadingSetup || loadingLayanan || !isLoggedIn || !consentGiven || !isOnline}
               >
                 {loadingSetup ? (
                   <><Loader2 size={20} className="animate-pulse" /> Memulai Sesi...</>
@@ -790,8 +853,32 @@ export default function PublicChatPage() {
               )}
             </div>
 
+            {/* Offline Banner */}
+            {!isOnline && (
+              <div
+                role="alert"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-2)',
+                  padding: 'var(--space-2) var(--space-4)',
+                  fontSize: 'var(--text-xs)',
+                  fontWeight: 600,
+                  background: 'var(--color-danger-50)',
+                  color: 'var(--color-danger-700)',
+                  borderBottom: '1px solid var(--border-default)',
+                }}
+              >
+                <AlertCircle size={14} style={{ flexShrink: 0 }} />
+                <span>{OFFLINE_BANNER_TEXT}</span>
+              </div>
+            )}
+
             {/* Message List */}
             <div className={styles.messageThread}>
+              <div style={{ textAlign: 'center', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', lineHeight: 1.5, padding: '0 var(--space-4)' }}>
+                {PII_DISCLAIMER}
+              </div>
               {messages.map((msg) => {
                 const isUser = msg.pengirim === 'pengunjung';
                 const isBot = msg.pengirim === 'bot';
@@ -845,10 +932,10 @@ export default function PublicChatPage() {
             <div className={styles.inputBar}>
               <textarea
                 className="form-textarea"
-                placeholder={sesiStatus === 'selesai' ? 'Sesi chat ditutup...' : 'Ketik pertanyaan Anda...'}
+                placeholder={!isOnline ? 'Anda sedang offline...' : (sesiStatus === 'selesai' ? 'Sesi chat ditutup...' : 'Ketik pertanyaan Anda...')}
                 value={messageInput}
                 onChange={(e) => setMessageInput(e.target.value)}
-                disabled={sesiStatus === 'selesai' || loadingSetup}
+                disabled={sesiStatus === 'selesai' || loadingSetup || !isOnline}
                 maxLength={1000}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
@@ -861,7 +948,7 @@ export default function PublicChatPage() {
               <button
                 className="btn btn--primary flex-center"
                 onClick={() => handleSendMessage(messageInput)}
-                disabled={!messageInput.trim() || sesiStatus === 'selesai' || loadingSetup}
+                disabled={!messageInput.trim() || sesiStatus === 'selesai' || loadingSetup || !isOnline}
                 style={{ height: '44px', width: '44px', padding: 0 }}
                 aria-label="Kirim Pesan"
               >

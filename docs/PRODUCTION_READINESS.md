@@ -13,7 +13,7 @@
 | **Code gates 0–3** | Complete on branch `production-readiness` (security, baseline DB, app hardening, a11y/UX) |
 | **Code gates 4–5** | Complete in-branch: CI, coverage config, smoke script, ops docs (this pass) |
 | **Migrations** | **5 baseline** files (`202607140001`–`005`) + `seed.sql` / `seed-demo.sql` — **not** 38 numbered files |
-| **CI** | `.github/workflows/ci.yml`: Node 20.19, lint, typecheck, test, build (placeholder env), optional audit |
+| **CI** | `.github/workflows/ci.yml`: Node 22, lint, typecheck, test, build (placeholder env), optional audit |
 | **Production go-live** | **Not** “100% complete / only dashboard left.” Staging deploy, human Dashboard config, legal sign-off, and residual E2E still required |
 
 **Honest bottom line:** Application code and baseline schema are production-oriented and verified by unit/contract tests + build. Go-live still needs environment wiring, migration apply on a real project, and human acceptance.
@@ -39,7 +39,7 @@ Historical feature work (SKM, antrean, AI RAG, UMKM, PWA, etc.) remains in the a
 
 | Item | Location |
 |---|---|
-| CI Node 20.19 + lint/typecheck/test/build + optional audit | `.github/workflows/ci.yml` |
+| CI Node 22 + lint/typecheck/test/build + optional audit | `.github/workflows/ci.yml` |
 | Coverage (`v8`, soft 40% thresholds) | `vitest.config.ts`, `npm run test:coverage` |
 | Supabase CLI skeleton | `supabase/config.toml` |
 | Smoke script (`/api/health/live`) | `scripts/smoke.mjs`, `npm run smoke` |

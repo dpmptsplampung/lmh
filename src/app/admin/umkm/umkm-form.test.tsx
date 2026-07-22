@@ -30,7 +30,9 @@ import { createClient } from '@/lib/supabase/client';
 function buildMock() {
   const order = vi.fn().mockResolvedValue({ data: [], error: null });
   const select = vi.fn().mockReturnValue({ order });
-  const insert = vi.fn().mockResolvedValue({ error: null });
+  const single = vi.fn().mockResolvedValue({ data: { id: 'new-listing-id' }, error: null });
+  const insertSelect = vi.fn().mockReturnValue({ single });
+  const insert = vi.fn().mockReturnValue({ select: insertSelect });
   const updateEq = vi.fn().mockResolvedValue({ error: null });
   const update = vi.fn().mockReturnValue({ eq: updateEq });
 
@@ -55,6 +57,33 @@ function buildMock() {
   return mock;
 }
 
+async function openCreateFormAndFill() {
+  render(<AdminUMKMPage />);
+
+  await waitFor(() => {
+    expect(screen.getByRole('button', { name: /tambah umkm/i })).toBeInTheDocument();
+  });
+
+  fireEvent.click(screen.getByRole('button', { name: /tambah umkm/i }));
+
+  await waitFor(() => {
+    expect(screen.getByLabelText(/sisi/i)).toBeInTheDocument();
+  });
+
+  fireEvent.change(screen.getByLabelText(/nama umkm/i), {
+    target: { value: 'Toko Sejahtera' },
+  });
+  fireEvent.change(screen.getByLabelText(/kategori/i), {
+    target: { value: 'bahan_baku' },
+  });
+  fireEvent.change(screen.getByLabelText(/^sisi/i), {
+    target: { value: 'penawaran' },
+  });
+  fireEvent.change(screen.getByLabelText(/nama kontak/i), {
+    target: { value: 'Siti' },
+  });
+}
+
 describe('Admin UMKM sisi field', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -66,38 +95,52 @@ describe('Admin UMKM sisi field', () => {
 
   it('create form includes sisi select and sends sisi in insert payload', async () => {
     const mock = buildMock();
-    render(<AdminUMKMPage />);
+    await openCreateFormAndFill();
 
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /tambah umkm/i })).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: /tambah umkm/i }));
-
-    await waitFor(() => {
-      expect(screen.getByLabelText(/sisi/i)).toBeInTheDocument();
-    });
-
-    fireEvent.change(screen.getByLabelText(/nama umkm/i), {
-      target: { value: 'Toko Sejahtera' },
-    });
-    fireEvent.change(screen.getByLabelText(/kategori/i), {
-      target: { value: 'bahan_baku' },
-    });
-    fireEvent.change(screen.getByLabelText(/^sisi/i), {
-      target: { value: 'penawaran' },
-    });
-    fireEvent.change(screen.getByLabelText(/nama kontak/i), {
-      target: { value: 'Siti' },
-    });
-
+    fireEvent.click(screen.getByLabelText(/menyetujui nama & kontaknya/i));
     fireEvent.click(screen.getByRole('button', { name: /simpan/i }));
 
     await waitFor(() => {
       expect(mock._insert).toHaveBeenCalled();
     });
 
-    const payload = mock._insert.mock.calls[0][0] as Record<string, unknown>;
-    expect(payload.sisi).toBe('penawaran');
+    const listingCall = mock._insert.mock.calls.find(
+      ([payload]) => (payload as Record<string, unknown>).nama_umkm === 'Toko Sejahtera',
+    );
+    expect(listingCall).toBeDefined();
+    expect((listingCall![0] as Record<string, unknown>).sisi).toBe('penawaran');
+  });
+
+  it('submit stays disabled until public contact consent is checked', async () => {
+    const mock = buildMock();
+    await openCreateFormAndFill();
+
+    const submit = screen.getByRole('button', { name: /simpan/i });
+    expect(submit).toBeDisabled();
+
+    fireEvent.click(submit);
+    expect(mock._insert).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByLabelText(/menyetujui nama & kontaknya/i));
+    expect(submit).toBeEnabled();
+  });
+
+  it('inserts consent_log row after successful create', async () => {
+    const mock = buildMock();
+    await openCreateFormAndFill();
+
+    fireEvent.click(screen.getByLabelText(/menyetujui nama & kontaknya/i));
+    fireEvent.click(screen.getByRole('button', { name: /simpan/i }));
+
+    await waitFor(() => {
+      const consentCall = mock._insert.mock.calls.find(
+        ([payload]) => (payload as Record<string, unknown>).tujuan === 'umkm_contact_public',
+      );
+      expect(consentCall).toBeDefined();
+      const consentPayload = consentCall![0] as Record<string, unknown>;
+      expect(consentPayload.subjek_ref).toBe('new-listing-id');
+      expect(consentPayload.disetujui).toBe(true);
+      expect(consentPayload.versi_kebijakan).toBe('1.0');
+    });
   });
 });

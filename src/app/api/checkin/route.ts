@@ -77,8 +77,9 @@ export async function POST(request: NextRequest) {
     .maybeSingle();
 
   if (insertError) {
+    console.error('[checkin] gagal menyimpan visit', insertError);
     return NextResponse.json(
-      { error: `Gagal menyimpan: ${insertError.message}` },
+      { error: 'Gagal menyimpan. Silakan coba lagi.' },
       { status: 500 },
     );
   }

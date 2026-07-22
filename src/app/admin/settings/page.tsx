@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Settings, Save, Globe, MessageCircle, ExternalLink } from 'lucide-react';
+import { Settings, Save, Globe, MessageCircle, ExternalLink, MapPin } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/components/Toast';
@@ -12,6 +12,9 @@ export default function AdminSettingsPage() {
   const [foilaUrl, setFoilaUrl] = useState('');
   const [waNumber, setWaNumber] = useState('');
   const [waDefaultMessage, setWaDefaultMessage] = useState('');
+  const [contactAddress, setContactAddress] = useState('');
+  const [contactHours, setContactHours] = useState('');
+  const [contactEmail, setContactEmail] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -30,6 +33,9 @@ export default function AdminSettingsPage() {
           setFoilaUrl(settingsMap.get('foila_url') || '');
           setWaNumber(settingsMap.get('wa_number') || '');
           setWaDefaultMessage(settingsMap.get('wa_default_message') || '');
+          setContactAddress(settingsMap.get('contact_address') || '');
+          setContactHours(settingsMap.get('contact_hours') || '');
+          setContactEmail(settingsMap.get('contact_email') || '');
         }
       } catch {
         toast('Gagal memuat pengaturan.', 'error');
@@ -50,6 +56,9 @@ export default function AdminSettingsPage() {
       { key: 'foila_url', value: foilaUrl, updated_at: now },
       { key: 'wa_number', value: waNumber, updated_at: now },
       { key: 'wa_default_message', value: waDefaultMessage, updated_at: now },
+      { key: 'contact_address', value: contactAddress, updated_at: now },
+      { key: 'contact_hours', value: contactHours, updated_at: now },
+      { key: 'contact_email', value: contactEmail, updated_at: now },
     ];
 
     try {
@@ -151,6 +160,47 @@ export default function AdminSettingsPage() {
                 onChange={(e) => setWaDefaultMessage(e.target.value)}
               />
               <p className="form-hint">Pesan otomatis yang terisi saat pengguna mengklik tombol chat WhatsApp.</p>
+            </div>
+          </div>
+
+          <div>
+            <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, marginBottom: 'var(--space-5)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <MapPin size={20} /> Kontak Resmi
+            </h3>
+
+            <div className="form-group" style={{ marginBottom: 'var(--space-5)' }}>
+              <label className="form-label">Alamat Kantor</label>
+              <textarea
+                className="form-textarea"
+                placeholder="Jl. ... , Bandar Lampung"
+                rows={2}
+                value={contactAddress}
+                onChange={(e) => setContactAddress(e.target.value)}
+              />
+              <p className="form-hint">Ditampilkan di footer landing page bila diisi.</p>
+            </div>
+
+            <div className="form-group" style={{ marginBottom: 'var(--space-5)' }}>
+              <label className="form-label">Jam Layanan</label>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="Senin–Jumat, 08.00–16.00 WIB"
+                value={contactHours}
+                onChange={(e) => setContactHours(e.target.value)}
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Email Resmi</label>
+              <input
+                type="email"
+                className="form-input"
+                placeholder="info@dpmptsp.lampungprov.go.id"
+                value={contactEmail}
+                onChange={(e) => setContactEmail(e.target.value)}
+              />
+              <p className="form-hint">Dipakai di footer landing dan halaman Investment Gallery.</p>
             </div>
           </div>
 

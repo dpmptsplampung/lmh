@@ -1,10 +1,26 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
+function safeNextPath(next: string | null): string {
+  if (next && next.startsWith('/') && !next.startsWith('//')) {
+    return next;
+  }
+  return '/';
+}
+
+function requestOrigin(request: Request): string {
+  const configured = process.env.NEXT_PUBLIC_PUBLIC_URL;
+  if (configured) {
+    return configured.replace(/\/$/, '');
+  }
+  return new URL(request.url).origin;
+}
+
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url);
+  const { searchParams } = new URL(request.url);
   const code = searchParams.get('code');
-  const next = searchParams.get('next') ?? '/me';
+  const next = safeNextPath(searchParams.get('next') ?? '/me');
+  const origin = requestOrigin(request);
 
   if (code) {
     const supabase = await createClient();
@@ -29,17 +45,7 @@ export async function GET(request: Request) {
         });
       }
 
-      // Redirect ke halaman tujuan
-      const forwardedHost = request.headers.get('x-forwarded-host');
-      const isLocalEnv = process.env.NODE_ENV === 'development';
-
-      if (isLocalEnv) {
-        return NextResponse.redirect(`${origin}${next}`);
-      } else if (forwardedHost) {
-        return NextResponse.redirect(`https://${forwardedHost}${next}`);
-      } else {
-        return NextResponse.redirect(`${origin}${next}`);
-      }
+      return NextResponse.redirect(`${origin}${next}`);
     }
   }
 

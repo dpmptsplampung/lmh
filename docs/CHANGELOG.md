@@ -4,6 +4,39 @@ Semua perubahan penting pada project LMH didokumentasikan di sini.
 Format: [Keep a Changelog](https://keepachangelog.com/). Pemversian
 mengikuti [Semantic Versioning](https://semver.org/).
 
+## [Unreleased / 2.1.0] — 2026-07-20
+
+Gelombang perbaikan audit pasca-rilis LMH 2.0.
+
+### Keamanan
+- RLS `visit` ownership — pengunjung hanya melihat kunjungannya sendiri.
+- Column guard `chat_sesi` — batasi kolom yang dapat diubah pengunjung.
+- Publish guard `listing_umkm` — petugas terbatas `draft`/`pending_review`;
+  hanya admin yang publish.
+- Trigger audit UPDATE `role` petugas (anti eskalasi diam-diam).
+- Absensi anti-backdate (`trg_guard_absensi_tanggal`).
+- Penguatan auth callback.
+- (Semua di migration `202607200001_p0_security_governance.sql`.)
+
+### Fitur & Integritas Data
+- UMKM owner-linking + consent PDP (`umkm_contact`) saat admin submit listing.
+- QR/token SKM untuk pengunjung walk-in.
+- Dashboard admin: angka/metrik kini akurat vs sumber data.
+- Auto-embedding FAQ (trigger embed otomatis).
+- Chat offline jujur — status offline ditampilkan apa adanya.
+- Notifikasi balasan chat petugas, status inquiry UMKM, dan konfirmasi
+  reservasi + dead-letter untuk notifikasi gagal retried ≥ 5x.
+- Retensi `chat_ai_log` 90 hari (cron harian `prune_chat_ai_log()`).
+- Fungsi publik `get_queue_position(qr_token)` untuk posisi antrean.
+
+### UX Publik
+- Navigasi mobile diperbaiki, posisi antrean tampil, modal aksesibel
+  (a11y), migrasi ke `next/font`.
+
+### Dokumentasi
+- PRD.md, ARCHITECTURE.md, AUDIT_RESULTS.md diarsipkan ke `docs/archive/`
+  dengan banner historis; sumber kebenaran: `docs/AUDIT_DAN_ROADMAP_INOVASI.md`.
+
 ## [2.0.0] — 2026-07-11
 
 ### Fase 0 — Pengamanan Darurat
@@ -57,6 +90,8 @@ mengikuti [Semantic Versioning](https://semver.org/).
 ### Migrasi database
 - 19 migration baru: `020` → `038` (lihat `docs/DEPLOY_RUNBOOK.md`
   untuk urutan apply).
+- ⚠️ **020–038 telah DIGANTIKAN oleh 5 baseline `20260714*` (lihat
+  `docs/MIGRATIONS.md`) — jangan apply 020–038.**
 
 ## [1.0.0] — 2025
 

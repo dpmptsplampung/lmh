@@ -3,36 +3,18 @@
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Cell,
-} from 'recharts';
-import {
   ArrowLeft,
   Loader2,
   AlertCircle,
-  BarChart3,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import IkmPanel from '@/components/IkmPanel';
+import type { IkmRow } from '@/lib/ikm';
 import styles from './transparansi.module.css';
-
-const CHART_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
 
 interface LayananRow {
   id: string;
   nama: string;
-}
-
-interface IkmRow {
-  layanan_id: string;
-  layanan_nama: string;
-  ikm: number | null;
-  responden: number;
 }
 
 function currentQuarterRange(): { start: string; end: string } {
@@ -41,27 +23,6 @@ function currentQuarterRange(): { start: string; end: string } {
   const start = new Date(now.getFullYear(), qMonth, 1);
   const end = now.toISOString().split('T')[0];
   return { start: start.toISOString().split('T')[0], end };
-}
-
-function qualityClass(ikm: number | null): string {
-  if (ikm === null || Number.isNaN(ikm)) return styles.qD;
-  if (ikm >= 88) return styles.qA;
-  if (ikm >= 76) return styles.qB;
-  if (ikm >= 60) return styles.qC;
-  return styles.qD;
-}
-
-function qualityText(ikm: number | null): string {
-  if (ikm === null || Number.isNaN(ikm)) return 'N/A';
-  if (ikm >= 88) return 'A — Sangat Baik';
-  if (ikm >= 76) return 'B — Baik';
-  if (ikm >= 60) return 'C — Kurang Baik';
-  return 'D — Tidak Baik';
-}
-
-function fmtIkm(v: number | null): string {
-  if (v === null || Number.isNaN(v)) return '—';
-  return v.toFixed(1);
 }
 
 export default function TransparansiPage() {
@@ -128,16 +89,6 @@ export default function TransparansiPage() {
     loadData();
   }, [loadData]);
 
-  const totalResponden = rows.reduce((s, r) => s + r.responden, 0);
-  const scored = rows.filter((r) => r.ikm !== null);
-  const avgIkm = scored.length > 0
-    ? scored.reduce((s, r) => s + (r.ikm as number), 0) / scored.length
-    : null;
-
-  const chartData = rows
-    .filter((r) => r.ikm !== null)
-    .map((r) => ({ nama: r.layanan_nama, ikm: Number((r.ikm as number).toFixed(1)) }));
-
   return (
     <div className={styles.tPage}>
       <div className={styles.tCard}>
@@ -172,105 +123,7 @@ export default function TransparansiPage() {
           </div>
         ) : (
           <>
-            <div className={styles.tSummaryGrid}>
-              <div className={styles.tSummaryCard}>
-                <span className={styles.tSummaryValue}>{fmtIkm(avgIkm)}</span>
-                <span className={styles.tSummaryLabel}>Rata-rata IKM</span>
-                <span className={`${styles.tQualityBadge} ${qualityClass(avgIkm)}`}>
-                  {qualityText(avgIkm)}
-                </span>
-              </div>
-              <div className={styles.tSummaryCard}>
-                <span className={styles.tSummaryValue}>{totalResponden}</span>
-                <span className={styles.tSummaryLabel}>Total Responden</span>
-                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: 'var(--space-2)' }}>
-                  Kuartal Ini
-                </span>
-              </div>
-              <div className={styles.tSummaryCard}>
-                <span className={styles.tSummaryValue}>{rows.length}</span>
-                <span className={styles.tSummaryLabel}>Layanan Aktif</span>
-                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: 'var(--space-2)' }}>
-                  {scored.length} dengan data
-                </span>
-              </div>
-            </div>
-
-            <div className={styles.tChartCard}>
-              <h2 className={styles.tChartTitle}>Grafik IKM per Layanan</h2>
-              <div className={styles.tChartBody}>
-                {chartData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={chartData} margin={{ top: 8, right: 16, bottom: 40, left: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                      <XAxis
-                        dataKey="nama"
-                        fontSize={11}
-                        tickLine={false}
-                        angle={-20}
-                        textAnchor="end"
-                        height={60}
-                        interval={0}
-                      />
-                      <YAxis domain={[0, 100]} fontSize={12} tickLine={false} axisLine={false} />
-                      <Tooltip
-                        contentStyle={{
-                          borderRadius: '8px',
-                          border: '1px solid #e2e8f0',
-                          boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
-                        }}
-                        formatter={(v) => [v as number, 'IKM']}
-                      />
-                      <Bar dataKey="ikm" radius={[6, 6, 0, 0]} name="IKM">
-                        {chartData.map((entry, idx) => (
-                          <Cell key={entry.nama} fill={CHART_COLORS[idx % CHART_COLORS.length]} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className={styles.tChartEmpty}>
-                    <BarChart3 size={28} style={{ marginRight: 8, verticalAlign: 'middle' }} />
-                    Belum ada data IKM untuk kuartal ini
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className={styles.tTableSection}>
-              <table className={styles.tTable}>
-                <thead>
-                  <tr>
-                    <th>Layanan</th>
-                    <th>IKM</th>
-                    <th>Responden</th>
-                    <th>Predikat</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} className={styles.tTableEmpty}>
-                        Belum ada data layanan
-                      </td>
-                    </tr>
-                  ) : (
-                    rows.map((r) => (
-                      <tr key={r.layanan_id}>
-                        <td style={{ fontWeight: 500 }}>{r.layanan_nama}</td>
-                        <td><span className={styles.tIkmValue}>{fmtIkm(r.ikm)}</span></td>
-                        <td>{r.responden}</td>
-                        <td>
-                          <span className={`${styles.tQualityBadge} ${qualityClass(r.ikm)}`}>
-                            {qualityText(r.ikm)}
-                          </span>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+            <IkmPanel rows={rows} periodLabel="Kuartal Ini" mode="public" />
 
             {lastUpdated && (
               <div className={styles.tFooter}>

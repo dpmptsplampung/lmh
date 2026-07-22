@@ -20,12 +20,12 @@ describe('production and demo seed separation', () => {
     expect(demo).not.toMatch(/migration\s+(?:017|023)\b/i);
   });
 
-  it('contains exactly nine final services with explicit type and chatbot flags', () => {
+  it('contains exactly ten final services with explicit type and chatbot flags', () => {
     const serviceValues = seed.match(/INSERT\s+INTO\s+public\.layanan[\s\S]*?ON\s+CONFLICT/gi) ?? [];
     expect(serviceValues).toHaveLength(1);
     const tuples = serviceValues[0]!.match(/\('[^']+',\s*'(?:konsultatif|mitra|modul_publik)',\s*(?:true|false)\)/gi) ?? [];
-    expect(tuples).toHaveLength(9);
-    for (const name of ['Helpdesk OSS', 'Sertifikasi Halal', 'BPJS Kesehatan', 'Bank Lampung', 'Matchmaking UMKM', 'Investment Gallery', 'BALMON', 'Sertifikasi Mutu Keamanan Hasil Perikanan', 'Layanan Jasa Industri']) {
+    expect(tuples).toHaveLength(10);
+    for (const name of ['Helpdesk OSS', 'Sertifikasi Halal', 'BPJS Kesehatan', 'Bank Lampung', 'Matchmaking UMKM', 'Investment Gallery', 'BALMON', 'Sertifikasi Mutu Keamanan Hasil Perikanan', 'Layanan Jasa Industri', 'Layanan Perizinan DPMPTSP Provinsi Lampung']) {
       expect(seed).toContain(name);
     }
   });

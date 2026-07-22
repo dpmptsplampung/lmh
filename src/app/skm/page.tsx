@@ -237,17 +237,21 @@ function SkmForm() {
               {SCALE.map((opt) => {
                 const checked = ratings[u.key] === opt.value;
                 return (
-                  <button
+                  <label
                     key={opt.value}
-                    type="button"
-                    role="radio"
-                    aria-checked={checked}
                     className={`${styles.scaleOption} ${checked ? styles.scaleOptionChecked : ''}`}
-                    onClick={() => setRatings((prev) => ({ ...prev, [u.key]: opt.value }))}
                   >
+                    <input
+                      type="radio"
+                      name={`skm-${u.key}`}
+                      value={opt.value}
+                      checked={checked}
+                      onChange={() => setRatings((prev) => ({ ...prev, [u.key]: opt.value }))}
+                      className={styles.scaleInput}
+                    />
                     <span className={styles.scaleValue}>{opt.value}</span>
                     <span className={styles.scaleLabel}>{opt.label}</span>
-                  </button>
+                  </label>
                 );
               })}
             </div>

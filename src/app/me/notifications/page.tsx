@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Bell, ArrowLeft, BellOff, Check } from 'lucide-react';
+import { Bell, ArrowLeft, BellOff, Check, Mail } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import styles from './notifications.module.css';
 
@@ -112,11 +112,15 @@ export default function NotificationsPage() {
       } else {
         const reg = await navigator.serviceWorker.ready;
         const sub = await reg.pushManager.getSubscription();
+        const endpoint = sub?.endpoint;
         if (sub) await sub.unsubscribe();
-        await supabase
-          .from('push_subscriptions')
-          .delete()
-          .eq('user_id', user.id);
+        if (endpoint) {
+          await supabase
+            .from('push_subscriptions')
+            .delete()
+            .eq('user_id', user.id)
+            .eq('endpoint', endpoint);
+        }
         setPushEnabled(false);
         setMessage('Notifikasi push dinonaktifkan.');
       }
@@ -170,7 +174,7 @@ export default function NotificationsPage() {
               <p className={styles.pushDesc}>
                 {pushSupported
                   ? 'Terima pemberitahuan langsung di browser Anda.'
-                  : 'Push not supported di browser ini.'}
+                  : 'Notifikasi push tidak didukung di browser ini.'}
               </p>
             </div>
             <button
@@ -206,7 +210,7 @@ export default function NotificationsPage() {
               {notifications.map((n) => (
                 <li key={n.id} className={styles.notifItem} data-status={n.status}>
                   <div className={styles.notifIcon}>
-                    {n.kanal === 'email' ? <Bell size={18} /> : <Bell size={18} />}
+                    {n.kanal === 'email' ? <Mail size={18} /> : <Bell size={18} />}
                   </div>
                   <div className={styles.notifBody}>
                     <div className={styles.notifSubject}>

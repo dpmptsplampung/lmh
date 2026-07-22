@@ -33,6 +33,8 @@ Data **tidak** digunakan untuk pemasaran komersial, profiling otomatis, atau dib
 ## Retensi & Anonimisasi
 
 - **Periode retensi:** 730 hari (2 tahun) sejak aktivitas terakhir pengunjung.
+- **Retensi `chat_ai_log`:** 90 hari. Fungsi `prune_chat_ai_log()` dijadwalkan
+  harian via pg_cron (migration `202607200001`).
 - **Mekanisme:** Fungsi `anonymize_inactive_pengunjung()` dipanggil otomatis setiap hari pukul 02:00 via `pg_cron` (jika extension terpasang).
 - **Aksi anonimisasi:**
   - `nama` → `'[anonim]'`
@@ -52,7 +54,7 @@ Persetujuan eksplisit diperlukan sebelum pengolahan data pribadi. Implementasi:
 |---------------|-------|----------|
 | Form check-in `/checkin` | `consent_log` | `checkin_data` |
 | Mulai sesi chat `/chat` | `consent_log` | `chat_followup` |
-| (Rencana) Kontak UMKM | `consent_log` | `umkm_contact` |
+| Kontak UMKM (checkbox consent saat admin submit listing) | `consent_log` | `umkm_contact_public` — **Diimplementasikan 2026-07-20** (checkbox consent saat admin submit listing + baris `consent_log` tujuan `umkm_contact_public`) |
 
 - Consent dicatat di tabel `consent_log` dengan kolom `disetujui` (boolean), `versi_kebijakan` (saat ini `1.0`), dan `created_at`.
 - Checkbox consent bersifat **required** — tombol submit dinonaktifkan sampai checkbox dicentang.
@@ -72,21 +74,23 @@ Sesuai UU 27/2022, subjek data berhak:
 Setiap aksi sensitif oleh admin/petugas dicatat di tabel `audit_log`:
 
 | Aksi | Entitas | Trigger |
-|------|---------|---------|
-| `update_status` | `kunjungan` | Update kolom `status` |
-| `update_status` | `reservasi` | Update kolom `status` |
+|------|---------|
+| `update_status` | `visit` | Update kolom `status` |
 | `update_status` | `listing_umkm` | Update kolom `status` (termasuk approve → `published`) |
 | `insert_petugas` | `petugas` | Insert baris baru |
 | `delete_petugas` | `petugas` | Delete baris |
+| `update_role` | `petugas` | Update kolom `role` (anti eskalasi; trigger `trg_audit_petugas_role`) |
 | `upload_dok` | `investment_documents` | Insert dokumen baru |
 | `delete_dok` | `investment_documents` | Delete dokumen |
+| `update_status` | `investasi_lead` | Update kolom `status` |
 
 - Fungsi trigger `audit_change()` bersifat `SECURITY DEFINER` (bypass RLS) agar dapat menulis ke `audit_log` dari konteks admin/petugas.
 - Hanya `admin` yang dapat SELECT dari `audit_log` (policy `audit_log_admin_select`).
 - Tidak ada INSERT/UPDATE/DELETE langsung dari client — hanya via trigger.
 - Kolom `detail` (JSONB) menyimpan snapshot before/after untuk audit lengkap.
 
-**Catatan handoff:** Tabel `visit` (dibuat oleh I1 di Fase berikutnya) akan menambahkan trigger audit sendiri. Migration I8 ini hanya menempel trigger pada tabel yang sudah ada saat ini.
+**Catatan:** Tabel `kunjungan`/`reservasi` telah di-retire; trigger audit
+kini menempel pada `visit` (lihat baseline `202607140004_security_and_automation.sql`).
 
 ## DPO (Data Protection Officer)
 
@@ -106,6 +110,9 @@ Setiap aksi sensitif oleh admin/petugas dicatat di tabel `audit_log`:
 ## Referensi
 
 - UU No. 27/2022 tentang Pelindungan Data Pribadi
-- Migration 028 (`028_audit_consent.sql`) — skema audit_log, consent_log, triggers, anonymization
+- Baseline migration `202607140003_feature_schema.sql` (skema audit_log, consent_log)
+  dan `202607140004_security_and_automation.sql` (triggers, anonymization);
+  perbaruan governance di `202607200001_p0_security_governance.sql` (trigger
+  `update_role` petugas, retensi `chat_ai_log`)
 - Dashboard DPO: `/admin/data-governance`
 - Kebijakan terkait: `docs/KEBIJAKAN_AKUN_MITRA.md` (accountability akun mitra)

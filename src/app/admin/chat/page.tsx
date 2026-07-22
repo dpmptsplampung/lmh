@@ -58,7 +58,6 @@ export default function AdminChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [messageInput, setMessageInput] = useState('');
   const [loading, setLoading] = useState(true);
-  const [lastReadTimestamps, setLastReadTimestamps] = useState<Record<string, string>>({});
 
   const { toast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -100,17 +99,28 @@ export default function AdminChatPage() {
 
     const sessionIds = formatted.map(s => s.id);
     const latestMap: Record<string, { isi: string; created_at: string }> = {};
+    const visitorMap: Record<string, { id: string; created_at: string }[]> = {};
+    const staffMap: Record<string, string> = {};
 
     if (sessionIds.length > 0) {
-      const { data: latestMessages } = await supabase
+      // Satu query agregat (bukan N+1): ambil semua pesan sesi pada daftar,
+      // lalu hitung unread per sesi = pesan pengunjung setelah pesan
+      // bot/petugas terakhir (belum dijawab).
+      const { data: allMessages } = await supabase
         .from('chat_pesan')
-        .select('sesi_id, isi, created_at')
+        .select('id, sesi_id, pengirim, isi, created_at')
         .in('sesi_id', sessionIds)
         .order('created_at', { ascending: false });
 
-      for (const msg of latestMessages || []) {
+      for (const msg of allMessages || []) {
         if (!latestMap[msg.sesi_id]) {
           latestMap[msg.sesi_id] = { isi: msg.isi, created_at: msg.created_at };
+        }
+        if (msg.pengirim === 'pengunjung') {
+          if (!visitorMap[msg.sesi_id]) visitorMap[msg.sesi_id] = [];
+          visitorMap[msg.sesi_id].push({ id: msg.id, created_at: msg.created_at });
+        } else if (!staffMap[msg.sesi_id]) {
+          staffMap[msg.sesi_id] = msg.created_at;
         }
       }
     }
@@ -119,6 +129,9 @@ export default function AdminChatPage() {
       ...s,
       last_message: latestMap[s.id]?.isi,
       last_message_at: latestMap[s.id]?.created_at,
+      unread: (visitorMap[s.id] || []).filter(
+        (m) => !staffMap[s.id] || m.created_at > staffMap[s.id],
+      ).length,
     }));
 
     setSessions(withMessages);
@@ -134,6 +147,7 @@ export default function AdminChatPage() {
   useEffect(() => {
     const supabase = createClient();
     let channel: ReturnType<typeof supabase.channel> | null = null;
+    let pesanChannel: ReturnType<typeof supabase.channel> | null = null;
 
     async function init() {
       try {
@@ -163,6 +177,14 @@ export default function AdminChatPage() {
             fetchSessions(layananId);
           })
           .subscribe();
+
+        // Refresh daftar sesi juga saat ada pesan baru (unread/last_message berubah).
+        pesanChannel = supabase
+          .channel('chat-pesan-changes')
+          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_pesan' }, () => {
+            fetchSessions(layananId);
+          })
+          .subscribe();
       } catch (e) {
         console.error(e);
         toast('Gagal menginisialisasi chat', 'error');
@@ -175,6 +197,9 @@ export default function AdminChatPage() {
     return () => {
       if (channel) {
         supabase.removeChannel(channel);
+      }
+      if (pesanChannel) {
+        supabase.removeChannel(pesanChannel);
       }
     };
   }, [fetchSessions, toast]);
@@ -231,18 +256,10 @@ export default function AdminChatPage() {
 
   const handleSelectSession = (session: Session) => {
     setSelectedSession(session);
-    setLastReadTimestamps(prev => ({
-      ...prev,
-      [session.id]: new Date().toISOString(),
-    }));
-  };
-
-  const unreadCount = (session: Session): number => {
-    const lastRead = lastReadTimestamps[session.id];
-    if (!lastRead) return 0;
-    return messages.filter(
-      m => m.pengirim === 'pengunjung' && m.created_at > lastRead
-    ).length;
+    // Sesi yang sedang dibuka dianggap sudah dibaca — reset badge unread-nya.
+    setSessions(prev =>
+      prev.map(s => (s.id === session.id ? { ...s, unread: 0 } : s)),
+    );
   };
 
   const handleSendMessage = async (e: React.FormEvent) => {
@@ -350,9 +367,7 @@ export default function AdminChatPage() {
               </div>
             ) : sessions.map((session) => {
               const config = statusConfig[session.status];
-              const unread = session.id === selectedSession?.id
-                ? unreadCount(session)
-                : (session.last_message_at && !lastReadTimestamps[session.id] ? 1 : 0);
+              const unread = session.id === selectedSession?.id ? 0 : (session.unread ?? 0);
               return (
                 <button
                   type="button"
@@ -430,7 +445,7 @@ export default function AdminChatPage() {
                 background: 'var(--surface-primary)',
               }}>
                 <div>
-                  <h3 style={{ fontWeight: 600, fontSize: 'var(--text-md)', marginBottom: '4px' }}>
+                  <h3 style={{ fontWeight: 600, fontSize: 'var(--text-base)', marginBottom: '4px' }}>
                     {selectedSession.kontak_pengunjung || 'Pengunjung Anonim'}
                   </h3>
                   <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>

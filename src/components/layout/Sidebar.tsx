@@ -32,7 +32,6 @@ interface NavItem {
   href: string;
   icon: React.ReactNode;
   badge?: string;
-  fase?: string;
   roles?: string[]; // 'admin', 'petugas'
 }
 
@@ -41,21 +40,18 @@ const navItems: NavItem[] = [
     label: 'Dashboard',
     href: '/admin',
     icon: <LayoutDashboard size={20} />,
-    fase: 'Fase 1',
     roles: ['admin'],
   },
   {
     label: 'Kunjungan',
     href: '/admin/kunjungan',
     icon: <ClipboardCheck size={20} />,
-    fase: 'Fase 1',
     roles: ['admin'],
   },
   {
     label: 'Scan QR',
     href: '/admin/scan',
     icon: <QrCode size={20} />,
-    fase: 'Fase 1',
     roles: ['admin'],
   },
 
@@ -63,70 +59,60 @@ const navItems: NavItem[] = [
     label: 'Antrian',
     href: '/admin/antrian',
     icon: <Users size={20} />,
-    fase: 'Fase 2',
     roles: ['admin', 'petugas'],
   },
   {
     label: 'Absensi',
     href: '/admin/absensi',
     icon: <BookOpen size={20} />,
-    fase: 'Fase 1',
     roles: ['admin', 'petugas'],
   },
   {
     label: 'Live Chat',
     href: '/admin/chat',
     icon: <MessageSquare size={20} />,
-    fase: 'Fase 3',
     roles: ['admin', 'petugas'],
   },
   {
     label: 'Kelola FAQ',
     href: '/admin/chat/faq',
     icon: <HelpCircle size={20} />,
-    fase: 'Fase 3',
     roles: ['admin', 'petugas'],
   },
   {
     label: 'UMKM',
     href: '/admin/umkm',
     icon: <Store size={20} />,
-    fase: 'Fase 4',
     roles: ['admin'],
   },
   {
     label: 'Investment Gallery',
     href: '/admin/gallery',
     icon: <FileText size={20} />,
-    fase: 'Fase 4',
     roles: ['admin'],
   },
   {
     label: 'Lead Investasi',
     href: '/admin/investasi-leads',
     icon: <TrendingUp size={20} />,
-    fase: 'Fase 4',
     roles: ['admin'],
   },
   {
     label: 'Pengaturan',
     href: '/admin/settings',
     icon: <Settings size={20} />,
-    fase: 'Fase 4',
     roles: ['admin'],
   },
   {
     label: 'Konten Landing',
     href: '/admin/settings/landing',
     icon: <LayoutTemplate size={20} />,
-    fase: 'Fase 4',
     roles: ['admin'],
   },
   {
     label: 'Tampilan Publik',
     href: '/',
     icon: <Globe size={20} />,
-    fase: 'Fase 1',
     roles: ['admin', 'petugas'],
   },
 ];
@@ -135,6 +121,8 @@ export default function Sidebar() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userRole, setUserRole] = useState<string | null | undefined>(undefined);
+  const [userName, setUserName] = useState<string>('');
+  const [eskalasiCount, setEskalasiCount] = useState(0);
 
   useEffect(() => {
     async function getUserRole() {
@@ -145,18 +133,26 @@ export default function Sidebar() {
       if (user) {
         const { data: petugas, error } = await supabase
           .from('petugas')
-          .select('role')
+          .select('nama, role, layanan_id')
           .eq('auth_user_id', user.id)
           .maybeSingle();
-        if (error) {
-          setUserRole(null);
-          return;
-        }
-        if (!petugas) {
+        if (error || !petugas) {
           setUserRole(null);
           return;
         }
         setUserRole(petugas.role);
+        setUserName(petugas.nama ?? '');
+
+        // Badge unread: sesi chat berstatus eskalasi
+        let badgeQuery = supabase
+          .from('chat_sesi')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'eskalasi');
+        if (petugas.role === 'petugas' && petugas.layanan_id) {
+          badgeQuery = badgeQuery.eq('layanan_id', petugas.layanan_id);
+        }
+        const { count } = await badgeQuery;
+        setEskalasiCount(count ?? 0);
       } else {
         setUserRole(null);
       }
@@ -234,6 +230,26 @@ export default function Sidebar() {
             >
               <span className={styles.navIcon}>{item.icon}</span>
               <span className={styles.navLabel}>{item.label}</span>
+              {item.href === '/admin/chat' && eskalasiCount > 0 && (
+                <span
+                  aria-label={`${eskalasiCount} sesi chat eskalasi`}
+                  style={{
+                    background: 'var(--color-danger-500)',
+                    color: 'var(--text-inverse)',
+                    borderRadius: 'var(--radius-full)',
+                    fontSize: 'var(--text-xs)',
+                    fontWeight: 700,
+                    minWidth: '20px',
+                    height: '20px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '0 var(--space-1)',
+                  }}
+                >
+                  {eskalasiCount}
+                </span>
+              )}
               {isActive(item.href) && (
                 <ChevronRight size={16} className={styles.navArrow} />
               )}
@@ -243,6 +259,16 @@ export default function Sidebar() {
 
         {/* Footer */}
         <div className={styles.footer}>
+          {userRole && (
+            <div style={{ padding: 'var(--space-3) var(--space-4)', marginBottom: 'var(--space-2)' }}>
+              <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)', color: 'var(--text-primary)' }}>
+                {userName || '—'}
+              </div>
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                {userRole === 'admin' ? 'Admin' : 'Petugas'}
+              </div>
+            </div>
+          )}
           <button 
             className={cn('btn btn--ghost', styles.logoutBtn)}
             onClick={handleLogout}

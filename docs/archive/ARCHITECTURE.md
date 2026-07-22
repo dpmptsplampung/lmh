@@ -1,3 +1,5 @@
+> ⚠️ DOKUMEN ARSIP HISTORIS (pra-LMH 2.0) — Tidak lagi akurat. Sumber kebenaran: docs/AUDIT_DAN_ROADMAP_INOVASI.md + source code. Diarsipkan 2026-07-20.
+
 # Architecture: Lampung Maju Hub
 
 > Dokumen teknis pendamping `PRD.md`. Untuk dibaca coding agent sebelum eksekusi.

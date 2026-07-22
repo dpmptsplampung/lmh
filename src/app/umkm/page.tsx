@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
@@ -19,6 +19,7 @@ import {
   Send,
   Sparkles,
   ArrowRight,
+  LogIn,
 } from 'lucide-react';
 import { KATEGORI_UMKM, type KategoriUMKM } from '@/lib/constants';
 import { cn } from '@/lib/utils';
@@ -91,6 +92,11 @@ export default function UMKMPage() {
   const [inquiryResult, setInquiryResult] = useState<
     { kind: 'success'; message: string } | { kind: 'error'; message: string } | null
   >(null);
+  const [inquiryLoggedIn, setInquiryLoggedIn] = useState<boolean | null>(null);
+  const inquiryCloseRef = useRef<HTMLButtonElement>(null);
+  const inquiryPrevFocusRef = useRef<HTMLElement | null>(null);
+  const editCloseRef = useRef<HTMLButtonElement>(null);
+  const editPrevFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     async function fetchListings() {
@@ -182,14 +188,44 @@ export default function UMKMPage() {
     return matchKategori && matchSearch;
   });
 
-  const openEditModal = (listing: UMKMListing) => {
-    setEditModalListing(listing);
-    setEditEmail('');
-    setEditSent(false);
-  };
-
   const closeEditModal = () => {
     setEditModalListing(null);
+    setEditEmail('');
+    setEditSent(false);
+    editPrevFocusRef.current?.focus();
+  };
+
+  const closeInquiryModal = () => {
+    setInquiryModalListing(null);
+    setInquiryForm({ from_nama: '', from_email: '', pesan: '' });
+    setInquiryResult(null);
+    inquiryPrevFocusRef.current?.focus();
+  };
+
+  useEffect(() => {
+    if (!editModalListing) return;
+    editPrevFocusRef.current = document.activeElement as HTMLElement | null;
+    editCloseRef.current?.focus();
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeEditModal();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [editModalListing]);
+
+  useEffect(() => {
+    if (!inquiryModalListing) return;
+    inquiryPrevFocusRef.current = document.activeElement as HTMLElement | null;
+    inquiryCloseRef.current?.focus();
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeInquiryModal();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [inquiryModalListing]);
+
+  const openEditModal = (listing: UMKMListing) => {
+    setEditModalListing(listing);
     setEditEmail('');
     setEditSent(false);
   };
@@ -213,16 +249,18 @@ export default function UMKMPage() {
     }
   };
 
-  const openInquiryModal = (listing: UMKMListing) => {
+  const openInquiryModal = async (listing: UMKMListing) => {
     setInquiryModalListing(listing);
     setInquiryForm({ from_nama: '', from_email: '', pesan: '' });
     setInquiryResult(null);
-  };
-
-  const closeInquiryModal = () => {
-    setInquiryModalListing(null);
-    setInquiryForm({ from_nama: '', from_email: '', pesan: '' });
-    setInquiryResult(null);
+    setInquiryLoggedIn(null);
+    try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      setInquiryLoggedIn(!!user);
+    } catch {
+      setInquiryLoggedIn(false);
+    }
   };
 
   const submitInquiry = async (e: React.FormEvent) => {
@@ -528,7 +566,6 @@ export default function UMKMPage() {
                                 alt={listing.nama_umkm}
                                 fill
                                 style={{ objectFit: 'cover' }}
-                                unoptimized
                               />
                             ) : (
                               <Store size={40} />
@@ -666,6 +703,7 @@ export default function UMKMPage() {
         >
           <div className={styles.editModal} onClick={(e) => e.stopPropagation()}>
             <button
+              ref={editCloseRef}
               type="button"
               className={styles.editModalClose}
               onClick={closeEditModal}
@@ -745,6 +783,7 @@ export default function UMKMPage() {
         >
           <div className={styles.editModal} onClick={(e) => e.stopPropagation()}>
             <button
+              ref={inquiryCloseRef}
               type="button"
               className={styles.editModalClose}
               onClick={closeInquiryModal}
@@ -753,7 +792,16 @@ export default function UMKMPage() {
               <X size={18} />
             </button>
 
-            {!inquiryResult || inquiryResult.kind === 'error' ? (
+            {inquiryLoggedIn === false ? (
+              <div className={styles.editModalSuccess}>
+                <LogIn size={32} />
+                <h3>Masuk Diperlukan</h3>
+                <p>Silakan masuk untuk mengirim pesan ke pemilik listing.</p>
+                <Link href="/login?next=/umkm" className="btn btn--primary">
+                  Masuk
+                </Link>
+              </div>
+            ) : !inquiryResult || inquiryResult.kind === 'error' ? (
               <>
                 <h3 className={styles.editModalTitle}>
                   <Send size={20} />

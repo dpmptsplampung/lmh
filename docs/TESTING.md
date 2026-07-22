@@ -9,7 +9,7 @@
 | Unit / contract | `npm test` | Vitest + jsdom: components, API helpers, static migration SQL contracts |
 | Build | `npm run build` | Next.js production build with placeholder public env |
 
-CI workflow: `.github/workflows/ci.yml` (Node from `.nvmrc` = 20.19).  
+CI workflow: `.github/workflows/ci.yml` (Node from `.nvmrc` = 22).  
 Docker and Supabase local are **not** required for CI.
 
 ## Coverage

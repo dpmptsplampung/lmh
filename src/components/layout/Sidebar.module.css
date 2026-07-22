@@ -126,7 +126,7 @@
   position: fixed;
   top: var(--space-4);
   left: var(--space-4);
-  z-index: calc(var(--z-sticky) + 1);
+  z-index: calc(var(--z-modal) + 1);
   width: 44px;
   height: 44px;
   border-radius: var(--radius-lg);
@@ -144,12 +144,13 @@
   position: fixed;
   inset: 0;
   background: var(--surface-overlay);
-  z-index: calc(var(--z-sticky) - 1);
+  z-index: calc(var(--z-modal) - 1);
 }
 
 @media (max-width: 1024px) {
   .sidebar {
     transform: translateX(-100%);
+    z-index: var(--z-modal);
   }
 
   .sidebarOpen {

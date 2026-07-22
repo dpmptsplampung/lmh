@@ -7,19 +7,22 @@ import {
   CheckCircle2,
   Clock,
   RefreshCw,
-  Loader2,
   Calendar,
+  Info,
 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
+import Pagination from '@/components/Pagination';
 import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/components/Toast';
+
+const PAGE_SIZE = 25;
 
 interface KunjunganRow {
   id: string;
   nama: string;
   keperluan: string | null;
-  status: 'menunggu' | 'selesai';
+  status: 'menunggu' | 'dilayani' | 'selesai';
   waktu_masuk: string;
   waktu_selesai: string | null;
   layanan: { nama: string } | { nama: string }[] | null;
@@ -28,9 +31,11 @@ interface KunjunganRow {
 export default function KunjunganPage() {
   const { toast } = useToast();
   const [search, setSearch] = useState('');
-  const [filterStatus, setFilterStatus] = useState<'semua' | 'menunggu' | 'selesai'>('semua');
+  const [filterStatus, setFilterStatus] = useState<'semua' | 'menunggu' | 'dilayani' | 'selesai'>('semua');
   const [kunjungan, setKunjungan] = useState<KunjunganRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
   const [filterTanggal, setFilterTanggal] = useState(
     new Date().toISOString().split('T')[0]
   );
@@ -40,16 +45,19 @@ export default function KunjunganPage() {
     try {
       const supabase = createClient();
       const startOfDay = new Date(`${filterTanggal}T00:00:00`);
-      const { data, error } = await supabase
+      const from = page * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+      const { data, count, error } = await supabase
         .from('visit')
         .select(`
           id, nama, keperluan, status, waktu_masuk, waktu_selesai,
           layanan:layanan_id ( nama )
-        `)
+        `, { count: 'exact' })
         .eq('asal', 'walk_in')
         .gte('waktu_masuk', startOfDay.toISOString())
         .lt('waktu_masuk', new Date(filterTanggal + 'T23:59:59.999Z').toISOString())
-        .order('waktu_masuk', { ascending: false });
+        .order('waktu_masuk', { ascending: false })
+        .range(from, to);
 
       if (error) throw error;
 
@@ -59,39 +67,19 @@ export default function KunjunganPage() {
       })) as KunjunganRow[];
 
       setKunjungan(normalized);
+      setTotalCount(count ?? normalized.length);
     } catch (e) {
       console.error('Error loading kunjungan:', e);
       toast('Gagal memuat data kunjungan', 'error');
     } finally {
       setLoading(false);
     }
-  }, [filterTanggal, toast]);
+  }, [filterTanggal, page, toast]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadData();
   }, [loadData]);
-
-  const handleSelesai = async (id: string) => {
-    try {
-      const supabase = createClient();
-      const { error } = await supabase
-        .from('visit')
-        .update({
-          status: 'selesai',
-          waktu_selesai: new Date().toISOString(),
-        })
-        .eq('id', id);
-
-      if (error) throw error;
-
-      setKunjungan(prev => prev.map(k => k.id === id ? { ...k, status: 'selesai', waktu_selesai: new Date().toISOString() } : k));
-      toast('Kunjungan berhasil diselesaikan', 'success');
-    } catch (e) {
-      console.error('Error updating kunjungan:', e);
-      toast('Gagal menyelesaikan kunjungan', 'error');
-    }
-  };
 
   const filtered = kunjungan.filter((k) => {
     const layananNama = Array.isArray(k.layanan) ? k.layanan[0]?.nama : k.layanan?.nama || '';
@@ -109,6 +97,15 @@ export default function KunjunganPage() {
     if (!k.layanan) return '—';
     if (Array.isArray(k.layanan)) return k.layanan[0]?.nama || '—';
     return k.layanan.nama || '—';
+  };
+
+  const statusLabel = (status: string) => {
+    switch (status) {
+      case 'menunggu': return '● Menunggu';
+      case 'dilayani': return 'Sedang Dilayani';
+      case 'selesai': return '✓ Selesai';
+      default: return status;
+    }
   };
 
   return (
@@ -147,13 +144,13 @@ export default function KunjunganPage() {
               type="date"
               className="form-input"
               value={filterTanggal}
-              onChange={(e) => setFilterTanggal(e.target.value)}
+              onChange={(e) => { setFilterTanggal(e.target.value); setPage(0); }}
               style={{ width: '160px', padding: 'var(--space-2) var(--space-3)', fontSize: 'var(--text-sm)' }}
             />
           </div>
 
           <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-            {(['semua', 'menunggu', 'selesai'] as const).map((s) => (
+            {(['semua', 'menunggu', 'dilayani', 'selesai'] as const).map((s) => (
               <button
                 key={s}
                 className={cn('btn btn--sm', filterStatus === s ? 'btn--primary' : 'btn--secondary')}
@@ -161,6 +158,7 @@ export default function KunjunganPage() {
               >
                 {s === 'semua' && <Filter size={14} />}
                 {s === 'menunggu' && <Clock size={14} />}
+                {s === 'dilayani' && <Clock size={14} />}
                 {s === 'selesai' && <CheckCircle2 size={14} />}
                 {s.charAt(0).toUpperCase() + s.slice(1)}
               </button>
@@ -168,13 +166,39 @@ export default function KunjunganPage() {
           </div>
         </div>
 
+        {/* Info bar */}
+        <div
+          role="note"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 'var(--space-2)',
+            padding: 'var(--space-3) var(--space-4)',
+            marginBottom: 'var(--space-4)',
+            background: 'var(--color-primary-50)',
+            color: 'var(--color-primary-700)',
+            borderRadius: 'var(--radius-lg)',
+            fontSize: 'var(--text-sm)',
+          }}
+        >
+          <Info size={16} />
+          Penyelesaian layanan dilakukan di menu Antrian.
+        </div>
+
         {/* Table */}
         <div className="table-wrapper">
           {loading ? (
-            <div style={{ padding: 'var(--space-8)', textAlign: 'center', color: 'var(--text-tertiary)' }}>
-              <Loader2 size={24} className="animate-pulse" style={{ margin: '0 auto' }} />
-              <p style={{ marginTop: 'var(--space-2)' }}>Memuat data kunjungan...</p>
-            </div>
+            <table className="table" aria-hidden="true">
+              <tbody>
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <tr key={i}>
+                    <td colSpan={7} style={{ padding: 'var(--space-3) var(--space-4)' }}>
+                      <div className="skeleton" style={{ height: '20px', width: '100%' }} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           ) : (
           <table className="table">
             <thead>
@@ -184,42 +208,34 @@ export default function KunjunganPage() {
                 <th>Keperluan</th>
                 <th>Layanan</th>
                 <th>Waktu Masuk</th>
+                <th>Waktu Selesai</th>
                 <th>Status</th>
-                <th>Aksi</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((k, i) => (
                 <tr key={k.id}>
-                  <td style={{ color: 'var(--text-tertiary)' }}>{i + 1}</td>
+                  <td style={{ color: 'var(--text-tertiary)' }}>{page * PAGE_SIZE + i + 1}</td>
                   <td style={{ fontWeight: 600 }}>{k.nama}</td>
                   <td style={{ maxWidth: '240px', color: 'var(--text-secondary)' }}>
                     {k.keperluan || '—'}
                   </td>
                   <td>{getLayananNama(k)}</td>
                   <td>{formatTime(k.waktu_masuk)}</td>
-                  <td>
-                    <span className={`badge badge--${k.status}`}>
-                      {k.status === 'menunggu' ? '● Menunggu' : '✓ Selesai'}
-                    </span>
+                  <td style={{ color: 'var(--text-secondary)' }}>
+                    {k.waktu_selesai ? formatTime(k.waktu_selesai) : '—'}
                   </td>
                   <td>
-                    {k.status === 'menunggu' ? (
-                      <button className="btn btn--primary btn--sm" onClick={() => handleSelesai(k.id)}>
-                        <CheckCircle2 size={14} />
-                        Selesai
-                      </button>
-                    ) : (
-                      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-                        {k.waktu_selesai && formatTime(k.waktu_selesai)}
-                      </span>
-                    )}
+                    <span className={`badge badge--${k.status}`}>
+                      {statusLabel(k.status)}
+                    </span>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
           )}
+          {!loading && <Pagination page={page} pageSize={PAGE_SIZE} total={totalCount} onPageChange={setPage} />}
         </div>
 
         {filtered.length === 0 && (

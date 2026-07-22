@@ -15,9 +15,12 @@ import {
   MapPin,
   User,
   QrCode,
+  Users,
+  Globe,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { WA_NUMBER, WA_DEFAULT_MESSAGE } from '@/lib/constants';
+import { getSiteSettings } from '@/lib/site-settings';
 import { waLink } from '@/lib/utils';
 import { useToast } from '@/components/Toast';
 import QRCodeDisplay from '@/components/QRCode';
@@ -41,10 +44,17 @@ interface Reservasi {
   layanan?: { nama: string } | null;
 }
 
+interface QueuePosition {
+  posisi: number;
+  total_menunggu: number;
+}
+
 export default function MeDashboard() {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [reservasiList, setReservasiList] = useState<Reservasi[]>([]);
   const [loading, setLoading] = useState(true);
+  const [waHref, setWaHref] = useState(() => waLink(WA_NUMBER, WA_DEFAULT_MESSAGE));
+  const [queuePosition, setQueuePosition] = useState<QueuePosition | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -91,6 +101,30 @@ export default function MeDashboard() {
         layanan: Array.isArray(r.layanan) ? r.layanan[0] || null : r.layanan,
       }));
       setReservasiList(normalized);
+
+      const today = new Date().toISOString().split('T')[0];
+      const todayVisit = normalized.find(
+        (r) => r.tanggal_rencana === today && (r.status === 'menunggu' || r.status === 'dilayani'),
+      );
+      if (todayVisit) {
+        try {
+          const { data: queueData, error: queueError } = await supabase.rpc('get_queue_position', {
+            p_qr_token: todayVisit.qr_token,
+          });
+          if (!queueError && Array.isArray(queueData) && queueData.length > 0) {
+            const row = queueData[0] as QueuePosition;
+            if (typeof row.posisi === 'number' && typeof row.total_menunggu === 'number') {
+              setQueuePosition({ posisi: row.posisi, total_menunggu: row.total_menunggu });
+            }
+          }
+        } catch {
+          // RPC belum tersedia — blok posisi antrean disembunyikan
+        }
+      }
+
+      const settings = await getSiteSettings(['wa_number', 'wa_default_message']);
+      setWaHref(waLink(settings.wa_number, settings.wa_default_message));
+
       setLoading(false);
     }
 
@@ -202,12 +236,48 @@ export default function MeDashboard() {
         </p>
       </section>
 
+      {queuePosition && (
+        <section style={{ padding: '0 var(--space-8)', maxWidth: 'var(--max-content-width)', margin: '0 auto var(--space-8)', width: '100%' }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 'var(--space-4)',
+            padding: 'var(--space-5) var(--space-6)',
+            background: 'var(--color-primary-50)',
+            border: '1px solid var(--color-primary-100)',
+            borderRadius: 'var(--radius-xl)',
+          }}>
+            <div style={{
+              width: '48px',
+              height: '48px',
+              borderRadius: 'var(--radius-lg)',
+              background: 'var(--color-primary-600)',
+              color: '#fff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}>
+              <Users size={24} />
+            </div>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 'var(--text-lg)', color: 'var(--color-primary-700)' }}>
+                Posisi antrean Anda: {queuePosition.posisi} dari {queuePosition.total_menunggu}
+              </div>
+              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', margin: 0 }}>
+                Kunjungan hari ini sedang dalam antrean pelayanan.
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Action Cards */}
       <section className={styles.actionsSection}>
         <div className={styles.actionsGrid}>
           {/* WhatsApp */}
           <a
-            href={waLink(WA_NUMBER, WA_DEFAULT_MESSAGE)}
+            href={waHref}
             target="_blank"
             rel="noopener noreferrer"
             className={styles.actionCard}
@@ -232,7 +302,7 @@ export default function MeDashboard() {
             <div>
               <div className={styles.actionTitle}>Rencanakan Kedatangan</div>
               <p className={styles.actionDescription}>
-                Booking kunjungan online, dapatkan QR code, dan langsung dilayani saat tiba di kantor.
+                Reservasi kunjungan online, dapatkan QR code, dan langsung dilayani saat tiba di kantor.
               </p>
             </div>
             <ArrowRight size={18} className={styles.actionArrow} />
@@ -261,6 +331,20 @@ export default function MeDashboard() {
               <div className={styles.actionTitle}>Investment Gallery</div>
               <p className={styles.actionDescription}>
                 Jelajahi potensi investasi Provinsi Lampung — dokumen profil tersedia online.
+              </p>
+            </div>
+            <ArrowRight size={18} className={styles.actionArrow} />
+          </Link>
+
+          {/* Website Utama */}
+          <Link href="/" className={styles.actionCard}>
+            <div className={`${styles.actionIconWrap} ${styles.actionIconWebsite}`}>
+              <Globe size={26} />
+            </div>
+            <div>
+              <div className={styles.actionTitle}>Website Utama</div>
+              <p className={styles.actionDescription}>
+                Kembali ke halaman utama — informasi layanan, estimasi antrean, dan konten publik.
               </p>
             </div>
             <ArrowRight size={18} className={styles.actionArrow} />
@@ -350,6 +434,12 @@ export default function MeDashboard() {
           </div>
         )}
       </section>
+
+      {/* Floating Live Chat */}
+      <Link href="/chat" className={styles.floatingChat} aria-label="Buka Live Chat">
+        <MessageCircle size={20} />
+        <span>Live Chat</span>
+      </Link>
     </div>
   );
 }

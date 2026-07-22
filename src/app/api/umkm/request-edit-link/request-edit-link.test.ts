@@ -214,7 +214,7 @@ describe('POST /api/umkm/request-edit-link — owner check (no leak)', () => {
     expect(serviceMock.__logInsert).toHaveBeenCalledTimes(1);
     expect(serviceMock.__logInsert).toHaveBeenCalledWith({
       user_id: null,
-      action: 'umkm_request_link',
+      action: expect.stringMatching(/^umkm_request_link:[0-9a-f]{16}$/),
     });
   });
 

@@ -93,6 +93,9 @@ export const ROLES = {
 export const APP_NAME = 'Lampung Maju Hub';
 export const APP_DESCRIPTION = 'Sistem Digital Pelayanan Terpadu DPMPTSP Provinsi Lampung';
 
-// WhatsApp — nomor DPMPTSP (ganti dengan nomor asli)
+// WhatsApp — fallback jika site_settings (wa_number / wa_default_message) belum diisi
 export const WA_NUMBER = '6281234567890';
 export const WA_DEFAULT_MESSAGE = 'Halo, saya ingin bertanya tentang layanan DPMPTSP Provinsi Lampung.';
+
+// Kontak resmi — fallback; nilai aktual dibaca dari site_settings
+export const CONTACT_EMAIL_FALLBACK = 'info@lmh.lampungprov.go.id';

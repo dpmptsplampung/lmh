@@ -3,6 +3,7 @@ import { createClient as createServiceClient, type SupabaseClient } from '@supab
 import { z } from 'zod';
 import { createClient as createServerClient } from '@/lib/supabase/server';
 import { getGenerativeClient, getChatModel, buildRagContext, type FaqMatch } from '@/lib/gemini';
+import { redactPii } from '@/lib/pii';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -45,7 +46,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { pertanyaan, layanan_id, sesi_id } = parsed.data;
+  const { pertanyaan: rawPertanyaan, layanan_id, sesi_id } = parsed.data;
+  // Redact PII before the question is logged or sent to the LLM — FAQ
+  // answers never need the caller's email/phone/NIK.
+  const pertanyaan = redactPii(rawPertanyaan);
 
   // 2. Gemini client
   const genAI = getGenerativeClient();

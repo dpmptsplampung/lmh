@@ -1,3 +1,5 @@
+> ⚠️ DOKUMEN ARSIP HISTORIS (pra-LMH 2.0) — Tidak lagi akurat. Sumber kebenaran: docs/AUDIT_DAN_ROADMAP_INOVASI.md + source code. Diarsipkan 2026-07-20.
+
 # PRD: Sistem Digital Lampung Maju Hub
 
 > Working document — breakdown poin teknis, bukan naratif formal. Konteks: DPMPTSP Provinsi Lampung. Stack: Supabase + Vercel.

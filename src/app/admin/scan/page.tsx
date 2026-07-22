@@ -275,7 +275,7 @@ export default function AdminScanPage() {
                   <input
                     type="text"
                     className="form-input"
-                    placeholder="Paste token QR..."
+                    placeholder="Tempel token QR di sini…"
                     value={manualToken}
                     onChange={(e) => setManualToken(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter') handleManualLookup(); }}

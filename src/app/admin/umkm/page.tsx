@@ -16,6 +16,8 @@ import {
   Loader2,
   X,
   Save,
+  Mail,
+  Link2,
 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import { KATEGORI_UMKM, type KategoriUMKM } from '@/lib/constants';
@@ -34,10 +36,21 @@ interface UMKMListing {
   kontak_hp: string | null;
   kontak_email: string | null;
   status: string;
-  edit_token: string;
   created_at: string;
   updated_at: string;
 }
+
+interface UmkmListingOwner {
+  id: string;
+  listing_id: string;
+  email: string;
+  created_at: string;
+}
+
+/** Harus sama dengan POLICY_VERSION di kebijakan-privasi/page.tsx dan CONSENT_VERSION di checkin/chat. */
+const POLICY_VERSION = '1.0';
+const TUJUAN_CONSENT_KONTAK_PUBLIK = 'umkm_contact_public';
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const STATUS_LABELS: Record<string, string> = {
   draft: 'Draft',
@@ -109,6 +122,12 @@ export default function AdminUMKMPage() {
 
   const [viewingId, setViewingId] = useState<string | null>(null);
 
+  const [owners, setOwners] = useState<UmkmListingOwner[]>([]);
+  const [ownerEmailInput, setOwnerEmailInput] = useState('');
+  const [ownerSaving, setOwnerSaving] = useState(false);
+  const [sendingLinkId, setSendingLinkId] = useState<string | null>(null);
+  const [consentChecked, setConsentChecked] = useState(false);
+
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
@@ -120,6 +139,13 @@ export default function AdminUMKMPage() {
 
       if (error) throw error;
       setUmkmList((data || []) as UMKMListing[]);
+
+      const { data: ownerData, error: ownerError } = await supabase
+        .from('umkm_listing_owner')
+        .select('id, listing_id, email, created_at');
+
+      if (ownerError) throw ownerError;
+      setOwners((ownerData || []) as UmkmListingOwner[]);
     } catch {
       toast('Gagal memuat data UMKM. Silakan coba lagi.', 'error');
     } finally {
@@ -176,6 +202,7 @@ export default function AdminUMKMPage() {
     setEditingId(null);
     setForm(emptyForm);
     setFormError('');
+    setConsentChecked(false);
     setShowForm(true);
   };
 
@@ -192,6 +219,7 @@ export default function AdminUMKMPage() {
       foto_produk: item.foto_produk || [],
     });
     setFormError('');
+    setConsentChecked(false);
     setShowForm(true);
   };
 
@@ -313,15 +341,31 @@ export default function AdminUMKMPage() {
         setUmkmList(prev => prev.map(l => l.id === editingId ? { ...l, ...payload } as UMKMListing : l));
         toast('UMKM berhasil diperbarui.', 'success');
       } else {
-        const { error } = await supabase
+        const { data: inserted, error } = await supabase
           .from('listing_umkm')
           .insert({
             ...payload,
             status: 'draft',
             created_at: new Date().toISOString(),
-          });
+          })
+          .select('id')
+          .single();
 
         if (error) throw error;
+
+        if (inserted?.id) {
+          const { error: consentError } = await supabase
+            .from('consent_log')
+            .insert({
+              subjek_ref: inserted.id,
+              tujuan: TUJUAN_CONSENT_KONTAK_PUBLIK,
+              disetujui: true,
+              versi_kebijakan: POLICY_VERSION,
+            });
+          if (consentError) {
+            toast('Listing tersimpan, tetapi pencatatan persetujuan gagal. Catat ulang persetujuan pemilik.', 'warning');
+          }
+        }
 
         toast('UMKM berhasil ditambahkan.', 'success');
         await loadData();
@@ -337,12 +381,88 @@ export default function AdminUMKMPage() {
     }
   };
 
-  const handleCopyToken = async (token: string) => {
+  const ownersFor = (listingId: string) => owners.filter(o => o.listing_id === listingId);
+
+  const handleAddOwner = async (listingId: string) => {
+    const email = ownerEmailInput.trim().toLowerCase();
+    if (!email) return;
+    if (!EMAIL_REGEX.test(email)) {
+      toast('Format email tidak valid.', 'warning');
+      return;
+    }
+
+    setOwnerSaving(true);
     try {
-      await navigator.clipboard.writeText(token);
-      toast('Edit token berhasil disalin.', 'success');
+      const supabase = createClient();
+      const { error } = await supabase
+        .from('umkm_listing_owner')
+        .upsert(
+          { listing_id: listingId, email },
+          { onConflict: 'listing_id,email', ignoreDuplicates: true },
+        );
+
+      if (error) throw error;
+
+      setOwnerEmailInput('');
+      toast(`Pemilik ${email} berhasil ditautkan.`, 'success');
+      await loadData();
     } catch {
-      toast('Gagal menyalin token.', 'error');
+      toast('Gagal menautkan pemilik. Silakan coba lagi.', 'error');
+    } finally {
+      setOwnerSaving(false);
+    }
+  };
+
+  const handleRemoveOwner = async (ownerId: string) => {
+    if (!confirm('Hapus tautan pemilik ini? Pemilik tidak akan bisa mengedit listing lagi.')) return;
+
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from('umkm_listing_owner')
+        .delete()
+        .eq('id', ownerId);
+
+      if (error) throw error;
+
+      setOwners(prev => prev.filter(o => o.id !== ownerId));
+      toast('Tautan pemilik berhasil dihapus.', 'success');
+    } catch {
+      toast('Gagal menghapus tautan pemilik. Silakan coba lagi.', 'error');
+    }
+  };
+
+  const handleSendEditLink = async (listing: UMKMListing) => {
+    const listingOwners = ownersFor(listing.id);
+    if (listingOwners.length === 0) {
+      toast('Listing ini belum memiliki pemilik tertaut. Tautkan email pemilik terlebih dahulu.', 'warning');
+      return;
+    }
+
+    setSendingLinkId(listing.id);
+    try {
+      const results = await Promise.all(
+        listingOwners.map(async (owner) => {
+          const res = await fetch('/api/umkm/request-edit-link', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ listing_id: listing.id, email: owner.email }),
+          });
+          return res.ok;
+        }),
+      );
+
+      if (results.every(Boolean)) {
+        toast(`Link edit berhasil dikirim ke ${listingOwners.length} pemilik.`, 'success');
+      } else if (results.some(Boolean)) {
+        toast('Sebagian link edit berhasil dikirim, sebagian gagal. Coba lagi untuk yang gagal.', 'warning');
+      } else {
+        toast('Gagal mengirim link edit. Layanan email mungkin belum dikonfigurasi.', 'error');
+      }
+    } catch {
+      toast('Gagal mengirim link edit. Silakan coba lagi.', 'error');
+    } finally {
+      setSendingLinkId(null);
     }
   };
 
@@ -445,6 +565,7 @@ export default function AdminUMKMPage() {
                   <th>UMKM</th>
                   <th>Kategori</th>
                   <th>Kontak</th>
+                  <th>Pemilik (email)</th>
                   <th>Tanggal</th>
                   <th>Status</th>
                   <th>Aksi</th>
@@ -467,6 +588,17 @@ export default function AdminUMKMPage() {
                       </span>
                     </td>
                     <td style={{ fontSize: 'var(--text-sm)' }}>{l.kontak_nama}</td>
+                    <td style={{ fontSize: 'var(--text-xs)' }}>
+                      {ownersFor(l.id).length === 0 ? (
+                        <span style={{ color: 'var(--text-tertiary)' }}>Belum ada</span>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                          {ownersFor(l.id).map(o => (
+                            <span key={o.id} style={{ color: 'var(--text-secondary)' }}>{o.email}</span>
+                          ))}
+                        </div>
+                      )}
+                    </td>
                     <td style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
                       {new Date(l.created_at).toLocaleDateString('id-ID')}
                     </td>
@@ -480,7 +612,7 @@ export default function AdminUMKMPage() {
                         <button
                           className="btn btn--ghost btn--sm"
                           title="Lihat"
-                          onClick={() => setViewingId(l.id)}
+                          onClick={() => { setOwnerEmailInput(''); setViewingId(l.id); }}
                         >
                           <Eye size={14} />
                         </button>
@@ -517,6 +649,18 @@ export default function AdminUMKMPage() {
                             onClick={() => handleUpdateStatus(l.id, 'published')}
                           >
                             <CheckCircle2 size={14} /> Publish
+                          </button>
+                        )}
+                        {ownersFor(l.id).length > 0 && (
+                          <button
+                            className="btn btn--ghost btn--sm"
+                            title="Kirim Link Edit"
+                            onClick={() => handleSendEditLink(l)}
+                            disabled={sendingLinkId === l.id}
+                          >
+                            {sendingLinkId === l.id
+                              ? <Loader2 size={14} className="animate-spin" />
+                              : <Mail size={14} />}
                           </button>
                         )}
                         <button
@@ -698,6 +842,26 @@ export default function AdminUMKMPage() {
                 )}
               </div>
 
+              {!editingId && (
+                <div className="form-group">
+                  <label
+                    htmlFor="admin-umkm-consent"
+                    style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)', fontSize: 'var(--text-sm)', cursor: 'pointer' }}
+                  >
+                    <input
+                      id="admin-umkm-consent"
+                      type="checkbox"
+                      checked={consentChecked}
+                      onChange={e => setConsentChecked(e.target.checked)}
+                      style={{ marginTop: '2px' }}
+                    />
+                    <span>
+                      Pemilik listing menyetujui nama &amp; kontaknya ditampilkan kepada publik di halaman Matchmaking UMKM.
+                    </span>
+                  </label>
+                </div>
+              )}
+
               {formError && <p className="form-error">{formError}</p>}
 
               <div style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'flex-end' }}>
@@ -705,7 +869,7 @@ export default function AdminUMKMPage() {
                   <X size={16} />
                   Batal
                 </button>
-                <button type="submit" className="btn btn--primary" disabled={saving}>
+                <button type="submit" className="btn btn--primary" disabled={saving || (!editingId && !consentChecked)}>
                   {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
                   {saving ? 'Menyimpan...' : 'Simpan'}
                 </button>
@@ -796,21 +960,70 @@ export default function AdminUMKMPage() {
               borderRadius: 'var(--radius-lg)',
               marginBottom: 'var(--space-4)',
             }}>
+              <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-3)' }}>Pemilik Listing</div>
+              {ownersFor(viewedItem.id).length === 0 ? (
+                <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginBottom: 'var(--space-3)' }}>
+                  Belum ada pemilik tertaut. Tautkan email agar pemilik bisa mengedit listing dan menerima inquiry.
+                </p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
+                  {ownersFor(viewedItem.id).map(o => (
+                    <div key={o.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-2)', fontSize: 'var(--text-sm)' }}>
+                      <span>{o.email}</span>
+                      <button
+                        className="btn btn--ghost btn--sm"
+                        title="Hapus tautan pemilik"
+                        style={{ color: 'var(--color-danger-500)' }}
+                        onClick={() => handleRemoveOwner(o.id)}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                <input
+                  className="form-input"
+                  type="email"
+                  placeholder="email-pemilik@contoh.com"
+                  value={ownerEmailInput}
+                  onChange={e => setOwnerEmailInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddOwner(viewedItem.id); } }}
+                  aria-label="Email pemilik"
+                />
+                <button
+                  className="btn btn--primary btn--sm"
+                  onClick={() => handleAddOwner(viewedItem.id)}
+                  disabled={ownerSaving || !ownerEmailInput.trim()}
+                >
+                  {ownerSaving ? <Loader2 size={14} className="animate-spin" /> : <Link2 size={14} />}
+                  Tautkan
+                </button>
+              </div>
+              {ownersFor(viewedItem.id).length > 0 && (
+                <button
+                  className="btn btn--secondary btn--sm"
+                  style={{ marginTop: 'var(--space-3)' }}
+                  onClick={() => handleSendEditLink(viewedItem)}
+                  disabled={sendingLinkId === viewedItem.id}
+                >
+                  {sendingLinkId === viewedItem.id
+                    ? <Loader2 size={14} className="animate-spin" />
+                    : <Mail size={14} />}
+                  Kirim Link Edit ke Pemilik
+                </button>
+              )}
+            </div>
+
+            <div style={{
+              padding: 'var(--space-4)',
+              background: 'var(--color-neutral-50, #f9fafb)',
+              borderRadius: 'var(--radius-lg)',
+              marginBottom: 'var(--space-4)',
+            }}>
               <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-3)' }}>Metadata</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', fontSize: 'var(--text-sm)' }}>
-                <div>
-                  <strong>Edit Token:</strong>{' '}
-                  <code style={{ fontFamily: 'monospace', fontSize: 'var(--text-xs)', background: 'var(--color-neutral-100)', padding: '2px 6px', borderRadius: 'var(--radius-sm)' }}>
-                    {viewedItem.edit_token}
-                  </code>
-                  <button
-                    className="btn btn--ghost btn--sm"
-                    onClick={() => handleCopyToken(viewedItem.edit_token)}
-                    style={{ marginLeft: 'var(--space-2)', padding: '2px 8px' }}
-                  >
-                    Salin
-                  </button>
-                </div>
                 <div><strong>Dibuat:</strong> {new Date(viewedItem.created_at).toLocaleString('id-ID')}</div>
                 <div><strong>Diperbarui:</strong> {new Date(viewedItem.updated_at).toLocaleString('id-ID')}</div>
               </div>

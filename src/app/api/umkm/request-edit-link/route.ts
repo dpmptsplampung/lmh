@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createServiceClient, type SupabaseClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { z } from 'zod';
+import crypto from 'node:crypto';
 
 // ============================================================
 // K5: Magic-link edit UMKM
@@ -59,15 +60,28 @@ function clientIp(request: NextRequest): string {
   return 'unknown';
 }
 
+// Rate-limit key: per requested email (lowercased, hashed) instead of a
+// single global bucket, so one probe target cannot exhaust the limit for
+// everyone and repeated probing of the same address is throttled.
+function rateLimitKey(email: string): string {
+  const hash = crypto
+    .createHash('sha256')
+    .update(email.trim().toLowerCase())
+    .digest('hex')
+    .slice(0, 16);
+  return `${RATE_LIMIT_ACTION}:${hash}`;
+}
+
 async function checkRateLimit(
   adminClient: SupabaseClient,
+  key: string,
 ): Promise<boolean> {
   const since = new Date(Date.now() - RATE_LIMIT_WINDOW_SEC * 1000).toISOString();
 
   const { count, error } = await adminClient
     .from('anon_rate_limit')
     .select('*', { count: 'exact', head: true })
-    .eq('action', RATE_LIMIT_ACTION)
+    .eq('action', key)
     .gte('created_at', since)
     .is('user_id', null);
 
@@ -78,10 +92,11 @@ async function checkRateLimit(
 
 async function logRateLimit(
   adminClient: SupabaseClient,
+  key: string,
 ): Promise<void> {
   await adminClient.from('anon_rate_limit').insert({
     user_id: null,
-    action: RATE_LIMIT_ACTION,
+    action: key,
   });
 }
 
@@ -118,9 +133,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Rate-limit (best-effort, global per action).
+  // Rate-limit (best-effort, per requested email hash).
   void clientIp(request);
-  const allowed = await checkRateLimit(adminClient);
+  const limitKey = rateLimitKey(email);
+  const allowed = await checkRateLimit(adminClient, limitKey);
   if (!allowed) {
     return NextResponse.json(
       { error: 'Terlalu banyak permintaan. Coba lagi dalam beberapa menit.' },
@@ -128,7 +144,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  await logRateLimit(adminClient);
+  await logRateLimit(adminClient, limitKey);
 
   const { data: ownerRows, error: ownerError } = await adminClient
     .from('umkm_listing_owner')
