@@ -29,6 +29,7 @@ interface FAQ {
   layanan_id: string;
   pertanyaan: string;
   jawaban: string;
+  dasar_hukum?: string | null;
   aktif: boolean;
   urutan: number;
 }
@@ -46,6 +47,7 @@ export default function AdminFAQPage() {
   const [editingFaqId, setEditingFaqId] = useState<string | null>(null);
   const [formPertanyaan, setFormPertanyaan] = useState('');
   const [formJawaban, setFormJawaban] = useState('');
+  const [formDasarHukum, setFormDasarHukum] = useState('');
   const [formAktif, setFormAktif] = useState(true);
   const [formUrutan, setFormUrutan] = useState(0);
 
@@ -129,7 +131,7 @@ export default function AdminFAQPage() {
         const supabase = createClient();
         const { data, error: fetchErr } = await supabase
           .from('faq_knowledge_base')
-          .select('id, layanan_id, pertanyaan, jawaban, aktif, urutan')
+          .select('id, layanan_id, pertanyaan, jawaban, dasar_hukum, aktif, urutan')
           .eq('layanan_id', selectedLayananId)
           .order('urutan', { ascending: true });
 
@@ -173,6 +175,7 @@ export default function AdminFAQPage() {
     setEditingFaqId(faq.id);
     setFormPertanyaan(faq.pertanyaan);
     setFormJawaban(faq.jawaban);
+    setFormDasarHukum(faq.dasar_hukum || '');
     setFormAktif(faq.aktif);
     setFormUrutan(faq.urutan);
   };
@@ -181,6 +184,7 @@ export default function AdminFAQPage() {
     setEditingFaqId(null);
     setFormPertanyaan('');
     setFormJawaban('');
+    setFormDasarHukum('');
     setFormAktif(true);
     setFormUrutan(faqList.length + 1);
     setError('');
@@ -205,6 +209,7 @@ export default function AdminFAQPage() {
           .update({
             pertanyaan: formPertanyaan.trim(),
             jawaban: formJawaban.trim(),
+            dasar_hukum: formDasarHukum.trim() || null,
             aktif: formAktif,
             urutan: formUrutan,
             // Konten berubah → embedding lama tidak valid; null-kan supaya
@@ -222,6 +227,7 @@ export default function AdminFAQPage() {
           layanan_id: selectedLayananId,
           pertanyaan: formPertanyaan.trim(),
           jawaban: formJawaban.trim(),
+          dasar_hukum: formDasarHukum.trim() || null,
           aktif: formAktif,
           urutan: formUrutan,
         });
@@ -389,6 +395,11 @@ export default function AdminFAQPage() {
                             </div>
                           </div>
                           <p className={styles.faqAnswer}>A: {faq.jawaban}</p>
+                          {faq.dasar_hukum && (
+                            <div style={{ fontSize: '11px', color: 'var(--color-primary-700)', fontWeight: 600, marginTop: '4px' }}>
+                              📜 Dasar Hukum: {faq.dasar_hukum}
+                            </div>
+                          )}
                           <div className={styles.faqMetaRow}>
                             <span className={`badge ${faq.aktif ? 'badge--published' : 'badge--nonaktif'}`}>
                               {faq.aktif ? 'Aktif' : 'Nonaktif'}
@@ -446,6 +457,19 @@ export default function AdminFAQPage() {
                     rows={6}
                     required
                   />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label" htmlFor="faqDasarHukum">Dasar Hukum / Peraturan / UU (Opsional)</label>
+                  <input
+                    id="faqDasarHukum"
+                    type="text"
+                    className="form-input"
+                    placeholder="Contoh: UU No. 6 Tahun 2023 Pasal 12"
+                    value={formDasarHukum}
+                    onChange={(e) => setFormDasarHukum(e.target.value)}
+                  />
+                  <span className="form-hint">Disertakan saat AI memberikan rujukan dasar hukum</span>
                 </div>
 
                 <div className="form-group">

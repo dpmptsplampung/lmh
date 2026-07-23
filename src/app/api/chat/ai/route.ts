@@ -3,7 +3,7 @@ import { createClient as createServiceClient, type SupabaseClient } from '@supab
 import { z } from 'zod';
 import { createClient as createServerClient } from '@/lib/supabase/server';
 import { getGenerativeClient, getChatModel, buildRagContext, type FaqMatch } from '@/lib/gemini';
-import { redactPii } from '@/lib/pii';
+import { redactPii, detectPromptInjection } from '@/lib/pii';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -47,9 +47,24 @@ export async function POST(request: NextRequest) {
   }
 
   const { pertanyaan: rawPertanyaan, layanan_id, sesi_id } = parsed.data;
+
+  // 1b. Check for prompt injection attacks
+  if (detectPromptInjection(rawPertanyaan)) {
+    return NextResponse.json(
+      {
+        jawaban: 'Maaf, pertanyaan Anda mengandung instruksi yang tidak diizinkan. Saya akan menghubungkan Anda ke petugas.',
+        sumber: [],
+        eskalasi: true,
+        reason: 'prompt_injection',
+      },
+      { status: 200 },
+    );
+  }
+
   // Redact PII before the question is logged or sent to the LLM — FAQ
   // answers never need the caller's email/phone/NIK.
   const pertanyaan = redactPii(rawPertanyaan);
+
 
   // 2. Gemini client
   const genAI = getGenerativeClient();
@@ -193,7 +208,7 @@ export async function POST(request: NextRequest) {
       context,
       pertanyaan,
     ]);
-    jawaban = result.response.text();
+    jawaban = redactPii(result.response.text());
     if (!jawaban || jawaban.trim().length === 0) {
       await logAiCall(
         adminClient,

@@ -58,9 +58,33 @@ export default function AdminChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [messageInput, setMessageInput] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loadingDraft, setLoadingDraft] = useState(false);
 
   const { toast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const handleGenerateDraft = async () => {
+    if (!selectedSession || loadingDraft) return;
+    setLoadingDraft(true);
+    try {
+      const res = await fetch('/api/chat/ai/draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sesi_id: selectedSession.id }),
+      });
+      const data = await res.json();
+      if (res.ok && data.draft) {
+        setMessageInput(data.draft);
+        toast('Draf balasan Gemini berhasil dimuat!', 'success');
+      } else {
+        toast(data.error || 'Gagal membuat draf balasan', 'error');
+      }
+    } catch {
+      toast('Gagal memuat draf balasan', 'error');
+    } finally {
+      setLoadingDraft(false);
+    }
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -525,9 +549,23 @@ export default function AdminChatPage() {
                       style={{ flex: 1, borderRadius: '999px', paddingLeft: 'var(--space-4)' }}
                     />
                     <button
+                      type="button"
+                      className="btn btn--secondary btn--sm"
+                      onClick={handleGenerateDraft}
+                      disabled={loadingDraft}
+                      title="Minta Gemini memuatkan draf balasan berbasis FAQ & Dasar Hukum"
+                      style={{ borderRadius: '999px', padding: '0 12px', height: '40px', display: 'flex', alignItems: 'center', gap: '4px', fontSize: 'var(--text-xs)', whiteSpace: 'nowrap' }}
+                    >
+                      {loadingDraft ? (
+                        <Loader2 size={14} className="animate-pulse" />
+                      ) : (
+                        <>⚡ Draf Balasan Gemini</>
+                      )}
+                    </button>
+                    <button
                       type="submit"
                       className="btn btn--primary"
-                      style={{ borderRadius: '50%', width: '40px', height: '40px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      style={{ borderRadius: '50%', width: '40px', height: '40px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
                       disabled={!messageInput.trim()}
                     >
                       <Send size={18} />

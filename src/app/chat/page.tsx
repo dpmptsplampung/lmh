@@ -69,6 +69,7 @@ export default function PublicChatPage() {
   const [messageInput, setMessageInput] = useState('');
   const [sesiStatus, setSesiStatus] = useState<'bot' | 'eskalasi' | 'aktif' | 'selesai'>('bot');
   const [faqs, setFaqs] = useState<FAQ[]>([]);
+  const [isBotTyping, setIsBotTyping] = useState(false);
 
   // I8: PDP consent — required before starting chat session
   const [consentGiven, setConsentGiven] = useState(false);
@@ -515,6 +516,7 @@ export default function PublicChatPage() {
     // If chatbot mode: ask RAG AI assistant (/api/chat/ai)
     if (sesiStatus === 'bot') {
       setLoadingSetup(true);
+      setIsBotTyping(true);
 
       // Call the RAG AI route. Fail-safe: any error → eskalasi ke petugas.
       try {
@@ -555,7 +557,7 @@ export default function PublicChatPage() {
           } catch { /* ignore */ }
         } else {
           // AI unsure or no match: explain and escalate to petugas
-          const eskalasiText = 'Maaf, saya belum yakin, saya akan menghubungkan Anda ke petugas.\n\nSaya akan meneruskan sesi chat ini ke petugas loket untuk dibantu secara manual. Mohon tunggu...';
+          const eskalasiText = 'Maaf, saya belum yakin karena informasi ini belum ada di aturan resmi kami, saya akan menghubungkan Anda ke petugas.\n\nSaya akan meneruskan sesi chat ini ke petugas loket untuk dibantu secara manual. Mohon tunggu...';
           const botReply: Message = {
             id: `bot-escalate-${msgIdCounter++}`,
             pengirim: 'bot',
@@ -586,6 +588,7 @@ export default function PublicChatPage() {
         if (typeof navigator !== 'undefined' && !navigator.onLine) {
           setIsOnline(false);
           setLoadingSetup(false);
+          setIsBotTyping(false);
           return;
         }
         // Network/fetch error: fail-safe to eskalasi
@@ -610,8 +613,10 @@ export default function PublicChatPage() {
             .update({ status: 'eskalasi' })
             .eq('id', sesiId);
         } catch { /* ignore */ }
+      } finally {
+        setLoadingSetup(false);
+        setIsBotTyping(false);
       }
-      setLoadingSetup(false);
     }
   };
 
@@ -906,6 +911,18 @@ export default function PublicChatPage() {
                   </div>
                 );
               })}
+              {isBotTyping && (
+                <div className={`${styles.msgRow} ${styles.msgRowBot}`}>
+                  <div className={`${styles.avatar} ${styles.avatarBot}`}>
+                    <Bot size={16} />
+                  </div>
+                  <div className={styles.typingIndicator}>
+                    <div className={styles.typingDot} />
+                    <div className={styles.typingDot} />
+                    <div className={styles.typingDot} />
+                  </div>
+                </div>
+              )}
               <div ref={threadEndRef} />
             </div>
 
