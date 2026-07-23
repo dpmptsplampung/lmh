@@ -149,26 +149,35 @@ export default function AdminScanPage() {
     };
   }, [lookupToken]);
 
+  const getLocalDateString = (d = new Date()) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   const handleCheckIn = async (action: 'hadir' | 'batal') => {
     if (!result || scanState !== 'found') return;
     setProcessing(true);
 
     const supabase = createClient();
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = getLocalDateString();
     if (action === 'hadir' && result.tanggal_rencana !== today) {
       toast(`Gagal Check-In: Jadwal reservasi ini adalah tanggal ${formatDate(result.tanggal_rencana)}, bukan hari ini.`, 'error');
       setProcessing(false);
       return;
     }
 
+    const nowIso = new Date().toISOString();
     const updateData: CheckInUpdateData = { 
       status: action === 'hadir' ? 'menunggu' : 'batal',
-      updated_at: new Date().toISOString(),
+      updated_at: nowIso,
     };
 
     if (action === 'hadir') {
-      updateData.waktu_scan = new Date().toISOString();
+      updateData.waktu_masuk = nowIso;
+      updateData.waktu_scan = nowIso;
       if (diarahkanKe.trim()) {
         updateData.diarahkan_ke = diarahkanKe.trim();
       } else if (result.tujuan === 'loket' && result.layanan) {
