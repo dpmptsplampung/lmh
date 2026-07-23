@@ -289,11 +289,29 @@ export default function PublicChatPage() {
     }
   }, [layananList]);
 
-  // Setup Real-time listener for incoming messages from staff
+  // Setup Real-time listener & sync for incoming messages
   useEffect(() => {
     if (!sesiId) return;
 
     const supabase = createClient();
+
+    // Fetch initial history immediately via API
+    fetch(`/api/chat/messages?sesi_id=${sesiId}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.messages) {
+          setMessages(
+            data.messages.map((m: { id: string; pengirim: string; isi: string; created_at: string }) => ({
+              id: m.id,
+              pengirim: m.pengirim as 'pengunjung' | 'bot' | 'petugas',
+              isi: m.isi,
+              waktu: new Date(m.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+            }))
+          );
+        }
+        if (data.status) setSesiStatus(data.status);
+      })
+      .catch(() => {});
 
     // Subscribe to new messages in this session
     const messageChannel = supabase
@@ -377,17 +395,20 @@ export default function PublicChatPage() {
         const data = await res.json();
         if (data.messages && data.messages.length > 0) {
           setMessages((prev) => {
-            const existingIds = new Set(prev.map((m) => m.id));
-            const newEntries = (data.messages as { id: string; pengirim: string; isi: string; created_at: string }[])
-              .filter((m) => !existingIds.has(m.id))
+            const serverMsgs = (data.messages as { id: string; pengirim: string; isi: string; created_at: string }[])
               .map((m) => ({
                 id: m.id,
                 pengirim: m.pengirim as 'pengunjung' | 'bot' | 'petugas',
                 isi: m.isi,
                 waktu: new Date(m.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
               }));
-            if (newEntries.length === 0) return prev;
-            return [...prev, ...newEntries];
+            // Keep optimistic messages (id starts with 'user-' or 'bot-') that aren't
+            // yet represented in the server response (matched by isi + pengirim).
+            const serverTexts = new Set(serverMsgs.map((m) => `${m.pengirim}:${m.isi}`));
+            const pendingOpts = prev.filter(
+              (m) => !m.id.match(/^[0-9a-f]{8}-/) && !serverTexts.has(`${m.pengirim}:${m.isi}`),
+            );
+            return [...serverMsgs, ...pendingOpts];
           });
         }
         if (data.status) {

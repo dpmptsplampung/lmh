@@ -244,7 +244,16 @@ export default function AdminChatPage() {
         if (!res.ok) return;
         const data = await res.json();
         if (active && data.messages) {
-          setMessages(data.messages as Message[]);
+          setMessages((prev) => {
+            const serverMsgs = data.messages as Message[];
+            // Keep optimistic messages (id starts with 'opt-') that aren't yet
+            // represented in the server response (matched by isi + pengirim).
+            const serverTexts = new Set(serverMsgs.map((m) => `${m.pengirim}:${m.isi}`));
+            const pendingOpts = prev.filter(
+              (m) => m.id.startsWith('opt-') && !serverTexts.has(`${m.pengirim}:${m.isi}`),
+            );
+            return [...serverMsgs, ...pendingOpts];
+          });
         }
       } catch {
         /* ignore fetch errors */
