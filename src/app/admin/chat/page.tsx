@@ -195,6 +195,10 @@ export default function AdminChatPage() {
 
         await fetchSessions(layananId);
 
+        const sessionPoll = setInterval(() => {
+          fetchSessions(layananId);
+        }, 3000);
+
         channel = supabase
           .channel('chat-sesi-changes')
           .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_sesi' }, () => {
@@ -209,6 +213,12 @@ export default function AdminChatPage() {
             fetchSessions(layananId);
           })
           .subscribe();
+
+        return () => {
+          clearInterval(sessionPoll);
+          if (channel) supabase.removeChannel(channel);
+          if (pesanChannel) supabase.removeChannel(pesanChannel);
+        };
       } catch (e) {
         console.error(e);
         toast('Gagal menginisialisasi chat', 'error');
@@ -217,18 +227,9 @@ export default function AdminChatPage() {
       }
     }
     init();
-
-    return () => {
-      if (channel) {
-        supabase.removeChannel(channel);
-      }
-      if (pesanChannel) {
-        supabase.removeChannel(pesanChannel);
-      }
-    };
   }, [fetchSessions, toast]);
 
-  // Effect 2: Message subscription (depends on selectedSession)
+  // Effect 2: Message subscription & 3s polling (depends on selectedSession)
   useEffect(() => {
     if (!selectedSession) {
       return;
@@ -256,6 +257,8 @@ export default function AdminChatPage() {
 
     loadMessages();
 
+    const messagePoll = setInterval(loadMessages, 3000);
+
     const channel = supabase
       .channel(`chat-pesan-${selectedSession.id}`)
       .on('postgres_changes', {
@@ -274,6 +277,7 @@ export default function AdminChatPage() {
 
     return () => {
       active = false;
+      clearInterval(messagePoll);
       supabase.removeChannel(channel);
     };
   }, [selectedSession, toast]);
@@ -341,6 +345,14 @@ export default function AdminChatPage() {
         .update({ status: 'aktif' })
         .eq('id', selectedSession.id);
       if (updateErr) throw updateErr;
+
+      await supabase.from('chat_pesan').insert({
+        sesi_id: selectedSession.id,
+        pengirim: 'bot',
+        isi: '✓ Percakapan ini telah diambil alih oleh petugas loket. Pesan Anda akan dibalas langsung oleh petugas.',
+      });
+
+      setSelectedSession((prev) => (prev ? { ...prev, status: 'aktif' } : null));
       toast('Berhasil mengambil alih chat', 'success');
     } catch (err) {
       console.error(err);

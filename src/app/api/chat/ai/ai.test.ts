@@ -377,7 +377,7 @@ describe('POST /api/chat/ai — RAG flow', () => {
     const json = await res.json();
     expect(json.eskalasi).toBe(true);
     expect(json.reason).toBe('no_match');
-    expect(json.jawaban).toBeNull();
+    expect(typeof json.jawaban).toBe('string');
   });
 
   it('escalates (reason no_match) when top similarity < 0.7', async () => {

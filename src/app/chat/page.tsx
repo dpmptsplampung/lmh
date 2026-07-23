@@ -369,7 +369,43 @@ export default function PublicChatPage() {
       )
       .subscribe();
 
+    // Background polling (every 3s) for guaranteed real-time sync without page refresh
+    const syncInterval = setInterval(async () => {
+      const { data: latestMsgs } = await supabase
+        .from('chat_pesan')
+        .select('id, pengirim, isi, created_at')
+        .eq('sesi_id', sesiId)
+        .order('created_at', { ascending: true });
+
+      if (latestMsgs && latestMsgs.length > 0) {
+        setMessages((prev) => {
+          const existingIds = new Set(prev.map((m) => m.id));
+          const newEntries = latestMsgs
+            .filter((m) => !existingIds.has(m.id))
+            .map((m) => ({
+              id: m.id,
+              pengirim: m.pengirim as 'pengunjung' | 'bot' | 'petugas',
+              isi: m.isi,
+              waktu: new Date(m.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+            }));
+          if (newEntries.length === 0) return prev;
+          return [...prev, ...newEntries];
+        });
+      }
+
+      const { data: sessData } = await supabase
+        .from('chat_sesi')
+        .select('status')
+        .eq('id', sesiId)
+        .single();
+
+      if (sessData && sessData.status) {
+        setSesiStatus(sessData.status);
+      }
+    }, 3000);
+
     return () => {
+      clearInterval(syncInterval);
       supabase.removeChannel(messageChannel);
       supabase.removeChannel(sessionChannel);
     };
@@ -513,8 +549,8 @@ export default function PublicChatPage() {
     setMessages((prev) => [...prev, userMsg]);
     setMessageInput('');
 
-    // If chatbot mode: ask RAG AI assistant (/api/chat/ai)
-    if (sesiStatus === 'bot') {
+    // If not taken over by officer: ask RAG AI assistant (/api/chat/ai)
+    if (sesiStatus !== 'aktif' && sesiStatus !== 'selesai') {
       setLoadingSetup(true);
       setIsBotTyping(true);
 

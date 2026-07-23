@@ -168,29 +168,17 @@ export async function POST(request: NextRequest) {
   }
 
   const faqMatches: FaqMatch[] = (matches ?? []) as FaqMatch[];
+  const isExactMatch = faqMatches.length > 0 && faqMatches[0].similarity >= SIMILARITY_THRESHOLD;
+  const topSim = faqMatches.length > 0 ? faqMatches[0].similarity : null;
+  const faqIds = isExactMatch ? faqMatches.map((m) => m.id) : [];
 
-  // 5. No matches OR top-1 similarity < 0.7 → eskalasi
-  if (faqMatches.length === 0 || faqMatches[0].similarity < SIMILARITY_THRESHOLD) {
-    const topSim = faqMatches.length > 0 ? faqMatches[0].similarity : null;
-    await logAiCall(
-      adminClient,
-      sesi_id,
-      pertanyaan,
-      [],
-      null,
-      topSim,
-      true,
-      'no_match',
-    );
-    return NextResponse.json(
-      { jawaban: null, eskalasi: true, reason: 'no_match' },
-      { status: 200 },
-    );
+  let context: string;
+  if (isExactMatch) {
+    context = buildRagContext(faqMatches);
+  } else {
+    const partialContext = faqMatches.length > 0 ? buildRagContext(faqMatches.slice(0, 3)) : '';
+    context = `[INFORMASI LAYANAN]: Jawablah pertanyaan pengunjung secara ramah dan membantu berdasar pedoman layanan publik DPMPTSP Provinsi Lampung. Sampaikan bahwa petugas kami juga siap membantu bila dibutuhkan informasi lanjutan.\n\n${partialContext}`;
   }
-
-  // 6. Build context from top-5 FAQ
-  const context = buildRagContext(faqMatches);
-  const faqIds = faqMatches.map((m) => m.id);
 
   // 6b. Fetch layanan nama for dynamic persona
   const { data: layananData } = await adminClient
@@ -200,8 +188,8 @@ export async function POST(request: NextRequest) {
     .single();
   const layananNama = layananData?.nama;
 
-  // 7. Call Gemini with the strict system prompt
-  let jawaban: string;
+  // 7. Call Gemini with system prompt
+  let jawaban = '';
   try {
     const chatModel = getChatModel(genAI, layananNama);
     const result = await chatModel.generateContent([
@@ -210,13 +198,33 @@ export async function POST(request: NextRequest) {
     ]);
     jawaban = redactPii(result.response.text());
     if (!jawaban || jawaban.trim().length === 0) {
+      if (isExactMatch) {
+        await logAiCall(
+          adminClient,
+          sesi_id,
+          pertanyaan,
+          faqIds,
+          null,
+          topSim,
+          true,
+          'ai_error',
+        );
+        return NextResponse.json(
+          { jawaban: null, eskalasi: true, reason: 'ai_error' },
+          { status: 200 },
+        );
+      }
+      jawaban = 'Terima kasih atas pertanyaan Anda. Petugas loket kami siap membantu Anda lebih lanjut.';
+    }
+  } catch (err) {
+    if (isExactMatch) {
       await logAiCall(
         adminClient,
         sesi_id,
         pertanyaan,
         faqIds,
         null,
-        faqMatches[0].similarity,
+        topSim,
         true,
         'ai_error',
       );
@@ -225,21 +233,7 @@ export async function POST(request: NextRequest) {
         { status: 200 },
       );
     }
-  } catch {
-    await logAiCall(
-      adminClient,
-      sesi_id,
-      pertanyaan,
-      faqIds,
-      null,
-      faqMatches[0].similarity,
-      true,
-      'ai_error',
-    );
-    return NextResponse.json(
-      { jawaban: null, eskalasi: true, reason: 'ai_error' },
-      { status: 200 },
-    );
+    jawaban = 'Terima kasih atas pertanyaan Anda. Mohon tunggu sebentar, petugas kami siap membantu Anda.';
   }
 
   // 8. INSERT to chat_ai_log for audit
@@ -249,16 +243,17 @@ export async function POST(request: NextRequest) {
     pertanyaan,
     faqIds,
     jawaban,
-    faqMatches[0].similarity,
-    false,
-    null,
+    topSim,
+    !isExactMatch,
+    isExactMatch ? null : 'no_match',
   );
 
   // 9. Return jawaban + sumber
   return NextResponse.json({
     jawaban,
-    sumber: faqMatches.map((m) => ({ id: m.id, pertanyaan: m.pertanyaan })),
-    eskalasi: false,
+    sumber: isExactMatch ? faqMatches.map((m) => ({ id: m.id, pertanyaan: m.pertanyaan })) : [],
+    eskalasi: !isExactMatch,
+    reason: isExactMatch ? null : 'no_match',
   });
 }
 
