@@ -47,7 +47,7 @@ export function getChatModel(client: GoogleGenerativeAI, layananNama?: string) {
 }
 
 export function getEmbeddingModel(client: GoogleGenerativeAI) {
-  const model = process.env.GEMINI_EMBEDDING_MODEL || 'text-embedding-004';
+  const model = process.env.GEMINI_EMBEDDING_MODEL || 'gemini-embedding-001';
   return client.getGenerativeModel({ model });
 }
 
