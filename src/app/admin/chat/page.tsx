@@ -14,6 +14,15 @@ import PageHeader from '@/components/layout/PageHeader';
 import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/components/Toast';
 import { truncate, relativeTime } from '@/lib/utils';
+import '@chatscope/chat-ui-kit-styles/dist/default/styles.min.css';
+import {
+  MainContainer,
+  ChatContainer,
+  MessageList,
+  Message as ChatMessage,
+  MessageInput,
+  TypingIndicator,
+} from '@chatscope/chat-ui-kit-react';
 
 interface Session {
   id: string;
@@ -262,28 +271,26 @@ export default function AdminChatPage() {
 
     loadMessages();
 
-    const messagePoll = setInterval(loadMessages, 2000);
-
-    const channel = supabase
-      .channel(`chat-pesan-${selectedSession.id}`)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'chat_pesan',
-        filter: `sesi_id=eq.${selectedSession.id}`,
-      }, (payload) => {
+    // Background broadcast listener (instant sub-50ms sync without polling)
+    const broadcastChannel = supabase
+      .channel(`chat-room-${selectedSession.id}`)
+      .on('broadcast', { event: 'new_message' }, (payload) => {
+        const newMsg = payload.payload.message;
         setMessages(prev => {
-          const newMsg = payload.new as Message;
-          if (prev.find(m => m.id === newMsg.id)) return prev;
-          return [...prev, newMsg];
+          // Avoid duplicates based on unique id, or optimistic equivalent
+          if (prev.find(m => m.id === newMsg.id || (m.isi === newMsg.isi && m.pengirim === newMsg.pengirim && m.id.startsWith('opt-')))) {
+            return prev;
+          }
+          // Remove corresponding optimistic message if it exists
+          const filtered = prev.filter(m => !(m.isi === newMsg.isi && m.pengirim === newMsg.pengirim && m.id.startsWith('opt-')));
+          return [...filtered, newMsg];
         });
       })
       .subscribe();
 
     return () => {
       active = false;
-      clearInterval(messagePoll);
-      supabase.removeChannel(channel);
+      supabase.removeChannel(broadcastChannel);
     };
   }, [selectedSession, toast]);
 
@@ -295,11 +302,11 @@ export default function AdminChatPage() {
     );
   };
 
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!messageInput.trim() || !selectedSession) return;
+  const handleSendMessage = async (textToSubmit: string) => {
+    if (!textToSubmit.trim() || !selectedSession) return;
 
-    const text = messageInput.trim();
+    const text = textToSubmit.trim();
+    // messageInput should be cleared immediately
     setMessageInput('');
 
     // Optimistic update — display message immediately on officer screen
@@ -520,93 +527,58 @@ export default function AdminChatPage() {
                 )}
               </div>
 
-              {/* Messages Area */}
-              <div style={{ flex: 1, overflowY: 'auto', padding: 'var(--space-6)', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-                {messages.map((msg) => {
-                  const isStaff = msg.pengirim === 'petugas';
-                  const isBot = msg.pengirim === 'bot';
-                  return (
-                    <div key={msg.id} style={{ display: 'flex', gap: 'var(--space-3)', alignSelf: isStaff ? 'flex-end' : 'flex-start', maxWidth: '80%' }}>
-                      {!isStaff && (
-                        <div style={{
-                          width: '32px', height: '32px', borderRadius: '50%', flexShrink: 0,
-                          background: isBot ? 'var(--color-primary-100)' : 'var(--color-neutral-200)',
-                          color: isBot ? 'var(--color-primary-700)' : 'var(--text-secondary)',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center'
-                        }}>
-                          {isBot ? <Bot size={16} /> : <User size={16} />}
-                        </div>
-                      )}
+              {/* Chatscope Messages Area */}
+              <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+                <MainContainer responsive>
+                  <ChatContainer>
+                    <MessageList>
+                      {messages.map((msg) => (
+                        <ChatMessage
+                          key={msg.id}
+                          model={{
+                            message: msg.isi,
+                            sentTime: new Date(msg.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+                            sender: msg.pengirim === 'petugas' ? 'Anda' : msg.pengirim === 'bot' ? 'BOT FAQ' : 'Pengunjung',
+                            direction: msg.pengirim === 'petugas' ? 'outgoing' : 'incoming',
+                            position: 'single',
+                          }}
+                        >
+                          <ChatMessage.Header sender={msg.pengirim === 'petugas' ? 'Anda' : msg.pengirim === 'bot' ? 'BOT FAQ' : 'Pengunjung'} sentTime={new Date(msg.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} />
+                        </ChatMessage>
+                      ))}
+                    </MessageList>
 
-                      <div style={{
-                        background: isStaff ? 'var(--color-primary-600)' : 'var(--surface-primary)',
-                        color: isStaff ? 'white' : 'var(--text-primary)',
-                        padding: '12px 16px',
-                        borderRadius: '16px',
-                        borderTopRightRadius: isStaff ? '4px' : '16px',
-                        borderTopLeftRadius: !isStaff ? '4px' : '16px',
-                        boxShadow: 'var(--shadow-sm)',
-                        border: isStaff ? 'none' : '1px solid var(--border-default)',
-                      }}>
-                        {isBot && (
-                          <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--color-primary-600)', marginBottom: '4px' }}>
-                            BOT FAQ
-                          </div>
-                        )}
-                        <div style={{ fontSize: 'var(--text-sm)', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
-                          {msg.isi}
+                    {selectedSession.status !== 'selesai' ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', background: 'var(--surface-primary)' }}>
+                        {/* Draft Button above input */}
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', padding: 'var(--space-2) var(--space-4) 0' }}>
+                          <button
+                            type="button"
+                            className="btn btn--secondary btn--sm"
+                            onClick={handleGenerateDraft}
+                            disabled={loadingDraft}
+                            title="Minta Gemini memuatkan draf balasan berbasis FAQ & Dasar Hukum"
+                            style={{ borderRadius: '999px', fontSize: 'var(--text-xs)', height: '28px', padding: '0 12px' }}
+                          >
+                            {loadingDraft ? <Loader2 size={12} className="animate-pulse" /> : '⚡ Draf Gemini'}
+                          </button>
                         </div>
-                        <div style={{ fontSize: '10px', marginTop: '6px', textAlign: 'right', opacity: isStaff ? 0.8 : 0.5, color: isStaff ? 'white' : 'inherit' }}>
-                          {new Date(msg.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
-                        </div>
+                        <MessageInput
+                          placeholder="Ketik balasan Anda..."
+                          value={messageInput}
+                          onChange={(val) => setMessageInput(val)}
+                          onSend={(_html, textContent) => handleSendMessage(textContent)}
+                          attachButton={false}
+                        />
                       </div>
-                    </div>
-                  );
-                })}
-                <div ref={messagesEndRef} />
+                    ) : (
+                      <div style={{ padding: 'var(--space-4)', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 'var(--text-sm)', background: 'var(--surface-primary)' }}>
+                        Sesi chat ini sudah selesai.
+                      </div>
+                    )}
+                  </ChatContainer>
+                </MainContainer>
               </div>
-
-              {/* Chat Input */}
-              {selectedSession.status !== 'selesai' ? (
-                <div style={{ padding: 'var(--space-4)', borderTop: '1px solid var(--border-default)', background: 'var(--surface-primary)' }}>
-                  <form onSubmit={handleSendMessage} style={{ display: 'flex', gap: 'var(--space-3)' }}>
-                    <input
-                      type="text"
-                      className="form-input"
-                      placeholder="Ketik balasan..."
-                      value={messageInput}
-                      onChange={(e) => setMessageInput(e.target.value)}
-                      style={{ flex: 1, borderRadius: '999px', paddingLeft: 'var(--space-4)' }}
-                    />
-                    <button
-                      type="button"
-                      className="btn btn--secondary btn--sm"
-                      onClick={handleGenerateDraft}
-                      disabled={loadingDraft}
-                      title="Minta Gemini memuatkan draf balasan berbasis FAQ & Dasar Hukum"
-                      style={{ borderRadius: '999px', padding: '0 12px', height: '40px', display: 'flex', alignItems: 'center', gap: '4px', fontSize: 'var(--text-xs)', whiteSpace: 'nowrap' }}
-                    >
-                      {loadingDraft ? (
-                        <Loader2 size={14} className="animate-pulse" />
-                      ) : (
-                        <>⚡ Draf Balasan Gemini</>
-                      )}
-                    </button>
-                    <button
-                      type="submit"
-                      className="btn btn--primary"
-                      style={{ borderRadius: '50%', width: '40px', height: '40px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-                      disabled={!messageInput.trim()}
-                    >
-                      <Send size={18} />
-                    </button>
-                  </form>
-                </div>
-              ) : (
-                <div style={{ padding: 'var(--space-4)', borderTop: '1px solid var(--border-default)', background: 'var(--surface-primary)', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 'var(--text-sm)' }}>
-                  Sesi chat ini sudah selesai.
-                </div>
-              )}
             </>
           ) : (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-tertiary)' }}>

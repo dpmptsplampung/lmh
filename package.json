@@ -17,6 +17,8 @@
     "verify:baseline": "npm run lint && npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
+    "@chatscope/chat-ui-kit-react": "^2.1.1",
+    "@chatscope/chat-ui-kit-styles": "^1.4.0",
     "@google/generative-ai": "^0.24.1",
     "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.110.0",

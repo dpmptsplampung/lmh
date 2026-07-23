@@ -13,7 +13,7 @@ function buildRequest(url: string, opts: { method?: string; body?: unknown } = {
     reqOpts.body = JSON.stringify(opts.body);
     reqOpts.headers = { 'Content-Type': 'application/json' };
   }
-  return new NextRequest(new URL(url, 'http://localhost'), reqOpts);
+  return new NextRequest(new URL(url, 'http://localhost'), reqOpts as any);
 }
 
 describe('/api/chat/messages API Route', () => {
@@ -76,6 +76,9 @@ describe('/api/chat/messages API Route', () => {
           data: { id: 'm2', pengirim: 'petugas', isi: 'Ada yang bisa dibantu?', created_at: '2026-07-23T10:01:00Z' },
           error: null,
         }),
+      }),
+      channel: vi.fn().mockReturnValue({
+        send: vi.fn().mockResolvedValue({}),
       }),
     };
 

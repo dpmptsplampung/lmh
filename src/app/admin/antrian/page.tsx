@@ -171,8 +171,8 @@ export default function AntrianPage() {
         if (!a.waktu_selesai) return sum;
         const start = a.waktu_mulai_layan
           ? new Date(a.waktu_mulai_layan).getTime()
-          : new Date(a.waktu_masuk).getTime();
-        const kluar = new Date(a.waktu_selesai).getTime();
+          : new Date(a.waktu_masuk || new Date().toISOString()).getTime();
+        const kluar = a.waktu_selesai ? new Date(a.waktu_selesai).getTime() : start;
         return sum + ((kluar - start) / 60000);
       }, 0) / selesai.length)
     : 0;
@@ -280,8 +280,8 @@ export default function AntrianPage() {
                   if (a.waktu_selesai) {
                     const start = a.waktu_mulai_layan
                       ? new Date(a.waktu_mulai_layan).getTime()
-                      : new Date(a.waktu_masuk).getTime();
-                    const diff = Math.round((new Date(a.waktu_selesai).getTime() - start) / 60000);
+                      : new Date(a.waktu_masuk || new Date().toISOString()).getTime();
+                    const diff = Math.round((new Date(a.waktu_selesai!).getTime() - start) / 60000);
                     durasi = `${diff} menit`;
                   }
                   

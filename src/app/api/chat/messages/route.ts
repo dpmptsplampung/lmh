@@ -94,5 +94,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to insert message' }, { status: 500 });
   }
 
+  // Broadcast the new message to the room channel for instant 0ms sync
+  const channel = supabase.channel(`chat-room-${parsed.data.sesi_id}`);
+  await channel.send({
+    type: 'broadcast',
+    event: 'new_message',
+    payload: { message: data },
+  });
+  // Note: we don't need to wait for channel subscription here, we just emit the broadcast.
+  // The frontend clients that are subscribed will receive it.
+
   return NextResponse.json({ message: data }, { status: 201 });
 }

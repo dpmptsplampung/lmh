@@ -45,6 +45,7 @@ type ScanState = 'scanning' | 'found' | 'not_found' | 'processed' | 'error';
 interface CheckInUpdateData {
   status: string;
   updated_at: string;
+  waktu_masuk?: string;
   waktu_scan?: string;
   diarahkan_ke?: string;
 }

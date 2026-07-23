@@ -16,6 +16,16 @@ import {
 import { createClient } from '@/lib/supabase/client';
 import { LAYANAN_LIST } from '@/lib/constants';
 import styles from './chat.module.css';
+import '@chatscope/chat-ui-kit-styles/dist/default/styles.min.css';
+import {
+  MainContainer,
+  ChatContainer,
+  MessageList,
+  Message as ChatMessage,
+  MessageInput,
+  TypingIndicator,
+  ConversationHeader,
+} from '@chatscope/chat-ui-kit-react';
 
 interface Layanan {
   id: string;
@@ -313,36 +323,27 @@ export default function PublicChatPage() {
       })
       .catch(() => {});
 
-    // Subscribe to new messages in this session
-    const messageChannel = supabase
-      .channel(`room_${sesiId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'chat_pesan',
-          filter: `sesi_id=eq.${sesiId}`,
-        },
-        (payload) => {
-          const newMsg = payload.new as { id: string; pengirim: string; isi: string; created_at: string };
-          if (newMsg.pengirim !== 'pengunjung') {
-            setMessages((prev) => {
-              // Avoid duplicates
-              if (prev.some((m) => m.id === newMsg.id)) return prev;
-              return [
-                ...prev,
-                {
-                  id: newMsg.id,
-                  pengirim: newMsg.pengirim as 'bot' | 'petugas',
-                  isi: newMsg.isi,
-                  waktu: new Date(newMsg.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-                },
-              ];
-            });
-          }
-        }
-      )
+    // Subscribe to new messages in this session via Broadcast
+    const broadcastChannel = supabase
+      .channel(`chat-room-${sesiId}`)
+      .on('broadcast', { event: 'new_message' }, (payload) => {
+        const newMsg = payload.payload.message;
+        setMessages((prev) => {
+          // Keep optimistic messages that aren't represented in this broadcast
+          const isMsgExist = prev.some((m) => m.id === newMsg.id || (m.isi === newMsg.isi && m.pengirim === newMsg.pengirim && !m.id.match(/^[0-9a-f]{8}-/)));
+          if (isMsgExist) return prev;
+          
+          return [
+            ...prev.filter(m => !(m.isi === newMsg.isi && m.pengirim === newMsg.pengirim && !m.id.match(/^[0-9a-f]{8}-/))),
+            {
+              id: newMsg.id,
+              pengirim: newMsg.pengirim as 'pengunjung' | 'bot' | 'petugas',
+              isi: newMsg.isi,
+              waktu: new Date(newMsg.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+            },
+          ];
+        });
+      })
       .subscribe();
 
     // Subscribe to session changes (status updates)
@@ -387,41 +388,8 @@ export default function PublicChatPage() {
       )
       .subscribe();
 
-    // Background polling (every 2s) via server API endpoint for guaranteed real-time sync without page refresh
-    const syncInterval = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/chat/messages?sesi_id=${sesiId}`);
-        if (!res.ok) return;
-        const data = await res.json();
-        if (data.messages && data.messages.length > 0) {
-          setMessages((prev) => {
-            const serverMsgs = (data.messages as { id: string; pengirim: string; isi: string; created_at: string }[])
-              .map((m) => ({
-                id: m.id,
-                pengirim: m.pengirim as 'pengunjung' | 'bot' | 'petugas',
-                isi: m.isi,
-                waktu: new Date(m.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-              }));
-            // Keep optimistic messages (id starts with 'user-' or 'bot-') that aren't
-            // yet represented in the server response (matched by isi + pengirim).
-            const serverTexts = new Set(serverMsgs.map((m) => `${m.pengirim}:${m.isi}`));
-            const pendingOpts = prev.filter(
-              (m) => !m.id.match(/^[0-9a-f]{8}-/) && !serverTexts.has(`${m.pengirim}:${m.isi}`),
-            );
-            return [...serverMsgs, ...pendingOpts];
-          });
-        }
-        if (data.status) {
-          setSesiStatus(data.status);
-        }
-      } catch {
-        /* ignore fetch errors */
-      }
-    }, 2000);
-
     return () => {
-      clearInterval(syncInterval);
-      supabase.removeChannel(messageChannel);
+      supabase.removeChannel(broadcastChannel);
       supabase.removeChannel(sessionChannel);
     };
   }, [sesiId]);
@@ -931,98 +899,59 @@ export default function PublicChatPage() {
               </div>
             )}
 
-            {/* Message List */}
-            <div className={styles.messageThread}>
-              <div style={{ textAlign: 'center', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', lineHeight: 1.5, padding: '0 var(--space-4)' }}>
-                {PII_DISCLAIMER}
-              </div>
-              {messages.map((msg) => {
-                const isUser = msg.pengirim === 'pengunjung';
-                const isBot = msg.pengirim === 'bot';
-                return (
-                  <div key={msg.id} className={`${styles.msgRow} ${isUser ? styles.msgRowUser : (isBot ? styles.msgRowBot : styles.msgRowStaff)}`}>
-                    {!isUser && (
-                      <div className={`${styles.avatar} ${isBot ? styles.avatarBot : styles.avatarStaff}`}>
-                        {isBot ? <Bot size={16} /> : <User size={16} />}
+            {/* Chatscope UI Container */}
+            <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+              <MainContainer responsive>
+                <ChatContainer>
+                  <MessageList
+                    typingIndicator={isBotTyping ? <TypingIndicator content="Bot FAQ sedang mengetik..." /> : undefined}
+                  >
+                    <div style={{ textAlign: 'center', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', lineHeight: 1.5, padding: 'var(--space-2) var(--space-4)' }}>
+                      {PII_DISCLAIMER}
+                    </div>
+                    {messages.map((msg) => (
+                      <ChatMessage
+                        key={msg.id}
+                        model={{
+                          message: msg.isi,
+                          sentTime: msg.waktu,
+                          sender: msg.pengirim === 'bot' ? 'BOT FAQ' : msg.pengirim === 'petugas' ? 'PETUGAS LOKET' : 'Anda',
+                          direction: msg.pengirim === 'pengunjung' ? 'outgoing' : 'incoming',
+                          position: 'single',
+                        }}
+                      >
+                        <ChatMessage.Header sender={msg.pengirim === 'bot' ? 'BOT FAQ' : msg.pengirim === 'petugas' ? 'PETUGAS LOKET' : 'Anda'} sentTime={msg.waktu} />
+                      </ChatMessage>
+                    ))}
+                    
+                    {/* Quick FAQ Chips embedded in MessageList as custom component if active */}
+                    {sesiStatus === 'bot' && faqs.length > 0 && (
+                      <div className={styles.quickFaqSection} style={{ marginTop: 'var(--space-4)', marginBottom: 'var(--space-2)' }}>
+                        <span className={styles.quickFaqTitle}>FAQ Cepat:</span>
+                        <div className={styles.quickFaqGrid}>
+                          {faqs.map((faq) => (
+                            <button
+                              key={faq.id}
+                              type="button"
+                              className={styles.quickFaqBtn}
+                              onClick={() => handleSendMessage(faq.pertanyaan)}
+                            >
+                              {faq.pertanyaan}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     )}
-                    <div className={`${styles.bubble} ${isUser ? styles.bubbleUser : (isBot ? styles.bubbleBot : styles.bubbleStaff)}`}>
-                      {isBot && (
-                        <div style={{ fontSize: '9px', fontWeight: 700, color: 'var(--color-primary-600)', marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                          <Bot size={10} /> BOT FAQ
-                        </div>
-                      )}
-                      {!isUser && !isBot && (
-                        <div style={{ fontSize: '9px', fontWeight: 700, color: 'var(--color-accent-700)', marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                          <User size={10} /> PETUGAS LOKET
-                        </div>
-                      )}
-                      {msg.isi}
-                      <div className={styles.msgTime}>{msg.waktu}</div>
-                    </div>
-                  </div>
-                );
-              })}
-              {isBotTyping && (
-                <div className={`${styles.msgRow} ${styles.msgRowBot}`}>
-                  <div className={`${styles.avatar} ${styles.avatarBot}`}>
-                    <Bot size={16} />
-                  </div>
-                  <div className={styles.typingIndicator}>
-                    <div className={styles.typingDot} />
-                    <div className={styles.typingDot} />
-                    <div className={styles.typingDot} />
-                  </div>
-                </div>
-              )}
-              <div ref={threadEndRef} />
-            </div>
-
-            {/* Quick FAQ Chips */}
-            {sesiStatus === 'bot' && faqs.length > 0 && (
-              <div className={styles.quickFaqSection}>
-                <span className={styles.quickFaqTitle}>FAQ Cepat:</span>
-                <div className={styles.quickFaqGrid}>
-                  {faqs.map((faq) => (
-                    <button
-                      key={faq.id}
-                      type="button"
-                      className={styles.quickFaqBtn}
-                      onClick={() => handleSendMessage(faq.pertanyaan)}
-                    >
-                      {faq.pertanyaan}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Input Bar */}
-            <div className={styles.inputBar}>
-              <textarea
-                className="form-textarea"
-                placeholder={!isOnline ? 'Anda sedang offline...' : (sesiStatus === 'selesai' ? 'Sesi chat ditutup...' : 'Ketik pertanyaan Anda...')}
-                value={messageInput}
-                onChange={(e) => setMessageInput(e.target.value)}
-                disabled={sesiStatus === 'selesai' || loadingSetup || !isOnline}
-                maxLength={1000}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSendMessage(messageInput);
-                  }
-                }}
-                rows={1}
-              />
-              <button
-                className="btn btn--primary flex-center"
-                onClick={() => handleSendMessage(messageInput)}
-                disabled={!messageInput.trim() || sesiStatus === 'selesai' || loadingSetup || !isOnline}
-                style={{ height: '44px', width: '44px', padding: 0 }}
-                aria-label="Kirim Pesan"
-              >
-                {loadingSetup ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
-              </button>
+                  </MessageList>
+                  
+                  <MessageInput
+                    placeholder={!isOnline ? 'Anda sedang offline...' : (sesiStatus === 'selesai' ? 'Sesi chat ditutup...' : 'Ketik pertanyaan Anda...')}
+                    disabled={sesiStatus === 'selesai' || loadingSetup || !isOnline}
+                    attachButton={false}
+                    onSend={(_html, textContent) => handleSendMessage(textContent)}
+                  />
+                </ChatContainer>
+              </MainContainer>
             </div>
           </>
         )}
