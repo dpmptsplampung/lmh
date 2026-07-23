@@ -30,7 +30,8 @@ interface VisitRow {
   keperluan: string | null;
   status: 'menunggu' | 'dilayani' | 'selesai' | 'terjadwal' | 'batal';
   asal: 'walk_in' | 'reservasi';
-  waktu_masuk: string;
+  waktu_masuk: string | null;
+  waktu_scan: string | null;
   waktu_selesai: string | null;
   waktu_mulai_layan: string | null;
   layanan: { nama: string };
@@ -91,7 +92,7 @@ export default function AntrianPage() {
       // Operational queue: both walk_in and scanned reservations (reservasi)
       let query = supabase
         .from('visit')
-        .select('id, nama, keperluan, status, asal, waktu_masuk, waktu_selesai, waktu_mulai_layan, layanan:layanan_id(nama)', { count: 'exact' })
+        .select('id, nama, keperluan, status, asal, waktu_masuk, waktu_scan, waktu_selesai, waktu_mulai_layan, layanan:layanan_id(nama)', { count: 'exact' })
         .in('asal', ['walk_in', 'reservasi'])
         .gte('waktu_masuk', startOfDay.toISOString())
         .lte('waktu_masuk', endOfDay.toISOString())
@@ -313,7 +314,7 @@ export default function AntrianPage() {
                         </span>
                       </td>
                       <td style={{ color: 'var(--text-secondary)' }}>{a.keperluan || '—'}</td>
-                      <td>{new Date(a.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</td>
+                      <td>{new Date(a.waktu_masuk || a.waktu_scan || Date.now()).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</td>
                       <td>
                         <span className={`badge badge--${a.status}`}>
                           {statusLabel(a.status)}
