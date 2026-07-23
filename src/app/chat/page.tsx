@@ -369,40 +369,34 @@ export default function PublicChatPage() {
       )
       .subscribe();
 
-    // Background polling (every 3s) for guaranteed real-time sync without page refresh
+    // Background polling (every 2s) via server API endpoint for guaranteed real-time sync without page refresh
     const syncInterval = setInterval(async () => {
-      const { data: latestMsgs } = await supabase
-        .from('chat_pesan')
-        .select('id, pengirim, isi, created_at')
-        .eq('sesi_id', sesiId)
-        .order('created_at', { ascending: true });
-
-      if (latestMsgs && latestMsgs.length > 0) {
-        setMessages((prev) => {
-          const existingIds = new Set(prev.map((m) => m.id));
-          const newEntries = latestMsgs
-            .filter((m) => !existingIds.has(m.id))
-            .map((m) => ({
-              id: m.id,
-              pengirim: m.pengirim as 'pengunjung' | 'bot' | 'petugas',
-              isi: m.isi,
-              waktu: new Date(m.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-            }));
-          if (newEntries.length === 0) return prev;
-          return [...prev, ...newEntries];
-        });
+      try {
+        const res = await fetch(`/api/chat/messages?sesi_id=${sesiId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.messages && data.messages.length > 0) {
+          setMessages((prev) => {
+            const existingIds = new Set(prev.map((m) => m.id));
+            const newEntries = (data.messages as { id: string; pengirim: string; isi: string; created_at: string }[])
+              .filter((m) => !existingIds.has(m.id))
+              .map((m) => ({
+                id: m.id,
+                pengirim: m.pengirim as 'pengunjung' | 'bot' | 'petugas',
+                isi: m.isi,
+                waktu: new Date(m.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+              }));
+            if (newEntries.length === 0) return prev;
+            return [...prev, ...newEntries];
+          });
+        }
+        if (data.status) {
+          setSesiStatus(data.status);
+        }
+      } catch {
+        /* ignore fetch errors */
       }
-
-      const { data: sessData } = await supabase
-        .from('chat_sesi')
-        .select('status')
-        .eq('id', sesiId)
-        .single();
-
-      if (sessData && sessData.status) {
-        setSesiStatus(sessData.status);
-      }
-    }, 3000);
+    }, 2000);
 
     return () => {
       clearInterval(syncInterval);
@@ -530,16 +524,17 @@ export default function PublicChatPage() {
     // Insert user message to database — pesan hanya boleh tampil setelah
     // benar-benar tersimpan, supaya petugas pasti melihatnya.
     try {
-      const supabase = createClient();
-      const { error: insertErr } = await supabase.from('chat_pesan').insert({
-        sesi_id: sesiId,
-        pengirim: 'pengunjung',
-        isi: text.trim(),
+      const res = await fetch('/api/chat/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sesi_id: sesiId,
+          pengirim: 'pengunjung',
+          isi: text.trim(),
+        }),
       });
-      if (insertErr) throw insertErr;
+      if (!res.ok) throw new Error('Insert failed');
     } catch {
-      // Insert gagal (umumnya jaringan putus): jangan tampilkan pesan
-      // seolah-olah terkirim — petugas tidak akan pernah melihatnya.
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
         setIsOnline(false);
       }

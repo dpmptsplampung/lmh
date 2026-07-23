@@ -239,25 +239,21 @@ export default function AdminChatPage() {
     const supabase = createClient();
 
     async function loadMessages() {
-      const { data, error: fetchErr } = await supabase
-        .from('chat_pesan')
-        .select('id, pengirim, isi, created_at')
-        .eq('sesi_id', selectedSession!.id)
-        .order('created_at', { ascending: true });
-
-      if (fetchErr) {
-        toast('Gagal memuat pesan', 'error');
-        return;
-      }
-
-      if (active && data) {
-        setMessages(data as Message[]);
+      try {
+        const res = await fetch(`/api/chat/messages?sesi_id=${selectedSession!.id}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (active && data.messages) {
+          setMessages(data.messages as Message[]);
+        }
+      } catch {
+        /* ignore fetch errors */
       }
     }
 
     loadMessages();
 
-    const messagePoll = setInterval(loadMessages, 3000);
+    const messagePoll = setInterval(loadMessages, 2000);
 
     const channel = supabase
       .channel(`chat-pesan-${selectedSession.id}`)
@@ -297,22 +293,35 @@ export default function AdminChatPage() {
     const text = messageInput.trim();
     setMessageInput('');
 
+    // Optimistic update — display message immediately on officer screen
+    const optMsg: Message = {
+      id: `opt-${Date.now()}`,
+      pengirim: 'petugas',
+      isi: text,
+      created_at: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, optMsg]);
+
     try {
-      const supabase = createClient();
-      const { error: insertErr } = await supabase.from('chat_pesan').insert({
-        sesi_id: selectedSession.id,
-        pengirim: 'petugas',
-        isi: text,
+      const res = await fetch('/api/chat/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sesi_id: selectedSession.id,
+          pengirim: 'petugas',
+          isi: text,
+        }),
       });
 
-      if (insertErr) throw insertErr;
+      if (!res.ok) throw new Error('Insert failed');
 
       if (selectedSession.status !== 'aktif' && selectedSession.status !== 'selesai') {
-        const { error: updateErr } = await supabase
+        const supabase = createClient();
+        await supabase
           .from('chat_sesi')
           .update({ status: 'aktif' })
           .eq('id', selectedSession.id);
-        if (updateErr) throw updateErr;
+        setSelectedSession((prev) => (prev ? { ...prev, status: 'aktif' } : null));
       }
     } catch (err) {
       console.error(err);
