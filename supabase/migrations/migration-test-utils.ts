@@ -14,6 +14,7 @@ export const BASELINE_FILES = [
 export const FORWARD_MIGRATION_FILES = [
   '202607200001_p0_security_governance.sql',
   '202607210001_walkin_kontak_dan_layanan_perizinan.sql',
+  '202607240001_pengunjung_no_hp.sql',
 ] as const;
 
 export function listMigrationFiles(): string[] {
