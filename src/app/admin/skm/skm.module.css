@@ -23,8 +23,10 @@
   text-decoration: none;
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-md);
-  border: 1px solid var(--border-default);
-  background: var(--surface-elevated);
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   transition: all var(--transition-base);
 }
 
@@ -55,8 +57,10 @@
   flex-wrap: wrap;
   margin-bottom: var(--space-6);
   padding: var(--space-4);
-  background: var(--surface-elevated);
-  border: 1px solid var(--border-default);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
 }
 
@@ -76,10 +80,10 @@
 
 .filterSelect {
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border-default);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
-  background: var(--surface-base);
+  background: transparent;
   color: var(--text-primary);
 }
 
@@ -97,8 +101,10 @@
 }
 
 .summaryCard {
-  background: var(--surface-elevated);
-  border: 1px solid var(--border-default);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-xl);
   padding: var(--space-5);
   display: flex;
@@ -152,8 +158,10 @@
 }
 
 .chartCard {
-  background: var(--surface-elevated);
-  border: 1px solid var(--border-default);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-xl);
   padding: var(--space-5);
   margin-bottom: var(--space-8);
@@ -181,8 +189,10 @@
 }
 
 .tableSection {
-  background: var(--surface-elevated);
-  border: 1px solid var(--border-default);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-xl);
   padding: var(--space-5);
 }

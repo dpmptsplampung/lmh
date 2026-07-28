@@ -54,8 +54,10 @@
 
 /* Section Panel */
 .sectionPanel {
-  background: var(--surface-elevated);
-  border: 1px solid var(--border-default);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-xl);
   padding: var(--space-6);
   animation: fadeIn 0.3s ease-out;
@@ -94,8 +96,8 @@
 }
 
 .serviceCard {
-  background: var(--surface-secondary);
-  border: 1px solid var(--border-default);
+  background: transparent;
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
   padding: var(--space-5);
   transition: border-color var(--transition-fast);
@@ -148,8 +150,10 @@
   width: 32px;
   height: 32px;
   border-radius: var(--radius-md);
-  border: 1px solid var(--border-default);
-  background: var(--surface-elevated);
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   color: var(--text-secondary);
   cursor: pointer;
   transition: all var(--transition-fast);
@@ -204,7 +208,9 @@
   width: 18px;
   left: 3px;
   bottom: 3px;
-  background: white;
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   border-radius: 50%;
   transition: transform var(--transition-fast);
 }

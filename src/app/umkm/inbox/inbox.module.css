@@ -1,6 +1,6 @@
 .inboxPage {
   min-height: 100vh;
-  background: var(--surface-secondary);
+  background: transparent;
   padding: var(--space-8) var(--space-4);
 }
 
@@ -29,8 +29,10 @@
 
 .loadingBox,
 .noticeBox {
-  background: var(--surface-elevated);
-  border: 1px solid var(--border-default);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-xl);
   padding: var(--space-10) var(--space-6);
   text-align: center;
@@ -69,8 +71,10 @@
 }
 
 .inquiryCard {
-  background: var(--surface-elevated);
-  border: 1px solid var(--border-default);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-xl);
   padding: var(--space-5);
   display: flex;

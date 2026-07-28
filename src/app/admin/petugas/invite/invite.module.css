@@ -6,8 +6,10 @@
 }
 
 .formCard {
-  background: var(--surface-elevated);
-  border: 1px solid var(--border-default);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-2xl);
   padding: var(--space-8);
   display: flex;
@@ -17,8 +19,10 @@
 }
 
 .successCard {
-  background: var(--surface-elevated);
-  border: 1px solid var(--border-default);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-2xl);
   padding: var(--space-8);
   display: flex;
@@ -118,7 +122,9 @@
   font-weight: 600;
   color: var(--text-secondary);
   transition: all var(--transition-fast);
-  background: var(--surface-elevated);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
 }
 
 .roleOption:hover {

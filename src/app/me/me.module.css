@@ -1,6 +1,6 @@
 .mePage {
   min-height: 100vh;
-  background: var(--surface-secondary);
+  background: transparent;
 }
 
 /* Navbar */
@@ -9,7 +9,9 @@
   align-items: center;
   justify-content: space-between;
   padding: var(--space-4) var(--space-8);
-  background: var(--surface-primary);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   border-bottom: 1px solid var(--border-default);
   position: sticky;
   top: 0;
@@ -121,8 +123,10 @@
 }
 
 .actionCard {
-  background: var(--surface-elevated);
-  border: 1px solid var(--border-default);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-xl);
   padding: var(--space-6);
   display: flex;
@@ -243,8 +247,10 @@
 }
 
 .reservasiCard {
-  background: var(--surface-elevated);
-  border: 1px solid var(--border-default);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-xl);
   padding: var(--space-6);
   display: flex;
@@ -258,9 +264,11 @@
   width: 120px;
   height: 120px;
   border-radius: var(--radius-lg);
-  background: white;
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   padding: var(--space-2);
-  border: 1px solid var(--border-default);
+  border: 1px solid var(--glass-border);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -287,8 +295,10 @@
 }
 
 .emptyReservasi {
-  background: var(--surface-elevated);
-  border: 1px solid var(--border-default);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-xl);
   padding: var(--space-10);
   text-align: center;

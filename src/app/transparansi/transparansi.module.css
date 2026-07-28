@@ -10,7 +10,9 @@
 .tCard {
   max-width: 1000px;
   margin: 0 auto;
-  background: var(--surface-elevated, #fff);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   border: 1px solid var(--border-default, #e2e8f0);
   border-radius: var(--radius-xl, 16px);
   padding: var(--space-8);
@@ -56,7 +58,7 @@
 }
 
 .tSummaryCard {
-  background: var(--surface-base, #fff);
+  background: transparent;
   border: 1px solid var(--border-default, #e2e8f0);
   border-radius: var(--radius-lg, 12px);
   padding: var(--space-5);
@@ -97,7 +99,7 @@
 .qD { background: var(--color-danger-50, #fef2f2); color: var(--color-danger-700, #b91c1c); }
 
 .tChartCard {
-  background: var(--surface-base, #fff);
+  background: transparent;
   border: 1px solid var(--border-default, #e2e8f0);
   border-radius: var(--radius-lg, 12px);
   padding: var(--space-5);
@@ -126,7 +128,7 @@
 }
 
 .tTableSection {
-  background: var(--surface-base, #fff);
+  background: transparent;
   border: 1px solid var(--border-default, #e2e8f0);
   border-radius: var(--radius-lg, 12px);
   padding: var(--space-5);

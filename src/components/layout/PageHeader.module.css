@@ -3,8 +3,10 @@
   align-items: center;
   justify-content: space-between;
   padding: var(--space-6) var(--space-8);
-  background: var(--surface-elevated);
-  border-bottom: 1px solid var(--border-default);
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--glass-border);
   gap: var(--space-4);
 }
 

@@ -55,28 +55,29 @@ export default function EstimasiAntrean() {
   }, []);
 
   useEffect(() => {
-    let channel: ReturnType<ReturnType<typeof createClient>['channel']> | null = null;
+    let cancelled = false;
+    // ponytail: realtime-js dedupes .channel() by topic and returns the EXISTING
+    // channel — so cleanup must removeChannel() (drops it from the registry),
+    // not unsubscribe() (leaves it registered; next mount gets it back and .on() throws)
+    const supabase = createClient();
+    const channel = supabase
+      .channel('visit_changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'visit' },
+        () => { void fetchLokets(); },
+      );
 
     (async () => {
       setLoading(true);
       await fetchLokets();
-      setLoading(false);
-
-      const supabase = createClient();
-      channel = supabase
-        .channel('visit_changes')
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'visit' },
-          () => { void fetchLokets(); },
-        )
-        .subscribe();
+      if (!cancelled) setLoading(false);
+      channel.subscribe();
     })();
 
     return () => {
-      if (channel) {
-        void channel.unsubscribe();
-      }
+      cancelled = true;
+      void supabase.removeChannel(channel);
     };
   }, [fetchLokets]);
 

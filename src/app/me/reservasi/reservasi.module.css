@@ -1,6 +1,6 @@
 .reservasiPage {
   min-height: 100vh;
-  background: var(--surface-secondary);
+  background: transparent;
 }
 
 .container {
@@ -25,8 +25,10 @@
 }
 
 .formCard {
-  background: var(--surface-elevated);
-  border: 1px solid var(--border-default);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-2xl);
   padding: var(--space-8);
   box-shadow: var(--shadow-sm);
@@ -150,7 +152,9 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: white;
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
 }
 
 .tujuanIcon {

@@ -10,8 +10,10 @@
 }
 
 .statCard {
-  background: var(--surface-elevated);
-  border: 1px solid var(--border-default);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-xl);
   padding: var(--space-6);
   display: flex;
@@ -81,8 +83,10 @@
 }
 
 .chartCard {
-  background: var(--surface-elevated);
-  border: 1px solid var(--border-default);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-xl);
   padding: var(--space-6);
 }
@@ -102,8 +106,10 @@
 }
 
 .recentSection {
-  background: var(--surface-elevated);
-  border: 1px solid var(--border-default);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-xl);
   overflow: hidden;
 }
@@ -158,8 +164,10 @@
 }
 
 .wizardCard {
-  background: var(--surface-elevated);
-  border: 1px solid var(--border-default);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-2xl);
   padding: var(--space-8);
   width: 100%;
@@ -244,7 +252,9 @@
 }
 
 .inviteLinkBtn {
-  background: var(--surface-elevated);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   color: var(--color-primary-700);
   border: 1px solid var(--color-primary-300);
   box-shadow: none;
@@ -292,7 +302,9 @@
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: var(--surface-primary);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   border: 2px solid var(--color-neutral-300);
   display: flex;
   align-items: center;
@@ -345,7 +357,9 @@
   padding: var(--space-4);
   border: 2px solid var(--border-default);
   border-radius: var(--radius-lg);
-  background: var(--surface-elevated);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   text-align: center;
   font-weight: 600;
   cursor: pointer;

@@ -26,7 +26,9 @@
 .checkinCard {
   width: 100%;
   max-width: 520px;
-  background: var(--surface-elevated);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   border-radius: var(--radius-2xl);
   box-shadow: var(--shadow-xl);
   overflow: hidden;

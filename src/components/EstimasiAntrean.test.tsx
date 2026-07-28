@@ -41,6 +41,7 @@ const buildMockSupabase = (rows: LoketRow[] = [], opts: { error?: boolean } = {}
   const mock = {
     from: vi.fn(() => selectChain),
     channel: vi.fn(() => channelApi),
+    removeChannel: vi.fn().mockResolvedValue('ok'),
     _refetch: refetch,
     _selectChain: selectChain,
     _channelApi: channelApi,
@@ -143,7 +144,7 @@ describe('I2 EstimasiAntrean component: smoke tests', () => {
     });
 
     unmount();
-    expect(mock._channelApi.unsubscribe).toHaveBeenCalled();
+    expect(mock.removeChannel).toHaveBeenCalledWith(mock._channelApi);
   });
 
   it('shows red badge styling when estimasi_tunggu_total > 60', async () => {

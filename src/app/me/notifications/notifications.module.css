@@ -1,6 +1,6 @@
 .page {
   min-height: 100vh;
-  background: var(--surface-secondary);
+  background: transparent;
 }
 
 .container {
@@ -51,8 +51,10 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
-  background: var(--surface-elevated);
-  border: 1px solid var(--border-default);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-2xl);
   padding: var(--space-5) var(--space-6);
   box-shadow: var(--shadow-sm);
@@ -78,8 +80,8 @@
   font-size: var(--text-sm);
   font-weight: 600;
   border-radius: var(--radius-full);
-  border: 1px solid var(--border-default);
-  background: var(--surface-secondary);
+  border: 1px solid var(--glass-border);
+  background: transparent;
   color: var(--text-primary);
   cursor: pointer;
   transition: background var(--transition-fast), border-color var(--transition-fast);
@@ -108,8 +110,10 @@
 }
 
 .listSection {
-  background: var(--surface-elevated);
-  border: 1px solid var(--border-default);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-2xl);
   padding: var(--space-6);
   box-shadow: var(--shadow-sm);
@@ -144,9 +148,9 @@
   display: flex;
   gap: var(--space-3);
   padding: var(--space-4);
-  border: 1px solid var(--border-default);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-xl);
-  background: var(--surface-secondary);
+  background: transparent;
 }
 
 .notifIcon {

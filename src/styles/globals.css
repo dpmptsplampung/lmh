@@ -60,11 +60,19 @@
   --color-neutral-900: #0f172a;
   --color-neutral-950: #020617;
 
-  /* Surface */
-  --surface-primary: #ffffff;
-  --surface-secondary: var(--color-neutral-50);
-  --surface-elevated: #ffffff;
+  /* Surface — glass system */
+  --surface-primary: rgba(255, 255, 255, 0.62);
+  --surface-secondary: #eef1fb;
+  --surface-elevated: rgba(255, 255, 255, 0.62);
   --surface-overlay: rgba(15, 23, 42, 0.6);
+
+  /* Glass tokens */
+  --glass-bg: rgba(255, 255, 255, 0.62);
+  --glass-bg-strong: rgba(255, 255, 255, 0.78);   /* navbar, sidebar, modal */
+  --glass-bg-subtle: rgba(255, 255, 255, 0.45);   /* stat card, badge area */
+  --glass-border: rgba(255, 255, 255, 0.65);
+  --glass-shadow: 0 8px 32px rgba(31, 38, 135, 0.10);
+  --glass-blur: 16px;
 
   /* Text */
   --text-primary: var(--color-neutral-900);
@@ -193,8 +201,23 @@ body {
   font-size: var(--text-base);
   line-height: 1.6;
   color: var(--text-primary);
-  background-color: var(--surface-secondary);
+  background: linear-gradient(160deg, #e8edfb 0%, #f4f6fd 45%, #fdf8ee 100%);
+  background-attachment: fixed;
   min-height: 100vh;
+}
+
+/* Ambient color blobs — glassmorphism needs a vibrant backdrop to blur against.
+   Static (no motion) for kiosk performance + reduced-motion friendliness. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 55% 45% at 8% 4%, rgba(129, 140, 248, 0.22), transparent 70%),
+    radial-gradient(ellipse 45% 40% at 92% 18%, rgba(125, 211, 252, 0.18), transparent 70%),
+    radial-gradient(ellipse 50% 45% at 78% 96%, rgba(252, 211, 77, 0.16), transparent 70%);
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -235,18 +258,22 @@ img, video {
   padding: 0 var(--space-6);
 }
 
-/* Card */
+/* Card — frosted glass over ambient blobs */
 .card {
-  background: var(--surface-elevated);
-  border: 1px solid var(--border-default);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-xl);
   padding: var(--space-6);
-  box-shadow: var(--shadow-sm);
-  transition: box-shadow var(--transition-base), transform var(--transition-base);
+  box-shadow: var(--glass-shadow);
+  transition: box-shadow var(--transition-base), transform var(--transition-base),
+    background var(--transition-base);
 }
 
 .card:hover {
   box-shadow: var(--shadow-md);
+  background: var(--glass-bg-strong);
 }
 
 .card--interactive:hover {
@@ -256,10 +283,24 @@ img, video {
 
 /* Glass effect */
 .glass {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+.glass--strong {
+  background: var(--glass-bg-strong);
+}
+
+/* Fallback when backdrop-filter is unavailable: near-opaque white keeps contrast */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .card,
+  .glass,
+  .glass--strong {
+    background: rgba(255, 255, 255, 0.96);
+  }
 }
 
 /* Buttons — min 44×44 touch target (WCAG 2.5.5) */
@@ -295,9 +336,9 @@ img, video {
 }
 
 .btn--primary {
-  background: linear-gradient(135deg, var(--color-primary-600), var(--color-primary-700));
+  background: linear-gradient(135deg, var(--color-primary-600), #7c3aed);
   color: var(--text-inverse);
-  box-shadow: var(--shadow-sm), 0 0 0 0 rgba(99, 102, 241, 0);
+  box-shadow: var(--shadow-sm), 0 4px 16px rgba(99, 102, 241, 0.28);
 }
 
 .btn--primary:hover:not(:disabled) {
@@ -306,13 +347,15 @@ img, video {
 }
 
 .btn--secondary {
-  background: var(--surface-elevated);
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   color: var(--text-primary);
-  border: 1px solid var(--border-default);
+  border: 1px solid var(--glass-border);
 }
 
 .btn--secondary:hover:not(:disabled) {
-  background: var(--color-neutral-50);
+  background: rgba(255, 255, 255, 0.8);
   border-color: var(--border-hover);
 }
 
@@ -391,10 +434,11 @@ img, video {
   font-family: var(--font-sans);
   font-size: var(--text-base);
   color: var(--text-primary);
-  background: var(--surface-elevated);
+  background: rgba(255, 255, 255, 0.55);
   border: 1.5px solid var(--border-default);
   border-radius: var(--radius-lg);
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast),
+    background var(--transition-fast);
   outline: none;
 }
 
@@ -408,7 +452,8 @@ img, video {
 .form-select:focus,
 .form-textarea:focus {
   border-color: var(--border-focus);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+  background: rgba(255, 255, 255, 0.8);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.14);
 }
 
 .form-input::placeholder,
@@ -491,9 +536,12 @@ img, video {
 /* Table */
 .table-wrapper {
   overflow-x: auto;
-  border: 1px solid var(--border-default);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-xl);
-  background: var(--surface-elevated);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  box-shadow: var(--glass-shadow);
 }
 
 .table {
@@ -509,7 +557,7 @@ img, video {
   letter-spacing: 0.05em;
   color: var(--text-secondary);
   text-align: left;
-  background: var(--color-neutral-50);
+  background: rgba(241, 245, 249, 0.6);
   border-bottom: 1px solid var(--border-default);
 }
 
@@ -525,18 +573,21 @@ img, video {
 }
 
 .table tr:hover td {
-  background: var(--color-neutral-50);
+  background: rgba(241, 245, 249, 0.5);
 }
 
 /* Stat Card */
 .stat-card {
-  background: var(--surface-elevated);
-  border: 1px solid var(--border-default);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-xl);
   padding: var(--space-6);
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  box-shadow: var(--glass-shadow);
 }
 
 .stat-card__icon {
@@ -669,9 +720,9 @@ img, video {
 /* Loading Skeleton */
 .skeleton {
   background: linear-gradient(90deg,
-    var(--color-neutral-200) 25%,
-    var(--color-neutral-100) 50%,
-    var(--color-neutral-200) 75%
+    rgba(226, 232, 240, 0.7) 25%,
+    rgba(241, 245, 249, 0.5) 50%,
+    rgba(226, 232, 240, 0.7) 75%
   );
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
@@ -704,8 +755,11 @@ img, video {
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-4) var(--space-5);
-  background: var(--color-neutral-900);
+  background: rgba(15, 23, 42, 0.88);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   color: var(--text-inverse);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-xl);
   font-size: var(--text-sm);

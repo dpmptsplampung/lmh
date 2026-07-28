@@ -16,8 +16,10 @@
 }
 
 .card {
-  background: var(--surface-elevated);
-  border: 1px solid var(--border-default);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
   box-shadow: var(--shadow-2xl);
   border-radius: var(--radius-2xl);
   width: 100%;
@@ -86,7 +88,7 @@
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-lg);
   border: 1.5px solid var(--border-default);
-  background: var(--surface-default);
+  background: rgba(255, 255, 255, 0.55);
   color: var(--text-primary);
   font-size: var(--text-sm);
   transition: all var(--transition-fast);
@@ -205,8 +207,10 @@
 }
 
 .modalCard {
-  background: var(--surface-elevated, #ffffff);
-  border: 1px solid var(--border-default, #e2e8f0);
+  background: var(--glass-bg-strong, rgba(255, 255, 255, 0.85));
+  backdrop-filter: blur(var(--glass-blur, 16px));
+  -webkit-backdrop-filter: blur(var(--glass-blur, 16px));
+  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.65));
   box-shadow: var(--shadow-2xl, 0 25px 50px -12px rgba(0, 0, 0, 0.25));
   border-radius: var(--radius-2xl, 1rem);
   width: 100%;
@@ -238,7 +242,7 @@
 }
 
 .summaryContainer {
-  background: var(--surface-default, #f8fafc);
+  background: rgba(255, 255, 255, 0.55);
   border: 1px solid var(--border-default, #e2e8f0);
   border-radius: var(--radius-xl, 0.75rem);
   padding: var(--space-4, 1rem);
@@ -289,7 +293,7 @@
 }
 
 .cancelBtn:hover {
-  background: var(--surface-default, #f1f5f9);
+  background: rgba(255, 255, 255, 0.7);
 }
 
 .confirmBtn {
