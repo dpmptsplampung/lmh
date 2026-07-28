@@ -175,10 +175,8 @@ export async function GET(request: NextRequest) {
     .download(pagePath);
 
   if (downloadError || !downloadData) {
-    return NextResponse.json(
-      { error: 'Failed to fetch page image', details: String(downloadError) },
-      { status: 500 },
-    );
+    // Do not leak storage error internals to clients.
+    return NextResponse.json({ error: 'Failed to fetch page image' }, { status: 500 });
   }
 
   const pageBuffer = Buffer.from(await downloadData.arrayBuffer());

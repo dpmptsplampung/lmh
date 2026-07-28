@@ -53,10 +53,8 @@ export async function PATCH(
     .maybeSingle();
 
   if (leadErr) {
-    return NextResponse.json(
-      { error: `Failed to fetch lead: ${leadErr.message}` },
-      { status: 500 },
-    );
+    console.error('[investasi/lead] fetch failed', leadErr);
+    return NextResponse.json({ error: 'Gagal memuat lead' }, { status: 500 });
   }
 
   if (!lead) {
@@ -74,10 +72,8 @@ export async function PATCH(
     .maybeSingle();
 
   if (updateErr || !updated) {
-    return NextResponse.json(
-      { error: `Failed to update lead: ${updateErr?.message ?? 'no row returned'}` },
-      { status: 500 },
-    );
+    console.error('[investasi/lead] update failed', updateErr);
+    return NextResponse.json({ error: 'Gagal memperbarui lead' }, { status: 500 });
   }
 
   return NextResponse.json(updated, { status: 200 });

@@ -329,12 +329,30 @@ export default function PublicChatPage() {
       .on('broadcast', { event: 'new_message' }, (payload) => {
         const newMsg = payload.payload.message;
         setMessages((prev) => {
-          // Keep optimistic messages that aren't represented in this broadcast
-          const isMsgExist = prev.some((m) => m.id === newMsg.id || (m.isi === newMsg.isi && m.pengirim === newMsg.pengirim && !m.id.match(/^[0-9a-f]{8}-/)));
-          if (isMsgExist) return prev;
-          
+          // Dedup: id server → client_uuid (optimistic) → fallback isi+pengirim.
+          if (prev.some((m) => m.id === newMsg.id)) return prev;
+          if (newMsg.client_uuid && prev.some((m) => m.id === `user-${newMsg.client_uuid}`)) {
+            return prev.map((m) =>
+              m.id === `user-${newMsg.client_uuid}`
+                ? {
+                    id: newMsg.id,
+                    pengirim: newMsg.pengirim as 'pengunjung' | 'bot' | 'petugas',
+                    isi: newMsg.isi,
+                    waktu: new Date(newMsg.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+                  }
+                : m,
+            );
+          }
+          const isLocalEcho = prev.some(
+            (m) =>
+              m.isi === newMsg.isi &&
+              m.pengirim === newMsg.pengirim &&
+              !m.id.match(/^[0-9a-f]{8}-/),
+          );
+          if (isLocalEcho) return prev;
+
           return [
-            ...prev.filter(m => !(m.isi === newMsg.isi && m.pengirim === newMsg.pengirim && !m.id.match(/^[0-9a-f]{8}-/))),
+            ...prev,
             {
               id: newMsg.id,
               pengirim: newMsg.pengirim as 'pengunjung' | 'bot' | 'petugas',
@@ -503,8 +521,9 @@ export default function PublicChatPage() {
     if (!text.trim() || !sesiId) return;
     if (!isOnline) return; // Offline: input seharusnya nonaktif; abaikan kirim.
 
+    const clientUuid = crypto.randomUUID();
     const userMsg: Message = {
-      id: `user-${msgIdCounter++}`,
+      id: `user-${clientUuid}`,
       pengirim: 'pengunjung',
       isi: text.trim(),
       waktu: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
@@ -520,6 +539,7 @@ export default function PublicChatPage() {
           sesi_id: sesiId,
           pengirim: 'pengunjung',
           isi: text.trim(),
+          client_uuid: clientUuid,
         }),
       });
       if (!res.ok) throw new Error('Insert failed');
@@ -551,56 +571,43 @@ export default function PublicChatPage() {
         });
         const data = await res.json();
 
-        if (data && data.jawaban && !data.eskalasi) {
-          // AI answered from FAQ context
+        if (res.status === 429) {
+          // Rate limit: jujur ke pengunjung, jangan eskalasi palsu.
+          const limitMsg: Message = {
+            id: `bot-limit-${msgIdCounter++}`,
+            pengirim: 'bot',
+            isi: 'Anda mengirim pertanyaan terlalu cepat. Mohon tunggu sebentar lalu coba lagi.',
+            waktu: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+          };
+          setMessages((prev) => [...prev, limitMsg]);
+        } else if (data && data.jawaban) {
+          // Server sudah menyimpan pesan bot + broadcast; tampilkan saja.
           const botReply: Message = {
             id: `bot-reply-${msgIdCounter++}`,
             pengirim: 'bot',
             isi: data.jawaban,
             waktu: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
           };
-
           setMessages((prev) => [...prev, botReply]);
-
-          // Save bot reply to database with sumber_faq_id (first source)
-          try {
-            const supabase = createClient();
-            const sumberFaqId = Array.isArray(data.sumber) && data.sumber.length > 0
-              ? data.sumber[0].id
-              : null;
-            await supabase.from('chat_pesan').insert({
-              sesi_id: sesiId,
-              pengirim: 'bot',
-              isi: data.jawaban,
-              sumber_faq_id: sumberFaqId,
-            });
-          } catch { /* ignore */ }
+          if (data.eskalasi) {
+            // Server (route /api/chat/ai) juga sudah mengubah status sesi.
+            setSesiStatus('eskalasi');
+          }
         } else {
-          // AI unsure or no match: explain and escalate to petugas
-          const eskalasiText = 'Maaf, saya belum yakin karena informasi ini belum ada di aturan resmi kami, saya akan menghubungkan Anda ke petugas.\n\nSaya akan meneruskan sesi chat ini ke petugas loket untuk dibantu secara manual. Mohon tunggu...';
+          // AI tidak menjawab: server tetap menandai eskalasi bila perlu.
+          const eskalasiText = data?.eskalasi === false
+            ? 'Maaf, asisten virtual sedang tidak dapat menjawab. Silakan coba pertanyaan lain atau kembali pada jam kerja.'
+            : 'Maaf, saya belum yakin karena informasi ini belum ada di aturan resmi kami, saya akan menghubungkan Anda ke petugas.\n\nSaya akan meneruskan sesi chat ini ke petugas loket untuk dibantu secara manual. Mohon tunggu...';
           const botReply: Message = {
             id: `bot-escalate-${msgIdCounter++}`,
             pengirim: 'bot',
             isi: eskalasiText,
             waktu: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
           };
-
           setMessages((prev) => [...prev, botReply]);
-          setSesiStatus('eskalasi');
-
-          // Save bot reply + update session status to database
-          try {
-            const supabase = createClient();
-            await supabase.from('chat_pesan').insert({
-              sesi_id: sesiId,
-              pengirim: 'bot',
-              isi: eskalasiText,
-            });
-            await supabase
-              .from('chat_sesi')
-              .update({ status: 'eskalasi' })
-              .eq('id', sesiId);
-          } catch { /* ignore */ }
+          if (data?.eskalasi !== false) {
+            setSesiStatus('eskalasi');
+          }
         }
       } catch {
         // Offline saat memanggil AI: jangan eskalasi — tandai offline saja,
@@ -611,28 +618,15 @@ export default function PublicChatPage() {
           setIsBotTyping(false);
           return;
         }
-        // Network/fetch error: fail-safe to eskalasi
-        const eskalasiText = 'Maaf, asisten AI sedang tidak tersedia. Saya akan menghubungkan Anda ke petugas loket. Mohon tunggu...';
+        // Network/fetch error: fail-safe message (status sesi tidak diubah —
+        // pengunjung dapat mencoba lagi; eskalasi nyata terjadi di server).
         const botReply: Message = {
-          id: `bot-escalate-${msgIdCounter++}`,
+          id: `bot-err-${msgIdCounter++}`,
           pengirim: 'bot',
-          isi: eskalasiText,
+          isi: 'Maaf, asisten AI sedang tidak tersedia. Silakan coba lagi beberapa saat.',
           waktu: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
         };
         setMessages((prev) => [...prev, botReply]);
-        setSesiStatus('eskalasi');
-        try {
-          const supabase = createClient();
-          await supabase.from('chat_pesan').insert({
-            sesi_id: sesiId,
-            pengirim: 'bot',
-            isi: eskalasiText,
-          });
-          await supabase
-            .from('chat_sesi')
-            .update({ status: 'eskalasi' })
-            .eq('id', sesiId);
-        } catch { /* ignore */ }
       } finally {
         setLoadingSetup(false);
         setIsBotTyping(false);
@@ -643,31 +637,10 @@ export default function PublicChatPage() {
   const handleEscalateManual = async () => {
     if (!sesiId || sesiStatus !== 'bot') return;
 
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: `system-esc-${Date.now()}`,
-        pengirim: 'bot',
-        isi: 'Meneruskan chat ke petugas loket...',
-        waktu: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-      },
-    ]);
-
-    setSesiStatus('eskalasi');
-
-    try {
-      const supabase = createClient();
-      await supabase
-        .from('chat_sesi')
-        .update({ status: 'eskalasi' })
-        .eq('id', sesiId);
-
-      await supabase.from('chat_pesan').insert({
-        sesi_id: sesiId,
-        pengirim: 'bot',
-        isi: 'Pengunjung meminta bantuan petugas loket.',
-      });
-    } catch { /* ignore */ }
+    // Eskalasi manual: kirim sebagai pertanyaan ke AI route — server akan
+    // menandai sesi eskalasi + menyiarkan pesan bot. (Pengunjung tidak boleh
+    // menulis status sesi / pesan bot secara langsung.)
+    await handleSendMessage('Saya ingin berbicara dengan petugas loket.');
   };
 
   return (

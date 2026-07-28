@@ -15,6 +15,10 @@ export const FORWARD_MIGRATION_FILES = [
   '202607200001_p0_security_governance.sql',
   '202607210001_walkin_kontak_dan_layanan_perizinan.sql',
   '202607240001_pengunjung_no_hp.sql',
+  '202607280001_layanan_jadwal.sql',
+  '202607280002_chat_pesan_owner_strict.sql',
+  '202607280003_faq_petugas_scope.sql',
+  '202607280004_chat_pesan_client_uuid.sql',
 ] as const;
 
 export function listMigrationFiles(): string[] {

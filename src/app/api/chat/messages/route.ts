@@ -1,43 +1,121 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { z } from 'zod';
+import { createClient as createServerClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
+
+// P0: service-role is only for broadcast after an authorized write.
+// Auth + ownership are enforced explicitly — never trust client-supplied pengirim.
 
 function getServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return null;
-  return createServiceClient(url, key);
+  return createServiceClient(url, key, { auth: { persistSession: false } });
 }
 
 const getQuerySchema = z.object({
   sesi_id: z.string().uuid(),
 });
 
+// pengirim is derived server-side; body only carries sesi_id + isi.
 const postBodySchema = z.object({
   sesi_id: z.string().uuid(),
-  pengirim: z.enum(['pengunjung', 'petugas', 'bot']),
   isi: z.string().min(1).max(2000),
+  // Accepted for backward-compat with clients; ignored for authorization.
+  pengirim: z.enum(['pengunjung', 'petugas', 'bot']).optional(),
+  // Idempotency: client-generated UUID for optimistic-dedup across broadcast.
+  client_uuid: z.string().uuid().optional(),
 });
+
+type Actor =
+  | { kind: 'staff'; role: 'admin' | 'petugas'; layananId: string | null }
+  | { kind: 'pengunjung'; pengunjungId: string };
+
+async function resolveActor(
+  adminClient: NonNullable<ReturnType<typeof getServiceClient>>,
+  authUserId: string,
+): Promise<Actor | null> {
+  const { data: petugas } = await adminClient
+    .from('petugas')
+    .select('role, layanan_id')
+    .eq('auth_user_id', authUserId)
+    .maybeSingle();
+
+  if (petugas && (petugas.role === 'admin' || petugas.role === 'petugas')) {
+    return {
+      kind: 'staff',
+      role: petugas.role,
+      layananId: petugas.layanan_id ?? null,
+    };
+  }
+
+  const { data: pengunjung } = await adminClient
+    .from('pengunjung')
+    .select('id')
+    .eq('auth_user_id', authUserId)
+    .maybeSingle();
+
+  if (!pengunjung) return null;
+  return { kind: 'pengunjung', pengunjungId: pengunjung.id };
+}
+
+function canAccessSesi(
+  actor: Actor,
+  sesi: { pengunjung_id: string | null; layanan_id: string | null },
+): boolean {
+  if (actor.kind === 'staff') {
+    if (actor.role === 'admin') return true;
+    return !!actor.layananId && actor.layananId === sesi.layanan_id;
+  }
+  return !!sesi.pengunjung_id && sesi.pengunjung_id === actor.pengunjungId;
+}
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  const sesi_id = searchParams.get('sesi_id');
-
-  const parsed = getQuerySchema.safeParse({ sesi_id });
+  const parsed = getQuerySchema.safeParse({
+    sesi_id: searchParams.get('sesi_id'),
+  });
   if (!parsed.success) {
     return NextResponse.json({ error: 'Valid sesi_id is required' }, { status: 400 });
   }
 
-  const supabase = getServiceClient();
-  if (!supabase) {
+  const serverClient = await createServerClient();
+  const {
+    data: { user },
+  } = await serverClient.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const adminClient = getServiceClient();
+  if (!adminClient) {
     return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 });
   }
 
-  const { data, error } = await supabase
+  const actor = await resolveActor(adminClient, user.id);
+  if (!actor) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  const { data: sesiData, error: sesiErr } = await adminClient
+    .from('chat_sesi')
+    .select('id, status, pengunjung_id, layanan_id')
+    .eq('id', parsed.data.sesi_id)
+    .maybeSingle();
+
+  if (sesiErr) {
+    console.error('[api/chat/messages GET] sesi error:', sesiErr);
+    return NextResponse.json({ error: 'Failed to fetch messages' }, { status: 500 });
+  }
+  if (!sesiData || !canAccessSesi(actor, sesiData)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  const { data, error } = await adminClient
     .from('chat_pesan')
-    .select('id, pengirim, isi, created_at')
+    .select('id, pengirim, isi, created_at, client_uuid')
     .eq('sesi_id', parsed.data.sesi_id)
     .order('created_at', { ascending: true });
 
@@ -46,15 +124,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to fetch messages' }, { status: 500 });
   }
 
-  const { data: sesiData } = await supabase
-    .from('chat_sesi')
-    .select('status')
-    .eq('id', parsed.data.sesi_id)
-    .maybeSingle();
-
   return NextResponse.json({
     messages: data || [],
-    status: sesiData?.status || 'bot',
+    status: sesiData.status || 'bot',
   });
 }
 
@@ -74,19 +146,50 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const supabase = getServiceClient();
-  if (!supabase) {
+  const serverClient = await createServerClient();
+  const {
+    data: { user },
+  } = await serverClient.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const adminClient = getServiceClient();
+  if (!adminClient) {
     return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 });
   }
 
-  const { data, error } = await supabase
+  const actor = await resolveActor(adminClient, user.id);
+  if (!actor) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  const { data: sesiData, error: sesiErr } = await adminClient
+    .from('chat_sesi')
+    .select('id, status, pengunjung_id, layanan_id')
+    .eq('id', parsed.data.sesi_id)
+    .maybeSingle();
+
+  if (sesiErr) {
+    console.error('[api/chat/messages POST] sesi error:', sesiErr);
+    return NextResponse.json({ error: 'Failed to insert message' }, { status: 500 });
+  }
+  if (!sesiData || !canAccessSesi(actor, sesiData)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  // Force role — never trust client-supplied pengirim (impersonation vector).
+  const pengirim = actor.kind === 'staff' ? 'petugas' : 'pengunjung';
+
+  const { data, error } = await adminClient
     .from('chat_pesan')
     .insert({
       sesi_id: parsed.data.sesi_id,
-      pengirim: parsed.data.pengirim,
+      pengirim,
       isi: parsed.data.isi.trim(),
+      client_uuid: parsed.data.client_uuid ?? null,
     })
-    .select('id, pengirim, isi, created_at')
+    .select('id, pengirim, isi, created_at, client_uuid')
     .single();
 
   if (error) {
@@ -94,15 +197,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to insert message' }, { status: 500 });
   }
 
-  // Broadcast the new message to the room channel for instant 0ms sync
-  const channel = supabase.channel(`chat-room-${parsed.data.sesi_id}`);
-  await channel.send({
-    type: 'broadcast',
-    event: 'new_message',
-    payload: { message: data },
-  });
-  // Note: we don't need to wait for channel subscription here, we just emit the broadcast.
-  // The frontend clients that are subscribed will receive it.
+  // Best-effort realtime broadcast for 0ms cross-client sync.
+  try {
+    const channel = adminClient.channel(`chat-room-${parsed.data.sesi_id}`);
+    await channel.send({
+      type: 'broadcast',
+      event: 'new_message',
+      payload: { message: data },
+    });
+  } catch {
+    // Broadcast failure must not fail the write.
+  }
 
   return NextResponse.json({ message: data }, { status: 201 });
 }

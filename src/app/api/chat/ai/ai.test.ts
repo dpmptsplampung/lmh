@@ -134,6 +134,22 @@ const mockServiceClient = async (opts: MockServiceOpts = {}) => {
   // chat_ai_log insert (audit) — best-effort
   const logInsertChain = { error: opts.insertError ?? null };
 
+  // chat_pesan bot insert (server-side persist) + broadcast channel
+  const botMsg = {
+    id: 'bot-msg-1',
+    pengirim: 'bot',
+    isi: 'Jawaban dari AI [1]',
+    created_at: '2026-07-28T00:00:00Z',
+  };
+  const chatPesanChain = {
+    select: vi.fn().mockReturnThis(),
+    single: vi.fn().mockResolvedValue({ data: botMsg, error: null }),
+  };
+  const sesiUpdateChain = {
+    eq: vi.fn().mockReturnThis(),
+    neq: vi.fn().mockResolvedValue({ error: null }),
+  };
+
   // Rate-limit count chain: .from('anon_rate_limit').select('*',{count,head}).eq(...).eq(...).gte(...)
   const rateSelectChain = {
     eq: vi.fn().mockReturnThis(),
@@ -179,10 +195,16 @@ const mockServiceClient = async (opts: MockServiceOpts = {}) => {
         return { select: vi.fn().mockReturnValue(pengunjungChain) };
       }
       if (table === 'chat_sesi') {
-        return { select: vi.fn().mockReturnValue(sesiChain) };
+        return {
+          select: vi.fn().mockReturnValue(sesiChain),
+          update: vi.fn().mockReturnValue(sesiUpdateChain),
+        };
       }
       if (table === 'chat_ai_log') {
         return { insert: vi.fn().mockReturnValue(logInsertChain) };
+      }
+      if (table === 'chat_pesan') {
+        return { insert: vi.fn().mockReturnValue(chatPesanChain) };
       }
       if (table === 'layanan') {
         return {
@@ -193,6 +215,9 @@ const mockServiceClient = async (opts: MockServiceOpts = {}) => {
         };
       }
       return {};
+    }),
+    channel: vi.fn().mockReturnValue({
+      send: vi.fn().mockResolvedValue('ok'),
     }),
   };
   createClient.mockReturnValue(mock);

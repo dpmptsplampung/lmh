@@ -57,6 +57,8 @@ const mockServerClient = async ({ user, role }: MockServerOpts) => {
 interface MockServiceOpts {
   createUserError?: { message: string } | null;
   createUserData?: { user?: { id: string } | null } | null;
+  listUsersData?: { users: Array<{ id: string; email?: string }> } | null;
+  listUsersError?: { message: string } | null;
   insertError?: unknown | null;
   generateLinkError?: { message: string } | null;
   generateLinkData?: { properties?: { action_link?: string } } | null;
@@ -68,7 +70,7 @@ const mockServiceClient = async (opts: MockServiceOpts = {}) => {
   process.env.NEXT_PUBLIC_PUBLIC_URL = 'https://layanan.example.test';
   const supabaseMod = await import('@supabase/supabase-js');
   const createClient = supabaseMod.createClient as unknown as ReturnType<typeof vi.fn>;
-  const insertChain = {
+  const upsertChain = {
     error: opts.insertError ?? null,
   };
   const mock = {
@@ -77,6 +79,12 @@ const mockServiceClient = async (opts: MockServiceOpts = {}) => {
         createUser: vi.fn().mockResolvedValue({
           data: opts.createUserData ?? { user: { id: 'new-user-id' } },
           error: opts.createUserError ?? null,
+        }),
+        listUsers: vi.fn().mockResolvedValue({
+          data: opts.listUsersData ?? {
+            users: [{ id: 'existing-user-id', email: 'newpetugas@lmh.go.id' }],
+          },
+          error: opts.listUsersError ?? null,
         }),
         generateLink: vi.fn().mockResolvedValue({
           data: opts.generateLinkData ?? {
@@ -87,7 +95,7 @@ const mockServiceClient = async (opts: MockServiceOpts = {}) => {
       },
     },
     from: vi.fn().mockReturnValue({
-      insert: vi.fn().mockReturnValue(insertChain),
+      upsert: vi.fn().mockReturnValue(upsertChain),
     }),
   };
   createClient.mockReturnValue(mock);
@@ -199,13 +207,22 @@ describe('POST /api/admin/petugas/invite — input validation', () => {
     expect(res.status).toBe(400);
   });
 
-  it('returns 400 when layanan_id missing', async () => {
+  it('returns 400 when layanan_id missing for role petugas', async () => {
     await mockServerClient({ user: { id: 'u-1' }, role: 'admin' });
     await mockServiceClient();
     await mockResend();
     const { POST } = await import('./route');
     const res = await POST(buildRequest({ ...validBody, layanan_id: undefined }));
     expect(res.status).toBe(400);
+  });
+
+  it('accepts missing layanan_id for role admin', async () => {
+    await mockServerClient({ user: { id: 'u-1' }, role: 'admin' });
+    await mockServiceClient();
+    await mockResend();
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest({ ...validBody, layanan_id: undefined, role: 'admin' }));
+    expect(res.status).toBe(201);
   });
 
   it('returns 400 when role is invalid', async () => {
@@ -331,12 +348,12 @@ describe('POST /api/admin/petugas/invite — happy path (recovery link via email
     void _omit;
     const res = await POST(buildRequest(bodyWithoutRole));
     expect(res.status).toBe(201);
-    const insertFn = serviceMock.from('petugas').insert;
-    const insertArg = (insertFn as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(insertArg.role).toBe('petugas');
+    const upsertFn = serviceMock.from('petugas').upsert;
+    const upsertArg = (upsertFn as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(upsertArg.role).toBe('petugas');
   });
 
-  it('skips petugas insert but still sends recovery link when user already exists', async () => {
+  it('upserts petugas row for an existing account, then sends recovery link', async () => {
     await mockServerClient({ user: { id: 'u-1' }, role: 'admin' });
     const serviceMock = await mockServiceClient({
       createUserError: { message: 'User already registered' },
@@ -346,9 +363,23 @@ describe('POST /api/admin/petugas/invite — happy path (recovery link via email
     const res = await POST(buildRequest(validBody));
     expect(res.status).toBe(201);
     const json = await res.json();
-    expect(json.user_id).toBeNull();
-    expect(serviceMock.from).not.toHaveBeenCalledWith('petugas');
+    expect(json.user_id).toBe('existing-user-id');
+    expect(serviceMock.auth.admin.listUsers).toHaveBeenCalledTimes(1);
+    expect(serviceMock.from).toHaveBeenCalledWith('petugas');
+    expect(serviceMock.from('petugas').upsert).toHaveBeenCalledTimes(1);
     expect(serviceMock.auth.admin.generateLink).toHaveBeenCalledTimes(1);
     expect(sendMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns 500 when existing account cannot be resolved by email', async () => {
+    await mockServerClient({ user: { id: 'u-1' }, role: 'admin' });
+    await mockServiceClient({
+      createUserError: { message: 'User already registered' },
+      listUsersData: { users: [] },
+    });
+    await mockResend();
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest(validBody));
+    expect(res.status).toBe(500);
   });
 });

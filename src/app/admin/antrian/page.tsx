@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import Pagination from '@/components/Pagination';
+import WalkinWizard from '@/components/WalkinWizard';
 import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/components/Toast';
 
@@ -199,6 +200,12 @@ export default function AntrianPage() {
         description="Urutan kedatangan harian — walk-in dan reservasi (setelah scan)"
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+          <WalkinWizard
+            fixedLayananId={currentUser?.role === 'petugas' ? currentUser.layanan_id : null}
+            onSuccess={fetchData}
+            triggerLabel="+ Walk-in"
+            triggerClassName="btn btn--primary btn--sm"
+          />
           <Calendar size={16} style={{ color: 'var(--text-tertiary)' }} />
           <input
             type="date"

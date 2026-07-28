@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createServiceClient, type SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { createClient as createServerClient } from '@/lib/supabase/server';
-import { getGenerativeClient, getChatModel, buildRagContext, type FaqMatch } from '@/lib/gemini';
+import { getGenerativeClient, getChatModel, getEmbeddingModel, buildRagContext, type FaqMatch } from '@/lib/gemini';
 import { redactPii, detectPromptInjection } from '@/lib/pii';
 
 export const dynamic = 'force-dynamic';
@@ -47,6 +47,10 @@ export async function POST(request: NextRequest) {
   }
 
   const { pertanyaan: rawPertanyaan, layanan_id, sesi_id } = parsed.data;
+
+  // Weekend mode: petugas libur — bot hanya menjawab hal umum, tanpa eskalasi.
+  const todayDow = new Date().getDay();
+  const isWeekend = todayDow === 0 || todayDow === 6;
 
   // 1b. Check for prompt injection attacks
   if (detectPromptInjection(rawPertanyaan)) {
@@ -131,9 +135,7 @@ export async function POST(request: NextRequest) {
   // 3. Embed the user's question
   let queryEmbedding: number[];
   try {
-    const embedModel = genAI.getGenerativeModel({
-      model: process.env.GEMINI_EMBEDDING_MODEL || 'text-embedding-004',
-    });
+    const embedModel = getEmbeddingModel(genAI);
     const result = await embedModel.embedContent(pertanyaan);
     queryEmbedding = result.embedding.values;
     if (!queryEmbedding || queryEmbedding.length === 0) {
@@ -173,7 +175,12 @@ export async function POST(request: NextRequest) {
   const faqIds = isExactMatch ? faqMatches.map((m) => m.id) : [];
 
   let context: string;
-  if (isExactMatch) {
+  if (isWeekend) {
+    // Weekend: petugas tidak bertugas. Bot menjawab hanya hal umum dan TIDAK
+    // menawarkan eskalasi — pengunjung diarahkan kembali pada hari kerja.
+    const partialContext = faqMatches.length > 0 ? buildRagContext(faqMatches.slice(0, 3)) : '';
+    context = `[MODE AKHIR PEKAN]: Hari ini Sabtu/Minggu — petugas tidak bertugas. Jawab HANYA pertanyaan umum seputar layanan, persyaratan, dan jam operasional berdasarkan konteks FAQ resmi. Jika pertanyaan membutuhkan petugas atau di luar konteks, sampaikan dengan sopan bahwa petugas akan membantu pada hari kerja (Senin–Jumat). JANGAN menawarkan eskalasi atau koneksi langsung ke petugas.\n\n${partialContext}`;
+  } else if (isExactMatch) {
     context = buildRagContext(faqMatches);
   } else {
     const partialContext = faqMatches.length > 0 ? buildRagContext(faqMatches.slice(0, 3)) : '';
@@ -237,6 +244,7 @@ export async function POST(request: NextRequest) {
   }
 
   // 8. INSERT to chat_ai_log for audit
+  const eskalasi = !isExactMatch && !isWeekend;
   await logAiCall(
     adminClient,
     sesi_id,
@@ -244,16 +252,57 @@ export async function POST(request: NextRequest) {
     faqIds,
     jawaban,
     topSim,
-    !isExactMatch,
-    isExactMatch ? null : 'no_match',
+    eskalasi,
+    isExactMatch ? null : isWeekend ? 'weekend_mode' : 'no_match',
   );
 
-  // 9. Return jawaban + sumber
+  // 9. Persist bot reply server-side + broadcast (trust boundary: clients no
+  // longer write bot messages). On eskalasi, move the session to eskalasi so
+  // officers actually see it in their queue.
+  const botPengirim = {
+    sesi_id,
+    pengirim: 'bot',
+    isi: jawaban,
+    sumber_faq_id: isExactMatch && faqMatches.length > 0 ? faqMatches[0].id : null,
+  };
+  const { data: botMsg, error: botInsertErr } = await adminClient
+    .from('chat_pesan')
+    .insert(botPengirim)
+    .select('id, pengirim, isi, created_at')
+    .single();
+
+  if (botInsertErr) {
+    console.error('[api/chat/ai] gagal menyimpan pesan bot:', botInsertErr);
+  } else {
+    try {
+      const channel = adminClient.channel(`chat-room-${sesi_id}`);
+      await channel.send({
+        type: 'broadcast',
+        event: 'new_message',
+        payload: { message: botMsg },
+      });
+    } catch {
+      // Broadcast failure must not fail the request.
+    }
+  }
+
+  if (eskalasi) {
+    const { error: statusErr } = await adminClient
+      .from('chat_sesi')
+      .update({ status: 'eskalasi' })
+      .eq('id', sesi_id)
+      .neq('status', 'selesai');
+    if (statusErr) {
+      console.error('[api/chat/ai] gagal mengubah status eskalasi:', statusErr);
+    }
+  }
+
+  // 10. Return jawaban + sumber
   return NextResponse.json({
     jawaban,
     sumber: isExactMatch ? faqMatches.map((m) => ({ id: m.id, pertanyaan: m.pertanyaan })) : [],
-    eskalasi: !isExactMatch,
-    reason: isExactMatch ? null : 'no_match',
+    eskalasi,
+    reason: isExactMatch ? null : isWeekend ? 'weekend_mode' : 'no_match',
   });
 }
 

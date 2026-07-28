@@ -42,6 +42,7 @@ interface Message {
   pengirim: 'pengunjung' | 'bot' | 'petugas';
   isi: string;
   created_at: string;
+  client_uuid?: string | null;
 }
 
 type SessionQueryRow = {
@@ -256,11 +257,18 @@ export default function AdminChatPage() {
           setMessages((prev) => {
             const serverMsgs = data.messages as Message[];
             // Keep optimistic messages (id starts with 'opt-') that aren't yet
-            // represented in the server response (matched by isi + pengirim).
-            const serverTexts = new Set(serverMsgs.map((m) => `${m.pengirim}:${m.isi}`));
-            const pendingOpts = prev.filter(
-              (m) => m.id.startsWith('opt-') && !serverTexts.has(`${m.pengirim}:${m.isi}`),
+            // represented in the server response (matched by client_uuid, lalu
+            // fallback isi+pengirim untuk pesan lama).
+            const serverUuids = new Set(
+              serverMsgs.map((m) => m.client_uuid).filter(Boolean),
             );
+            const serverTexts = new Set(serverMsgs.map((m) => `${m.pengirim}:${m.isi}`));
+            const pendingOpts = prev.filter((m) => {
+              if (!m.id.startsWith('opt-')) return false;
+              const uuid = m.id.slice(4);
+              if (serverUuids.has(uuid)) return false;
+              return !serverTexts.has(`${m.pengirim}:${m.isi}`);
+            });
             return [...serverMsgs, ...pendingOpts];
           });
         }
@@ -275,15 +283,30 @@ export default function AdminChatPage() {
     const broadcastChannel = supabase
       .channel(`chat-room-${selectedSession.id}`)
       .on('broadcast', { event: 'new_message' }, (payload) => {
-        const newMsg = payload.payload.message;
+        const newMsg = payload.payload.message as Message;
         setMessages(prev => {
-          // Avoid duplicates based on unique id, or optimistic equivalent
-          if (prev.find(m => m.id === newMsg.id || (m.isi === newMsg.isi && m.pengirim === newMsg.pengirim && m.id.startsWith('opt-')))) {
+          // Dedup utama: client_uuid (optimistic vs server). Fallback lama:
+          // isi+pengirim untuk pesan tanpa uuid.
+          if (newMsg.client_uuid) {
+            const hasOpt = prev.some(
+              (m) => m.id === `opt-${newMsg.client_uuid}` || m.id === newMsg.id,
+            );
+            if (hasOpt) {
+              return prev.map((m) =>
+                m.id === `opt-${newMsg.client_uuid}` ? newMsg : m,
+              );
+            }
+          } else if (
+            prev.find(
+              (m) =>
+                m.id === newMsg.id ||
+                (m.isi === newMsg.isi && m.pengirim === newMsg.pengirim && m.id.startsWith('opt-')),
+            )
+          ) {
             return prev;
           }
-          // Remove corresponding optimistic message if it exists
-          const filtered = prev.filter(m => !(m.isi === newMsg.isi && m.pengirim === newMsg.pengirim && m.id.startsWith('opt-')));
-          return [...filtered, newMsg];
+          if (prev.some((m) => m.id === newMsg.id)) return prev;
+          return [...prev, newMsg];
         });
       })
       .subscribe();
@@ -309,9 +332,11 @@ export default function AdminChatPage() {
     // messageInput should be cleared immediately
     setMessageInput('');
 
-    // Optimistic update — display message immediately on officer screen
+    // Optimistic update — display message immediately on officer screen.
+    // client_uuid mengaitkan pesan optimistic dengan broadcast server.
+    const clientUuid = crypto.randomUUID();
     const optMsg: Message = {
-      id: `opt-${Date.now()}`,
+      id: `opt-${clientUuid}`,
       pengirim: 'petugas',
       isi: text,
       created_at: new Date().toISOString(),
@@ -326,6 +351,7 @@ export default function AdminChatPage() {
           sesi_id: selectedSession.id,
           pengirim: 'petugas',
           isi: text,
+          client_uuid: clientUuid,
         }),
       });
 
@@ -333,9 +359,16 @@ export default function AdminChatPage() {
 
       if (selectedSession.status !== 'aktif' && selectedSession.status !== 'selesai') {
         const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        let myPetugasId: string | null = null;
+        if (user) {
+          const { data: p } = await supabase
+            .from('petugas').select('id').eq('auth_user_id', user.id).maybeSingle();
+          myPetugasId = p?.id ?? null;
+        }
         await supabase
           .from('chat_sesi')
-          .update({ status: 'aktif' })
+          .update({ status: 'aktif', ditangani_oleh: myPetugasId })
           .eq('id', selectedSession.id);
         setSelectedSession((prev) => (prev ? { ...prev, status: 'aktif' } : null));
       }
@@ -365,9 +398,17 @@ export default function AdminChatPage() {
     if (!selectedSession) return;
     try {
       const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      let myPetugasId: string | null = null;
+      if (user) {
+        const { data: p } = await supabase
+          .from('petugas').select('id').eq('auth_user_id', user.id).maybeSingle();
+        myPetugasId = p?.id ?? null;
+      }
+
       const { error: updateErr } = await supabase
         .from('chat_sesi')
-        .update({ status: 'aktif' })
+        .update({ status: 'aktif', ditangani_oleh: myPetugasId })
         .eq('id', selectedSession.id);
       if (updateErr) throw updateErr;
 
@@ -382,6 +423,30 @@ export default function AdminChatPage() {
     } catch (err) {
       console.error(err);
       toast('Gagal mengambil alih chat', 'error');
+    }
+  };
+
+  const handleKembalikanKeBot = async () => {
+    if (!selectedSession) return;
+    try {
+      const supabase = createClient();
+      const { error: updateErr } = await supabase
+        .from('chat_sesi')
+        .update({ status: 'bot', ditangani_oleh: null })
+        .eq('id', selectedSession.id);
+      if (updateErr) throw updateErr;
+
+      await supabase.from('chat_pesan').insert({
+        sesi_id: selectedSession.id,
+        pengirim: 'bot',
+        isi: '↩ Percakapan dikembalikan ke asisten virtual. Silakan lanjutkan pertanyaan Anda.',
+      });
+
+      setSelectedSession((prev) => (prev ? { ...prev, status: 'bot' } : null));
+      toast('Sesi dikembalikan ke bot', 'success');
+    } catch (err) {
+      console.error(err);
+      toast('Gagal mengembalikan sesi ke bot', 'error');
     }
   };
 
@@ -518,6 +583,11 @@ export default function AdminChatPage() {
                     {selectedSession.status === 'eskalasi' && (
                       <button className="btn btn--primary btn--sm" onClick={handleAmbilAlih}>
                         Ambil Alih Chat
+                      </button>
+                    )}
+                    {selectedSession.status === 'aktif' && (
+                      <button className="btn btn--secondary btn--sm" onClick={handleKembalikanKeBot}>
+                        Kembalikan ke Bot
                       </button>
                     )}
                     <button className="btn btn--secondary btn--sm" onClick={handleSelesaikanSesi}>

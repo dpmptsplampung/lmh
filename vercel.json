@@ -2,11 +2,11 @@
   "crons": [
     {
       "path": "/api/notif/send",
-      "schedule": "0 2 * * *"
+      "schedule": "*/2 * * * *"
     },
     {
       "path": "/api/notif/retry",
-      "schedule": "0 3 * * *"
+      "schedule": "*/5 * * * *"
     }
   ]
 }

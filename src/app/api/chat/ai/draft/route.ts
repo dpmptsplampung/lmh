@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { createClient as createServerClient } from '@/lib/supabase/server';
-import { getGenerativeClient, getChatModel, buildRagContext, type FaqMatch } from '@/lib/gemini';
+import { getGenerativeClient, getChatModel, getEmbeddingModel, buildRagContext, type FaqMatch } from '@/lib/gemini';
 import { redactPii } from '@/lib/pii';
 
 export const dynamic = 'force-dynamic';
@@ -32,14 +32,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
   }
 
-  // 2. Verify caller is a petugas/admin
+  // 2. Verify caller is a petugas/admin (include layanan for scope check)
   const { data: petugasRow, error: petugasErr } = await adminClient
     .from('petugas')
-    .select('id, role')
+    .select('id, role, layanan_id')
     .eq('auth_user_id', caller.id)
     .maybeSingle();
 
-  if (petugasErr || !petugasRow) {
+  if (petugasErr || !petugasRow || !['petugas', 'admin'].includes(petugasRow.role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
 
   const { sesi_id } = parsed.data;
 
-  // 4. Fetch session details
+  // 4. Fetch session details + enforce layanan scope (petugas ≠ admin)
   const { data: sesiRow, error: sesiErr } = await adminClient
     .from('chat_sesi')
     .select('id, layanan_id')
@@ -67,6 +67,13 @@ export async function POST(request: NextRequest) {
 
   if (sesiErr || !sesiRow) {
     return NextResponse.json({ error: 'Sesi chat tidak ditemukan' }, { status: 404 });
+  }
+
+  if (
+    petugasRow.role !== 'admin'
+    && (!petugasRow.layanan_id || petugasRow.layanan_id !== sesiRow.layanan_id)
+  ) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   // 5. Fetch recent chat messages for context (last 5)
@@ -89,9 +96,7 @@ export async function POST(request: NextRequest) {
   let matches: FaqMatch[] = [];
   if (lastVisitorMsg) {
     try {
-      const embedModel = genAI.getGenerativeModel({
-        model: process.env.GEMINI_EMBEDDING_MODEL || 'text-embedding-004',
-      });
+      const embedModel = getEmbeddingModel(genAI);
       const embedRes = await embedModel.embedContent(redactPii(lastVisitorMsg));
       if (embedRes.embedding.values?.length) {
         const vectorLiteral = `[${embedRes.embedding.values.join(',')}]`;

@@ -32,6 +32,7 @@ Do not copy the marked replacement values from `.env.example` into staging or pr
 3. Set `APP_VERSION` to an immutable release or commit identifier, for example the Vercel commit SHA supplied by deployment automation.
 4. Confirm both public VAPID variables contain the same public key. Keep `VAPID_PRIVATE_KEY` server-only.
 5. Redeploy, then verify `/api/health/live` and `/api/health/ready`.
+6. Confirm Vercel Cron is enabled for the project (Hobby may limit cron frequency; Pro recommended for `*/2` send cadence). `CRON_SECRET` must match what Vercel injects as `Authorization: Bearer …`.
 
 Only `src/lib/env/client.ts` may be imported by client code. It uses static `process.env.NEXT_PUBLIC_*` references so Next.js can inline public values. Never add a server secret to that module or to a health response.
 

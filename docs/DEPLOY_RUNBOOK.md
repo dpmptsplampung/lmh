@@ -59,7 +59,7 @@ GEMINI_EMBEDDING_MODEL=text-embedding-004
 
 ---
 
-## Section 3: Apply migrations (5 baselines — CLI)
+## Section 3: Apply migrations (5 baselines + forward — CLI)
 
 **Do not** paste legacy `001`–`038` SQL in the Dashboard.
 
@@ -77,7 +77,10 @@ This applies, in order:
 3. `202607140003_feature_schema.sql`
 4. `202607140004_security_and_automation.sql`
 5. `202607140005_views_and_jobs.sql`
-6. Production seed: `supabase/seed.sql` (services/config only — **no** demo
+6. `202607200001_p0_security_governance.sql` (forward)
+7. `202607210001_walkin_kontak_dan_layanan_perizinan.sql` (forward)
+8. `202607240001_pengunjung_no_hp.sql` (forward)
+9. Production seed: `supabase/seed.sql` (services/config only — **no** demo
    passwords, **no** fake WA, **no** Auth users)
 
 Local full reset:
@@ -104,8 +107,9 @@ your org process). Complete magic-link / set password before go-live.
 1. Set all Section 1 env vars for Production (and Preview if used).
 2. Generate VAPID: `npx web-push generate-vapid-keys`.
 3. Deploy (`git push` with Git integration or `vercel --prod`).
-4. Cron: `vercel.json` schedules `/api/notif/send` and `/api/notif/retry` —
-   ensure `Authorization: Bearer <CRON_SECRET>`.
+4. Cron: `vercel.json` schedules `/api/notif/send` every 2 minutes and
+   `/api/notif/retry` every 5 minutes — ensure `Authorization: Bearer <CRON_SECRET>`
+   (Vercel injects this automatically when `CRON_SECRET` is set).
 
 ---
 

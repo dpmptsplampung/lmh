@@ -1,6 +1,6 @@
 {
   "name": "lampung-maju-hub",
-  "version": "0.1.0",
+  "version": "2.1.0",
   "engines": {
     "node": ">=22"
   },

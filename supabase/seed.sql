@@ -33,7 +33,7 @@ INSERT INTO public.landing_content (section, item_key, item_value, item_order) V
   ('cta', 'button_link', '/me/reservasi', 0),
   ('footer', 'copyright', 'DPMPTSP Provinsi Lampung. Hak cipta dilindungi.', 0),
   ('section_header', 'label', 'Layanan Kami', 0),
-  ('section_header', 'title', '9 Layanan dalam Satu Atap', 0),
+  ('section_header', 'title', '10 Layanan dalam Satu Atap', 0),
   ('section_header', 'description', 'Layanan konsultatif, mitra, dan modul publik dalam satu platform.', 0)
 ON CONFLICT (section, item_key, item_order) DO UPDATE SET
   item_value = EXCLUDED.item_value,

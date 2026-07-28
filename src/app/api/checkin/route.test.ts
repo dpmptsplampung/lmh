@@ -80,6 +80,13 @@ describe('POST /api/checkin consent assertion', () => {
         getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null }),
       },
       from: vi.fn((table: string) => {
+        if (table === 'pengunjung') {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'pengunjung-1' }, error: null }),
+          };
+        }
         if (table === 'consent_log') return { insert: consentInsert };
         if (table === 'visit') return { insert: visitInsert };
         return {};
@@ -103,6 +110,53 @@ describe('POST /api/checkin consent assertion', () => {
         disetujui: true,
         versi_kebijakan: '1.0',
       }),
+    );
+    expect(visitInsert).toHaveBeenCalledWith(
+      expect.objectContaining({ pengunjung_id: 'pengunjung-1' }),
+    );
+  });
+
+  it('does not bind pengunjung_id when caller has no profile row', async () => {
+    const serverMod = await import('@/lib/supabase/server');
+    const createClient = serverMod.createClient as unknown as ReturnType<typeof vi.fn>;
+
+    const consentInsert = vi.fn().mockResolvedValue({ error: null });
+    const visitInsert = vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'v2' }, error: null }),
+      }),
+    });
+
+    createClient.mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'user-2' } }, error: null }),
+      },
+      from: vi.fn((table: string) => {
+        if (table === 'pengunjung') {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+          };
+        }
+        if (table === 'consent_log') return { insert: consentInsert };
+        if (table === 'visit') return { insert: visitInsert };
+        return {};
+      }),
+    });
+
+    const { POST } = await import('./route');
+    const res = await POST(
+      buildRequest({
+        nama: 'Ani',
+        layanan_id: '11111111-1111-4111-8111-111111111111',
+        consent_given: true,
+      }),
+    );
+
+    expect(res.status).toBe(201);
+    expect(visitInsert).toHaveBeenCalledWith(
+      expect.not.objectContaining({ pengunjung_id: expect.anything() }),
     );
   });
 });

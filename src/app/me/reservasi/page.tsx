@@ -154,6 +154,19 @@ export default function ReservasiPage() {
       setError('Reservasi hanya tersedia pada hari kerja (Senin–Jumat).');
       return;
     }
+    // Jadwal layanan: tolak tanggal libur / di luar hari kerja layanan.
+    // Trigger DB (guard_visit_layanan_buka) memvalidasi ulang server-side.
+    if (form.tujuan === 'loket' && form.layanan_id) {
+      const supabase = createClient();
+      const { data: buka } = await supabase.rpc('is_layanan_buka', {
+        p_layanan_id: form.layanan_id,
+        p_tanggal: form.tanggal_rencana,
+      });
+      if (buka === false) {
+        setError('Layanan tidak beroperasi pada tanggal tersebut (libur/di luar jadwal). Live chat tetap tersedia.');
+        return;
+      }
+    }
     if (!consentGiven) {
       setError('Anda harus menyetujui pemrosesan data sesuai Kebijakan Privasi.');
       return;

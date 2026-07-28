@@ -1,8 +1,9 @@
 # LMH 2.0 — Production Readiness (honest status)
 
-> **Branch:** `production-readiness`  
-> **Date:** 15 Juli 2026  
-> **Scope:** Code gates 0–5 on this branch; staging/human work remains.
+> **Branch:** `main` (post production-readiness + forward hardening)  
+> **Date:** 25 Juli 2026  
+> **Scope:** Code gates 0–5 + P0 chat auth fix; staging/human work remains.  
+> **Audit detail:** `docs/AUDIT_PRODUCTION_2026-07-25.md`
 
 ---
 
@@ -10,13 +11,13 @@
 
 | Area | Status |
 |---|---|
-| **Code gates 0–3** | Complete on branch `production-readiness` (security, baseline DB, app hardening, a11y/UX) |
-| **Code gates 4–5** | Complete in-branch: CI, coverage config, smoke script, ops docs (this pass) |
-| **Migrations** | **5 baseline** files (`202607140001`–`005`) + `seed.sql` / `seed-demo.sql` — **not** 38 numbered files |
-| **CI** | `.github/workflows/ci.yml`: Node 22, lint, typecheck, test, build (placeholder env), optional audit |
-| **Production go-live** | **Not** “100% complete / only dashboard left.” Staging deploy, human Dashboard config, legal sign-off, and residual E2E still required |
+| **Code gates 0–5** | Complete (security, baseline DB, app hardening, a11y/UX, CI, smoke, ops docs) |
+| **P0/P1 hardening 2026-07-25** | Chat messages auth+ownership, checkin `pengunjung_id`, inquiry no service-role UPDATE, AI draft layanan scope, cron 2/5 min, error sanitization |
+| **Migrations** | **5 baseline** + **3 forward** (`20260720`, `20260721`, `20260724`) + `seed.sql` |
+| **CI** | `.github/workflows/ci.yml`: Node 22, lint, typecheck, test:coverage, build, audit high+ |
+| **Production go-live** | **Code-ready.** Staging deploy, Dashboard config, secrets, legal sign-off still required |
 
-**Honest bottom line:** Application code and baseline schema are production-oriented and verified by unit/contract tests + build. Go-live still needs environment wiring, migration apply on a real project, and human acceptance.
+**Honest bottom line:** Application code is production-oriented. Go-live still needs environment wiring, migration apply on a real project, and human acceptance — not more feature code.
 
 ---
 
@@ -57,7 +58,7 @@ These are **not** finished by this branch alone:
 
 | # | Item | Owner |
 |---|---|---|
-| 1 | **Docker / Supabase CLI SQL verify** — apply 5 baselines + seed on empty project | Ops |
+| 1 | **Docker / Supabase CLI SQL verify** — apply 5 baselines + forward migrations (`20260720`–`20260724`) + seed on empty project | Ops |
 | 2 | **Staging deploy** (Vercel + linked Supabase) | Ops |
 | 3 | **Dashboard:** Anonymous Auth, Auth Hook JWT role, Site URL | Human |
 | 4 | **Resend** domain verification + API key (magic-link + notif email) | Human |
@@ -65,10 +66,11 @@ These are **not** finished by this branch alone:
 | 6 | **Gemini** API key + FAQ embed backfill post-deploy | Human |
 | 7 | **Admin invite** first staff accounts (no shared password seed) | Human |
 | 8 | **Legal / DPO** sign-off on `KEBIJAKAN_PDP` + privacy page | DPO |
-| 9 | **Gallery delete orphans** (storage cleanup) | Product/ops |
+| 9 | ~~Gallery delete orphans~~ — closed (API DELETE cleans storage) | — |
 | 10 | **Lighthouse** PWA/A11y formal scores | QA |
 | 11 | **E2E** (Playwright) happy paths | Eng follow-up |
 | 12 | **RPO/RTO** ownership numbers | Ops + management |
+| 13 | ~~Notif cron frequency~~ — fixed: send `*/2`, retry `*/5` in `vercel.json` | — |
 
 ---
 

@@ -55,7 +55,15 @@ const buildRequest = (body: unknown): NextRequest => {
 
 const SESI_ID = '660e8400-e29b-41d4-a716-446655440001';
 
-const mockServiceClient = async (opts: { isPetugas?: boolean; hasSesi?: boolean } = {}) => {
+const mockServiceClient = async (
+  opts: {
+    isPetugas?: boolean;
+    hasSesi?: boolean;
+    role?: 'petugas' | 'admin';
+    petugasLayananId?: string | null;
+    sesiLayananId?: string;
+  } = {},
+) => {
   process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://supabase.local';
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-key';
   process.env.GEMINI_API_KEY = 'test-key';
@@ -66,6 +74,9 @@ const mockServiceClient = async (opts: { isPetugas?: boolean; hasSesi?: boolean 
 
   const isPetugas = opts.isPetugas ?? true;
   const hasSesi = opts.hasSesi ?? true;
+  const role = opts.role ?? 'petugas';
+  const petugasLayananId = opts.petugasLayananId === undefined ? 'layanan-1' : opts.petugasLayananId;
+  const sesiLayananId = opts.sesiLayananId ?? 'layanan-1';
 
   const mock = {
     rpc: vi.fn(async () => ({
@@ -78,7 +89,9 @@ const mockServiceClient = async (opts: { isPetugas?: boolean; hasSesi?: boolean 
           select: vi.fn().mockReturnThis(),
           eq: vi.fn().mockReturnThis(),
           maybeSingle: vi.fn().mockResolvedValue({
-            data: isPetugas ? { id: 'petugas-1', role: 'petugas' } : null,
+            data: isPetugas
+              ? { id: 'petugas-1', role, layanan_id: petugasLayananId }
+              : null,
             error: null,
           }),
         };
@@ -88,7 +101,7 @@ const mockServiceClient = async (opts: { isPetugas?: boolean; hasSesi?: boolean 
           select: vi.fn().mockReturnThis(),
           eq: vi.fn().mockReturnThis(),
           maybeSingle: vi.fn().mockResolvedValue({
-            data: hasSesi ? { id: SESI_ID, layanan_id: 'layanan-1' } : null,
+            data: hasSesi ? { id: SESI_ID, layanan_id: sesiLayananId } : null,
             error: null,
           }),
         };
@@ -145,5 +158,28 @@ describe('POST /api/chat/ai/draft', () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.draft).toContain('NIB');
+  });
+
+  it('returns 403 when petugas layanan does not match session', async () => {
+    await mockServiceClient({
+      isPetugas: true,
+      petugasLayananId: 'layanan-other',
+      sesiLayananId: 'layanan-1',
+    });
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest({ sesi_id: SESI_ID }));
+    expect(res.status).toBe(403);
+  });
+
+  it('allows admin to draft for any layanan session', async () => {
+    await mockServiceClient({
+      isPetugas: true,
+      role: 'admin',
+      petugasLayananId: null,
+      sesiLayananId: 'layanan-1',
+    });
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest({ sesi_id: SESI_ID }));
+    expect(res.status).toBe(200);
   });
 });

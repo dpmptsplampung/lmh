@@ -58,7 +58,7 @@ export default function InvitePetugasPage() {
       const res = await fetch('/api/admin/petugas/invite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, nama, layanan_id: layananId, role }),
+        body: JSON.stringify({ email, nama, layanan_id: layananId || null, role }),
       });
       const json = await res.json();
 
@@ -91,8 +91,8 @@ export default function InvitePetugasPage() {
         title="Tambah Petugas"
         description="Buat akun petugas baru. Tautan pengaturan kata sandi akan dikirim ke email petugas."
       >
-        <Link href="/admin" className="btn btn--ghost btn--sm">
-          <ArrowLeft size={14} /> Kembali ke Dashboard
+        <Link href="/admin/petugas" className="btn btn--ghost btn--sm">
+          <ArrowLeft size={14} /> Daftar Petugas
         </Link>
       </PageHeader>
 
@@ -153,8 +153,8 @@ export default function InvitePetugasPage() {
             </div>
 
             <div className="form-group">
-              <label className="form-label form-label--required" htmlFor="inviteLayanan">
-                Layanan
+              <label className={`form-label ${role === 'petugas' ? 'form-label--required' : ''}`} htmlFor="inviteLayanan">
+                Layanan {role === 'admin' && <span style={{ fontWeight: 400, color: 'var(--text-tertiary)' }}>(opsional untuk admin)</span>}
               </label>
               {loadingLayanan ? (
                 <div className={styles.loadingRow}>
@@ -168,9 +168,9 @@ export default function InvitePetugasPage() {
                   className="form-input"
                   value={layananId}
                   onChange={(e) => setLayananId(e.target.value)}
-                  required
+                  required={role === 'petugas'}
                 >
-                  <option value="">— Pilih Layanan —</option>
+                  <option value="">{role === 'admin' ? '— Tanpa layanan (admin) —' : '— Pilih Layanan —'}</option>
                   {layananList.map((l) => (
                     <option key={l.id} value={l.id}>
                       {l.nama}

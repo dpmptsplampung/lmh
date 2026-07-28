@@ -4,7 +4,61 @@ Semua perubahan penting pada project LMH didokumentasikan di sini.
 Format: [Keep a Changelog](https://keepachangelog.com/). Pemversian
 mengikuti [Semantic Versioning](https://semver.org/).
 
-## [Unreleased / 2.1.0] — 2026-07-20
+## [2.2.0] — 2026-07-28
+
+Audit role & fitur (petugas layanan, live chat, Gemini bot) — 10 temuan
+diperbaiki + fitur jadwal layanan. Empat migrasi baru:
+`202607280001_layanan_jadwal.sql`, `202607280002_chat_pesan_owner_strict.sql`,
+`202607280003_faq_petugas_scope.sql`, `202607280004_chat_pesan_client_uuid.sql`.
+
+### Fitur
+- **Jadwal layanan**: `layanan_jadwal` (hari kerja + jam operasional per
+  layanan) dan `layanan_libur` (tanggal libur spesifik). Antrian
+  (walk-in/reservasi) ditolak saat libur via trigger DB
+  (`guard_visit_layanan_buka`) + validasi UI reservasi; live chat tetap buka.
+  Pengelolaan lewat halaman baru `/admin/settings/jadwal` (admin + petugas
+  PTSP, flag baru `layanan.is_ptsp`).
+- **Mode weekend live chat**: Sabtu–Minggu bot Gemini hanya menjawab hal umum
+  dan tidak menawarkan eskalasi ke petugas.
+- **Walk-in untuk petugas**: wizard walk-in diekstrak ke komponen bersama
+  `WalkinWizard`, kini tersedia di dashboard admin dan `/admin/antrian`.
+  Petugas hanya dapat meregistrasi ke layanannya sendiri.
+- **Kelola petugas**: halaman baru `/admin/petugas` (daftar, edit nama/role/
+  layanan). Undangan admin boleh tanpa layanan.
+- **Takeover chat lengkap**: ambil alih mengisi `ditangani_oleh`; tombol baru
+  "Kembalikan ke Bot" (status→`bot`, `ditangani_oleh`=null).
+- Badge eskalasi Sidebar kini live via subscription `postgres_changes`
+  (sebelumnya dihitung sekali saat mount).
+
+### Keamanan & Integritas
+- **Pesan bot ditulis server-side** di `/api/chat/ai` (insert + broadcast +
+  update status eskalasi). Sebelumnya browser pengunjung yang menulis — pesan
+  bot tidak dibroadcast ke petugas dan pengunjung bisa memalsukan pesan `bot`.
+- RLS `chat_pesan_owner_insert` diperketat: owner sesi hanya boleh insert
+  `pengirim='pengunjung'` (`202607280002`).
+- Eskalasi chat kini benar-benar tercatat di DB (sebelumnya update status oleh
+  pengunjung diblokir trigger guard → gagal senyap; badge "Menunggu Petugas"
+  nyaris tidak pernah muncul).
+- **Fix invite petugas**: email yang sudah terdaftar kini di-resolve
+  (`listUsers`) lalu baris petugas di-upsert — sebelumnya balas 201 sukses
+  palsu tanpa membuat petugas. Error FK/unique dibedakan pesannya.
+- **Route guard `/admin/*`** (`AdminGuard`): non-staff → `/login`, petugas di
+  halaman admin-only → `/admin/antrian`. Daftar akses tunggal di
+  `src/lib/admin-nav.ts`, dipakai Sidebar + guard (fail-closed untuk route
+  tak terdaftar).
+- Petugas dapat CRUD FAQ layanannya + toggle chatbot layanannya (RLS scoped,
+  `202607280003`); sebelumnya menu terbuka tapi simpan selalu ditolak RLS.
+
+### Perbaikan Lain
+- Embedding model disatukan via `getEmbeddingModel()` default
+  `text-embedding-004` (768-dim, cocok kolom `vector(768)`; default lama
+  `gemini-embedding-001` 3072-dim akan gagal insert).
+- Idempotency chat: kolom `chat_pesan.client_uuid` untuk dedup pesan
+  optimistic vs broadcast (menggantikan heuristic isi+pengirim).
+- Pesan rate-limit jujur di chat pengunjung (429 → "coba sebentar lagi",
+  bukan eskalasi palsu).
+
+## [2.1.0] — 2026-07-26
 
 Gelombang perbaikan audit pasca-rilis LMH 2.0.
 
@@ -19,6 +73,8 @@ Gelombang perbaikan audit pasca-rilis LMH 2.0.
 - (Semua di migration `202607200001_p0_security_governance.sql`.)
 
 ### Fitur & Integritas Data
+- Integrasi Layanan Perizinan DPMPTSP Provinsi Lampung (tipe `konsultatif`) di database (`202607210001_walkin_kontak_dan_layanan_perizinan.sql`).
+- Tambah kolom `no_hp` pada data `pengunjung` (`202607240001_pengunjung_no_hp.sql`) untuk verifikasi profil.
 - UMKM owner-linking + consent PDP (`umkm_contact`) saat admin submit listing.
 - QR/token SKM untuk pengunjung walk-in.
 - Dashboard admin: angka/metrik kini akurat vs sumber data.
@@ -29,13 +85,15 @@ Gelombang perbaikan audit pasca-rilis LMH 2.0.
 - Retensi `chat_ai_log` 90 hari (cron harian `prune_chat_ai_log()`).
 - Fungsi publik `get_queue_position(qr_token)` untuk posisi antrean.
 
-### UX Publik
+### UX Publik & Admin
+- Expose menu-menu admin orphan di Sidebar (Hasil SKM, Log AI Chat, Tata Kelola Data, Undang Petugas) dengan dynamic role check.
 - Navigasi mobile diperbaiki, posisi antrean tampil, modal aksesibel
   (a11y), migrasi ke `next/font`.
 
 ### Dokumentasi
 - PRD.md, ARCHITECTURE.md, AUDIT_RESULTS.md diarsipkan ke `docs/archive/`
   dengan banner historis; sumber kebenaran: `docs/AUDIT_DAN_ROADMAP_INOVASI.md`.
+- `MIGRATIONS.md` diperbarui mencatat migrasi ke-7 dan ke-8.
 
 ## [2.0.0] — 2026-07-11
 

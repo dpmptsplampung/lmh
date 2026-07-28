@@ -21,101 +21,45 @@ import {
   Settings,
   LayoutTemplate,
   TrendingUp,
+  BarChart3,
+  ShieldCheck,
+  UserPlus,
+  Bot,
+  CalendarDays,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
+import { ADMIN_NAV, type AdminNavEntry } from '@/lib/admin-nav';
 import styles from './Sidebar.module.css';
 
-interface NavItem {
-  label: string;
-  href: string;
-  icon: React.ReactNode;
-  badge?: string;
-  roles?: string[]; // 'admin', 'petugas'
-}
+const ICONS: Record<AdminNavEntry['iconKey'], React.ReactNode> = {
+  dashboard: <LayoutDashboard size={20} />,
+  kunjungan: <ClipboardCheck size={20} />,
+  scan: <QrCode size={20} />,
+  antrian: <Users size={20} />,
+  absensi: <BookOpen size={20} />,
+  chat: <MessageSquare size={20} />,
+  faq: <HelpCircle size={20} />,
+  umkm: <Store size={20} />,
+  gallery: <FileText size={20} />,
+  leads: <TrendingUp size={20} />,
+  skm: <BarChart3 size={20} />,
+  aiLog: <Bot size={20} />,
+  governance: <ShieldCheck size={20} />,
+  petugas: <UserPlus size={20} />,
+  jadwal: <CalendarDays size={20} />,
+  settings: <Settings size={20} />,
+  landing: <LayoutTemplate size={20} />,
+  public: <Globe size={20} />,
+};
 
-const navItems: NavItem[] = [
-  {
-    label: 'Dashboard',
-    href: '/admin',
-    icon: <LayoutDashboard size={20} />,
-    roles: ['admin'],
-  },
-  {
-    label: 'Kunjungan',
-    href: '/admin/kunjungan',
-    icon: <ClipboardCheck size={20} />,
-    roles: ['admin'],
-  },
-  {
-    label: 'Scan QR',
-    href: '/admin/scan',
-    icon: <QrCode size={20} />,
-    roles: ['admin'],
-  },
-
-  {
-    label: 'Antrian',
-    href: '/admin/antrian',
-    icon: <Users size={20} />,
-    roles: ['admin', 'petugas'],
-  },
-  {
-    label: 'Absensi',
-    href: '/admin/absensi',
-    icon: <BookOpen size={20} />,
-    roles: ['admin', 'petugas'],
-  },
-  {
-    label: 'Live Chat',
-    href: '/admin/chat',
-    icon: <MessageSquare size={20} />,
-    roles: ['admin', 'petugas'],
-  },
-  {
-    label: 'Kelola FAQ',
-    href: '/admin/chat/faq',
-    icon: <HelpCircle size={20} />,
-    roles: ['admin', 'petugas'],
-  },
-  {
-    label: 'UMKM',
-    href: '/admin/umkm',
-    icon: <Store size={20} />,
-    roles: ['admin'],
-  },
-  {
-    label: 'Investment Gallery',
-    href: '/admin/gallery',
-    icon: <FileText size={20} />,
-    roles: ['admin'],
-  },
-  {
-    label: 'Lead Investasi',
-    href: '/admin/investasi-leads',
-    icon: <TrendingUp size={20} />,
-    roles: ['admin'],
-  },
-  {
-    label: 'Pengaturan',
-    href: '/admin/settings',
-    icon: <Settings size={20} />,
-    roles: ['admin'],
-  },
-  {
-    label: 'Konten Landing',
-    href: '/admin/settings/landing',
-    icon: <LayoutTemplate size={20} />,
-    roles: ['admin'],
-  },
-  {
-    label: 'Tampilan Publik',
-    href: '/',
-    icon: <Globe size={20} />,
-    roles: ['admin', 'petugas'],
-  },
-];
+const navItems = ADMIN_NAV.map((entry) => ({
+  label: entry.label,
+  href: entry.href,
+  icon: ICONS[entry.iconKey],
+  roles: entry.roles as string[],
+}));
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -125,8 +69,10 @@ export default function Sidebar() {
   const [eskalasiCount, setEskalasiCount] = useState(0);
 
   useEffect(() => {
+    const supabase = createClient();
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
     async function getUserRole() {
-      const supabase = createClient();
       const {
         data: { user },
       } = await supabase.auth.getUser();
@@ -143,21 +89,36 @@ export default function Sidebar() {
         setUserRole(petugas.role);
         setUserName(petugas.nama ?? '');
 
-        // Badge unread: sesi chat berstatus eskalasi
-        let badgeQuery = supabase
-          .from('chat_sesi')
-          .select('*', { count: 'exact', head: true })
-          .eq('status', 'eskalasi');
-        if (petugas.role === 'petugas' && petugas.layanan_id) {
-          badgeQuery = badgeQuery.eq('layanan_id', petugas.layanan_id);
-        }
-        const { count } = await badgeQuery;
-        setEskalasiCount(count ?? 0);
+        // Badge unread: sesi chat berstatus eskalasi — live via subscription
+        const scopeLayananId = petugas.role === 'petugas' ? petugas.layanan_id : null;
+        const refreshBadge = async () => {
+          let badgeQuery = supabase
+            .from('chat_sesi')
+            .select('*', { count: 'exact', head: true })
+            .eq('status', 'eskalasi');
+          if (scopeLayananId) {
+            badgeQuery = badgeQuery.eq('layanan_id', scopeLayananId);
+          }
+          const { count } = await badgeQuery;
+          setEskalasiCount(count ?? 0);
+        };
+        await refreshBadge();
+
+        channel = supabase
+          .channel('sidebar-eskalasi-badge')
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_sesi' }, () => {
+            refreshBadge();
+          })
+          .subscribe();
       } else {
         setUserRole(null);
       }
     }
     getUserRole();
+
+    return () => {
+      if (channel) supabase.removeChannel(channel);
+    };
   }, []);
 
   const isActive = (href: string) => {

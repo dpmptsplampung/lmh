@@ -87,15 +87,6 @@ const mockServiceClient = async (opts: MockServiceOpts = {}) => {
     }),
   };
 
-  // auth.users lookup: .from('auth.users').select('id').eq(...).maybeSingle()
-  const userLookupChain = {
-    eq: vi.fn().mockReturnThis(),
-    maybeSingle: vi.fn().mockResolvedValue({
-      data: opts.existingUser ?? null,
-      error: opts.lookupError ?? null,
-    }),
-  };
-
   // rate-limit insert chain
   const logInsertMock = vi.fn().mockReturnValue({ error: opts.logError ?? null });
 
@@ -135,9 +126,6 @@ const mockServiceClient = async (opts: MockServiceOpts = {}) => {
       }
       if (table === 'umkm_listing_owner') {
         return { select: vi.fn().mockReturnValue(ownerSelectChain) };
-      }
-      if (table === 'auth.users') {
-        return { select: vi.fn().mockReturnValue(userLookupChain) };
       }
       return { select: vi.fn().mockReturnValue({}) };
     }),

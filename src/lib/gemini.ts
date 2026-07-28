@@ -47,7 +47,9 @@ export function getChatModel(client: GoogleGenerativeAI, layananNama?: string) {
 }
 
 export function getEmbeddingModel(client: GoogleGenerativeAI) {
-  const model = process.env.GEMINI_EMBEDDING_MODEL || 'gemini-embedding-001';
+  // Kolom faq_knowledge_base.embedding adalah vector(768) — default harus model
+  // 768-dim (text-embedding-004). gemini-embedding-001 menghasilkan 3072 dim.
+  const model = process.env.GEMINI_EMBEDDING_MODEL || 'text-embedding-004';
   return client.getGenerativeModel({ model });
 }
 

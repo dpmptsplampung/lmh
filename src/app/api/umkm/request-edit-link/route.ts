@@ -172,17 +172,7 @@ export async function POST(request: NextRequest) {
 
   const redirectTo = `${base}/auth/callback?next=/umkm/edit/${listing_id}`;
 
-  const { data: existingUser, error: lookupError } = await adminClient
-    .from('auth.users')
-    .select('id')
-    .eq('email', email)
-    .maybeSingle();
-
-  let userExists = false;
-  if (!lookupError && existingUser) {
-    userExists = true;
-  }
-
+  // Auth Admin API only — never query auth.users via PostgREST (not exposed).
   const generateMagicLink = async () => {
     return adminClient.auth.admin.generateLink({
       email,
@@ -195,19 +185,18 @@ export async function POST(request: NextRequest) {
 
   if (linkResult.error) {
     const msg = (linkResult.error.message || '').toLowerCase();
-    if (!userExists && (msg.includes('not found') || msg.includes('no user') || msg.includes('does not exist'))) {
-      const { data: created, error: createError } = await adminClient.auth.admin.createUser({
+    if (msg.includes('not found') || msg.includes('no user') || msg.includes('does not exist')) {
+      const { error: createError } = await adminClient.auth.admin.createUser({
         email,
         email_confirm: true,
       });
-      if (createError) {
-        return NextResponse.json({ sent: true }, { status: 200 });
-      }
-      if (created?.user) {
+      // already-registered is fine — retry generateLink either way when create fails for other reasons we still soft-succeed
+      if (!createError || /already|registered|exists/i.test(createError.message || '')) {
         linkResult = await generateMagicLink();
       }
     }
     if (linkResult.error) {
+      // Soft-success: do not leak whether email is registered / delivery failed at this layer.
       return NextResponse.json({ sent: true }, { status: 200 });
     }
   }

@@ -4,12 +4,17 @@ import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { z } from 'zod';
 
-const bodySchema = z.object({
-  email: z.email(),
-  nama: z.string().min(2).max(200),
-  layanan_id: z.string().uuid(),
-  role: z.enum(['petugas', 'admin']).default('petugas'),
-});
+const bodySchema = z
+  .object({
+    email: z.email(),
+    nama: z.string().min(2).max(200),
+    layanan_id: z.string().uuid().nullable().optional(),
+    role: z.enum(['petugas', 'admin']).default('petugas'),
+  })
+  .refine((v) => v.role === 'admin' || !!v.layanan_id, {
+    message: 'layanan_id wajib untuk role petugas',
+    path: ['layanan_id'],
+  });
 
 function getServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -25,7 +30,8 @@ function getResend(): Resend | null {
 }
 
 function publicBaseUrl(): string | null {
-  const url = process.env.NEXT_PUBLIC_URL ?? process.env.NEXT_PUBLIC_PUBLIC_URL;
+  // Prefer the same canonical public URL used by notif + magic-link flows.
+  const url = process.env.NEXT_PUBLIC_PUBLIC_URL;
   if (!url) return null;
   return url.replace(/\/$/, '');
 }
@@ -111,30 +117,60 @@ export async function POST(request: NextRequest) {
     userId = created.user?.id ?? null;
   }
 
-  if (!alreadyRegistered && !userId) {
+  // Email sudah terdaftar (mis. user Google-login lama atau pegawai yang sama
+  // ditambahkan ke layanan lain): resolusi userId-nya lalu upsert baris
+  // petugas — jangan balas sukses palsu tanpa membuat baris.
+  if (alreadyRegistered && !userId) {
+    const { data: listData, error: listError } = await adminClient.auth.admin.listUsers({
+      page: 1,
+      perPage: 1000,
+    });
+    if (listError) {
+      console.error('[admin/petugas/invite] gagal mencari user existing', listError);
+      return NextResponse.json(
+        { error: 'Gagal memproses akun yang sudah terdaftar.' },
+        { status: 500 },
+      );
+    }
+    userId =
+      listData?.users?.find((u) => u.email?.toLowerCase() === email.toLowerCase())?.id ?? null;
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'Email terdaftar tetapi akun tidak ditemukan.' },
+        { status: 500 },
+      );
+    }
+  }
+
+  if (!userId) {
     return NextResponse.json(
       { error: 'Gagal membuat akun petugas.' },
       { status: 500 },
     );
   }
 
-  if (userId) {
-    const { error: insertError } = await adminClient
-      .from('petugas')
-      .insert({
+  const { error: insertError } = await adminClient
+    .from('petugas')
+    .upsert(
+      {
         auth_user_id: userId,
         nama,
-        layanan_id,
+        layanan_id: layanan_id ?? null,
         role,
-      });
+      },
+      { onConflict: 'auth_user_id' },
+    );
 
-    if (insertError) {
-      console.error('[admin/petugas/invite] gagal menyimpan baris petugas', insertError);
-      return NextResponse.json(
-        { error: 'Gagal menyimpan data petugas.' },
-        { status: 500 },
-      );
-    }
+  if (insertError) {
+    console.error('[admin/petugas/invite] gagal menyimpan baris petugas', insertError);
+    const code = (insertError as { code?: string }).code;
+    const msg =
+      code === '23503'
+        ? 'Layanan yang dipilih tidak ditemukan.'
+        : code === '23505'
+          ? 'Akun ini sudah terdaftar sebagai petugas.'
+          : 'Gagal menyimpan data petugas.';
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 
   const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({

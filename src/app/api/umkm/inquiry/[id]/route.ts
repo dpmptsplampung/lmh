@@ -107,9 +107,8 @@ export async function PATCH(
     );
   }
 
-  // UPDATE via server client (RLS "umkm_inquiry_update_owner" —
-  // owner/admin). Jika RLS menolak (seharusnya tidak, karena
-  // SELECT sudah lolos), fallback service-role.
+  // UPDATE via server client only (RLS "umkm_inquiry_update_owner").
+  // No service-role fallback — that would bypass ownership.
   const { data: updated, error: updateErr } = await supabase
     .from('umkm_inquiry')
     .update({ status, updated_at: new Date().toISOString() })
@@ -118,28 +117,10 @@ export async function PATCH(
     .maybeSingle();
 
   if (updateErr || !updated) {
-    // Fallback service-role (admin path atau RLS quirk).
-    const adminClient = getServiceClient();
-    if (!adminClient) {
-      return NextResponse.json(
-        { error: 'Gagal memperbarui inquiry' },
-        { status: 500 },
-      );
-    }
-    const { data: adminUpdated, error: adminErr } = await adminClient
-      .from('umkm_inquiry')
-      .update({ status, updated_at: new Date().toISOString() })
-      .eq('id', inquiryId)
-      .select('id, listing_id, from_email, from_nama, pesan, status, updated_at')
-      .maybeSingle();
-
-    if (adminErr || !adminUpdated) {
-      return NextResponse.json(
-        { error: 'Gagal memperbarui inquiry' },
-        { status: 500 },
-      );
-    }
-    return NextResponse.json({ inquiry: adminUpdated }, { status: 200 });
+    return NextResponse.json(
+      { error: 'Gagal memperbarui inquiry' },
+      { status: 500 },
+    );
   }
 
   return NextResponse.json({ inquiry: updated }, { status: 200 });

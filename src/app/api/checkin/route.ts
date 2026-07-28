@@ -37,6 +37,9 @@ export async function POST(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser();
 
+  // Resolve ownership from the session — never trust client-supplied pengunjung_id.
+  let resolvedPengunjungId: string | null = null;
+
   // Authenticated callers must explicitly assert consent before any consent_log write.
   // Offline replay must carry the same assertion from the offline form.
   if (user) {
@@ -46,6 +49,13 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
+
+    const { data: pengunjungRow } = await supabase
+      .from('pengunjung')
+      .select('id')
+      .eq('auth_user_id', user.id)
+      .maybeSingle();
+    resolvedPengunjungId = pengunjungRow?.id ?? null;
 
     const { error: consentError } = await supabase.from('consent_log').insert({
       subjek_ref: user.id,
@@ -72,6 +82,8 @@ export async function POST(request: NextRequest) {
       tujuan: 'loket',
       status: 'menunggu',
       waktu_masuk: new Date().toISOString(),
+      // Bind to authenticated profile when present so SKM/notif/history attach.
+      ...(resolvedPengunjungId ? { pengunjung_id: resolvedPengunjungId } : {}),
     })
     .select('id')
     .maybeSingle();

@@ -109,7 +109,7 @@ const FALLBACK_HERO = {
 
 const FALLBACK_SECTION_HEADER = {
   label: 'Layanan Kami',
-  title: '9 Layanan dalam Satu Atap',
+  title: '10 Layanan dalam Satu Atap',
   description: 'Layanan konsultatif tatap muka dan platform digital yang bisa diakses dari mana saja, kapan saja.',
 };
 

@@ -33,6 +33,7 @@ import {
   Legend,
 } from 'recharts';
 import PageHeader from '@/components/layout/PageHeader';
+import WalkinWizard from '@/components/WalkinWizard';
 import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/components/Toast';
 import styles from './dashboard.module.css';
@@ -108,17 +109,7 @@ export default function AdminDashboard() {
   const [layananBreakdownState, setLayananBreakdownState] = useState<LayananBreakdown[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [isWizardOpen, setIsWizardOpen] = useState(false);
-  const [wizardStep, setWizardStep] = useState(1);
-const [visitorName, setVisitorName] = useState('');
-const [visitorPhone, setVisitorPhone] = useState('');
-const [visitorAsal, setVisitorAsal] = useState('');
-  const [visitorKeperluan, setVisitorKeperluan] = useState('');
-  const [selectedLayananId, setSelectedLayananId] = useState('');
   const [layananList, setLayananList] = useState<{ id: string; nama: string }[]>([]);
-  const [savingWizard, setSavingWizard] = useState(false);
-  const [wizardSuccess, setWizardSuccess] = useState(false);
-  const [wizardError, setWizardError] = useState('');
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -252,72 +243,6 @@ const [visitorAsal, setVisitorAsal] = useState('');
     loadData();
   }, [loadData]);
 
-  const handleNextStep = () => {
-    if (!visitorName.trim()) {
-      setWizardError('Nama pengunjung wajib diisi');
-      return;
-    }
-    if (visitorPhone.trim() && !/^(\+?62|0)\d{8,14}$/.test(visitorPhone.trim().replace(/[\s-]/g, ''))) {
-      setWizardError('Nomor handphone tidak valid. Contoh: 0812xxxxxxx');
-      return;
-    }
-    if (!visitorAsal.trim()) {
-      setWizardError('Asal instansi / alamat wajib diisi');
-      return;
-    }
-    setWizardError('');
-    setWizardStep(2);
-  };
-
-  const handleLayananSelect = (id: string) => {
-    setSelectedLayananId(id);
-    setWizardStep(3);
-  };
-
-  const handleSubmitWalkin = async () => {
-    setSavingWizard(true);
-    setWizardError('');
-
-    try {
-      const supabase = createClient();
-      const { error } = await supabase.from('visit').insert({
-        asal: 'walk_in',
-        nama: visitorName.trim(),
-        kontak_hp: visitorPhone.trim() || null,
-        asal_instansi: visitorAsal.trim(),
-        keperluan: visitorKeperluan.trim() || null,
-        layanan_id: selectedLayananId,
-        tujuan: 'loket',
-        status: 'menunggu',
-        waktu_masuk: new Date().toISOString(),
-      });
-
-      if (error) throw error;
-      await loadData();
-      setWizardSuccess(true);
-    } catch {
-      setWizardError('Gagal menyimpan kunjungan walk-in. Silakan coba lagi.');
-    } finally {
-      setSavingWizard(false);
-    }
-  };
-
-  const handleCloseWizard = () => {
-    setIsWizardOpen(false);
-    setWizardStep(1);
-    setVisitorName('');
-    setVisitorPhone('');
-    setVisitorAsal('');
-    setVisitorKeperluan('');
-    setSelectedLayananId('');
-    setWizardSuccess(false);
-    setWizardError('');
-  };
-
-  const getSelectedLayananName = () => {
-    return layananList.find((l) => l.id === selectedLayananId)?.nama || 'Loket Layanan';
-  };
-
   return (
     <>
       <PageHeader
@@ -328,14 +253,7 @@ const [visitorAsal, setVisitorAsal] = useState('');
       <div className={styles.dashboard} style={{ padding: 'var(--space-8)' }}>
 
         <div className={styles.walkinTriggerContainer}>
-          <button
-            type="button"
-            className={styles.walkinTriggerBtn}
-            onClick={() => setIsWizardOpen(true)}
-          >
-            <UserPlus size={20} />
-            + Registrasi Kunjungan Walk-in (Cepat)
-          </button>
+          <WalkinWizard onSuccess={loadData} triggerClassName={styles.walkinTriggerBtn} />
           <Link
             href="/admin/petugas/invite"
             className="btn btn--secondary"
@@ -369,237 +287,6 @@ const [visitorAsal, setVisitorAsal] = useState('');
           </Link>
         </div>
 
-        {isWizardOpen && (
-          <div className={styles.modalOverlay}>
-            <div className={styles.wizardCard}>
-              <div className={styles.wizardHeader}>
-                <div className={`${styles.statIcon} ${styles.statIconBlue}`} style={{ width: 36, height: 36 }}>
-                  <UserPlus size={18} />
-                </div>
-                <span className={styles.wizardTitle}>Registrasi Walk-in</span>
-
-                {!wizardSuccess && (
-                  <button
-                    type="button"
-                    className={styles.closeButton}
-                    onClick={handleCloseWizard}
-                  >
-                    <X size={18} />
-                  </button>
-                )}
-              </div>
-
-              <div className={styles.wizardBody}>
-                {wizardSuccess ? (
-                  <div style={{ textAlign: 'center', padding: 'var(--space-4)' }}>
-                    <div style={{
-                      width: 56, height: 56, borderRadius: '50%', background: 'var(--color-success-50)',
-                      color: 'var(--color-success-600)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      margin: '0 auto var(--space-4)'
-                    }}>
-                      <CheckCircle2 size={28} />
-                    </div>
-                    <h3 style={{ fontWeight: 700, marginBottom: 'var(--space-2)' }}>Registrasi Kunjungan Berhasil!</h3>
-                    <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginBottom: 'var(--space-5)', lineHeight: 1.6 }}>
-                      Terima kasih <strong>Bapak/Ibu {visitorName}</strong> dari <strong>{visitorAsal}</strong>. <br />
-                      Pendaftaran Anda ke loket <strong>{getSelectedLayananName()}</strong> telah berhasil dicatat. <br />
-                      Mohon menunggu di ruang tunggu, Anda akan segera dilayani oleh petugas kami.
-                    </p>
-                    <button
-                      className="btn btn--primary btn--lg"
-                      onClick={handleCloseWizard}
-                      style={{ width: '100%' }}
-                    >
-                      Tutup & Selesai
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <div className={styles.wizardSteps}>
-                      <div className={`${styles.wizardStep} ${wizardStep >= 1 ? (wizardStep > 1 ? styles.wizardStepDone : styles.wizardStepActive) : ''}`}>
-                        {wizardStep > 1 ? '✓' : '1'}
-                      </div>
-                      <div className={`${styles.wizardStep} ${wizardStep >= 2 ? (wizardStep > 2 ? styles.wizardStepDone : styles.wizardStepActive) : ''}`}>
-                        {wizardStep > 2 ? '✓' : '2'}
-                      </div>
-                      <div className={`${styles.wizardStep} ${wizardStep >= 3 ? styles.wizardStepActive : ''}`}>
-                        3
-                      </div>
-                    </div>
-
-                    {wizardStep === 1 && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-                        <div className="form-group">
-                          <label className="form-label form-label--required" htmlFor="walkinName">Nama Lengkap</label>
-                          <input
-                            id="walkinName"
-                            type="text"
-                            className="form-input"
-                            placeholder="Contoh: Budi Santoso"
-                            value={visitorName}
-                            onChange={(e) => setVisitorName(e.target.value)}
-                            autoComplete="off"
-                            required
-                          />
-                        </div>
-                        <div className="form-group">
-                          <label className="form-label" htmlFor="walkinPhone">Nomor Handphone</label>
-                          <input
-                            id="walkinPhone"
-                            type="tel"
-                            className="form-input"
-                            placeholder="Contoh: 0812xxxxxxx (opsional)"
-                            value={visitorPhone}
-                            onChange={(e) => setVisitorPhone(e.target.value)}
-                            autoComplete="off"
-                          />
-                        </div>
-                        <div className="form-group">
-                          <label className="form-label form-label--required" htmlFor="walkinAsal">Asal Instansi / Alamat</label>
-                          <input
-                            id="walkinAsal"
-                            type="text"
-                            className="form-input"
-                            placeholder="Contoh: PT Lampung Berjaya / Kedaton"
-                            value={visitorAsal}
-                            onChange={(e) => setVisitorAsal(e.target.value)}
-                            autoComplete="off"
-                            required
-                          />
-                        </div>
-                        {wizardError && <p className="form-error" role="alert">{wizardError}</p>}
-                        <div className={styles.wizardActions}>
-                          <button className="btn btn--primary" onClick={handleNextStep}>
-                            Lanjut Pilih Layanan
-                            <ChevronRight size={16} />
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {wizardStep === 2 && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-                        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                          Halo <strong>Bapak/Ibu {visitorName}</strong> dari <strong>{visitorAsal}</strong>, <br />
-                          layanan apa yang ingin Anda akses hari ini?
-                        </p>
-
-                        {layananList.length === 0 ? (
-                          <p className="form-error" role="alert">Gagal memuat daftar layanan</p>
-                        ) : (
-                          (() => {
-                            const dpmptsp = layananList.filter((l) => LAYANAN_DPMPTSP.has(l.nama));
-                            const p4 = layananList.filter((l) => !LAYANAN_DPMPTSP.has(l.nama));
-                            const renderGrid = (items: typeof layananList) => (
-                              <div className={styles.wizardLayananGrid}>
-                                {items.map((layanan) => (
-                                  <button
-                                    type="button"
-                                    key={layanan.id}
-                                    className={`${styles.wizardLayananButton} ${selectedLayananId === layanan.id ? styles.wizardLayananButtonActive : ''}`}
-                                    onClick={() => handleLayananSelect(layanan.id)}
-                                  >
-                                    <Building2 size={24} style={{ color: 'var(--color-primary-500)' }} />
-                                    <div style={{ fontSize: 'var(--text-sm)' }}>{layanan.nama}</div>
-                                  </button>
-                                ))}
-                              </div>
-                            );
-                            return (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-                                <div>
-                                  <div className={styles.wizardLayananSectionTitle}>Layanan DPMPTSP</div>
-                                  {renderGrid(dpmptsp)}
-                                </div>
-                                <div>
-                                  <div className={styles.wizardLayananSectionTitle}>Layanan P4 (Instansi Mitra)</div>
-                                  {renderGrid(p4)}
-                                </div>
-                              </div>
-                            );
-                          })()
-                        )}
-
-                        <div className="form-group" style={{ marginTop: 'var(--space-2)' }}>
-                          <label className="form-label" htmlFor="walkinReason">Keperluan</label>
-                          <input
-                            id="walkinReason"
-                            type="text"
-                            className="form-input"
-                            placeholder="Detail keperluan singkat (opsional)..."
-                            value={visitorKeperluan}
-                            onChange={(e) => setVisitorKeperluan(e.target.value)}
-                            autoComplete="off"
-                          />
-                        </div>
-
-                        <div className={styles.wizardActions}>
-                          <button className="btn btn--secondary" onClick={() => setWizardStep(1)}>
-                            <ChevronLeft size={16} />
-                            Kembali
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {wizardStep === 3 && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-                        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
-                          Apakah data kunjungan <strong>Bapak/Ibu {visitorName}</strong> sudah benar?
-                        </p>
-
-                        <div className={styles.wizardConfirmGrid}>
-                          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>NAMA PENGUNJUNG</div>
-                          <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>Bapak/Ibu {visitorName}</div>
-
-                          {visitorPhone.trim() && (
-                            <>
-                              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '4px' }}>NOMOR HANDPHONE</div>
-                              <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{visitorPhone}</div>
-                            </>
-                          )}
-
-                          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '4px' }}>ASAL / INSTANSI</div>
-                          <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{visitorAsal}</div>
-
-                          {visitorKeperluan.trim() && (
-                            <>
-                              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '4px' }}>KEPERLUAN</div>
-                              <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{visitorKeperluan}</div>
-                            </>
-                          )}
-
-                          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '4px' }}>LOKET TUJUAN</div>
-                          <div style={{ fontWeight: 700, color: 'var(--color-primary-700)' }}>{getSelectedLayananName()}</div>
-                        </div>
-
-                        {wizardError && <p className="form-error" role="alert">{wizardError}</p>}
-
-                        <div className={styles.wizardActions}>
-                          <button className="btn btn--secondary" onClick={() => setWizardStep(2)} disabled={savingWizard}>
-                            <ChevronLeft size={16} />
-                            Kembali
-                          </button>
-                          <button
-                            className="btn btn--primary"
-                            onClick={handleSubmitWalkin}
-                            disabled={savingWizard || layananList.length === 0}
-                          >
-                            {savingWizard ? (
-                              <><Loader2 size={16} className="animate-pulse" /> Mendaftarkan...</>
-                            ) : (
-                              <><Send size={16} /> Konfirmasi & Daftarkan</>
-                            )}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
 
         {loading ? (
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 'var(--space-16)' }}>

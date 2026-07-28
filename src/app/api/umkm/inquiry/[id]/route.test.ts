@@ -282,7 +282,7 @@ describe('PATCH /api/umkm/inquiry/[id] — DB error handling', () => {
     process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-key';
   });
 
-  it('returns 200 via service-role fallback when RLS UPDATE fails', async () => {
+  it('returns 500 when RLS UPDATE fails (no service-role bypass)', async () => {
     await mockServerClient({
       inquiry: { id: INQUIRY_ID, listing_id: 'listing-1', status: 'pending' },
       updateError: { message: 'rls denied' },
@@ -301,20 +301,9 @@ describe('PATCH /api/umkm/inquiry/[id] — DB error handling', () => {
     });
     const { PATCH } = await import('./route');
     const res = await PATCH(buildRequest({ status: 'approved' }, INQUIRY_ID), validParams);
-    expect(res.status).toBe(200);
-    expect(serviceMock._updateSpy).toHaveBeenCalledTimes(1);
-  });
-
-  it('returns 500 when service-role fallback also fails', async () => {
-    await mockServerClient({
-      inquiry: { id: INQUIRY_ID, listing_id: 'listing-1', status: 'pending' },
-      updateError: { message: 'rls denied' },
-      updated: null,
-    });
-    await mockServiceClient({ updateError: { message: 'fk violation' }, updated: null });
-    const { PATCH } = await import('./route');
-    const res = await PATCH(buildRequest({ status: 'approved' }, INQUIRY_ID), validParams);
     expect(res.status).toBe(500);
+    // Service-role must not be used for UPDATE (ownership bypass).
+    expect(serviceMock._updateSpy).not.toHaveBeenCalled();
   });
 
   it('returns 500 when no service key and RLS UPDATE fails', async () => {

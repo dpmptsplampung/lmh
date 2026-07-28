@@ -340,29 +340,29 @@ CREATE TABLE skm_respons (
 ### Fase 0 — Pengamanan Darurat (blocker, sebelum publik penuh)
 Tutup **K1–K5**. Bukan fitur, tapi kewajiban. Estimasi: prioritas tertinggi, kerjakan lebih dulu.
 
-- [ ] K1: hentikan penyajian PDF mentah; bangun render per-halaman.
-- [ ] K2: RLS chat berbasis kepemilikan sesi.
-- [ ] K3: Anonymous Sign-In + rate limit.
-- [ ] K4: cabut kredensial hardcode; rotasi password.
-- [ ] K5: Edge Function / magic-link edit UMKM.
+- [x] K1: hentikan penyajian PDF mentah; bangun render per-halaman.
+- [x] K2: RLS chat berbasis kepemilikan sesi.
+- [x] K3: Anonymous Sign-In + rate limit.
+- [x] K4: cabut kredensial hardcode; rotasi password.
+- [x] K5: Edge Function / magic-link edit UMKM.
 
 ### Fase 1 — Fondasi Data & Tata Kelola
-- [ ] Inovasi #1 (Visit Spine) — dual-write lalu migrasi.
-- [ ] Inovasi #8 (audit log, consent, retensi) — subsistem PDP.
-- [ ] B2 (tipe layanan), B4 (pisahkan seed demo), B5 (model akun mitra).
+- [x] Inovasi #1 (Visit Spine) — dual-write lalu migrasi.
+- [x] Inovasi #8 (audit log, consent, retensi) — subsistem PDP.
+- [x] B2 (tipe layanan), B4 (pisahkan seed demo), B5 (model akun mitra).
 
 ### Fase 2 — Dampak Warga Cepat
-- [ ] Inovasi #3 (SKM) — kepatuhan + nilai jual pimpinan.
-- [ ] Inovasi #2 (antrean pintar + estimasi waktu).
-- [ ] Inovasi #5 (notifikasi omnichannel).
+- [x] Inovasi #3 (SKM) — kepatuhan + nilai jual pimpinan.
+- [x] Inovasi #2 (antrean pintar + estimasi waktu).
+- [x] Inovasi #5 (notifikasi omnichannel).
 
 ### Fase 3 — Diferensiasi
-- [ ] Inovasi #4 (Asisten AI ber-RAG).
-- [ ] Inovasi #6 (funnel investor).
-- [ ] Inovasi #7 (marketplace UMKM dua sisi).
+- [x] Inovasi #4 (Asisten AI ber-RAG).
+- [x] Inovasi #6 (funnel investor).
+- [x] Inovasi #7 (marketplace UMKM dua sisi).
 
 ### Fase 4 — Ketahanan & Inklusi
-- [ ] Inovasi #9 (offline-first kiosk, WCAG AA, mode bantuan).
+- [x] Inovasi #9 (offline-first kiosk, WCAG AA, mode bantuan).
 
 ---
 
@@ -384,13 +384,13 @@ Tutup **K1–K5**. Bukan fitur, tapi kewajiban. Estimasi: prioritas tertinggi, k
 
 ### 10.1 Checklist keamanan pra-rilis publik
 
-- [ ] Tidak ada endpoint yang menyajikan file privat tanpa autentikasi.
-- [ ] Semua tabel berisi data pribadi punya RLS berbasis kepemilikan (bukan `USING (true)`).
-- [ ] Insert publik via Anonymous Sign-In + rate limit.
-- [ ] Tidak ada kredensial/secret di repository.
-- [ ] Signed URL berumur sesingkat mungkin (≤60 detik untuk view-only).
-- [ ] Audit log aktif untuk aksi admin/petugas.
-- [ ] Kebijakan retensi & consent PDP terdokumentasi dan terotomasi.
+- [x] Tidak ada endpoint yang menyajikan file privat tanpa autentikasi.
+- [x] Semua tabel berisi data pribadi punya RLS berbasis kepemilikan (bukan `USING (true)`).
+- [x] Insert publik via Anonymous Sign-In + rate limit.
+- [x] Tidak ada kredensial/secret di repository.
+- [x] Signed URL berumur sesingkat mungkin (≤60 detik untuk view-only).
+- [x] Audit log aktif untuk aksi admin/petugas.
+- [x] Kebijakan retensi & consent PDP terdokumentasi dan terotomasi.
 
 ### 10.2 Matriks RLS yang benar (target)
 
