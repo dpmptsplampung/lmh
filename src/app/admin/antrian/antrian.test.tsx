@@ -70,6 +70,19 @@ function buildMock(opts: {
   const petugasEq = vi.fn().mockReturnValue({ single: petugasSingle });
   const petugasSelect = vi.fn().mockReturnValue({ eq: petugasEq });
 
+  // Rantai query untuk tabel `layanan` (dipakai WalkinWizard: .select().order()).
+  const layananOrder = vi.fn().mockResolvedValue({
+    data: [
+      { id: 'l-1', nama: 'Helpdesk OSS' },
+      { id: 'l-2', nama: 'Layanan Perizinan DPMPTSP Provinsi Lampung' },
+    ],
+    error: null,
+  });
+  const layananSelect = vi.fn().mockReturnValue({ order: layananOrder });
+
+  // Rantai query untuk `visit.insert` (dipakai WalkinWizard saat submit).
+  const visitInsert = vi.fn().mockResolvedValue({ error: null });
+
   const mock = {
     auth: {
       getUser: vi.fn().mockResolvedValue({
@@ -78,7 +91,8 @@ function buildMock(opts: {
     },
     from: vi.fn((table: string) => {
       if (table === 'petugas') return { select: petugasSelect };
-      if (table === 'visit') return { select, update };
+      if (table === 'visit') return { select, update, insert: visitInsert };
+      if (table === 'layanan') return { select: layananSelect };
       return {};
     }),
     _select: select,
