@@ -87,6 +87,7 @@ export const STATUS_DOKUMEN = {
 export const ROLES = {
   PETUGAS: 'petugas',
   ADMIN: 'admin',
+  FRONT_OFFICE: 'front_office',
 } as const;
 
 // App info

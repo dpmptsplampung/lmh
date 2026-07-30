@@ -40,4 +40,29 @@ describe('canAccessAdminPath', () => {
     expect(canAccessAdminPath('petugas', '/admin/halaman-baru')).toBe(false);
     expect(canAccessAdminPath('admin', '/admin/halaman-baru')).toBe(true);
   });
+
+  it('front_office dapat mengakses wewenang lintas-layanan (RBA-02/CHT-08)', () => {
+    // Wewenang operasional lintas layanan:
+    expect(canAccessAdminPath('front_office', '/admin/antrian')).toBe(true);
+    expect(canAccessAdminPath('front_office', '/admin/absensi')).toBe(true);
+    expect(canAccessAdminPath('front_office', '/admin/chat')).toBe(true);
+    expect(canAccessAdminPath('front_office', '/admin/kunjungan')).toBe(true);
+    expect(canAccessAdminPath('front_office', '/admin/scan')).toBe(true);
+    expect(canAccessAdminPath('front_office', '/admin/skm')).toBe(true);
+    expect(canAccessAdminPath('front_office', '/admin/pengaduan')).toBe(true);
+    expect(canAccessAdminPath('front_office', '/admin/settings/jadwal')).toBe(true);
+  });
+
+  it('front_office TIDAK dapat mengakses halaman admin-only', () => {
+    expect(canAccessAdminPath('front_office', '/admin')).toBe(false);
+    expect(canAccessAdminPath('front_office', '/admin/petugas')).toBe(false);
+    expect(canAccessAdminPath('front_office', '/admin/petugas/invite')).toBe(false);
+    expect(canAccessAdminPath('front_office', '/admin/settings')).toBe(false);
+    expect(canAccessAdminPath('front_office', '/admin/settings/landing')).toBe(false);
+    expect(canAccessAdminPath('front_office', '/admin/umkm')).toBe(false);
+    expect(canAccessAdminPath('front_office', '/admin/gallery')).toBe(false);
+    expect(canAccessAdminPath('front_office', '/admin/data-governance')).toBe(false);
+    expect(canAccessAdminPath('front_office', '/admin/chat/ai-log')).toBe(false);
+    expect(canAccessAdminPath('front_office', '/admin/chat/faq')).toBe(false);
+  });
 });

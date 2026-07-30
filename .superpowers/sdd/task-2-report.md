@@ -1,84 +1,130 @@
-# Task 2 Report: Database Migrations (Storage + Fixes)
+# WP-21 Phase 2 — Task 2 report
 
-## Status: DONE_WITH_CONCERNS
+## TDD red evidence
 
-## What I Implemented
+The M16 contract test was added before the migration existed, then run with:
 
-### File 1: `supabase/migrations/018_storage_buckets.sql`
-Created two storage buckets with idempotent DO blocks and per-policy existence checks (PostgreSQL `CREATE POLICY` does not support `IF NOT EXISTS`).
+```text
+npm test -- supabase/migrations/kunjungan_dual_write.test.ts
+```
 
-1. **Private bucket `investment-docs`** (public = false)
-   - 4 policies on `storage.objects` filtered by `bucket_id = 'investment-docs'`:
-     - SELECT: `get_my_role() = 'admin'` (admin only)
-     - INSERT: `get_my_role() = 'admin'` (admin only)
-     - UPDATE: `get_my_role() = 'admin'` (admin only)
-     - DELETE: `get_my_role() = 'admin'` (admin only)
-   - No public SELECT policy — public access is exclusively via signed URLs generated server-side, as specified.
+Result: failed as expected with:
 
-2. **Public bucket `umkm-photos`** (public = true)
-   - 4 policies on `storage.objects` filtered by `bucket_id = 'umkm-photos'`:
-     - SELECT: `USING (true)` — public read (no `TO authenticated`, accessible to all including anon)
-     - INSERT: `get_my_role() IN ('admin', 'petugas')`
-     - UPDATE: `get_my_role() IN ('admin', 'petugas')`
-     - DELETE: `get_my_role() IN ('admin', 'petugas')`
+```text
+Error: ENOENT: no such file or directory, open
+'D:\Project\LMH\supabase\migrations\202607300015_backfill_kunjungan_dual_write.sql'
+Test Files  1 failed (1)
+Tests       1 failed | 1 passed (2)
+```
 
-Idempotency: Each bucket insert and each policy creation is wrapped in a `DO $$ ... END $$` block that checks `storage.buckets` / `pg_policies` for existence first.
+## Implementation
 
-### File 2: `supabase/migrations/019_fixes.sql`
+- Added M16 as one `BEGIN`/`COMMIT` transaction.
+- Revoked `PUBLIC` schema creation, added nullable unique `kunjungan.legacy_visit_id`, and created its partial index.
+- Created an RLS-protected, admin-read-only backfill ledger. Its creation is idempotently guarded, while the subsequent empty-target precondition rejects any partial/repeated backfill.
+- Locked source and target tables during the backfill-to-trigger handoff, deterministically migrated loket and meeting records, issued only eligible historical tickets with the specified window ordering, recorded source/target IDs, and repaired counters.
+- Added a fixed-search-path `SECURITY DEFINER` trigger function, revoked direct execution, and recreated the `AFTER INSERT OR UPDATE` trigger safely.
+- Registered M16 immediately after M15 and added the approved static M16 contract test.
 
-1. **`updated_at` triggers for 5 tables** — uses existing `update_updated_at_column()` function (migration 016). Each uses `DROP TRIGGER IF EXISTS` then `CREATE TRIGGER`:
-   - `trigger_chat_sesi_updated_at` on `chat_sesi`
-   - `trigger_faq_knowledge_base_updated_at` on `faq_knowledge_base`
-   - `trigger_listing_umkm_updated_at` on `listing_umkm`
-   - `trigger_investment_documents_updated_at` on `investment_documents`
-   - `trigger_reservasi_updated_at` on `reservasi`
+## Self-review
 
-2. **CHECK constraint on `pengunjung.kategori`** — DO block checks `pg_constraint` for `pengunjung_kategori_check` before adding `CHECK (kategori IN ('UMKM', 'Umum', 'Instansi', 'Investor'))`.
+- **Execution order:** DDL/security setup precedes locks and the empty-table guard; backfill, ledger entries, and counter repair precede function/trigger installation; `COMMIT` is last.
+- **RLS:** the ledger has RLS enabled, grants only `authenticated` SELECT, and applies an authenticated admin-only SELECT policy. No anon/public table access was granted.
+- **Exception behavior and rollback:** there are no exception handlers that swallow failures. Missing loket linkage and an attempted ticket transition to `terjadwal` raise exceptions. All DDL, backfill work, and trigger installation are covered by the single transaction, so an error rolls back the migration and the triggering source DML.
+- **Duplicate prevention:** `legacy_visit_id` is unique; inserts use `ON CONFLICT`; loket updates lock the linked `kunjungan` and check for an existing service ticket before issuance; meeting rows use the unique legacy link with conflict handling.
+- **Legacy preservation:** M16 contains no `UPDATE`, `DELETE`, or `DROP` against `public.visit`.
 
-3. **Fix layanan name mismatch in `landing_content`** — Updated the service title from "Balai Monitor SFR" to "BALMON" to match the `layanan` table (migration 015).
+## Exact files changed
 
-## Files Created
-- `supabase/migrations/018_storage_buckets.sql` (116 lines)
-- `supabase/migrations/019_fixes.sql` (59 lines)
+- `supabase/migrations/202607300015_backfill_kunjungan_dual_write.sql` — created M16.
+- `supabase/migrations/kunjungan_dual_write.test.ts` — added the M16 static contract test first.
+- `supabase/migrations/migration-test-utils.ts` — registered M16 after M15.
+- `.superpowers/sdd/task-2-report.md` — replaced with this required report.
 
-## Verification Performed
-- Confirmed `get_my_role()` exists as SECURITY DEFINER STABLE function (migration 003) — safe to use in storage policies.
-- Confirmed `update_updated_at_column()` exists (migration 016) — reused, not redefined.
-- Confirmed all 5 target tables have `updated_at TIMESTAMPTZ NOT NULL DEFAULT now()` columns:
-  - `chat_sesi` (migration 005, line 13)
-  - `faq_knowledge_base` (migration 005, line 42)
-  - `listing_umkm` (migration 006, line 24)
-  - `investment_documents` (migration 007, line 16)
-  - `reservasi` (migration 009, line 22)
-- Confirmed none of these 5 tables had an `updated_at` trigger in any prior migration.
-- Confirmed `pengunjung.kategori` is `TEXT` with no CHECK constraint (migration 012, line 7).
-- Confirmed `layanan` table has `'BALMON'` as a nama value (migration 015, line 7).
+No application code or repository `docs/` files were changed, and no commit was created.
+
+## Green verification
+
+```text
+npm test -- supabase/migrations/kunjungan_dual_write.test.ts supabase/migrations/migration-files.test.ts supabase/migrations/visit_spine.test.ts
+
+Test Files  3 passed (3)
+Tests       16 passed (16)
+```
+
+## Production database confirmation
+
+No database command, Supabase migration command, or production connection was run. Verification was limited to the focused static Vitest suite, as required.
 
 ## Concerns
 
-### Concern 1 (IMPORTANT): landing_content UPDATE — column values corrected from spec
-The task spec's UPDATE statement used:
-```sql
-WHERE section = 'services' AND item_key = 'nama' AND item_value = 'Balai Monitor SFR';
+The SQL was deliberately not executed against any database because applying a migration was explicitly prohibited. Runtime behavior therefore remains to be exercised in an approved non-production migration environment.
+
+## Remediation evidence — independent review findings
+
+### Red evidence
+
+The M16 static contract was extended before changing the migration and run with:
+
+```text
+npm test -- supabase/migrations/kunjungan_dual_write.test.ts
 ```
-However, the actual seed data in migration 016 uses:
-- `section = 'service'` (singular, NOT `'services'`)
-- `item_key = 'title'` (NOT `'nama'`)
 
-The spec's WHERE clause would match **zero rows** and the fix would silently do nothing. I corrected the UPDATE to use the actual column values:
-```sql
-WHERE section = 'service' AND item_key = 'title' AND item_value = 'Balai Monitor SFR';
+It failed as expected because M16 did not yet define the required
+`tiket_antrean.legacy_visit_id` column/backstop:
+
+```text
+AssertionError: expected ... to match
+/ALTER\s+TABLE\s+public\.tiket_antrean\s+ADD\s+COLUMN...legacy_visit_id.../
+Test Files  1 failed (1)
+Tests       1 failed | 1 passed (2)
 ```
-This is a deviation from the literal spec text but is necessary for the fix to actually work. Verify this matches the intent.
 
-### Concern 2: get_my_role() returns NULL for anon users
-`get_my_role()` does `SELECT role FROM petugas WHERE auth_user_id = auth.uid()`. For unauthenticated (anon) users, `auth.uid()` returns NULL, so the function returns NULL. This is fine for the admin-only policies (NULL ≠ 'admin' → denied) and the staff policies (NULL not IN list → denied). The public SELECT on `umkm-photos` is not gated on `get_my_role()`, so anon read works. No issue, but worth noting the function is NULL-safe by virtue of inequality comparisons.
+### Finding 1 — status-safe ticket eligibility
 
-### Concern 3: CHECK constraint may reject existing NULL values — but NULLs are allowed
-The CHECK constraint `kategori IN ('UMKM', 'Umum', 'Instansi', 'Investor')` will pass for NULL values (CHECK constraints accept NULLs in PostgreSQL — NULL is treated as "unknown" which does not violate the constraint). So existing rows with `kategori = NULL` (the default) will not be rejected. Existing rows with invalid non-NULL values WOULD cause the `ALTER TABLE` to fail. Since `kategori` was only added in migration 012 with no seed data and is filled by app code, this should be safe — but if any existing data has an invalid value, the constraint addition will fail. No backfill/cleanup was done since the spec didn't request it.
+- Historical ticket selection now has an unconditional `v.status <> 'terjadwal'` predicate, so neither origin can insert an invalid ticket status.
+- A `walk_in` transitioning from `terjadwal` to `menunggu` now issues one ticket in the UPDATE branch without any `waktu_scan` predicate.
+- The existing reservation path remains scan-gated, and all transition duplicate checks use the source visit UUID.
 
-### Concern 4: Storage policies are global on storage.objects
-Storage bucket policies in Supabase are defined on the global `storage.objects` table and filtered by `bucket_id`. This is the standard Supabase pattern and matches how the `get_my_role()` function works (SECURITY DEFINER bypasses RLS recursion). The policies are correctly scoped by `bucket_id` in every USING/WITH CHECK clause.
+### Finding 2 — unmappable legacy-data preflight and trigger guards
 
-## Commit
-- `855515b` — feat: add storage buckets and database fixes migrations
+- Added locked, pre-backfill `DO` checks that abort for a loket source row without `layanan_id` or a scanned meeting source row without `nama_yang_ditemui`.
+- Added clear trigger exceptions before target writes for a loket `NEW.layanan_id` omission and a scanned meeting with no `NEW.nama_yang_ditemui`.
+- The checks only read `public.visit`; no legacy source data is altered.
+
+### Finding 3 — physical-arrival guest-book semantics
+
+- Historical `buku_tamu` insertion now requires `v.waktu_scan IS NOT NULL`.
+- Live meeting creation requires both the first `menunggu` state and `NEW.waktu_scan IS NOT NULL`.
+- Existing linked guest-book rows continue to synchronize `waktu_masuk`; an unlinked row is not manufactured without the required state transition and scan.
+
+### Finding 4 — one-ticket legacy backstop
+
+- Added nullable `public.tiket_antrean.legacy_visit_id uuid REFERENCES public.visit(id) ON DELETE RESTRICT` plus `UNIQUE (legacy_visit_id)`. PostgreSQL unique constraints allow multiple NULLs, so future native multi-ticket rows remain unconstrained when this field is NULL.
+- Historical ticket insertion stores `h.visit_id`; ledger lookup joins tickets by that legacy visit UUID.
+- Trigger issuance captures the UUID returned by `public.terbit_tiket(...)`, writes that ticket's `legacy_visit_id = NEW.id` in the same transaction, and uses the legacy UUID for duplicate checks and synchronization lookup.
+
+### Finding 5 — hardened static contract
+
+The M16 test now asserts transaction bounds; no legacy `visit` mutation (including INSERT, UPDATE, or TRUNCATE); both source preflight checks; status-safe historical eligibility; scanned-meeting backfill; the nullable ticket legacy link and unique constraint; ticket linking after issuance; counter repair; lifecycle guard and row lock; fixed-path `SECURITY DEFINER` revocation; and the `PUBLIC` schema-CREATE revoke.
+
+### Exact remediation files changed
+
+- `supabase/migrations/202607300015_backfill_kunjungan_dual_write.sql` — remediated M16 only.
+- `supabase/migrations/kunjungan_dual_write.test.ts` — extended M16 static contract only.
+- `.superpowers/sdd/task-2-report.md` — appended this required remediation evidence.
+
+`migration-test-utils.ts` required no further change; M16's registered filename and ordering remain unchanged. M15, application code, and repository `docs/` files were not touched, and no commit was created.
+
+### Green verification
+
+```text
+npm test -- supabase/migrations/kunjungan_dual_write.test.ts supabase/migrations/migration-files.test.ts supabase/migrations/visit_spine.test.ts
+
+Test Files  3 passed (3)
+Tests       16 passed (16)
+```
+
+### Production database confirmation
+
+No database command, Supabase migration command, or production connection was run during remediation. No migration was applied; verification was limited to the focused static Vitest suite.

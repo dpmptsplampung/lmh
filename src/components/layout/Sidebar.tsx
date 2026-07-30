@@ -23,9 +23,13 @@ import {
   TrendingUp,
   BarChart3,
   ShieldCheck,
+  ShieldAlert,
   UserPlus,
   Bot,
   CalendarDays,
+  Monitor,
+  TableProperties,
+  ScrollText,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
@@ -52,6 +56,10 @@ const ICONS: Record<AdminNavEntry['iconKey'], React.ReactNode> = {
   settings: <Settings size={20} />,
   landing: <LayoutTemplate size={20} />,
   public: <Globe size={20} />,
+  pengaduan: <ShieldAlert size={20} />,
+  layar:     <Monitor size={20} />,
+  rekap:     <TableProperties size={20} />,
+  dokumen:   <ScrollText size={20} />,
 };
 
 const navItems = ADMIN_NAV.map((entry) => ({

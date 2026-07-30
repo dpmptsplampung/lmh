@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 import { APP_NAME } from '@/lib/constants';
 
 /** Must match CONSENT_VERSION in checkin/chat consent flows. */
-export const POLICY_VERSION = '1.0';
+const POLICY_VERSION = '1.0';
 
 export const metadata: Metadata = {
   title: 'Kebijakan Privasi',
@@ -109,7 +109,23 @@ export default function KebijakanPrivasiPage() {
 
         <section style={{ marginBottom: 'var(--space-6)' }}>
           <h2 style={{ fontSize: 'var(--text-xl)', marginBottom: 'var(--space-3)' }}>
-            5. Hak Subjek Data
+            5. Pencatatan Perilaku Penggunaan (Investment Gallery &amp; Peta Potensi)
+          </h2>
+          <p style={{ color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+            Untuk meningkatkan layanan investasi, kami mencatat <strong>aktivitas penggunaan</strong>
+            Anda pada fitur Investment Gallery dan Peta Potensi — misalnya dokumen yang Anda buka,
+            sektor yang Anda lihat, dan halaman yang Anda kunjungi. Pencatatan ini digunakan
+            <strong> semata untuk memahami minat calon investor</strong> dan menindaklanjuti
+            penawaran yang relevan, serta diungkapkan sebagai dasar pemrosesan yang sah.
+            Aktivitas login untuk fitur ini tercatat dalam <code>consent_log</code> saat Anda
+            memberikan persetujuan. Anda dapat keberatan atas pencatatan ini dengan menghubungi
+            kami melalui kontak di bawah.
+          </p>
+        </section>
+
+        <section style={{ marginBottom: 'var(--space-6)' }}>
+          <h2 style={{ fontSize: 'var(--text-xl)', marginBottom: 'var(--space-3)' }}>
+            6. Hak Subjek Data
           </h2>
           <p style={{ color: 'var(--text-secondary)', lineHeight: 1.7 }}>
             Anda berhak meminta akses, koreksi, pembaruan, atau penghapusan data pribadi

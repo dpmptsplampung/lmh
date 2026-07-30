@@ -19,22 +19,30 @@ function getServiceClient() {
   return createServiceClient(url, key);
 }
 
-export async function POST() {
-  // 1. Auth: must be admin
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+export async function POST(request?: Request) {
+  // 1. Auth: admin ATAU cron (BOT-11 — embed ulang terjadwal via Vercel cron).
+  //    Mode cron diautentikasi CRON_SECRET agar endpoint bisa dipicu otomatis.
+  //    `request` opsional agar pemanggilan internal/tes tanpa argumen tetap valid.
+  const authHeader = request?.headers?.get('authorization') ?? '';
+  const cronSecret = process.env.CRON_SECRET;
+  const isCron = Boolean(cronSecret && authHeader === `Bearer ${cronSecret}`);
 
-  const { data: petugas } = await supabase
-    .from('petugas')
-    .select('role')
-    .eq('auth_user_id', user.id)
-    .maybeSingle();
+  if (!isCron) {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
-  if (!petugas || petugas.role !== 'admin') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const { data: petugas } = await supabase
+      .from('petugas')
+      .select('role')
+      .eq('auth_user_id', user.id)
+      .maybeSingle();
+
+    if (!petugas || petugas.role !== 'admin') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
   }
 
   // 2. Service-role client for bulk UPDATE (bypasses RLS)
@@ -56,11 +64,12 @@ export async function POST() {
   }
   const embedModel = getEmbeddingModel(genAI);
 
-  // 4. Fetch up to 50 FAQs missing embedding
+  // 4. Fetch up to 50 FAQs that need (re)embedding:
+  //    embedding IS NULL (belum pernah) ATAU perlu_embed_ulang = true (BOT-11).
   const { data: pending, error: fetchErr } = await adminClient
     .from('faq_knowledge_base')
     .select('id, pertanyaan, jawaban')
-    .is('embedding', null)
+    .or('embedding.is.null,perlu_embed_ulang.eq.true')
     .limit(50);
 
   if (fetchErr) {
@@ -73,7 +82,7 @@ export async function POST() {
 
   const rows: FaqRowNeedingEmbed[] = (pending ?? []) as FaqRowNeedingEmbed[];
 
-  // 5. Embed + UPDATE each row
+  // 5. Embed + UPDATE each row, lalu tandai selesai (BOT-11).
   let embedded = 0;
   let failed = 0;
   for (const row of rows) {
@@ -89,7 +98,11 @@ export async function POST() {
       const vectorLiteral = `[${vector.join(',')}]`;
       const { error: updateErr } = await adminClient
         .from('faq_knowledge_base')
-        .update({ embedding: vectorLiteral })
+        .update({
+          embedding: vectorLiteral,
+          perlu_embed_ulang: false,
+          embedding_updated_at: new Date().toISOString(),
+        })
         .eq('id', row.id);
       if (updateErr) {
         failed++;
@@ -101,11 +114,11 @@ export async function POST() {
     }
   }
 
-  // 6. Count remaining (for progress UI)
+  // 6. Count remaining (for progress UI): yang masih perlu diproses.
   const { count: remaining } = await adminClient
     .from('faq_knowledge_base')
     .select('*', { count: 'exact', head: true })
-    .is('embedding', null);
+    .or('embedding.is.null,perlu_embed_ulang.eq.true');
 
   return NextResponse.json({
     embedded,

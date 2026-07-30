@@ -33,11 +33,12 @@ export default function LayarAntrianPage() {
     let cancelled = false;
     const supabase = createClient();
     const channel = supabase
-      // unique topic — see EstimasiAntrean for why cleanup uses removeChannel
-      .channel('layar_antrian_visit_changes')
+      // WP-22: subscribe to tiket_antrean changes; v_antrian_loket now reads from it.
+      // visit writes still propagate via trg_visit_dual_write, so either table works.
+      .channel('layar_antrian_tiket_changes')
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'visit' },
+        { event: '*', schema: 'public', table: 'tiket_antrean' },
         () => { void fetchLokets(); },
       );
 

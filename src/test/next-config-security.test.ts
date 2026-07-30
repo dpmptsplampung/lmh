@@ -15,7 +15,10 @@ describe('Next security headers', () => {
 
   it('uses exact Supabase and Google Fonts origins without wildcard sources', async () => {
     const headers = await getHeaders('https://project-ref.supabase.co/path');
-    const csp = headers['Content-Security-Policy-Report-Only'];
+    // SEC-01: CSP kini ditegakkan (bukan Report-Only).
+    const csp = headers['Content-Security-Policy'];
+    expect(csp).toBeDefined();
+    expect(headers['Content-Security-Policy-Report-Only']).toBeUndefined();
     expect(csp).toContain("connect-src 'self' https://project-ref.supabase.co wss://project-ref.supabase.co");
     expect(csp).toContain("img-src 'self' data: blob: https://project-ref.supabase.co");
     expect(csp).toContain("style-src 'self' 'unsafe-inline' https://fonts.googleapis.com");
@@ -29,7 +32,7 @@ describe('Next security headers', () => {
   });
 
   it.each([undefined, 'not-a-url', 'http://project-ref.supabase.co'])('omits Supabase sources for invalid or missing URL %s', async (url) => {
-    const csp = (await getHeaders(url))['Content-Security-Policy-Report-Only'];
+    const csp = (await getHeaders(url))['Content-Security-Policy'];
     expect(csp).not.toContain('supabase.co');
     expect(csp).not.toContain('wss://');
   });

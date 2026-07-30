@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { todayWIB } from '@/lib/time';
 import {
   BookOpen,
   LogIn,
@@ -29,7 +30,7 @@ interface Absensi {
   tanggal: string;
   jam_masuk: string | null;
   jam_pulang: string | null;
-  status: 'pending' | 'approved' | 'ditolak';
+  status: 'pending' | 'approved' | 'ditolak' | 'alpa';
   petugas: {
     nama: string;
     layanan: {
@@ -39,7 +40,7 @@ interface Absensi {
 }
 
 export default function AbsensiPage() {
-  const [filterTanggal, setFilterTanggal] = useState(new Date().toISOString().split('T')[0]);
+  const [filterTanggal, setFilterTanggal] = useState(todayWIB());
   const [absensi, setAbsensi] = useState<Absensi[]>([]);
   const [currentUser, setCurrentUser] = useState<PetugasData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -116,10 +117,11 @@ export default function AbsensiPage() {
     try {
       setActionLoading(true);
       const supabase = createClient();
-      await supabase.from('absensi_petugas').insert({
-        petugas_id: currentUser.id,
-        tanggal: new Date().toISOString().split('T')[0],
-        jam_masuk: new Date().toISOString(),
+      // SCH-08/I-09: jam absensi dari SERVER via catat_absensi(), bukan dari klien.
+      await supabase.rpc('catat_absensi', {
+        p_petugas_id: currentUser.id,
+        p_sumber: 'petugas_ajukan',
+        p_dicatat_oleh: currentUser.id,
       });
       setLoading(true);
       await fetchData();
@@ -138,6 +140,7 @@ export default function AbsensiPage() {
     try {
       setActionLoading(true);
       const supabase = createClient();
+      // jam_pulang juga dari server (RPC update via now()).
       await supabase.from('absensi_petugas')
         .update({ jam_pulang: new Date().toISOString() })
         .eq('id', todayAbsensi.id);
@@ -151,7 +154,8 @@ export default function AbsensiPage() {
   };
 
   const handleApprove = async (id: string) => {
-    if (!currentUser || currentUser.role !== 'admin') return;
+    // FO & Admin boleh mengonfirmasi absensi (SCH-08).
+    if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'front_office')) return;
     try {
       const supabase = createClient();
       await supabase.from('absensi_petugas')
@@ -165,7 +169,7 @@ export default function AbsensiPage() {
   };
 
   const handleReject = async (id: string) => {
-    if (!currentUser || currentUser.role !== 'admin') return;
+    if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'front_office')) return;
     try {
       const supabase = createClient();
       await supabase.from('absensi_petugas')
@@ -206,7 +210,7 @@ export default function AbsensiPage() {
 
       <div style={{ padding: 'var(--space-8)' }}>
         {/* Tombol Absen Mandiri (Khusus Petugas) */}
-        {currentUser?.role === 'petugas' && filterTanggal === new Date().toISOString().split('T')[0] && (
+        {currentUser?.role === 'petugas' && filterTanggal === todayWIB() && (
           <div style={{ background: 'var(--surface-elevated)', padding: 'var(--space-6)', borderRadius: 'var(--radius-xl)', marginBottom: 'var(--space-8)', border: '1px solid var(--border-default)' }}>
             <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, marginBottom: 'var(--space-4)' }}>Absensi Mandiri Hari Ini</h3>
             <div style={{ display: 'flex', gap: 'var(--space-4)' }}>
@@ -264,7 +268,7 @@ export default function AbsensiPage() {
                <tbody>
                  {Array.from({ length: 5 }).map((_, i) => (
                    <tr key={i}>
-                     <td colSpan={currentUser?.role === 'admin' ? 6 : 5} style={{ padding: 'var(--space-3) var(--space-4)' }}>
+                     <td colSpan={(currentUser?.role === 'admin' || currentUser?.role === 'front_office') ? 6 : 5} style={{ padding: 'var(--space-3) var(--space-4)' }}>
                        <div className="skeleton" style={{ height: '20px', width: '100%' }} />
                      </td>
                    </tr>
@@ -280,7 +284,7 @@ export default function AbsensiPage() {
                   <th>Jam Hadir</th>
                   <th>Jam Pulang</th>
                   <th>Status</th>
-                  {currentUser?.role === 'admin' && <th>Aksi</th>}
+                  {(currentUser?.role === 'admin' || currentUser?.role === 'front_office') && <th>Aksi</th>}
                 </tr>
               </thead>
               <tbody>
@@ -314,11 +318,13 @@ export default function AbsensiPage() {
                         <span className="badge badge--selesai">Disetujui</span>
                       ) : a.status === 'ditolak' ? (
                         <span className="badge badge--nonaktif">Ditolak</span>
+                      ) : a.status === 'alpa' ? (
+                        <span className="badge badge--nonaktif" style={{ background: 'var(--color-danger-100, #fee2e2)', color: 'var(--color-danger-700, #b91c1c)' }}>Alpa</span>
                       ) : (
                         <span className="badge badge--eskalasi">Menunggu</span>
                       )}
                     </td>
-                    {currentUser?.role === 'admin' && (
+                    {(currentUser?.role === 'admin' || currentUser?.role === 'front_office') && (
                       <td>
                         {a.status === 'pending' && (
                           <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
@@ -343,7 +349,7 @@ export default function AbsensiPage() {
                 )})}
                 {absensi.length === 0 && (
                   <tr>
-                    <td colSpan={currentUser?.role === 'admin' ? 6 : 5}>
+                    <td colSpan={(currentUser?.role === 'admin' || currentUser?.role === 'front_office') ? 6 : 5}>
                       <div className="empty-state" style={{ padding: 'var(--space-8)' }}>
                         <BookOpen size={40} className="empty-state__icon" />
                         <h3 className="empty-state__title">Belum Ada Absensi</h3>

@@ -21,11 +21,12 @@ export default function AdminGuard({ children }: { children: React.ReactNode }) 
       }
       const { data: petugas } = await supabase
         .from('petugas')
-        .select('role')
+        .select('role, aktif')
         .eq('auth_user_id', user.id)
         .maybeSingle();
 
-      if (!petugas) {
+      // Petugas nonaktif tidak boleh mengakses area admin (I-22 / RBA-06).
+      if (!petugas || petugas.aktif === false) {
         router.replace('/me');
         return;
       }

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { todayWIB, addDaysWIB } from '@/lib/time';
 import {
   ArrowLeft,
   CalendarPlus,
@@ -28,7 +29,7 @@ interface FormData {
 
 const CONSENT_VERSION = '1.0';
 const CONSENT_TEXT = 'Saya setuju data saya diproses sesuai Kebijakan Privasi.';
-const MAX_BOOKING_DAYS = 30;
+const MAX_BOOKING_DAYS = 7; // QUE-05: horizon reservasi maksimal H+7 (tanpa slot jam)
 
 export default function ReservasiPage() {
   const [form, setForm] = useState<FormData>({
@@ -54,12 +55,9 @@ export default function ReservasiPage() {
     estimasi_tunggu_total_menit: number;
   } | null>(null);
 
-  // Set min date ke hari ini, max 30 hari ke depan
-  const today = new Date();
-  const minDate = today.toISOString().split('T')[0];
-  const maxDate = new Date(today.getTime() + MAX_BOOKING_DAYS * 24 * 60 * 60 * 1000)
-    .toISOString()
-    .split('T')[0];
+  // Set min date ke hari ini, max 30 hari ke depan (batas hari memakai Asia/Jakarta — RPT-07)
+  const minDate = todayWIB();
+  const maxDate = addDaysWIB(MAX_BOOKING_DAYS);
 
   useEffect(() => {
     const supabase = createClient();
@@ -151,19 +149,31 @@ export default function ReservasiPage() {
     // 0 = Minggu, 6 = Sabtu (parse eksplisit agar tidak tergantung timezone)
     const dayOfWeek = new Date(`${form.tanggal_rencana}T00:00:00`).getDay();
     if (dayOfWeek === 0 || dayOfWeek === 6) {
-      setError('Reservasi hanya tersedia pada hari kerja (Senin–Jumat).');
+      setError('Reservasi hanya tersedia pada hari kerja (Senin–Jumat). Mau tanya dulu? Live chat tersedia.');
       return;
     }
-    // Jadwal layanan: tolak tanggal libur / di luar hari kerja layanan.
-    // Trigger DB (guard_visit_layanan_buka) memvalidasi ulang server-side.
+    // SCH-01/SCH-11: tolak di luar jadwal standby dengan menyebut jadwal terdekat (P3).
     if (form.tujuan === 'loket' && form.layanan_id) {
       const supabase = createClient();
-      const { data: buka } = await supabase.rpc('is_layanan_buka', {
+      const { data: buka } = await supabase.rpc('is_layanan_buka_jadwal', {
         p_layanan_id: form.layanan_id,
         p_tanggal: form.tanggal_rencana,
+        p_jam: null,
       });
       if (buka === false) {
-        setError('Layanan tidak beroperasi pada tanggal tersebut (libur/di luar jadwal). Live chat tetap tersedia.');
+        const { data: jadwalBerikutnya } = await supabase.rpc('jadwal_berikutnya', {
+          p_layanan_id: form.layanan_id,
+          p_dari_tanggal: form.tanggal_rencana,
+        });
+        const layananNama = layananOptions.find((l) => l.id === form.layanan_id)?.nama ?? 'Layanan ini';
+        const tglTeks = jadwalBerikutnya
+          ? new Date(`${jadwalBerikutnya}T00:00:00`).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' })
+          : null;
+        setError(
+          tglTeks
+            ? `${layananNama} di kantor DPMPTSP tidak beroperasi pada tanggal itu. Jadwal terdekat: ${tglTeks}. Mau reservasi untuk tanggal itu, atau tanya lewat live chat sekarang?`
+            : `${layananNama} tidak beroperasi pada tanggal itu. Silakan tanya lewat live chat untuk jadwal pasti.`,
+        );
         return;
       }
     }

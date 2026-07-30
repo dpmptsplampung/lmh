@@ -99,17 +99,18 @@ export async function proxy(request: NextRequest) {
 
       let role: string | null = jwtRole;
       if (!role) {
-      // Fallback: query petugas table (sebelum Auth hook dikonfigurasi)
+      // Fallback: query petugas table (sebelum Auth hook dikonfigurasi).
+      // Petugas nonaktif tidak dianggap punya peran (I-22 / RBA-06).
         const { data: petugas } = await supabase
           .from('petugas')
-          .select('role')
+          .select('role, aktif')
           .eq('auth_user_id', user.id)
           .maybeSingle();
-        role = petugas?.role ?? null;
+        role = petugas && petugas.aktif !== false ? (petugas.role ?? null) : null;
       }
 
     // Jika user tidak terdaftar sebagai petugas/admin, alihkan ke dashboard pengunjung (/me)
-      if (role !== 'admin' && role !== 'petugas') {
+      if (role !== 'admin' && role !== 'petugas' && role !== 'front_office') {
         return attachRequestId(NextResponse.redirect(new URL('/me', request.url)), requestId);
       }
     }

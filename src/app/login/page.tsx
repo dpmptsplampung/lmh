@@ -81,7 +81,7 @@ function LoginContent() {
 
         if (dbError || !petugas) {
           router.push(nextPath ?? '/me');
-        } else if (petugas.role === 'admin' || petugas.role === 'petugas') {
+        } else if (petugas.role === 'admin' || petugas.role === 'petugas' || petugas.role === 'front_office') {
           router.push('/admin');
         } else {
           router.push(nextPath ?? '/me');

@@ -30,7 +30,7 @@ const postBodySchema = z.object({
 });
 
 type Actor =
-  | { kind: 'staff'; role: 'admin' | 'petugas'; layananId: string | null }
+  | { kind: 'staff'; role: 'admin' | 'petugas' | 'front_office'; layananId: string | null }
   | { kind: 'pengunjung'; pengunjungId: string };
 
 async function resolveActor(
@@ -43,7 +43,7 @@ async function resolveActor(
     .eq('auth_user_id', authUserId)
     .maybeSingle();
 
-  if (petugas && (petugas.role === 'admin' || petugas.role === 'petugas')) {
+  if (petugas && (petugas.role === 'admin' || petugas.role === 'petugas' || petugas.role === 'front_office')) {
     return {
       kind: 'staff',
       role: petugas.role,
@@ -66,7 +66,8 @@ function canAccessSesi(
   sesi: { pengunjung_id: string | null; layanan_id: string | null },
 ): boolean {
   if (actor.kind === 'staff') {
-    if (actor.role === 'admin') return true;
+    // Admin & FO punya pandangan lintas-layanan (CHT-08 takeover); petugas hanya layanannya.
+    if (actor.role === 'admin' || actor.role === 'front_office') return true;
     return !!actor.layananId && actor.layananId === sesi.layanan_id;
   }
   return !!sesi.pengunjung_id && sesi.pengunjung_id === actor.pengunjungId;

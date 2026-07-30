@@ -351,6 +351,13 @@ export default function UMKMPage() {
         <p className={styles.umkmHeaderDesc}>
           Platform penghubung kebutuhan UMKM Lampung — temukan kemitraan bisnis dan dapatkan akses pembiayaan modal usaha terbaik.
         </p>
+        {/* MMK-09: Klausul penafian wajib (perlindungan hukum DPMPTSP). */}
+        <p className={styles.umkmHeaderDesc} style={{ fontSize: 'var(--text-sm)', color: 'var(--color-neutral-500)', marginTop: 'var(--space-2)' }}>
+          <strong>Penafian:</strong> DPMPTSP Provinsi Lampung <strong>memfasilitasi pertemuan</strong> antara UMKM dan
+          calon mitra. DPMPTSP <strong>tidak menjamin</strong> kualitas, harga, atau keberhasilan transaksi, dan
+          <strong> bukan pihak</strong> dalam perjanjian apa pun antara UMKM dan pembeli/mitra. Segala bentuk
+          kesepakatan dan transaksi menjadi tanggung jawab para pihak yang bertransaksi.
+        </p>
       </div>
 
       <div className={styles.umkmBody}>

@@ -1,6 +1,10 @@
 'use client';
 
+// WP-22: Stats reads migrated from visit → kunjungan + tiket_antrean.
+// Writes (WalkinWizard) still target visit; dual-write trigger handles propagation.
+
 import { useEffect, useState, useCallback } from 'react';
+import { todayWIB, addDaysWIB } from '@/lib/time';
 import {
   Users,
   Clock,
@@ -8,12 +12,6 @@ import {
   TrendingUp,
   ArrowRight,
   UserPlus,
-  ChevronLeft,
-  ChevronRight,
-  Send,
-  Building2,
-  Loader2,
-  X,
   ShieldCheck,
   ClipboardList,
   Bot,
@@ -38,7 +36,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/components/Toast';
 import styles from './dashboard.module.css';
 
-const CHART_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef444', '#3b82f6', '#8b5cf6', '#ec489', '#14b8a6', '#f97316'];
+const CHART_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
 
 interface RecentVisit {
   id: string;
@@ -46,6 +44,7 @@ interface RecentVisit {
   layanan: string;
   waktu: string;
   status: string;
+  nomor_display: string;
 }
 
 interface DailyVisit {
@@ -59,47 +58,30 @@ interface LayananBreakdown {
   color: string;
 }
 
-interface LayananRef {
-  nama: string | null;
-}
-
-interface RecentVisitRow {
-  id: string;
-  nama: string;
-  status: string;
-  waktu_masuk: string;
-  layanan: LayananRef | LayananRef[] | null;
-}
-
-interface WeeklyVisitRow {
-  waktu_masuk: string;
-}
-
-interface BreakdownRow {
-  layanan: LayananRef | LayananRef[] | null;
-}
-
-interface CompletedVisitRow {
-  waktu_masuk: string;
-  waktu_selesai: string | null;
-}
-
-function resolveLayananName(layanan: LayananRef | LayananRef[] | null): string {
-  if (!layanan) return '—';
-  if (Array.isArray(layanan)) return layanan[0]?.nama ?? '—';
-  return layanan.nama ?? '—';
-}
-
-// Pengelompokan layanan untuk wizard walk-in (berdasarkan nama di tabel layanan)
-const LAYANAN_DPMPTSP = new Set([
-  'Layanan Perizinan DPMPTSP Provinsi Lampung',
-  'Helpdesk OSS',
-  'Investment Gallery',
-  'Matchmaking UMKM',
-]);
-
 export default function AdminDashboard() {
   const { toast } = useToast();
+
+  // Role-based redirect: FO → kunjungan, petugas → antrian
+  // Admin stays on this dashboard.
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      const jwtRole = user.app_metadata?.role as string | undefined;
+      if (jwtRole === 'front_office') { window.location.replace('/admin/kunjungan'); return; }
+      if (jwtRole === 'petugas') { window.location.replace('/admin/antrian'); return; }
+      // If role not in JWT yet, fall back to DB
+      if (!jwtRole) {
+        supabase.from('petugas').select('role').eq('auth_user_id', user.id).maybeSingle()
+          .then(({ data }) => {
+            if (data?.role === 'front_office') window.location.replace('/admin/kunjungan');
+            else if (data?.role === 'petugas') window.location.replace('/admin/antrian');
+          });
+      }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const [totalHariIni, setTotalHariIni] = useState(0);
   const [menunggu, setMenunggu] = useState(0);
   const [selesai, setSelesai] = useState(0);
@@ -108,129 +90,146 @@ export default function AdminDashboard() {
   const [dailyVisitsState, setDailyVisitsState] = useState<DailyVisit[]>([]);
   const [layananBreakdownState, setLayananBreakdownState] = useState<LayananBreakdown[]>([]);
   const [loading, setLoading] = useState(true);
-
   const [layananList, setLayananList] = useState<{ id: string; nama: string }[]>([]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const supabase = createClient();
-      const today = new Date().toISOString().split('T')[0];
-      const startOfToday = `${today}T00:00:00`;
+      const today = todayWIB();
 
+      // --- 1. Total kunjungan hari ini (all loket, checked-in) ---
       const { count: total } = await supabase
-        .from('visit')
+        .from('kunjungan')
         .select('*', { count: 'exact', head: true })
-        .eq('asal', 'walk_in')
-        .gte('waktu_masuk', startOfToday);
+        .eq('tanggal', today)
+        .neq('status', 'terjadwal');
 
+      // --- 2. Sedang menunggu (via tiket_antrean) ---
       const { count: waiting } = await supabase
-        .from('visit')
+        .from('tiket_antrean')
         .select('*', { count: 'exact', head: true })
-        .eq('asal', 'walk_in')
-        .eq('status', 'menunggu')
-        .gte('waktu_masuk', startOfToday);
+        .eq('tanggal', today)
+        .eq('status', 'menunggu');
 
+      // --- 3. Selesai dilayani (via tiket_antrean) ---
       const { count: done } = await supabase
-        .from('visit')
+        .from('tiket_antrean')
         .select('*', { count: 'exact', head: true })
-        .eq('asal', 'walk_in')
-        .eq('status', 'selesai')
-        .gte('waktu_masuk', startOfToday);
+        .eq('tanggal', today)
+        .eq('status', 'selesai');
 
       setTotalHariIni(total ?? 0);
       setMenunggu(waiting ?? 0);
       setSelesai(done ?? 0);
 
-      const { data: completed } = await supabase
-        .from('visit')
-        .select('waktu_masuk, waktu_selesai')
-        .eq('asal', 'walk_in')
+      // --- 4. Rata-rata waktu layanan (tiket selesai hari ini) ---
+      const { data: completedTickets } = await supabase
+        .from('tiket_antrean')
+        .select('waktu_mulai_layan, waktu_selesai')
+        .eq('tanggal', today)
         .eq('status', 'selesai')
-        .gte('waktu_masuk', startOfToday);
+        .not('waktu_selesai', 'is', null);
 
-      const completedRecords: CompletedVisitRow[] = (completed ?? []) as CompletedVisitRow[];
-      const completedWithEnd = completedRecords.filter((r) => r.waktu_selesai);
-      if (completedWithEnd.length > 0) {
-        const avgMs = completedWithEnd.reduce((sum, r) => {
-          return sum + (new Date(r.waktu_selesai as string).getTime() - new Date(r.waktu_masuk).getTime());
-        }, 0) / completedWithEnd.length;
+      const completedWithBoth = (completedTickets ?? []).filter(
+        (t) => t.waktu_mulai_layan && t.waktu_selesai
+      );
+      if (completedWithBoth.length > 0) {
+        const avgMs = completedWithBoth.reduce((sum, t) => {
+          return sum + (
+            new Date(t.waktu_selesai as string).getTime() -
+            new Date(t.waktu_mulai_layan as string).getTime()
+          );
+        }, 0) / completedWithBoth.length;
         setRataWaktu(Math.round(avgMs / 60000));
       } else {
         setRataWaktu(0);
       }
 
+      // --- 5. Kunjungan terbaru (last 5 hari ini) ---
       const { data: recent } = await supabase
-        .from('visit')
-        .select('id, nama, status, waktu_masuk, layanan:layanan_id(nama)')
-        .eq('asal', 'walk_in')
-        .order('waktu_masuk', { ascending: false })
+        .from('kunjungan')
+        .select('id, nama, status, waktu_masuk, tiket_antrean(nomor_display, layanan:layanan_id(nama))')
+        .eq('tanggal', today)
+        .neq('status', 'terjadwal')
+        .order('waktu_masuk', { ascending: false, nullsFirst: false })
         .limit(5);
 
-      const recentRows: RecentVisitRow[] = (recent ?? []) as RecentVisitRow[];
-      setRecentVisits(recentRows.map((r) => ({
-        id: r.id,
-        nama: r.nama,
-        layanan: resolveLayananName(r.layanan),
-        waktu: new Date(r.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-        status: r.status,
-      })));
+      setRecentVisits((recent ?? []).map((r) => {
+        const tiket = Array.isArray(r.tiket_antrean) ? r.tiket_antrean[0] : r.tiket_antrean;
+        const layananObj = tiket?.layanan;
+        const layananNama = !layananObj
+          ? '—'
+          : Array.isArray(layananObj)
+            ? (layananObj[0]?.nama ?? '—')
+            : ((layananObj as { nama: string }).nama ?? '—');
+        return {
+          id: r.id,
+          nama: r.nama,
+          layanan: layananNama,
+          nomor_display: tiket?.nomor_display ?? '—',
+          waktu: r.waktu_masuk
+            ? new Date(r.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+            : '—',
+          status: r.status,
+        };
+      }));
 
-      const { data: layananData, error: layananError } = await supabase
+      // --- 6. Layanan list untuk WalkinWizard ---
+      const { data: layananData } = await supabase
         .from('layanan')
         .select('id, nama')
         .order('nama');
-      if (layananError || !layananData || layananData.length === 0) {
-        setLayananList([]);
-      } else {
-        setLayananList(layananData);
-      }
+      setLayananList(layananData ?? []);
 
+      // --- 7. Volume kunjungan mingguan (last 7 days via kunjungan.tanggal) ---
       const days = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
-      const sevenDaysAgo = new Date();
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+      const sevenDaysAgo = addDaysWIB(-6);
       const { data: weekly } = await supabase
-        .from('visit')
-        .select('waktu_masuk')
-        .in('status', ['menunggu', 'dilayani', 'selesai'])
-        .gte('waktu_masuk', sevenDaysAgo.toISOString());
+        .from('kunjungan')
+        .select('tanggal')
+        .gte('tanggal', sevenDaysAgo)
+        .lte('tanggal', today)
+        .neq('status', 'terjadwal');
 
       const counts: Record<string, number> = {};
       for (let i = 6; i >= 0; i--) {
-        const d = new Date();
-        d.setDate(d.getDate() - i);
-        const key = d.toISOString().split('T')[0];
-        counts[key] = 0;
+        counts[addDaysWIB(-i)] = 0;
       }
-      const weeklyRows: WeeklyVisitRow[] = (weekly ?? []) as WeeklyVisitRow[];
-      weeklyRows.forEach((w) => {
-        const key = w.waktu_masuk.split('T')[0];
-        if (counts[key] !== undefined) counts[key]++;
+      (weekly ?? []).forEach((w) => {
+        if (counts[w.tanggal] !== undefined) counts[w.tanggal]++;
       });
-      const dailyArr: DailyVisit[] = Object.entries(counts).map(([dateStr, kunjungan]) => ({
-        hari: days[new Date(dateStr).getDay()],
-        kunjungan,
-      }));
-      setDailyVisitsState(dailyArr);
+      setDailyVisitsState(
+        Object.entries(counts).map(([dateStr, kunjungan]) => ({
+          hari: days[new Date(dateStr + 'T12:00:00').getDay()],
+          kunjungan,
+        }))
+      );
 
+      // --- 8. Breakdown per layanan hari ini (via tiket_antrean) ---
       const { data: breakdown } = await supabase
-        .from('visit')
+        .from('tiket_antrean')
         .select('layanan:layanan_id(nama)')
-        .in('status', ['menunggu', 'dilayani', 'selesai'])
-        .gte('waktu_masuk', startOfToday);
+        .eq('tanggal', today)
+        .in('status', ['menunggu', 'dilayani', 'selesai']);
 
       const counts2: Record<string, number> = {};
-      const breakdownRows: BreakdownRow[] = (breakdown ?? []) as BreakdownRow[];
-      breakdownRows.forEach((b) => {
-        const nama = resolveLayananName(b.layanan);
-        if (nama === '—') return;
+      (breakdown ?? []).forEach((b) => {
+        const layananObj = b.layanan;
+        const nama = !layananObj
+          ? null
+          : Array.isArray(layananObj)
+            ? (layananObj[0]?.nama ?? null)
+            : ((layananObj as { nama: string }).nama ?? null);
+        if (!nama) return;
         counts2[nama] = (counts2[nama] ?? 0) + 1;
       });
-      const arr: LayananBreakdown[] = Object.entries(counts2)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5)
-        .map(([nama, jumlah], idx) => ({ nama, jumlah, color: CHART_COLORS[idx % CHART_COLORS.length] }));
-      setLayananBreakdownState(arr);
+      setLayananBreakdownState(
+        Object.entries(counts2)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5)
+          .map(([nama, jumlah], idx) => ({ nama, jumlah, color: CHART_COLORS[idx % CHART_COLORS.length] }))
+      );
     } catch {
       toast('Gagal memuat data dashboard. Periksa koneksi Anda.', 'error');
     } finally {
@@ -254,39 +253,23 @@ export default function AdminDashboard() {
 
         <div className={styles.walkinTriggerContainer}>
           <WalkinWizard onSuccess={loadData} triggerClassName={styles.walkinTriggerBtn} />
-          <Link
-            href="/admin/petugas/invite"
-            className="btn btn--secondary"
-          >
+          <Link href="/admin/petugas/invite" className="btn btn--secondary">
             <UserPlus size={20} />
             Tambah Petugas
           </Link>
-          {/* I8: link ke DPO mini-dashboard */}
-          <Link
-            href="/admin/data-governance"
-            className="btn btn--secondary"
-          >
+          <Link href="/admin/data-governance" className="btn btn--secondary">
             <ShieldCheck size={20} />
             Tata Kelola Data (DPO)
           </Link>
-          {/* I3: link ke SKM dashboard */}
-          <Link
-            href="/admin/skm"
-            className="btn btn--secondary"
-          >
+          <Link href="/admin/skm" className="btn btn--secondary">
             <ClipboardList size={20} />
             Dashboard SKM
           </Link>
-          {/* I4: link ke audit log asisten AI */}
-          <Link
-            href="/admin/chat/ai-log"
-            className="btn btn--secondary"
-          >
+          <Link href="/admin/chat/ai-log" className="btn btn--secondary">
             <Bot size={20} />
             Log Asisten AI
           </Link>
         </div>
-
 
         {loading ? (
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 'var(--space-16)' }}>
@@ -330,8 +313,10 @@ export default function AdminDashboard() {
                   <TrendingUp size={24} />
                 </div>
                 <div className={styles.statInfo}>
-                  <span className={styles.statValue}>{rataWaktu} <small style={{ fontSize: '0.5em', fontWeight: 400 }}>mnt</small></span>
-                  <span className={styles.statLabel}>Rata-rata Waktu Tunggu</span>
+                  <span className={styles.statValue}>
+                    {rataWaktu} <small style={{ fontSize: '0.5em', fontWeight: 400 }}>mnt</small>
+                  </span>
+                  <span className={styles.statLabel}>Rata-rata Waktu Layanan</span>
                 </div>
               </div>
             </div>
@@ -353,16 +338,13 @@ export default function AdminDashboard() {
                             boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
                           }}
                         />
-                        <Bar
-                          dataKey="kunjungan"
-                          fill="#6366f1"
-                          radius={[6, 6, 0, 0]}
-                          name="Kunjungan"
-                        />
+                        <Bar dataKey="kunjungan" fill="#6366f1" radius={[6, 6, 0, 0]} name="Kunjungan" />
                       </BarChart>
                     </ResponsiveContainer>
                   ) : (
-                    <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)' }}>Belum ada data mingguan</span>
+                    <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)' }}>
+                      Belum ada data mingguan
+                    </span>
                   )}
                 </div>
               </div>
@@ -387,17 +369,14 @@ export default function AdminDashboard() {
                             <Cell key={entry.nama} fill={entry.color} />
                           ))}
                         </Pie>
-                        <Legend
-                          verticalAlign="bottom"
-                          iconType="circle"
-                          iconSize={8}
-                          wrapperStyle={{ fontSize: '12px' }}
-                        />
+                        <Legend verticalAlign="bottom" iconType="circle" iconSize={8} wrapperStyle={{ fontSize: '12px' }} />
                         <Tooltip />
                       </PieChart>
                     </ResponsiveContainer>
                   ) : (
-                    <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)' }}>Belum ada data layanan</span>
+                    <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)' }}>
+                      Belum ada data layanan
+                    </span>
                   )}
                 </div>
               </div>
@@ -414,6 +393,7 @@ export default function AdminDashboard() {
                 <table className="table">
                   <thead>
                     <tr>
+                      <th>No. Tiket</th>
                       <th>Nama</th>
                       <th>Layanan</th>
                       <th>Waktu</th>
@@ -422,21 +402,24 @@ export default function AdminDashboard() {
                   </thead>
                   <tbody>
                     {recentVisits.length > 0 ? (
-                      recentVisits.map((visit, i) => (
-                        <tr key={i}>
+                      recentVisits.map((visit) => (
+                        <tr key={visit.id}>
+                          <td style={{ fontWeight: 600, color: 'var(--color-primary-700)' }}>{visit.nomor_display}</td>
                           <td style={{ fontWeight: 500 }}>{visit.nama}</td>
                           <td>{visit.layanan}</td>
                           <td>{visit.waktu}</td>
                           <td>
                             <span className={`badge badge--${visit.status}`}>
-                              {visit.status === 'menunggu' ? '● Menunggu' : visit.status === 'dilayani' ? 'Sedang Dilayani' : '✓ Selesai'}
+                              {visit.status === 'menunggu' ? '● Menunggu'
+                                : visit.status === 'dilayani' ? 'Sedang Dilayani'
+                                : '✓ Selesai'}
                             </span>
                           </td>
                         </tr>
                       ))
                     ) : (
                       <tr>
-                        <td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: 'var(--space-6)' }}>
+                        <td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: 'var(--space-6)' }}>
                           Belum ada kunjungan hari ini
                         </td>
                       </tr>
@@ -447,6 +430,9 @@ export default function AdminDashboard() {
             </div>
           </>
         )}
+
+        {/* layananList consumed only by WalkinWizard indirectly; kept for possible future use */}
+        {layananList.length === 0 && false && null}
       </div>
     </>
   );

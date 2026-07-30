@@ -324,7 +324,7 @@ export default function LandingPage() {
         <div className={styles.navActions}>
           {user ? (
             <div className={styles.navUserActions}>
-              {user.role === 'admin' || user.role === 'petugas' ? (
+              {user.role === 'admin' || user.role === 'petugas' || user.role === 'front_office' ? (
                 <Link href="/admin" className="btn btn--primary btn--sm">
                   <User size={16} />
                   Panel Admin

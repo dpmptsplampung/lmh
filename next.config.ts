@@ -51,7 +51,9 @@ const nextConfig: NextConfig = {
         { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
         { key: 'X-Frame-Options', value: 'DENY' },
         { key: 'Permissions-Policy', value: 'camera=(self), microphone=(), geolocation=(), payment=(), usb=()' },
-        { key: 'Content-Security-Policy-Report-Only', value: contentSecurityPolicy },
+        // SEC-01: ditegakkan (bukan lagi Report-Only). Kebijakan sudah mengizinkan
+        // 'unsafe-inline' untuk script/style sehingga transisi tidak memutus fungsi.
+        { key: 'Content-Security-Policy', value: contentSecurityPolicy },
       ],
     }];
   },

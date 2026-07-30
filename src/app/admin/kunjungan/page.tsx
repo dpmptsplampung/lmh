@@ -1,6 +1,10 @@
 'use client';
 
+// WP-22: Reads migrated from visit → kunjungan + tiket_antrean.
+// visit remains the write source; dual-write trigger keeps kunjungan in sync.
+
 import { useState, useEffect, useCallback } from 'react';
+import { todayWIB } from '@/lib/time';
 import {
   Search,
   Filter,
@@ -18,14 +22,20 @@ import { useToast } from '@/components/Toast';
 
 const PAGE_SIZE = 25;
 
+interface TiketData {
+  nomor_display: string | null;
+  waktu_selesai: string | null;
+  layanan: { nama: string } | { nama: string }[] | null;
+}
+
 interface KunjunganRow {
   id: string;
   nama: string;
-  keperluan: string | null;
-  status: 'menunggu' | 'dilayani' | 'selesai';
-  waktu_masuk: string;
-  waktu_selesai: string | null;
-  layanan: { nama: string } | { nama: string }[] | null;
+  asal: string;
+  status: 'terjadwal' | 'menunggu' | 'dilayani' | 'selesai' | 'tidak_terlayani' | 'no_show';
+  waktu_masuk: string | null;
+  tanggal: string;
+  tiket_antrean: TiketData[] | TiketData | null;
 }
 
 export default function KunjunganPage() {
@@ -36,34 +46,35 @@ export default function KunjunganPage() {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
-  const [filterTanggal, setFilterTanggal] = useState(
-    new Date().toISOString().split('T')[0]
-  );
+  const [filterTanggal, setFilterTanggal] = useState(todayWIB());
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const supabase = createClient();
-      const startOfDay = new Date(`${filterTanggal}T00:00:00`);
       const from = page * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
+
+      // WP-22: query kunjungan filtered by tanggal (date column, Asia/Jakarta-aware).
+      // tiket_antrean joined for layanan name, nomor_display, and waktu_selesai.
       const { data, count, error } = await supabase
-        .from('visit')
+        .from('kunjungan')
         .select(`
-          id, nama, keperluan, status, waktu_masuk, waktu_selesai,
-          layanan:layanan_id ( nama )
+          id, nama, asal, status, waktu_masuk, tanggal,
+          tiket_antrean(nomor_display, waktu_selesai, layanan:layanan_id(nama))
         `, { count: 'exact' })
-        .eq('asal', 'walk_in')
-        .gte('waktu_masuk', startOfDay.toISOString())
-        .lt('waktu_masuk', new Date(filterTanggal + 'T23:59:59.999Z').toISOString())
-        .order('waktu_masuk', { ascending: false })
+        .eq('tanggal', filterTanggal)
+        .order('waktu_masuk', { ascending: false, nullsFirst: false })
         .range(from, to);
 
       if (error) throw error;
 
+      // Normalize tiket_antrean to always be an array
       const normalized = (data || []).map(k => ({
         ...k,
-        layanan: Array.isArray(k.layanan) ? k.layanan[0] : k.layanan,
+        tiket_antrean: Array.isArray(k.tiket_antrean)
+          ? k.tiket_antrean
+          : (k.tiket_antrean ? [k.tiket_antrean] : []),
       })) as KunjunganRow[];
 
       setKunjungan(normalized);
@@ -81,22 +92,37 @@ export default function KunjunganPage() {
     loadData();
   }, [loadData]);
 
+  const getTiket = (k: KunjunganRow): TiketData | null => {
+    const arr = Array.isArray(k.tiket_antrean) ? k.tiket_antrean : (k.tiket_antrean ? [k.tiket_antrean] : []);
+    return arr[0] ?? null;
+  };
+
+  const getLayananNama = (k: KunjunganRow): string => {
+    const t = getTiket(k);
+    if (!t?.layanan) return '—';
+    if (Array.isArray(t.layanan)) return t.layanan[0]?.nama || '—';
+    return t.layanan.nama || '—';
+  };
+
+  const getNomorDisplay = (k: KunjunganRow): string => {
+    return getTiket(k)?.nomor_display ?? '—';
+  };
+
+  const getWaktuSelesai = (k: KunjunganRow): string | null => {
+    return getTiket(k)?.waktu_selesai ?? null;
+  };
+
   const filtered = kunjungan.filter((k) => {
-    const layananNama = Array.isArray(k.layanan) ? k.layanan[0]?.nama : k.layanan?.nama || '';
+    const layananNama = getLayananNama(k);
     const matchSearch = k.nama.toLowerCase().includes(search.toLowerCase()) ||
       layananNama.toLowerCase().includes(search.toLowerCase());
     const matchStatus = filterStatus === 'semua' || k.status === filterStatus;
     return matchSearch && matchStatus;
   });
 
-  const formatTime = (iso: string) => {
+  const formatTime = (iso: string | null) => {
+    if (!iso) return '—';
     return new Date(iso).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
-  };
-
-  const getLayananNama = (k: KunjunganRow) => {
-    if (!k.layanan) return '—';
-    if (Array.isArray(k.layanan)) return k.layanan[0]?.nama || '—';
-    return k.layanan.nama || '—';
   };
 
   const statusLabel = (status: string) => {
@@ -104,6 +130,9 @@ export default function KunjunganPage() {
       case 'menunggu': return '● Menunggu';
       case 'dilayani': return 'Sedang Dilayani';
       case 'selesai': return '✓ Selesai';
+      case 'terjadwal': return '◷ Terjadwal';
+      case 'tidak_terlayani': return '✗ Tidak Terlayani';
+      case 'no_show': return '○ Tidak Datang';
       default: return status;
     }
   };
@@ -204,8 +233,8 @@ export default function KunjunganPage() {
             <thead>
               <tr>
                 <th>#</th>
+                <th>No. Tiket</th>
                 <th>Nama</th>
-                <th>Keperluan</th>
                 <th>Layanan</th>
                 <th>Waktu Masuk</th>
                 <th>Waktu Selesai</th>
@@ -216,14 +245,12 @@ export default function KunjunganPage() {
               {filtered.map((k, i) => (
                 <tr key={k.id}>
                   <td style={{ color: 'var(--text-tertiary)' }}>{page * PAGE_SIZE + i + 1}</td>
+                  <td style={{ fontWeight: 600, color: 'var(--color-primary-700)' }}>{getNomorDisplay(k)}</td>
                   <td style={{ fontWeight: 600 }}>{k.nama}</td>
-                  <td style={{ maxWidth: '240px', color: 'var(--text-secondary)' }}>
-                    {k.keperluan || '—'}
-                  </td>
                   <td>{getLayananNama(k)}</td>
                   <td>{formatTime(k.waktu_masuk)}</td>
                   <td style={{ color: 'var(--text-secondary)' }}>
-                    {k.waktu_selesai ? formatTime(k.waktu_selesai) : '—'}
+                    {formatTime(getWaktuSelesai(k))}
                   </td>
                   <td>
                     <span className={`badge badge--${k.status}`}>
@@ -238,7 +265,7 @@ export default function KunjunganPage() {
           {!loading && <Pagination page={page} pageSize={PAGE_SIZE} total={totalCount} onPageChange={setPage} />}
         </div>
 
-        {filtered.length === 0 && (
+        {filtered.length === 0 && !loading && (
           <div className="empty-state">
             <Search size={48} className="empty-state__icon" />
             <h3 className="empty-state__title">Tidak Ada Data</h3>

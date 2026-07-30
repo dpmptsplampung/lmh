@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
+import { toWIBDateString } from '@/lib/time';
 import {
   ArrowLeft,
   Loader2,
@@ -23,7 +24,7 @@ type Period = 'month' | 'quarter' | 'year';
 
 function getDateRange(period: Period): { start: string; end: string } {
   const now = new Date();
-  const end = now.toISOString().split('T')[0];
+  const end = toWIBDateString(now); // batas hari memakai Asia/Jakarta (RPT-07)
   let start: Date;
   if (period === 'month') {
     start = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -33,7 +34,7 @@ function getDateRange(period: Period): { start: string; end: string } {
   } else {
     start = new Date(now.getFullYear(), 0, 1);
   }
-  return { start: start.toISOString().split('T')[0], end };
+  return { start: toWIBDateString(start), end };
 }
 
 export default function SkmAdminPage() {

@@ -30,5 +30,15 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules",
+    "fixed_test.ts",
+    "check_placeholder.js",
+    "check_test.js",
+    "check_test2.js",
+    "compare_names.js",
+    "fix_test_1.js",
+    "write_fix_1.js",
+    "write_test.js"
+  ]
 }
