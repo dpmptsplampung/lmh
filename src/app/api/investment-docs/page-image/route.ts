@@ -82,9 +82,17 @@ async function resolveWatermarkIdentity(
   supabase: Awaited<ReturnType<typeof createClient>>,
   sessionSeed: string,
 ): Promise<{ subject: string; label: string }> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Guard: supabase.auth may not exist in test mocks or alternative client shapes.
+  let user: { id: string } | null = null;
+  try {
+    if (supabase?.auth && typeof supabase.auth.getUser === 'function') {
+      const { data } = await supabase.auth.getUser();
+      user = data?.user ?? null;
+    }
+  } catch {
+    // If auth call fails (e.g. missing cookies in test), treat as anonymous.
+    user = null;
+  }
 
   if (user) {
     const { data: p } = await supabase
