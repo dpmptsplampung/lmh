@@ -79,7 +79,6 @@ export default function AdminDashboard() {
           });
       }
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const [totalHariIni, setTotalHariIni] = useState(0);

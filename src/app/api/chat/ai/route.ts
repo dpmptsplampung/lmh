@@ -223,7 +223,7 @@ export async function POST(request: NextRequest) {
       }
       jawaban = 'Terima kasih atas pertanyaan Anda. Petugas loket kami siap membantu Anda lebih lanjut.';
     }
-  } catch (err) {
+  } catch {
     if (isExactMatch) {
       await logAiCall(
         adminClient,

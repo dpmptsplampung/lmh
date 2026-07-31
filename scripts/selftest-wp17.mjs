@@ -22,7 +22,7 @@ console.log('batas_jam_alpa:', JSON.stringify(setting.data ?? setting.error));
 
 // 2) Uji catat_absensi dengan petugas dummy sementara (auth_user_id dari admin nyata untuk FK).
 const adm = await s.rpc('exec_query', { q: "SELECT auth_user_id FROM public.petugas WHERE role='admin' LIMIT 1" });
-const authId = adm.data[0].auth_user_id;
+const _authId = adm.data[0].auth_user_id;
 const lay = await s.rpc('exec_query', { q: "SELECT id FROM public.layanan ORDER BY nama LIMIT 1" });
 const layananId = lay.data[0].id;
 // Buat petugas dummy dengan layanan, pakai auth admin (UNIQUE akan bentrok) -> pakai pendekatan:

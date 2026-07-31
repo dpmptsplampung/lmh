@@ -6,7 +6,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { todayWIB, addDaysWIB } from '@/lib/time';
-import { BarChart2, RefreshCw, Calendar, Download, TrendingUp, CheckCircle2, XCircle } from 'lucide-react';
+import { BarChart2, RefreshCw, Download, TrendingUp, CheckCircle2, XCircle } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/components/Toast';
@@ -52,7 +52,10 @@ export default function AdminRekapPage() {
     }
   }, [mulai, selesai, toast]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadData();
+  }, [loadData]);
 
   const handleRollupHariIni = async () => {
     setRolling(true);

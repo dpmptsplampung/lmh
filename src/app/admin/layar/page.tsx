@@ -39,7 +39,10 @@ export default function AdminLayarPage() {
     }
   }, [toast]);
 
-  useEffect(() => { loadTokens(); }, [loadTokens]);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadTokens();
+  }, [loadTokens]);
 
   const handleBuat = async () => {
     if (!namaLayar.trim()) {

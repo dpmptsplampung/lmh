@@ -5,9 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import {
   ArrowLeft,
-  Send,
   Bot,
-  User,
   MessageSquare,
   Loader2,
   CheckCircle2,
@@ -24,7 +22,6 @@ import {
   Message as ChatMessage,
   MessageInput,
   TypingIndicator,
-  ConversationHeader,
 } from '@chatscope/chat-ui-kit-react';
 
 interface Layanan {
@@ -76,7 +73,7 @@ export default function PublicChatPage() {
 
   // Chat Thread States
   const [messages, setMessages] = useState<Message[]>([]);
-  const [messageInput, setMessageInput] = useState('');
+  const [_messageInput, setMessageInput] = useState('');
   const [sesiStatus, setSesiStatus] = useState<'bot' | 'eskalasi' | 'aktif' | 'selesai'>('bot');
   const [faqs, setFaqs] = useState<FAQ[]>([]);
   const [isBotTyping, setIsBotTyping] = useState(false);

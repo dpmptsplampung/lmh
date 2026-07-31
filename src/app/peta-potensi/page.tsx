@@ -22,7 +22,7 @@ const SEKTOR = [
 export default function PetaPotensiPage() {
   const router = useRouter();
   const [authChecked, setAuthChecked] = useState(false);
-  const [userId, setUserId] = useState<string | null>(null);
+  const [_userId, setUserId] = useState<string | null>(null);
   const [pengunjungId, setPengunjungId] = useState<string | null>(null);
 
   useEffect(() => {

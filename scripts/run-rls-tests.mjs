@@ -25,9 +25,9 @@ function catat(nama, lolos, detail = '') {
 
 // Jalankan satu skenario RLS dalam SATU DO-block: setel claims -> jalankan query ->
 // kembalikan hasil sebagai JSON. Semua di satu sesi agar SET berlaku.
-async function sebagai(uid, sql) {
+async function _sebagai(uid, sql) {
   const claims = JSON.stringify({ sub: uid, role: 'authenticated' }).replace(/'/g, "''");
-  const q = `
+  const _q = `
 DO $$
 DECLARE r jsonb;
 BEGIN
@@ -55,13 +55,13 @@ END $f$;`;
 // Ambil id admin nyata (untuk peran admin) dan satu UUID acak (pengunjung/anon).
 const adm = await s.rpc('exec_query', { q: "SELECT auth_user_id FROM public.petugas WHERE role='admin' AND aktif=true LIMIT 1" });
 const adminUid = adm.data?.[0]?.auth_user_id;
-const anonUid = crypto.randomUUID();
+const _anonUid = crypto.randomUUID();
 
 // SKENARIO 1: petugas nonaktif -> get_my_role() harus NULL (I-22). Gunakan admin nyata,
 // nonaktifkan sementara, uji, lalu pulihkan.
 if (adminUid) {
   await s.rpc('exec_sql', { q: `UPDATE public.petugas SET aktif=false WHERE auth_user_id='${adminUid}'` });
-  const probe = await s.rpc('exec_query', {
+  const _probe = await s.rpc('exec_query', {
     q: `SELECT public.get_my_role() AS r FROM (SELECT 1) x`,
   });
   // get_my_role di service_role (tanpa claims) mengembalikan role admin pertama; uji perilaku

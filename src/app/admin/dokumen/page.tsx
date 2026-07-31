@@ -55,7 +55,10 @@ export default function AdminDokumenPage() {
     }
   }, [toast]);
 
-  useEffect(() => { loadDocs(); }, [loadDocs]);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadDocs();
+  }, [loadDocs]);
 
   const handleSimpan = async () => {
     if (!form.judul.trim() || !form.teks_utama.trim()) {

@@ -75,7 +75,10 @@ export default function AdminPengaduanPage() {
     }
   }, [tab]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void load();
+  }, [load]);
 
   const ubahStatus = async (id: string, status: string) => {
     await fetch('/api/admin/pengaduan', {

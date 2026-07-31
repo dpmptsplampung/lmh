@@ -13,7 +13,6 @@ import Image from 'next/image';
 import {
   MessageCircle,
   CalendarPlus,
-  ArrowRight,
   LogOut,
   Calendar,
   Clock,
@@ -64,7 +63,6 @@ export default function MeDashboard() {
   const [loading, setLoading] = useState(true);
   const [waHref, setWaHref] = useState(() => waLink(WA_NUMBER, WA_DEFAULT_MESSAGE));
   const [queuePosition, setQueuePosition] = useState<QueuePosition | null>(null);
-  const [activeReservasi, setActiveReservasi] = useState<Reservasi | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -118,7 +116,6 @@ export default function MeDashboard() {
       const todayActive = normalized.find(
         (r) => r.tanggal_rencana === today && (r.status === 'menunggu' || r.status === 'dilayani'),
       );
-      setActiveReservasi(todayActive ?? null);
 
       if (todayActive) {
         try {

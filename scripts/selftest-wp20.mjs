@@ -31,10 +31,10 @@ console.log('unique constraint tiket:', JSON.stringify(unik.data));
 const lay = await s.rpc('exec_query', { q: "SELECT id, nama, prefiks_antrean FROM public.layanan ORDER BY nama LIMIT 2" });
 const layanan = lay.data;
 const tgl = '2099-12-31';
-const mk = await s.rpc('exec_sql', { q: `INSERT INTO public.kunjungan (nama, asal, tanggal, status) VALUES ('_SELFTEST_','walk_in','${tgl}','menunggu')` });
+const _mk = await s.rpc('exec_sql', { q: `INSERT INTO public.kunjungan (nama, asal, tanggal, status) VALUES ('_SELFTEST_','walk_in','${tgl}','menunggu')` });
 const kid = (await s.rpc('exec_query', { q: `SELECT id FROM public.kunjungan WHERE nama='_SELFTEST_' AND tanggal='${tgl}' ORDER BY created_at DESC LIMIT 1` })).data[0].id;
-const t1 = await s.rpc('terbit_tiket', { p_kunjungan_id: kid, p_layanan_id: layanan[0].id });
-const t2 = await s.rpc('terbit_tiket', { p_kunjungan_id: kid, p_layanan_id: layanan[0].id });
+const _t1 = await s.rpc('terbit_tiket', { p_kunjungan_id: kid, p_layanan_id: layanan[0].id });
+const _t2 = await s.rpc('terbit_tiket', { p_kunjungan_id: kid, p_layanan_id: layanan[0].id });
 const tikets = await s.rpc('exec_query', { q: `SELECT nomor, nomor_display FROM public.tiket_antrean WHERE kunjungan_id='${kid}' ORDER BY nomor` });
 console.log('2 tiket untuk 1 kunjungan (nomor harus 1,2 & display berprefiks):', JSON.stringify(tikets.data ?? tikets.error));
 

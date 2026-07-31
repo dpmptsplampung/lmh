@@ -3,9 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   MessageSquare,
-  User,
   Bot,
-  Send,
   CheckCircle2,
   AlertCircle,
   Loader2,
@@ -21,7 +19,6 @@ import {
   MessageList,
   Message as ChatMessage,
   MessageInput,
-  TypingIndicator,
 } from '@chatscope/chat-ui-kit-react';
 
 interface Session {

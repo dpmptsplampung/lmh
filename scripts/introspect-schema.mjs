@@ -31,7 +31,7 @@ if (!url || !key) {
 
 const supabase = createClient(url, key, { auth: { persistSession: false } });
 
-async function query(label, sql) {
+async function _query(label, sql) {
   const { data, error } = await supabase.rpc('exec_readonly_query', { q: sql }).maybeSingle();
   if (error && !/exec_readonly_query/.test(error.message ?? '')) {
     return { label, error: error.message };
