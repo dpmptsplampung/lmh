@@ -379,7 +379,7 @@ With:
 ```ts
     const updateData: CheckInUpdateData = { 
       status: action === 'hadir' ? 'menunggu' : 'batal',
-      updated_at: new Date().toISOString(), // keep for now — DB trigger also sets this
+      // DB trigger trg_visit_dual_write sets updated_at server-side
     };
 ```
 
@@ -850,8 +850,6 @@ import { useToast } from '@/components/Toast';
     }
   };
 ```
-
-Note: The ideal fix is creating an RPC `catat_pulang(p_petugas_id uuid)` in a new migration that uses `now()`. However since we want to minimize migration changes in this plan, the pragmatic fix is to add toast feedback to all handlers. The server timestamp issue is best addressed by a follow-up migration task.
 
 4. Add toast calls to `handleApprove` and `handleReject`:
 
