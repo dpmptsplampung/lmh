@@ -82,8 +82,10 @@ export async function POST(request: NextRequest) {
   const base = publicBaseUrl();
   const resend = getResend();
   if (!base || !resend) {
+    const missing = [!base && 'NEXT_PUBLIC_PUBLIC_URL', !resend && 'RESEND_API_KEY'].filter(Boolean);
+    console.error('[admin/petugas/invite] env vars missing:', missing);
     return NextResponse.json(
-      { error: 'Service unavailable — email delivery not configured' },
+      { error: `Service unavailable — missing env: ${missing.join(', ')}` },
       { status: 503 },
     );
   }
