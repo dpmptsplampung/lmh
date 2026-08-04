@@ -31,7 +31,9 @@ export default function LayarAntrianPage() {
 
   useEffect(() => {
     let cancelled = false;
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
     const supabase = createClient();
+
     const channel = supabase
       // WP-22: subscribe to tiket_antrean changes; v_antrian_loket now reads from it.
       // visit writes still propagate via trg_visit_dual_write, so either table works.
@@ -42,15 +44,23 @@ export default function LayarAntrianPage() {
         () => { void fetchLokets(); },
       );
 
+    // T-9: Subscribe BEFORE first fetch — no window where changes are missed
+    channel.subscribe();
+
     (async () => {
       setLoading(true);
       await fetchLokets();
       if (!cancelled) setLoading(false);
-      channel.subscribe();
     })();
+
+    // T-8: Polling fallback every 30s — layar di lobby tanpa pengawasan
+    pollTimer = setInterval(() => {
+      void fetchLokets();
+    }, 30_000);
 
     return () => {
       cancelled = true;
+      if (pollTimer) clearInterval(pollTimer);
       void supabase.removeChannel(channel);
     };
   }, [fetchLokets]);

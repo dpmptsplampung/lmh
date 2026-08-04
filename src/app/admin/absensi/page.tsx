@@ -15,6 +15,7 @@ import {
 import PageHeader from '@/components/layout/PageHeader';
 import Pagination from '@/components/Pagination';
 import { createClient } from '@/lib/supabase/client';
+import { useToast } from '@/components/Toast';
 
 const PAGE_SIZE = 25;
 
@@ -40,6 +41,7 @@ interface Absensi {
 }
 
 export default function AbsensiPage() {
+  const { toast } = useToast();
   const [filterTanggal, setFilterTanggal] = useState(todayWIB());
   const [absensi, setAbsensi] = useState<Absensi[]>([]);
   const [currentUser, setCurrentUser] = useState<PetugasData | null>(null);
@@ -134,20 +136,19 @@ export default function AbsensiPage() {
 
   const handleAbsenPulang = async () => {
     if (!currentUser) return;
-    const todayAbsensi = absensi.find(a => a.petugas_id === currentUser.id);
-    if (!todayAbsensi) return;
 
     try {
       setActionLoading(true);
       const supabase = createClient();
-      // jam_pulang juga dari server (RPC update via now()).
-      await supabase.from('absensi_petugas')
-        .update({ jam_pulang: new Date().toISOString() })
-        .eq('id', todayAbsensi.id);
+      // T-7: jam_pulang dari SERVER via RPC catat_pulang() yang menggunakan now() PostgreSQL (I-09)
+      const { error } = await supabase.rpc('catat_pulang', { p_petugas_id: currentUser.id });
+      if (error) throw error;
+      toast('Absen pulang berhasil dicatat', 'success');
       setLoading(true);
       await fetchData();
     } catch (e) {
       console.error(e);
+      toast('Gagal mencatat absen pulang', 'error');
     } finally {
       setActionLoading(false);
     }
@@ -158,13 +159,16 @@ export default function AbsensiPage() {
     if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'front_office')) return;
     try {
       const supabase = createClient();
-      await supabase.from('absensi_petugas')
+      const { error } = await supabase.from('absensi_petugas')
         .update({ status: 'approved', approved_by: currentUser.id })
         .eq('id', id);
+      if (error) throw error;
+      toast('Absensi disetujui', 'success');
       setLoading(true);
       await fetchData();
     } catch (e) {
       console.error(e);
+      toast('Gagal menyetujui absensi', 'error');
     }
   };
 
@@ -172,17 +176,20 @@ export default function AbsensiPage() {
     if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'front_office')) return;
     try {
       const supabase = createClient();
-      await supabase.from('absensi_petugas')
+      const { error } = await supabase.from('absensi_petugas')
         .update({ status: 'ditolak', approved_by: currentUser.id })
         .eq('id', id);
+      if (error) throw error;
+      toast('Absensi ditolak', 'success');
       setLoading(true);
       await fetchData();
     } catch (e) {
       console.error(e);
+      toast('Gagal menolak absensi', 'error');
     }
   };
 
-  const hadirHariIni = absensi.length;
+  const hadirHariIni = absensi.filter(a => a.status === 'approved' || a.status === 'pending').length;
   const sudahPulang = absensi.filter(a => a.jam_pulang).length;
   const myTodayAbsensi = absensi.find(a => a.petugas_id === currentUser?.id);
 

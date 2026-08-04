@@ -9,6 +9,7 @@ export function formatTanggal(date: string | Date, options?: Intl.DateTimeFormat
     day: 'numeric',
     month: 'long',
     year: 'numeric',
+    timeZone: 'Asia/Jakarta',
     ...options,
   });
 }
@@ -21,6 +22,7 @@ export function formatWaktu(date: string | Date): string {
   return d.toLocaleTimeString('id-ID', {
     hour: '2-digit',
     minute: '2-digit',
+    timeZone: 'Asia/Jakarta',
   });
 }
 

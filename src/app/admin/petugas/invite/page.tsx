@@ -13,7 +13,7 @@ interface LayananOption {
   nama: string;
 }
 
-type Role = 'petugas' | 'admin';
+type Role = 'petugas' | 'admin' | 'front_office';
 
 export default function InvitePetugasPage() {
   const { toast } = useToast();
@@ -154,7 +154,7 @@ export default function InvitePetugasPage() {
 
             <div className="form-group">
               <label className={`form-label ${role === 'petugas' ? 'form-label--required' : ''}`} htmlFor="inviteLayanan">
-                Layanan {role === 'admin' && <span style={{ fontWeight: 400, color: 'var(--text-tertiary)' }}>(opsional untuk admin)</span>}
+                Layanan {(role === 'admin' || role === 'front_office') && <span style={{ fontWeight: 400, color: 'var(--text-tertiary)' }}>(opsional untuk {role === 'admin' ? 'admin' : 'front office'})</span>}
               </label>
               {loadingLayanan ? (
                 <div className={styles.loadingRow}>
@@ -170,7 +170,7 @@ export default function InvitePetugasPage() {
                   onChange={(e) => setLayananId(e.target.value)}
                   required={role === 'petugas'}
                 >
-                  <option value="">{role === 'admin' ? '— Tanpa layanan (admin) —' : '— Pilih Layanan —'}</option>
+                  <option value="">{role === 'petugas' ? '— Pilih Layanan —' : '— Tanpa layanan —'}</option>
                   {layananList.map((l) => (
                     <option key={l.id} value={l.id}>
                       {l.nama}
@@ -203,6 +203,16 @@ export default function InvitePetugasPage() {
                   />
                   <span>Admin</span>
                 </label>
+                <label className={`${styles.roleOption} ${role === 'front_office' ? styles.roleOptionActive : ''}`}>
+                  <input
+                    type="radio"
+                    name="role"
+                    value="front_office"
+                    checked={role === 'front_office'}
+                    onChange={() => setRole('front_office')}
+                  />
+                  <span>Front Office</span>
+                </label>
               </div>
             </div>
 
@@ -210,7 +220,7 @@ export default function InvitePetugasPage() {
               <button
                 type="submit"
                 className="btn btn--primary"
-                disabled={submitting || loadingLayanan || layananList.length === 0}
+                disabled={submitting || loadingLayanan || (role === 'petugas' && layananList.length === 0)}
               >
                 {submitting ? (
                   <><Loader2 size={16} className="animate-pulse" /> Memproses...</>

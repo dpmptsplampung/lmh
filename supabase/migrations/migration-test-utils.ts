@@ -44,6 +44,7 @@ export const FORWARD_MIGRATION_FILES = [
   '202607300022_wp29_layar_token.sql',
   '202607300023_wp27_dokumen_rag.sql',
   '202607300024_wp31_umkm_verifikasi.sql',
+  '202608040001_catat_pulang_rpc.sql',
 ] as const;
 
 export function listMigrationFiles(): string[] {

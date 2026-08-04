@@ -234,7 +234,7 @@ export default function Sidebar() {
                 {userName || '—'}
               </div>
               <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-                {userRole === 'admin' ? 'Admin' : 'Petugas'}
+                {userRole === 'admin' ? 'Admin' : userRole === 'front_office' ? 'Front Office' : 'Petugas'}
               </div>
             </div>
           )}

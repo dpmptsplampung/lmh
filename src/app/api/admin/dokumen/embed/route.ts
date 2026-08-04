@@ -3,6 +3,8 @@
 // Chunking strategy: split by paragraph (double newline), max 1500 chars each.
 
 import { createClient } from '@/lib/supabase/server';
+import { createServiceRoleClient } from '@/lib/supabase/service';
+import { parseServerEnv } from '@/lib/env/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { getGenerativeClient, getEmbeddingModel } from '@/lib/gemini';
 
@@ -48,6 +50,14 @@ export async function POST(req: NextRequest) {
   const { dokumen_id } = await req.json();
   if (!dokumen_id) return NextResponse.json({ error: 'dokumen_id wajib' }, { status: 400 });
 
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(dokumen_id)) {
+    return NextResponse.json({ error: 'dokumen_id harus UUID valid' }, { status: 400 });
+  }
+
+  const env = parseServerEnv();
+  const serviceClient = createServiceRoleClient(env);
+
   // Fetch source document
   const { data: dok, error: dokErr } = await supabase
     .from('dokumen_peraturan')
@@ -60,7 +70,7 @@ export async function POST(req: NextRequest) {
   if (!dok.teks_utama?.trim()) return NextResponse.json({ error: 'Teks dokumen kosong' }, { status: 400 });
 
   // Delete existing chunks (re-embed is safe since we replace all)
-  await supabase.from('dokumen_potongan').delete().eq('dokumen_id', dokumen_id);
+  await serviceClient.from('dokumen_potongan').delete().eq('dokumen_id', dokumen_id);
 
   // Chunk the text
   const chunks = chunkText(dok.teks_utama);
@@ -88,7 +98,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Insert all chunks
-    const { error: insertErr } = await supabase
+    const { error: insertErr } = await serviceClient
       .from('dokumen_potongan')
       .insert(embeddedChunks);
 

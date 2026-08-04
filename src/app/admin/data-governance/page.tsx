@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import { createClient } from '@/lib/supabase/client';
+import { todayWIB, addDaysWIB } from '@/lib/time';
 import styles from './data-governance.module.css';
 
 interface AuditStats {
@@ -45,16 +46,6 @@ interface AuditEntry {
   created_at: string;
 }
 
-const todayStart = (): string => {
-  const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString();
-};
-const daysAgoStart = (days: number): string => {
-  const d = new Date();
-  d.setDate(d.getDate() - days);
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString();
-};
-
 export default function DataGovernancePage() {
   const [auditStats, setAuditStats] = useState<AuditStats | null>(null);
   const [consentAgg, setConsentAgg] = useState<ConsentAgg[]>([]);
@@ -68,9 +59,9 @@ export default function DataGovernancePage() {
     setError('');
     try {
       const supabase = createClient();
-      const startToday = todayStart();
-      const start7 = daysAgoStart(7);
-      const start30 = daysAgoStart(30);
+      const startToday = `${todayWIB()}T00:00:00Z`;
+      const start7 = `${addDaysWIB(-7)}T00:00:00Z`;
+      const start30 = `${addDaysWIB(-30)}T00:00:00Z`;
 
       // Card 1: audit_log counts. RLS allows admin SELECT.
       const [todayQ, last7Q, last30Q] = await Promise.all([

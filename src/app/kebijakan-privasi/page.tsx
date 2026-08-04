@@ -138,7 +138,7 @@ export default function KebijakanPrivasiPage() {
 
         <section style={{ marginBottom: 'var(--space-6)' }}>
           <h2 style={{ fontSize: 'var(--text-xl)', marginBottom: 'var(--space-3)' }}>
-            6. Cara Kontak
+            7. Cara Kontak
           </h2>
           <p style={{ color: 'var(--text-secondary)', lineHeight: 1.7 }}>
             Untuk pertanyaan privasi atau permintaan hak subjek data, hubungi{' '}
@@ -150,7 +150,7 @@ export default function KebijakanPrivasiPage() {
 
         <section>
           <h2 style={{ fontSize: 'var(--text-xl)', marginBottom: 'var(--space-3)' }}>
-            7. Versi Kebijakan
+            8. Versi Kebijakan
           </h2>
           <p style={{ color: 'var(--text-secondary)', lineHeight: 1.7 }}>
             Versi kebijakan privasi yang dirujuk oleh formulir persetujuan di aplikasi adalah{' '}

@@ -83,11 +83,21 @@ export default function InvestasiLeadsAdminPage() {
       const supabase = createClient();
       const from = page * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
-      const { data, count, error: fetchErr } = await supabase
+      let query = supabase
         .from('investasi_lead')
         .select('id, doc_id, nama, email, instansi, minat, catatan, status, created_at, investment_documents(judul)', { count: 'exact' })
-        .order('created_at', { ascending: false })
-        .range(from, to);
+        .order('created_at', { ascending: false });
+
+      // T-15: Server-side filter
+      if (statusFilter !== 'semua') {
+        query = query.eq('status', statusFilter);
+      }
+      if (search.trim()) {
+        const q = search.trim();
+        query = query.or(`nama.ilike.%${q}%,email.ilike.%${q}%`);
+      }
+
+      const { data, count, error: fetchErr } = await query.range(from, to);
 
       if (fetchErr) throw fetchErr;
       setRows((data ?? []) as LeadRow[]);
@@ -98,12 +108,16 @@ export default function InvestasiLeadsAdminPage() {
     } finally {
       setLoading(false);
     }
-  }, [page]);
+  }, [page, statusFilter, search]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    setPage(0);
+  }, [statusFilter, search]);
 
   const handleStatusChange = async (leadId: string, newStatus: LeadStatus) => {
     setUpdatingId(leadId);
@@ -128,15 +142,6 @@ export default function InvestasiLeadsAdminPage() {
     }
   };
 
-  const filtered = rows.filter((r) => {
-    if (statusFilter !== 'semua' && r.status !== statusFilter) return false;
-    if (search.trim()) {
-      const q = search.toLowerCase().trim();
-      return r.nama.toLowerCase().includes(q) || r.email.toLowerCase().includes(q);
-    }
-    return true;
-  });
-
   return (
     <>
       <PageHeader
@@ -152,7 +157,7 @@ export default function InvestasiLeadsAdminPage() {
               Daftar Lead
             </h2>
             <p className={styles.subtitle}>
-              {filtered.length} dari {totalCount} lead
+              {totalCount} lead{statusFilter !== 'semua' ? ` (${STATUS_LABELS[statusFilter]})` : ''}
             </p>
           </div>
           <Link href="/admin" className={styles.backLink}>
@@ -220,7 +225,7 @@ export default function InvestasiLeadsAdminPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.length === 0 ? (
+                  {rows.length === 0 ? (
                     <tr>
                       <td colSpan={8} className={styles.tableEmpty}>
                         <TrendingUp size={20} style={{ verticalAlign: 'middle', marginRight: 6 }} />
@@ -228,7 +233,7 @@ export default function InvestasiLeadsAdminPage() {
                       </td>
                     </tr>
                   ) : (
-                    filtered.map((r) => (
+                    rows.map((r) => (
                       <tr key={r.id}>
                         <td style={{ whiteSpace: 'nowrap' }}>{formatDate(r.created_at)}</td>
                         <td>{r.investment_documents?.[0]?.judul ?? '—'}</td>

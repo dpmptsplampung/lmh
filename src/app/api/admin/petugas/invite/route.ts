@@ -9,9 +9,9 @@ const bodySchema = z
     email: z.email(),
     nama: z.string().min(2).max(200),
     layanan_id: z.string().uuid().nullable().optional(),
-    role: z.enum(['petugas', 'admin']).default('petugas'),
+    role: z.enum(['petugas', 'admin', 'front_office']).default('petugas'),
   })
-  .refine((v) => v.role === 'admin' || !!v.layanan_id, {
+  .refine((v) => v.role === 'admin' || v.role === 'front_office' || !!v.layanan_id, {
     message: 'layanan_id wajib untuk role petugas',
     path: ['layanan_id'],
   });

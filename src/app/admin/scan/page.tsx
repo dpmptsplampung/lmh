@@ -19,6 +19,7 @@ import {
 import PageHeader from '@/components/layout/PageHeader';
 import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/components/Toast';
+import { todayWIB } from '@/lib/time';
 import styles from './scan.module.css';
 
 interface ReservasiResult {
@@ -44,7 +45,6 @@ type ScanState = 'scanning' | 'found' | 'not_found' | 'processed' | 'error';
 
 interface CheckInUpdateData {
   status: string;
-  updated_at: string;
   waktu_masuk?: string;
   waktu_scan?: string;
   diarahkan_ke?: string;
@@ -150,20 +150,20 @@ export default function AdminScanPage() {
     };
   }, [lookupToken]);
 
-  const getLocalDateString = (d = new Date()) => {
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-
   const handleCheckIn = async (action: 'hadir' | 'batal') => {
     if (!result || scanState !== 'found') return;
+
+    // K-8: Tolak keras — reservasi yang sudah diproses tidak boleh di-scan ulang
+    if (result.status !== 'terjadwal') {
+      toast(`Reservasi ini sudah diproses (status: ${result.status}). Scan ditolak.`, 'error');
+      return;
+    }
+
     setProcessing(true);
 
     const supabase = createClient();
 
-    const today = getLocalDateString();
+    const today = todayWIB();
     if (action === 'hadir' && result.tanggal_rencana !== today) {
       toast(`Gagal Check-In: Jadwal reservasi ini adalah tanggal ${formatDate(result.tanggal_rencana)}, bukan hari ini.`, 'error');
       setProcessing(false);
@@ -171,9 +171,9 @@ export default function AdminScanPage() {
     }
 
     const nowIso = new Date().toISOString();
-    const updateData: CheckInUpdateData = { 
+    const updateData: CheckInUpdateData = {
       status: action === 'hadir' ? 'menunggu' : 'batal',
-      updated_at: nowIso,
+      // DB trigger trg_visit_dual_write sets updated_at server-side
     };
 
     if (action === 'hadir') {

@@ -179,6 +179,7 @@ export default function AdminChatPage() {
     const supabase = createClient();
     let channel: ReturnType<typeof supabase.channel> | null = null;
     let pesanChannel: ReturnType<typeof supabase.channel> | null = null;
+    let sessionPoll: ReturnType<typeof setInterval> | null = null;
 
     async function init() {
       try {
@@ -202,7 +203,7 @@ export default function AdminChatPage() {
 
         await fetchSessions(layananId);
 
-        const sessionPoll = setInterval(() => {
+        sessionPoll = setInterval(() => {
           fetchSessions(layananId);
         }, 3000);
 
@@ -220,12 +221,6 @@ export default function AdminChatPage() {
             fetchSessions(layananId);
           })
           .subscribe();
-
-        return () => {
-          clearInterval(sessionPoll);
-          if (channel) supabase.removeChannel(channel);
-          if (pesanChannel) supabase.removeChannel(pesanChannel);
-        };
       } catch (e) {
         console.error(e);
         toast('Gagal menginisialisasi chat', 'error');
@@ -234,6 +229,13 @@ export default function AdminChatPage() {
       }
     }
     init();
+
+    // K-1: Cleanup — clear interval AND remove channels on unmount
+    return () => {
+      if (sessionPoll) clearInterval(sessionPoll);
+      if (channel) supabase.removeChannel(channel);
+      if (pesanChannel) supabase.removeChannel(pesanChannel);
+    };
   }, [fetchSessions, toast]);
 
   // Effect 2: Message subscription & 3s polling (depends on selectedSession)

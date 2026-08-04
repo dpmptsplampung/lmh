@@ -39,5 +39,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Gagal membuat tautan unduhan.' }, { status: 500 });
   }
 
+  // A6: Audit trail for raw PDF access (compliance requirement)
+  await supabase.from('audit_log').insert({
+    actor_id: user.id,
+    actor_role: petugas.role,
+    aksi: 'download_raw_pdf',
+    entitas: 'investment_documents',
+    entitas_id: filePath,
+    detail: { file_path: filePath, signed_url_ttl_seconds: 60 },
+  }).then(() => {}, () => {}); // fire-and-forget, don't block response
+
   return NextResponse.json({ signedUrl: data.signedUrl });
 }

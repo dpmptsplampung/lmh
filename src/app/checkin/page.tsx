@@ -140,7 +140,7 @@ export default function CheckinPage() {
             nama: form.nama.trim(),
             layanan_id: form.layanan_id,
             keperluan: form.keperluan.trim() || undefined,
-            consent_given: true,
+            consent_given: consentGiven,
             versi_kebijakan: CONSENT_VERSION,
           },
           owner_user_id: currentUserId,
@@ -163,14 +163,20 @@ export default function CheckinPage() {
       const supabase = createClient();
 
       // I8: Record PDP consent BEFORE inserting visit (only when user asserted consent).
+      // K-2: Await and check error — blocks visit insert if consent fails.
       // subjek_ref = auth user id (RLS ownership policy).
       if (currentUserId && consentGiven) {
-        await supabase.from('consent_log').insert({
+        const { error: consentError } = await supabase.from('consent_log').insert({
           subjek_ref: currentUserId,
           tujuan: 'checkin_data',
           disetujui: true,
           versi_kebijakan: CONSENT_VERSION,
         });
+        if (consentError) {
+          setError('Gagal mencatat persetujuan data. Silakan coba lagi.');
+          setLoading(false);
+          return;
+        }
       }
 
       const qrToken = crypto.randomUUID();
@@ -231,6 +237,7 @@ export default function CheckinPage() {
     setError('');
     setSuccessToken(null);
     setQueuePos(null);
+    setConsentGiven(false); // K-4: reset consent for next visitor (PDP compliance)
   };
 
   return (

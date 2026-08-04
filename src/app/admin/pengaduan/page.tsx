@@ -47,7 +47,7 @@ export default function AdminPengaduanPage() {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<'layanan' | 'integritas'>('layanan');
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [userRole, setUserRole] = useState<string | null>(null);
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
@@ -56,18 +56,12 @@ export default function AdminPengaduanPage() {
     try {
       const res = await fetch(`/api/admin/pengaduan?jalur=${tab}`);
       const json = await res.json();
-      if (res.status === 403 && tab === 'integritas') {
-        setRows([]);
-        setError('Jalur integritas hanya dapat diakses oleh Admin.');
-        return;
-      }
       if (!res.ok) {
         setError(json.error ?? 'Gagal memuat');
+        setRows([]);
         return;
       }
       setRows(json.rows ?? []);
-      // Deteksi admin: kalau tab integritas bisa diakses tanpa 403, berarti admin.
-      setIsAdmin(true);
     } catch {
       setError('Gangguan jaringan.');
     } finally {
@@ -75,17 +69,38 @@ export default function AdminPengaduanPage() {
     }
   }, [tab]);
 
+  const loadRole = useCallback(async () => {
+    try {
+      const supabase = (await import('@/lib/supabase/client')).createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data: p } = await supabase
+        .from('petugas')
+        .select('role')
+        .eq('auth_user_id', user.id)
+        .maybeSingle();
+      if (p) setUserRole(p.role);
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => { void loadRole(); }, [loadRole]);
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
   }, [load]);
 
   const ubahStatus = async (id: string, status: string) => {
-    await fetch('/api/admin/pengaduan', {
+    const res = await fetch('/api/admin/pengaduan', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, status }),
     });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setError(data.error ?? 'Gagal mengubah status pengaduan');
+      return;
+    }
     void load();
   };
 
@@ -100,7 +115,7 @@ export default function AdminPengaduanPage() {
         >
           Pengaduan Layanan
         </button>
-        {isAdmin && (
+        {userRole && (
           <button
             type="button"
             className={`btn ${tab === 'integritas' ? 'btn--primary' : 'btn--secondary'}`}
@@ -139,16 +154,20 @@ export default function AdminPengaduanPage() {
                 {r.anonim && <span>(anonim)</span>}
               </div>
               <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-                {r.status === 'baru' && (
-                  <button type="button" className="btn btn--sm btn--secondary" onClick={() => ubahStatus(r.id, 'diverifikasi')}>Verifikasi</button>
-                )}
-                {(r.status === 'baru' || r.status === 'diverifikasi') && (
-                  <button type="button" className="btn btn--sm btn--secondary" onClick={() => ubahStatus(r.id, 'diproses')}>Proses</button>
-                )}
-                {r.status !== 'selesai' && r.status !== 'ditolak' && (
+                {(userRole === 'admin' || (r.jalur === 'layanan' && userRole !== 'petugas')) && (
                   <>
-                    <button type="button" className="btn btn--sm btn--primary" onClick={() => ubahStatus(r.id, 'selesai')}>Selesaikan</button>
-                    <button type="button" className="btn btn--sm btn--secondary" onClick={() => ubahStatus(r.id, 'ditolak')}>Tolak</button>
+                    {r.status === 'baru' && (
+                      <button type="button" className="btn btn--sm btn--secondary" onClick={() => ubahStatus(r.id, 'diverifikasi')}>Verifikasi</button>
+                    )}
+                    {(r.status === 'baru' || r.status === 'diverifikasi') && (
+                      <button type="button" className="btn btn--sm btn--secondary" onClick={() => ubahStatus(r.id, 'diproses')}>Proses</button>
+                    )}
+                    {r.status !== 'selesai' && r.status !== 'ditolak' && (
+                      <>
+                        <button type="button" className="btn btn--sm btn--primary" onClick={() => ubahStatus(r.id, 'selesai')}>Selesaikan</button>
+                        <button type="button" className="btn btn--sm btn--secondary" onClick={() => ubahStatus(r.id, 'ditolak')}>Tolak</button>
+                      </>
+                    )}
                   </>
                 )}
               </div>

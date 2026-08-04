@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { canAccessAdminPath } from '@/lib/admin-nav';
+import { canAccessAdminPath, type AdminRole } from '@/lib/admin-nav';
 
 export default function AdminGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -31,7 +31,7 @@ export default function AdminGuard({ children }: { children: React.ReactNode }) 
         return;
       }
 
-      if (!canAccessAdminPath(petugas.role as 'admin' | 'petugas', pathname)) {
+      if (!canAccessAdminPath(petugas.role as AdminRole, pathname)) {
         router.replace('/admin/antrian');
         return;
       }

@@ -59,6 +59,10 @@ export default function AntrianPage() {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
+  const [serverStats, setServerStats] = useState<{
+    totalSelesai: number;
+    rataWaktuMenit: number;
+  }>({ totalSelesai: 0, rataWaktuMenit: 0 });
 
   useEffect(() => {
     fetchData();
@@ -120,6 +124,28 @@ export default function AntrianPage() {
       const { data, count } = await query.range(from, to);
       setAntrian((data || []) as unknown as AntrianRow[]);
       setTotalCount(count ?? (data?.length ?? 0));
+
+      // T-5: Stats dari server, bukan dari halaman aktif saja
+      let statsQuery = supabase
+        .from('tiket_antrean')
+        .select('waktu_mulai_layan, waktu_selesai', { count: 'exact' })
+        .eq('tanggal', tanggal)
+        .eq('status', 'selesai');
+
+      if (myRole === 'petugas' && myLayananId) {
+        statsQuery = statsQuery.eq('layanan_id', myLayananId);
+      }
+
+      const { data: statsData, count: selesaiCount } = await statsQuery;
+      const selesaiRows = statsData ?? [];
+      const totalDurasiMenit = selesaiRows.reduce((sum, row) => {
+        if (!row.waktu_selesai || !row.waktu_mulai_layan) return sum;
+        return sum + (new Date(row.waktu_selesai).getTime() - new Date(row.waktu_mulai_layan).getTime()) / 60000;
+      }, 0);
+      setServerStats({
+        totalSelesai: selesaiCount ?? selesaiRows.length,
+        rataWaktuMenit: selesaiRows.length > 0 ? Math.round(totalDurasiMenit / selesaiRows.length) : 0,
+      });
     } catch (e) {
       console.error(e);
       toast('Gagal memuat data antrian', 'error');
@@ -283,7 +309,7 @@ export default function AntrianPage() {
                 <div className="stat-card__icon" style={{ background: 'var(--color-success-50)', color: 'var(--color-success-600)' }}>
                   <TrendingUp size={22} />
                 </div>
-                <span className="stat-card__value">{selesai.length}</span>
+                <span className="stat-card__value">{serverStats.totalSelesai}</span>
                 <span className="stat-card__label">Selesai Dilayani</span>
               </div>
               <div className="stat-card">
@@ -291,7 +317,7 @@ export default function AntrianPage() {
                   <Clock size={22} />
                 </div>
                 <span className="stat-card__value">
-                  {rataWaktu} <small style={{ fontSize: '0.4em', fontWeight: 400 }}>mnt</small>
+                  {serverStats.rataWaktuMenit} <small style={{ fontSize: '0.4em', fontWeight: 400 }}>mnt</small>
                 </span>
                 <span className="stat-card__label">Rata-rata Durasi</span>
               </div>
