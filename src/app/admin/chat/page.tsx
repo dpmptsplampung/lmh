@@ -278,6 +278,10 @@ export default function AdminChatPage() {
 
     loadMessages();
 
+    // Safety-net polling: broadcast is the instant path, but if the realtime
+    // publication/connection hiccups, this keeps the thread fresh (4s).
+    const poll = setInterval(() => { loadMessages(); }, 4000);
+
     // Background broadcast listener (instant sub-50ms sync without polling)
     const broadcastChannel = supabase
       .channel(`chat-room-${selectedSession.id}`)
@@ -312,6 +316,7 @@ export default function AdminChatPage() {
 
     return () => {
       active = false;
+      clearInterval(poll);
       supabase.removeChannel(broadcastChannel);
     };
   }, [selectedSession, toast]);
