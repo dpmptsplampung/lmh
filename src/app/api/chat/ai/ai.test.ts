@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Server (cookie-bound) client mock — returned by createClient() from
 // @/lib/supabase/server. Its auth.getUser() drives the ownership check.
@@ -394,12 +394,28 @@ describe('POST /api/chat/ai — RAG flow', () => {
     process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-key';
     process.env.GEMINI_API_KEY = 'test-key';
     serverState.callerId = CALLER_AUTH_ID;
+    // Pin to a weekday (Wednesday 2026-08-05) so weekend-mode does not
+    // suppress escalation — these tests assert selective-escalation behavior
+    // that only applies on hari kerja. Without this the suite is flaky
+    // (fails on Sat/Sun).
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-05T10:00:00+07:00'));
   });
 
-  it('escalates (reason no_match) when no FAQ matches returned', async () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // NEW selective-escalation behavior: a genuine out-of-scope question with no
+  // FAQ context (and not weekend) still escalates to a petugas. This is the
+  // intended "eskalasi selektif" — the bot only escalates when the question
+  // truly needs data not in context.
+  it('escalates (reason no_match) when a genuine out-of-scope question has no FAQ match', async () => {
     await mockServiceClient({ rpcData: [] });
     const { POST } = await import('./route');
-    const res = await POST(buildRequest(validBody));
+    const res = await POST(
+      buildRequest({ ...validBody, pertanyaan: 'Berapa nomor HP kepala dinas?' }),
+    );
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.eskalasi).toBe(true);
@@ -407,7 +423,7 @@ describe('POST /api/chat/ai — RAG flow', () => {
     expect(typeof json.jawaban).toBe('string');
   });
 
-  it('escalates (reason no_match) when top similarity < 0.7', async () => {
+  it('escalates (reason no_match) when top similarity < 0.7 (no confident FAQ context)', async () => {
     await mockServiceClient({
       rpcData: [
         {
@@ -420,11 +436,28 @@ describe('POST /api/chat/ai — RAG flow', () => {
       ],
     });
     const { POST } = await import('./route');
-    const res = await POST(buildRequest(validBody));
+    const res = await POST(
+      buildRequest({ ...validBody, pertanyaan: 'Berapa nomor HP kepala dinas?' }),
+    );
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.eskalasi).toBe(true);
     expect(json.reason).toBe('no_match');
+  });
+
+  // NEW behavior: a greeting must NOT escalate — the bot replies warmly from
+  // the friendly no-match context instead of connecting to a petugas. Under
+  // weekend mode escalation is always suppressed, but on a weekday a greeting
+  // still produces a helpful (non-null) jawaban rather than an ai_error.
+  it('does not return ai_error for a greeting (bot answers warmly)', async () => {
+    geminiState.generateText = 'Halo! Ada yang bisa kami bantu seputar layanan DPMPTSP?';
+    await mockServiceClient({ rpcData: [] });
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest({ ...validBody, pertanyaan: 'halo' }));
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.reason).not.toBe('ai_error');
+    expect(json.jawaban).toBe('Halo! Ada yang bisa kami bantu seputar layanan DPMPTSP?');
   });
 
   it('returns jawaban + sumber when top similarity >= 0.7 (valid ownership + under rate limit)', async () => {
