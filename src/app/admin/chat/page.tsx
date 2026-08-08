@@ -238,7 +238,7 @@ export default function AdminChatPage() {
     };
   }, [fetchSessions, toast]);
 
-  // Effect 2: Message subscription & 3s polling (depends on selectedSession)
+  // Effect 2: Message broadcast + 4s polling fallback (depends on selectedSession)
   useEffect(() => {
     if (!selectedSession) {
       return;
