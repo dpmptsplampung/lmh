@@ -69,7 +69,7 @@ export async function POST(request?: Request) {
   const { data: pending, error: fetchErr } = await adminClient
     .from('faq_knowledge_base')
     .select('id, pertanyaan, jawaban')
-    .is('embedding', null)
+    .or('embedding.is.null,perlu_embed_ulang.eq.true')
     .limit(50);
 
   if (fetchErr) {
@@ -118,7 +118,7 @@ export async function POST(request?: Request) {
   const { count: remaining } = await adminClient
     .from('faq_knowledge_base')
     .select('*', { count: 'exact', head: true })
-    .is('embedding', null);
+    .or('embedding.is.null,perlu_embed_ulang.eq.true');
 
   return NextResponse.json({
     embedded,

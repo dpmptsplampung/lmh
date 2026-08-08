@@ -89,13 +89,13 @@ const mockServiceClient = async (opts: MockServiceOpts = {}) => {
     from: vi.fn((table: string) => {
       if (table === 'faq_knowledge_base') {
         return {
-          // select pending FAQs (is embedding null, limit 50) OR
-          // count remaining (select('*', { count:'exact', head:true }).is(...))
+          // select pending FAQs (or(embedding.is.null,perlu_embed_ulang.eq.true), limit 50) OR
+          // count remaining (select('*', { count:'exact', head:true }).or(...))
           select: vi.fn((cols?: unknown, opts2?: { count?: string; head?: boolean }) => {
             if (opts2 && opts2.head === true) {
               // count query — returns { count, error } via thenable
               return {
-                is: vi.fn(() => ({
+                or: vi.fn(() => ({
                   then: (
                     resolve: (v: unknown) => unknown,
                     reject?: (e: unknown) => unknown,
@@ -107,9 +107,9 @@ const mockServiceClient = async (opts: MockServiceOpts = {}) => {
                 })),
               };
             }
-            // pending fetch — is(...).limit(...).then(...)
+            // pending fetch — or(...).limit(...).then(...)
             return {
-              is: vi.fn(() => ({
+              or: vi.fn(() => ({
                 limit: vi.fn(() => ({
                   then: (
                     resolve: (v: unknown) => unknown,
