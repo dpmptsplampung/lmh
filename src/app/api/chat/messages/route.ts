@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { createClient as createServerClient } from '@/lib/supabase/server';
 
@@ -7,6 +8,32 @@ export const dynamic = 'force-dynamic';
 
 // P0: service-role is only for broadcast after an authorized write.
 // Auth + ownership are enforced explicitly — never trust client-supplied pengirim.
+
+// Broadcast reliably: supabase-js v2 only delivers channel.send() after the
+// channel has joined (SUBSCRIBED). Sending before subscribe drops the message.
+export async function broadcastNewMessage(
+  adminClient: SupabaseClient,
+  sesiId: string,
+  message: unknown,
+): Promise<void> {
+  const channel = adminClient.channel(`chat-room-${sesiId}`);
+  try {
+    await new Promise<void>((resolve) => {
+      channel.subscribe((status: string) => {
+        if (status === 'SUBSCRIBED') resolve();
+      });
+    });
+    await channel.send({
+      type: 'broadcast',
+      event: 'new_message',
+      payload: { message },
+    });
+  } catch {
+    // Broadcast failure must not fail the write.
+  } finally {
+    try { await channel.unsubscribe(); } catch { /* ignore */ }
+  }
+}
 
 function getServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -198,17 +225,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to insert message' }, { status: 500 });
   }
 
-  // Best-effort realtime broadcast for 0ms cross-client sync.
-  try {
-    const channel = adminClient.channel(`chat-room-${parsed.data.sesi_id}`);
-    await channel.send({
-      type: 'broadcast',
-      event: 'new_message',
-      payload: { message: data },
-    });
-  } catch {
-    // Broadcast failure must not fail the write.
-  }
+  // Best-effort realtime broadcast for cross-client sync.
+  await broadcastNewMessage(adminClient, parsed.data.sesi_id, data);
 
   return NextResponse.json({ message: data }, { status: 201 });
 }

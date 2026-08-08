@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
+import { broadcastNewMessage } from './route';
 
 const serverState = {
   callerId: 'auth-user-1' as string | null,
@@ -315,5 +316,17 @@ describe('/api/chat/messages API Route', () => {
       }),
     );
     expect(res.status).toBe(403);
+  });
+
+  it('broadcasts new_message after subscribing to the session channel', async () => {
+    const order: string[] = [];
+    const fakeChannel = {
+      subscribe: (cb?: (s: string) => void) => { order.push('subscribe'); cb?.('SUBSCRIBED'); return Promise.resolve('SUBSCRIBED'); },
+      send: async () => { order.push('send'); return 'ok'; },
+      unsubscribe: async () => { order.push('unsubscribe'); return 'ok'; },
+    };
+    const adminClient: any = { channel: () => fakeChannel };
+    await broadcastNewMessage(adminClient, 'sesi-1', { id: 'm1' } as any);
+    expect(order).toEqual(['subscribe', 'send', 'unsubscribe']);
   });
 });
