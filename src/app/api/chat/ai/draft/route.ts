@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
   let matches: FaqMatch[] = [];
   if (lastVisitorMsg) {
     try {
-      const embedModel = getEmbeddingModel(genAI);
+      const embedModel = getEmbeddingModel(genAI, 'gemini-embedding-001'); // FAQ col = 3072
       const embedRes = await embedModel.embedContent(redactPii(lastVisitorMsg));
       if (embedRes.embedding.values?.length) {
         const vectorLiteral = `[${embedRes.embedding.values.join(',')}]`;
