@@ -175,6 +175,21 @@ export async function POST(request: NextRequest) {
   const topSim = faqMatches.length > 0 ? faqMatches[0].similarity : null;
   const faqIds = isExactMatch ? faqMatches.map((m) => m.id) : [];
 
+  // Sapaan / basa-basi ("halo", "selamat pagi", "terima kasih", ...) tidak
+  // memerlukan jawaban faktual, jadi jangan eskalasi hanya karena tidak ada
+  // FAQ yang cocok — bot cukup menyapa balik dengan ramah.
+  const GREETING_RE =
+    /^(h[ae]lo+|hai+|hi+|hei+|helo+|selamat (pagi|siang|sore|malam)|ass?alamu?(alaikum|\'alaikum)?|salam|pagi|siang|sore|malam|tes?t?|ping|hallo|halo+|apakabar|apa kabar|terima kasih|terimakasih|makasih|thanks|thank you|ok(e|ay)?|baik|sip|siap|ya|iya|tidak|belum|permisi|izin|mau tanya|mau nanya)\b/i;
+  const isGreeting = GREETING_RE.test(pertanyaan.trim());
+
+  // 6b. Fetch layanan nama for dynamic persona (dipakai di prompt & context sapaan)
+  const { data: layananData } = await adminClient
+    .from('layanan')
+    .select('nama')
+    .eq('id', layanan_id)
+    .single();
+  const layananNama = layananData?.nama;
+
   let context: string;
   if (isWeekend) {
     // Weekend: petugas tidak bertugas. Bot menjawab hanya hal umum dan TIDAK
@@ -183,18 +198,12 @@ export async function POST(request: NextRequest) {
     context = `[MODE AKHIR PEKAN]: Hari ini Sabtu/Minggu — petugas tidak bertugas. Jawab HANYA pertanyaan umum seputar layanan, persyaratan, dan jam operasional berdasarkan konteks FAQ resmi. Jika pertanyaan membutuhkan petugas atau di luar konteks, sampaikan dengan sopan bahwa petugas akan membantu pada hari kerja (Senin–Jumat). JANGAN menawarkan eskalasi atau koneksi langsung ke petugas.\n\n${partialContext}`;
   } else if (isExactMatch) {
     context = buildRagContext(faqMatches);
+  } else if (isGreeting) {
+    context = `[SAPAAN]: Pengunjung membuka dengan sapaan/basa-basi. Balas dengan ramah dan hangat, perkenalkan diri sebagai asisten virtual ${layananNama ?? 'layanan ini'}, dan tawarkan bantuan (mis. tanyakan apa yang ingin mereka ketahui seputar layanan, persyaratan, atau jam operasional). JANGAN menawarkan eskalasi ke petugas.`;
   } else {
     const partialContext = faqMatches.length > 0 ? buildRagContext(faqMatches.slice(0, 3)) : '';
     context = `[INFORMASI LAYANAN]: Jawablah pertanyaan pengunjung secara ramah dan membantu berdasar pedoman layanan publik DPMPTSP Provinsi Lampung. Sampaikan bahwa petugas kami juga siap membantu bila dibutuhkan informasi lanjutan.\n\n${partialContext}`;
   }
-
-  // 6b. Fetch layanan nama for dynamic persona
-  const { data: layananData } = await adminClient
-    .from('layanan')
-    .select('nama')
-    .eq('id', layanan_id)
-    .single();
-  const layananNama = layananData?.nama;
 
   // 7. Call Gemini with system prompt
   let jawaban = '';
@@ -244,8 +253,10 @@ export async function POST(request: NextRequest) {
     jawaban = 'Terima kasih atas pertanyaan Anda. Mohon tunggu sebentar, petugas kami siap membantu Anda.';
   }
 
-  // 8. INSERT to chat_ai_log for audit
-  const eskalasi = !isExactMatch && !isWeekend;
+  // 8. INSERT to chat_ai_log for audit.
+  // Eskalasi hanya bila pertanyaan substantif TIDAK terjawab dari FAQ. Sapaan /
+  // basa-basi dan jawaban umum yang dihasilkan bot tidak boleh eskalasi.
+  const eskalasi = !isExactMatch && !isWeekend && !isGreeting;
   await logAiCall(
     adminClient,
     sesi_id,
@@ -254,7 +265,7 @@ export async function POST(request: NextRequest) {
     jawaban,
     topSim,
     eskalasi,
-    isExactMatch ? null : isWeekend ? 'weekend_mode' : 'no_match',
+    isExactMatch ? null : isWeekend ? 'weekend_mode' : isGreeting ? 'greeting' : 'no_match',
   );
 
   // 9. Persist bot reply server-side + broadcast (trust boundary: clients no
@@ -294,7 +305,7 @@ export async function POST(request: NextRequest) {
     jawaban,
     sumber: isExactMatch ? faqMatches.map((m) => ({ id: m.id, pertanyaan: m.pertanyaan })) : [],
     eskalasi,
-    reason: isExactMatch ? null : isWeekend ? 'weekend_mode' : 'no_match',
+    reason: isExactMatch ? null : isWeekend ? 'weekend_mode' : isGreeting ? 'greeting' : 'no_match',
   });
 }
 

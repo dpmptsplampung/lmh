@@ -460,6 +460,30 @@ describe('POST /api/chat/ai — RAG flow', () => {
     expect(json.jawaban).toBe('Halo! Ada yang bisa kami bantu seputar layanan DPMPTSP?');
   });
 
+  // Route-level contract (this block pins a WEEKDAY in beforeEach): a greeting
+  // must NOT trigger eskalasi — the new greeting classifier in route.ts sets
+  // eskalasi=false and reason='greeting', so the visitor is never told they're
+  // being "connected to a petugas" just for saying hello.
+  it('does not escalate a greeting on a weekday (reason greeting)', async () => {
+    geminiState.generateText = 'Halo! Ada yang bisa kami bantu?';
+    await mockServiceClient({ rpcData: [] });
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest({ ...validBody, pertanyaan: 'halo' }));
+    const json = await res.json();
+    expect(json.eskalasi).toBe(false);
+    expect(json.reason).toBe('greeting');
+  });
+
+  it('does not escalate common pleasantries on a weekday', async () => {
+    geminiState.generateText = 'Selamat pagi! Ada yang bisa kami bantu?';
+    await mockServiceClient({ rpcData: [] });
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest({ ...validBody, pertanyaan: 'selamat pagi' }));
+    const json = await res.json();
+    expect(json.eskalasi).toBe(false);
+    expect(json.reason).toBe('greeting');
+  });
+
   it('returns jawaban + sumber when top similarity >= 0.7 (valid ownership + under rate limit)', async () => {
     await mockServiceClient({
       rpcData: [
