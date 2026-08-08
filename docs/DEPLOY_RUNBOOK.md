@@ -31,7 +31,10 @@ VAPID_PRIVATE_KEY=...
 NEXT_PUBLIC_VAPID_PUBLIC_KEY=...   # same as VAPID_PUBLIC_KEY
 
 GEMINI_API_KEY=...
-GEMINI_MODEL=gemini-1.5-flash
+GEMINI_MODEL=gemini-flash-latest
+# Embedding: kode memilih model per-jalur secara eksplisit (FAQ=gemini-embedding-001
+# / 3072-dim, dokumen=text-embedding-004 / 768-dim). Variabel ini hanya fallback
+# opsional — JANGAN set ke 'gemini-embedding-004' (model tidak ada).
 GEMINI_EMBEDDING_MODEL=text-embedding-004
 ```
 

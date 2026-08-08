@@ -830,8 +830,8 @@ Every significant mutation is logged to `audit_log` via database triggers:
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ✅ | Supabase anon key (RLS-governed) |
 | `SUPABASE_SERVICE_ROLE_KEY` | ✅ | Supabase service role key (bypasses RLS) |
 | `GEMINI_API_KEY` | ✅ | Google Gemini API key |
-| `GEMINI_MODEL` | ❌ | Default: `gemini-1.5-flash` |
-| `GEMINI_EMBEDDING_MODEL` | ❌ | Default: `text-embedding-004` |
+| `GEMINI_MODEL` | ❌ | Default: `gemini-flash-latest` |
+| `GEMINI_EMBEDDING_MODEL` | ❌ | Fallback opsional. Kode memilih per-jalur: FAQ=`gemini-embedding-001` (3072-dim), dokumen=`text-embedding-004` (768-dim). Jangan set `gemini-embedding-004` (tidak ada). |
 | `RESEND_API_KEY` | ✅ | Resend API key for email delivery |
 | `RESEND_FROM` | ❌ | Default: `DPMPTSP Lampung <noreply@lmh.lampungprov.go.id>` |
 | `VAPID_PUBLIC_KEY` | ✅ | VAPID public key for web push |
