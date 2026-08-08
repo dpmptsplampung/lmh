@@ -21,7 +21,7 @@ vi.mock('@supabase/supabase-js', () => ({
   createClient: vi.fn(),
 }));
 
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 function buildRequest(url: string, opts: { method?: string; body?: unknown } = {}) {
   const reqOpts: RequestInit = { method: opts.method || 'GET' };
@@ -325,8 +325,8 @@ describe('/api/chat/messages API Route', () => {
       send: async () => { order.push('send'); return 'ok'; },
       unsubscribe: async () => { order.push('unsubscribe'); return 'ok'; },
     };
-    const adminClient: any = { channel: () => fakeChannel };
-    await broadcastNewMessage(adminClient, 'sesi-1', { id: 'm1' } as any);
+    const adminClient = { channel: () => fakeChannel } as unknown as SupabaseClient;
+    await broadcastNewMessage(adminClient, 'sesi-1', { id: 'm1' });
     expect(order).toEqual(['subscribe', 'send', 'unsubscribe']);
   });
 });
