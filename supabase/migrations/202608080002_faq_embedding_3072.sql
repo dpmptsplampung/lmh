@@ -19,10 +19,13 @@ SET embedding = NULL, perlu_embed_ulang = true;
 ALTER TABLE public.faq_knowledge_base
   ALTER COLUMN embedding TYPE extensions.vector(3072);
 
--- 4. Index baru (hnsw mendukung dimensi besar; cosine ops).
-CREATE INDEX IF NOT EXISTS idx_faq_embedding
-  ON public.faq_knowledge_base
-  USING hnsw (embedding extensions.vector_cosine_ops);
+-- 4. Index embedding sengaja TIDAK dibuat ulang.
+--    pgvector 0.8.2 membatasi index hnsw/ivfflat maksimal 2000 dimensi, sehingga
+--    kolom vector(3072) tidak bisa di-index dengan tipe tersebut. Itu tidak
+--    masalah: tabel FAQ sangat kecil, jadi match_faq memakai sequential scan +
+--    cosine distance yang sudah lebih dari cukup cepat. Tambahkan index kembali
+--    hanya jika tabel tumbuh besar DAN pgvector di-upgrade (atau pakai
+--    halfvec(3072) yang mendukung dimensi lebih besar).
 
 -- 5. Migrasi match_faq ke 3072-dim. CREATE OR REPLACE tidak bisa mengubah tipe
 --    parameter, jadi DROP dulu signature lama lalu buat ulang.

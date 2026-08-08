@@ -13,11 +13,12 @@ describe('faq embedding 3072 migration', () => {
     expect(bare).toMatch(/ALTER COLUMN embedding TYPE extensions\.vector\(3072\)/i);
   });
 
-  it('drops the old index and creates an hnsw index (supports >2000 dims)', () => {
+  it('drops the old index and does NOT recreate a vector index (pgvector caps hnsw/ivfflat at 2000 dims)', () => {
     expect(bare).toMatch(/DROP INDEX IF EXISTS public\.idx_faq_embedding/i);
-    expect(bare).toMatch(/CREATE INDEX IF NOT EXISTS idx_faq_embedding/i);
-    expect(bare).toMatch(/USING hnsw/i);
-    expect(bare).toMatch(/vector_cosine_ops/i);
+    // No new CREATE INDEX on the 3072-dim column: pgvector 0.8.x rejects >2000 dims
+    // for hnsw/ivfflat. match_faq uses a sequential scan (fine for a small FAQ table).
+    expect(bare).not.toMatch(/CREATE INDEX.*idx_faq_embedding/i);
+    expect(bare).not.toMatch(/USING hnsw|USING ivfflat/i);
   });
 
   it('nulls existing embeddings BEFORE altering the column type (pgvector cannot cast across dims)', () => {
