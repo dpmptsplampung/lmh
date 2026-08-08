@@ -11,6 +11,10 @@ export const dynamic = 'force-dynamic';
 
 // Broadcast reliably: supabase-js v2 only delivers channel.send() after the
 // channel has joined (SUBSCRIBED). Sending before subscribe drops the message.
+// The SUBSCRIBED wait is bounded by a timeout: broadcast is best-effort, so an
+// unreachable realtime server must never hang the POST response.
+const BROADCAST_JOIN_TIMEOUT_MS = 3000;
+
 export async function broadcastNewMessage(
   adminClient: SupabaseClient,
   sesiId: string,
@@ -18,11 +22,16 @@ export async function broadcastNewMessage(
 ): Promise<void> {
   const channel = adminClient.channel(`chat-room-${sesiId}`);
   try {
-    await new Promise<void>((resolve) => {
+    const joined = new Promise<boolean>((resolve) => {
       channel.subscribe((status: string) => {
-        if (status === 'SUBSCRIBED') resolve();
+        if (status === 'SUBSCRIBED') resolve(true);
       });
     });
+    const timedOut = new Promise<boolean>((resolve) =>
+      setTimeout(() => resolve(false), BROADCAST_JOIN_TIMEOUT_MS),
+    );
+    const ok = await Promise.race([joined, timedOut]);
+    if (!ok) return; // Realtime unreachable — skip broadcast, don't hang the write.
     await channel.send({
       type: 'broadcast',
       event: 'new_message',
