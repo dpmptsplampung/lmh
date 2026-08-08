@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { createClient as createServerClient } from '@/lib/supabase/server';
 import { getGenerativeClient, getChatModel, getEmbeddingModel, buildRagContext, type FaqMatch } from '@/lib/gemini';
 import { redactPii, detectPromptInjection } from '@/lib/pii';
+import { broadcastNewMessage } from '../messages/route';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -274,16 +275,7 @@ export async function POST(request: NextRequest) {
   if (botInsertErr) {
     console.error('[api/chat/ai] gagal menyimpan pesan bot:', botInsertErr);
   } else {
-    try {
-      const channel = adminClient.channel(`chat-room-${sesi_id}`);
-      await channel.send({
-        type: 'broadcast',
-        event: 'new_message',
-        payload: { message: botMsg },
-      });
-    } catch {
-      // Broadcast failure must not fail the request.
-    }
+    await broadcastNewMessage(adminClient, sesi_id, botMsg);
   }
 
   if (eskalasi) {

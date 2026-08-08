@@ -1,4 +1,6 @@
 // @vitest-environment node
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Server (cookie-bound) client mock — returned by createClient() from
@@ -538,6 +540,15 @@ describe('POST /api/chat/ai — RAG flow', () => {
     const json = await res.json();
     expect(json.eskalasi).toBe(true);
     expect(json.reason).toBe('ai_error');
+  });
+});
+
+describe('POST /api/chat/ai — broadcast implementation', () => {
+  // Source-level assertion: the bot-reply broadcast must go through the shared
+  // helper (subscribe → send → unsubscribe) so it is actually delivered.
+  it('uses shared broadcastNewMessage for bot replies', () => {
+    const src = readFileSync(join(__dirname, 'route.ts'), 'utf8');
+    expect(src).toMatch(/broadcastNewMessage\(/);
   });
 });
 
