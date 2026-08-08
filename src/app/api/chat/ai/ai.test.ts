@@ -398,7 +398,9 @@ describe('POST /api/chat/ai — RAG flow', () => {
     // suppress escalation — these tests assert selective-escalation behavior
     // that only applies on hari kerja. Without this the suite is flaky
     // (fails on Sat/Sun).
-    vi.useFakeTimers();
+    // Hanya fake-kan Date (bukan setTimeout/dsb) agar timer internal route /
+    // broadcast timeout tetap berjalan normal selama tes.
+    vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-08-05T10:00:00+07:00'));
   });
 
@@ -482,6 +484,32 @@ describe('POST /api/chat/ai — RAG flow', () => {
     const json = await res.json();
     expect(json.eskalasi).toBe(false);
     expect(json.reason).toBe('greeting');
+  });
+
+  // Polite-but-substantive questions MUST still escalate when unanswered: a
+  // leading pleasant word ("permisi", "selamat pagi") does not make a real
+  // question a greeting. These users most need a human.
+  it('still escalates a polite-but-substantive unanswered question on a weekday', async () => {
+    geminiState.generateText = 'Maaf, informasi itu belum ada di aturan resmi kami.';
+    await mockServiceClient({ rpcData: [] });
+    const { POST } = await import('./route');
+    const res = await POST(
+      buildRequest({ ...validBody, pertanyaan: 'permisi, berapa biaya retribusi izin tambak?' }),
+    );
+    const json = await res.json();
+    expect(json.eskalasi).toBe(true);
+    expect(json.reason).toBe('no_match');
+  });
+
+  it('still escalates a greeting-prefixed question with a question mark', async () => {
+    geminiState.generateText = 'Maaf, saya belum yakin.';
+    await mockServiceClient({ rpcData: [] });
+    const { POST } = await import('./route');
+    const res = await POST(
+      buildRequest({ ...validBody, pertanyaan: 'selamat pagi, apa syarat perpanjangan NIB?' }),
+    );
+    const json = await res.json();
+    expect(json.eskalasi).toBe(true);
   });
 
   it('returns jawaban + sumber when top similarity >= 0.7 (valid ownership + under rate limit)', async () => {

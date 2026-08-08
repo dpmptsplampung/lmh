@@ -62,7 +62,7 @@ export async function POST(request?: Request) {
       { status: 500 },
     );
   }
-  const embedModel = getEmbeddingModel(genAI);
+  const embedModel = getEmbeddingModel(genAI, 'gemini-embedding-001'); // FAQ col = 3072
 
   // 4. Fetch up to 50 FAQs that need (re)embedding:
   //    embedding IS NULL (belum pernah) ATAU perlu_embed_ulang = true (BOT-11).

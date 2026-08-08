@@ -136,7 +136,7 @@ export async function POST(request: NextRequest) {
   // 3. Embed the user's question
   let queryEmbedding: number[];
   try {
-    const embedModel = getEmbeddingModel(genAI);
+    const embedModel = getEmbeddingModel(genAI, 'gemini-embedding-001'); // FAQ col = 3072
     const result = await embedModel.embedContent(pertanyaan);
     queryEmbedding = result.embedding.values;
     if (!queryEmbedding || queryEmbedding.length === 0) {
@@ -175,12 +175,20 @@ export async function POST(request: NextRequest) {
   const topSim = faqMatches.length > 0 ? faqMatches[0].similarity : null;
   const faqIds = isExactMatch ? faqMatches.map((m) => m.id) : [];
 
-  // Sapaan / basa-basi ("halo", "selamat pagi", "terima kasih", ...) tidak
-  // memerlukan jawaban faktual, jadi jangan eskalasi hanya karena tidak ada
-  // FAQ yang cocok — bot cukup menyapa balik dengan ramah.
+  // Sapaan MURNI / basa-basi ("halo", "selamat pagi", "terima kasih") tidak
+  // memerlukan jawaban faktual, jadi jangan eskalasi hanya karena tidak ada FAQ
+  // yang cocok — bot cukup menyapa balik dengan ramah.
+  //
+  // Ketat sengaja: HANYA cocok bila pesan PENDEK, TANPA tanda tanya, dan murni
+  // sapaan/penutup. Pesan yang diawali kata sopan tetapi berisi pertanyaan
+  // substantif ("permisi, berapa biaya retribusi?", "siang, syarat NIB apa?")
+  // TIDAK dianggap sapaan — tetap dieskalasi bila tidak terjawab FAQ, karena
+  // justru pengguna itulah yang paling membutuhkan petugas.
   const GREETING_RE =
-    /^(h[ae]lo+|hai+|hi+|hei+|helo+|selamat (pagi|siang|sore|malam)|ass?alamu?(alaikum|\'alaikum)?|salam|pagi|siang|sore|malam|tes?t?|ping|hallo|halo+|apakabar|apa kabar|terima kasih|terimakasih|makasih|thanks|thank you|ok(e|ay)?|baik|sip|siap|ya|iya|tidak|belum|permisi|izin|mau tanya|mau nanya)\b/i;
-  const isGreeting = GREETING_RE.test(pertanyaan.trim());
+    /^(h[ae]lo+|hai+|hi+|hei+|helo+|hallo+|selamat (pagi|siang|sore|malam)|ass?alamu?(['’]?alaikum)?|salam(sejahtera)?|pagi|siang|sore|malam|tes?t?|ping|apa ?kabar|terima ?kasih|makasih|thanks|thank ?you)[.!\s]*$/i;
+  const trimmed = pertanyaan.trim();
+  const isGreeting =
+    trimmed.length <= 30 && !trimmed.includes('?') && GREETING_RE.test(trimmed);
 
   // 6b. Fetch layanan nama for dynamic persona (dipakai di prompt & context sapaan)
   const { data: layananData } = await adminClient

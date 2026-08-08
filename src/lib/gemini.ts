@@ -50,12 +50,20 @@ export function getChatModel(client: GoogleGenerativeAI, layananNama?: string) {
   });
 }
 
-export function getEmbeddingModel(client: GoogleGenerativeAI) {
-  // Kolom faq_knowledge_base.embedding adalah vector(3072) — gunakan
-  // gemini-embedding-001 (mengeluarkan 3072 dim). Jangan pakai text-embedding-004
-  // (768) atau gemini-embedding-004 (tidak ada).
-  const model = process.env.GEMINI_EMBEDDING_MODEL || 'gemini-embedding-001';
-  return client.getGenerativeModel({ model });
+/**
+ * Kembalikan model embedding Gemini.
+ *
+ * PENTING — dimensi HARUS cocok dengan kolom pgvector tujuan:
+ * - FAQ (`faq_knowledge_base.embedding`) = vector(3072) → pakai 'gemini-embedding-001'.
+ * - Dokumen (`dokumen_potongan.embedding`) = vector(768)  → pakai 'text-embedding-004'.
+ *
+ * Default aman = 768 (text-embedding-004) agar caller lama (dokumen) tidak
+ * regresi. Jalur FAQ secara eksplisit meminta 3072 lewat argumen `model`.
+ * JANGAN pakai 'gemini-embedding-004' — model itu tidak ada di API.
+ */
+export function getEmbeddingModel(client: GoogleGenerativeAI, model?: string) {
+  const chosen = model ?? process.env.GEMINI_EMBEDDING_MODEL ?? 'text-embedding-004';
+  return client.getGenerativeModel({ model: chosen });
 }
 
 export interface FaqMatch {
