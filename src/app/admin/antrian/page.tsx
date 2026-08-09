@@ -223,18 +223,6 @@ export default function AntrianPage() {
     return (a.layanan as { nama: string }).nama ?? '—';
   };
 
-  const selesai = antrian.filter(a => a.status === 'selesai');
-
-  const rataWaktu = selesai.length > 0
-    ? Math.round(selesai.reduce((sum, a) => {
-        if (!a.waktu_selesai) return sum;
-        const start = a.waktu_mulai_layan
-          ? new Date(a.waktu_mulai_layan).getTime()
-          : new Date(a.waktu_terbit || new Date().toISOString()).getTime();
-        return sum + ((new Date(a.waktu_selesai).getTime() - start) / 60000);
-      }, 0) / selesai.length)
-    : 0;
-
   const layananNamaHeader = (() => {
     const l = currentUser?.layanan;
     if (!l) return null;

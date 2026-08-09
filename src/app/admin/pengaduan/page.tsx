@@ -83,7 +83,10 @@ export default function AdminPengaduanPage() {
     } catch { /* ignore */ }
   }, []);
 
-  useEffect(() => { void loadRole(); }, [loadRole]);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadRole();
+  }, [loadRole]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect

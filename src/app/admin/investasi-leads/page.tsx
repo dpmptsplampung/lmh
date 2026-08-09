@@ -116,6 +116,7 @@ export default function InvestasiLeadsAdminPage() {
   }, [loadData]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPage(0);
   }, [statusFilter, search]);
 

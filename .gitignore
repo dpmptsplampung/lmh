@@ -42,3 +42,6 @@ next-env.d.ts
 
 # Local Deepwork progress ledgers
 .slim/deepwork/
+
+# Claude agent worktrees (temporer, bukan source)
+.claude/worktrees/
