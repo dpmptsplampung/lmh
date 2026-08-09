@@ -286,12 +286,64 @@
     margin: 0;
     border-radius: 0;
     border: none;
-    height: calc(100vh - 68px);
+    /* 100dvh mengikuti tinggi viewport mobile saat address bar tampil/sembunyi,
+       sehingga kontainer tidak melampaui layar. max-height menghentikan rantai
+       flex-basis:0% yang membuat kontainer mengembang melebihi layar. */
+    height: calc(100dvh - 68px);
+    max-height: calc(100dvh - 68px);
+    min-height: 0;
   }
-  
+
   .chatHeader {
     padding: var(--space-3) var(--space-4);
   }
+}
+
+/* === Perbaikan scroll mobile pada chat (Chatscope + perfect-scrollbar) ===
+   Akar masalah: perfect-scrollbar menyetel inline `touch-action: none` pada
+   .scrollbar-container, mematikan scroll sentuh; dan rantai flex dengan
+   flex-basis:0% membuat kontainer pesan mengembang mengikuti isi alih-alih
+   dibatasi lalu di-scroll. Override di bawah menang atas keduanya.
+   Kelas Chatscope/perfect-scrollbar adalah kelas GLOBAL (bukan milik CSS
+   Module ini), jadi wajib dibungkus :global() agar tidak di-hash. */
+
+/* Wrapper fleksibel tempat komponen Chatscope berada menjadi konteks posisi
+   dengan tinggi pasti (740px), sehingga rantai absolute di bawahnya punya
+   tinggi nyata dan tidak collapse. */
+.chatContainer > div {
+  position: relative;
+}
+
+/* Seluruh rantai komponen Chatscope mengisi penuh wrapper secara absolut.
+   Ini mengatasi flex-direction:row pada .cs-main-container yang membuat
+   flex-basis dibaca sebagai lebar dan tinggi chat-container collapse ke 0. */
+.chatContainer :global(.cs-main-container),
+.chatContainer :global(.cs-chat-container),
+.chatContainer :global(.cs-message-list) {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: auto;
+  width: auto;
+}
+
+/* perfect-scrollbar (.ps) menaruh touch-action:none inline yang mematikan
+   scroll sentuh di HP; inline style hanya bisa dikalahkan !important.
+   Library mengharapkan .scrollbar-container absolute mengisi message-list agar
+   konten meluap lalu bisa di-scroll (bukan relative yang ikut mengembang). */
+.chatContainer :global(.scrollbar-container),
+.chatContainer :global(.cs-message-list__scroll-wrapper) {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  touch-action: pan-y !important;
+  overscroll-behavior-y: auto !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
 }
 
 /* Typing Indicator Animation */
