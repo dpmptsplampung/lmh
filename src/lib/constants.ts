@@ -8,6 +8,7 @@ export const LAYANAN = {
   BANK_LAMPUNG: 'Bank Lampung',
   MATCHMAKING_UMKM: 'Matchmaking UMKM',
   INVESTMENT_GALLERY: 'Investment Gallery',
+  PERIZINAN_DPMPTSP: 'Layanan Perizinan DPMPTSP Provinsi Lampung',
 } as const;
 
 export const LAYANAN_LIST = Object.values(LAYANAN);

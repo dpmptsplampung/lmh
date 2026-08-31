@@ -47,6 +47,7 @@ export const FORWARD_MIGRATION_FILES = [
   '202608040001_catat_pulang_rpc.sql',
   '202608080001_chat_realtime_publication.sql',
   '202608080002_faq_embedding_3072.sql',
+  '202608290001_pendataan_pelayanan.sql',
 ] as const;
 
 export function listMigrationFiles(): string[] {

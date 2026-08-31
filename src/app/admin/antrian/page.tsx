@@ -15,10 +15,13 @@ import {
   Play,
   AlertCircle,
   Volume2,
+  FileText,
+  FileEdit,
 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import Pagination from '@/components/Pagination';
 import WalkinWizard from '@/components/WalkinWizard';
+import PelayananWizardModal from '@/components/admin/PelayananWizardModal';
 import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/components/Toast';
 
@@ -63,6 +66,12 @@ export default function AntrianPage() {
     totalSelesai: number;
     rataWaktuMenit: number;
   }>({ totalSelesai: 0, rataWaktuMenit: 0 });
+  const [activeWizardTiketId, setActiveWizardTiketId] = useState<string | null>(null);
+
+  const isLayananPendataan = (layananNama: string): boolean => {
+    const norm = layananNama.toLowerCase();
+    return norm.includes('oss') || norm.includes('perizinan');
+  };
 
   useEffect(() => {
     fetchData();
@@ -172,7 +181,7 @@ export default function AntrianPage() {
   };
 
   // Status updates write to visit; trg_visit_dual_write propagates to tiket_antrean.
-  const handleMulaiLayanan = async (legacyVisitId: string) => {
+  const handleMulaiLayanan = async (legacyVisitId: string, tiketId: string, layananNama: string) => {
     try {
       const supabase = createClient();
       const { error } = await supabase
@@ -185,6 +194,9 @@ export default function AntrianPage() {
       } else {
         toast('Layanan dimulai', 'success');
         await fetchData();
+        if (isLayananPendataan(layananNama)) {
+          setActiveWizardTiketId(tiketId);
+        }
       }
     } catch (e) {
       console.error(e);
@@ -192,7 +204,11 @@ export default function AntrianPage() {
     }
   };
 
-  const handleSelesaikan = async (legacyVisitId: string) => {
+  const handleSelesaikan = async (legacyVisitId: string, tiketId?: string, layananNama?: string) => {
+    if (layananNama && isLayananPendataan(layananNama) && tiketId) {
+      setActiveWizardTiketId(tiketId);
+      return;
+    }
     try {
       const supabase = createClient();
       const { error } = await supabase
@@ -404,7 +420,7 @@ export default function AntrianPage() {
                                 </button>
                                 <button
                                   className="btn btn--primary btn--sm"
-                                  onClick={() => handleMulaiLayanan(a.legacy_visit_id)}
+                                  onClick={() => handleMulaiLayanan(a.legacy_visit_id, a.id, resolveLayananNama(a))}
                                   style={{ padding: '4px 12px', fontSize: '12px' }}
                                 >
                                   <Play size={14} style={{ marginRight: '4px' }} />
@@ -412,16 +428,40 @@ export default function AntrianPage() {
                                 </button>
                               </div>
                             ) : a.status === 'dilayani' ? (
-                              <button
-                                className="btn btn--secondary btn--sm"
-                                onClick={() => handleSelesaikan(a.legacy_visit_id)}
-                                style={{ padding: '4px 12px', fontSize: '12px' }}
-                              >
-                                <CheckCircle2 size={14} style={{ marginRight: '4px', color: 'var(--color-success-600)' }} />
-                                Selesai
-                              </button>
+                              <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                                {isLayananPendataan(resolveLayananNama(a)) && (
+                                  <button
+                                    className="btn btn--primary btn--sm"
+                                    onClick={() => setActiveWizardTiketId(a.id)}
+                                    style={{ padding: '4px 10px', fontSize: '12px' }}
+                                  >
+                                    <FileEdit size={14} style={{ marginRight: '4px' }} />
+                                    Form Pendataan
+                                  </button>
+                                )}
+                                <button
+                                  className="btn btn--secondary btn--sm"
+                                  onClick={() => handleSelesaikan(a.legacy_visit_id, a.id, resolveLayananNama(a))}
+                                  style={{ padding: '4px 12px', fontSize: '12px' }}
+                                >
+                                  <CheckCircle2 size={14} style={{ marginRight: '4px', color: 'var(--color-success-600)' }} />
+                                  Selesai
+                                </button>
+                              </div>
                             ) : (
-                              <span style={{ color: 'var(--text-secondary)' }}>{durasi}</span>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                <span style={{ color: 'var(--text-secondary)' }}>{durasi}</span>
+                                {isLayananPendataan(resolveLayananNama(a)) && (
+                                  <button
+                                    className="btn btn--ghost btn--xs"
+                                    onClick={() => setActiveWizardTiketId(a.id)}
+                                    style={{ fontSize: '11px', padding: '2px 6px', width: 'fit-content' }}
+                                  >
+                                    <FileText size={12} style={{ marginRight: '3px' }} />
+                                    Lihat Data
+                                  </button>
+                                )}
+                              </div>
                             )}
                           </td>
                         </tr>
@@ -448,6 +488,15 @@ export default function AntrianPage() {
           </>
         )}
       </div>
+
+      <PelayananWizardModal
+        isOpen={Boolean(activeWizardTiketId)}
+        tiketId={activeWizardTiketId}
+        onClose={() => setActiveWizardTiketId(null)}
+        onSuccess={async () => {
+          await fetchData();
+        }}
+      />
     </>
   );
 }
