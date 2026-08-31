@@ -17,6 +17,10 @@ import {
   Volume2,
   FileText,
   FileEdit,
+  UserCheck,
+  ChevronDown,
+  ChevronUp,
+  Download,
 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import Pagination from '@/components/Pagination';
@@ -54,6 +58,16 @@ interface AntrianRow {
   kunjungan: KunjunganEmbed | KunjunganEmbed[] | null;
 }
 
+interface AbsensiRekap {
+  id: string;
+  petugas_id: string;
+  tanggal: string;
+  jam_masuk: string | null;
+  jam_pulang: string | null;
+  status: string;
+  petugas: { nama: string } | null;
+}
+
 export default function AntrianPage() {
   const { toast } = useToast();
   const [tanggal, setTanggal] = useState(todayWIB());
@@ -68,6 +82,11 @@ export default function AntrianPage() {
     rataWaktuMenit: number;
   }>({ totalSelesai: 0, rataWaktuMenit: 0 });
   const [activeWizardTiketId, setActiveWizardTiketId] = useState<string | null>(null);
+
+  // ── Rekapitulasi Absen ────────────────────────────────────────────────────
+  const [rekapOpen, setRekapOpen] = useState(false);
+  const [rekapAbsensi, setRekapAbsensi] = useState<AbsensiRekap[]>([]);
+  const [rekapLoading, setRekapLoading] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -261,6 +280,55 @@ export default function AntrianPage() {
   const asalLabel = (asal: string) => (asal === 'reservasi' ? 'Reservasi' : 'Walk-in');
   const isAdminLike = currentUser?.role === 'admin' || currentUser?.role === 'front_office';
 
+  // ── Rekap Absen: load saat section dibuka atau tanggal berubah ────────────
+  const fetchRekapAbsensi = async () => {
+    if (!currentUser?.layanan_id && currentUser?.role === 'petugas') return;
+    setRekapLoading(true);
+    try {
+      const supabase = createClient();
+      let query = supabase
+        .from('absensi_petugas')
+        .select(`id, petugas_id, tanggal, jam_masuk, jam_pulang, status, petugas:petugas_id(nama)`)
+        .eq('tanggal', tanggal)
+        .order('jam_masuk', { ascending: true });
+      // Petugas & admin/FO: filter ke layanan_id kalau bukan admin/FO
+      if (currentUser?.role === 'petugas' && currentUser.layanan_id) {
+        // join via petugas tabel: filter by layanan_id
+        query = query.eq('petugas.layanan_id' as never, currentUser.layanan_id);
+      }
+      const { data } = await query;
+      const normalized = (data ?? []).map(d => ({
+        ...d,
+        petugas: Array.isArray(d.petugas) ? (d.petugas[0] ?? null) : d.petugas,
+      })) as AbsensiRekap[];
+      setRekapAbsensi(normalized);
+    } finally {
+      setRekapLoading(false);
+    }
+  };
+
+  const handleDownloadAbsenCsv = () => {
+    const layananLabel = layananNamaHeader ?? 'semua_layanan';
+    const rows_csv = [
+      'Tanggal,Nama Petugas,Jam Masuk,Jam Pulang,Status',
+      ...rekapAbsensi.map(a => {
+        const jamMasuk = a.jam_masuk
+          ? new Date(a.jam_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+          : '';
+        const jamPulang = a.jam_pulang
+          ? new Date(a.jam_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+          : '';
+        const statusLabel = a.status === 'approved' ? 'Disetujui' : a.status === 'pending' ? 'Menunggu' : a.status === 'ditolak' ? 'Ditolak' : 'Alpa';
+        return `"${a.tanggal}","${a.petugas?.nama ?? ''}","${jamMasuk}","${jamPulang}","${statusLabel}"`;
+      }),
+    ].join('\n');
+    const blob = new Blob([rows_csv], { type: 'text/csv;charset=utf-8;' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `daftar_hadir_${layananLabel.replace(/\s+/g, '_')}_${tanggal}.csv`;
+    a.click();
+  };
+
   return (
     <>
       <PageHeader
@@ -296,6 +364,119 @@ export default function AntrianPage() {
           </div>
         ) : (
           <>
+            {/* ── Rekapitulasi Absen ── */}
+            <div style={{
+              background: 'var(--surface-elevated)',
+              borderRadius: 'var(--radius-xl)',
+              border: '1px solid var(--border-default)',
+              marginBottom: 'var(--space-8)',
+              overflow: 'hidden',
+            }}>
+              {/* Header / Toggle */}
+              <button
+                onClick={async () => {
+                  const next = !rekapOpen;
+                  setRekapOpen(next);
+                  if (next) await fetchRekapAbsensi();
+                }}
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: 'var(--space-4) var(--space-6)',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: 'var(--text-sm)',
+                  fontWeight: 600,
+                  color: 'var(--text-primary)',
+                }}
+              >
+                <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                  <UserCheck size={16} style={{ color: 'var(--color-primary-600)' }} />
+                  Rekapitulasi Absen — {tanggal}
+                  {rekapAbsensi.length > 0 && (
+                    <span style={{
+                      marginLeft: 'var(--space-2)',
+                      background: 'var(--color-primary-100)',
+                      color: 'var(--color-primary-700)',
+                      borderRadius: 'var(--radius-full)',
+                      padding: '1px 8px',
+                      fontSize: 'var(--text-xs)',
+                      fontWeight: 700,
+                    }}>
+                      {rekapAbsensi.length} petugas
+                    </span>
+                  )}
+                </span>
+                {rekapOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              </button>
+
+              {/* Collapsible body */}
+              {rekapOpen && (
+                <div style={{ borderTop: '1px solid var(--border-default)' }}>
+                  <div style={{ padding: 'var(--space-3) var(--space-6)', display: 'flex', justifyContent: 'flex-end' }}>
+                    <button
+                      className="btn btn--ghost btn--sm"
+                      onClick={handleDownloadAbsenCsv}
+                      disabled={rekapAbsensi.length === 0}
+                    >
+                      <Download size={14} /> Unduh CSV
+                    </button>
+                  </div>
+                  {rekapLoading ? (
+                    <div style={{ padding: 'var(--space-6)', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 'var(--text-sm)' }}>
+                      Memuat…
+                    </div>
+                  ) : rekapAbsensi.length === 0 ? (
+                    <div style={{ padding: 'var(--space-6)', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 'var(--text-sm)' }}>
+                      Belum ada catatan absensi untuk tanggal ini.
+                    </div>
+                  ) : (
+                    <table className="table" style={{ marginTop: 0 }}>
+                      <thead>
+                        <tr>
+                          <th>Nama Petugas</th>
+                          <th>Jam Masuk</th>
+                          <th>Jam Pulang</th>
+                          <th>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rekapAbsensi.map(a => (
+                          <tr key={a.id}>
+                            <td style={{ fontWeight: 600 }}>{a.petugas?.nama ?? '—'}</td>
+                            <td>
+                              {a.jam_masuk
+                                ? new Date(a.jam_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+                                : '—'}
+                            </td>
+                            <td>
+                              {a.jam_pulang
+                                ? new Date(a.jam_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+                                : '—'}
+                            </td>
+                            <td>
+                              {a.status === 'approved' ? (
+                                <span className="badge badge--selesai">Disetujui</span>
+                              ) : a.status === 'pending' ? (
+                                <span className="badge badge--eskalasi">Menunggu</span>
+                              ) : a.status === 'ditolak' ? (
+                                <span className="badge badge--nonaktif">Ditolak</span>
+                              ) : (
+                                <span className="badge badge--nonaktif" style={{ background: 'var(--color-danger-100)', color: 'var(--color-danger-700)' }}>Alpa</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* Stats */}
             <div className="grid-stats" style={{ marginBottom: 'var(--space-8)' }}>
               <div className="stat-card">

@@ -138,13 +138,15 @@ export default function WalkinWizard({
 
   // ponytail: gaya wizard disalin dari dashboard admin (inline + CSS global)
   const overlayStyle: React.CSSProperties = {
-    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+    position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.45)',
     display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
   };
   const cardStyle: React.CSSProperties = {
-    background: 'var(--surface-elevated, #fff)', borderRadius: 'var(--radius-xl, 16px)',
+    background: '#ffffff', borderRadius: 'var(--radius-2xl, 16px)',
     width: 'min(560px, 92vw)', maxHeight: '88vh', overflowY: 'auto',
     padding: 'var(--space-6, 24px)',
+    boxShadow: '0 10px 40px rgba(15, 23, 42, 0.12), 0 2px 6px rgba(15, 23, 42, 0.04)',
+    border: '1px solid var(--border-default, #e2e8f0)',
   };
 
   return (

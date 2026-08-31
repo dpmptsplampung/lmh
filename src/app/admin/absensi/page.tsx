@@ -16,6 +16,7 @@ import PageHeader from '@/components/layout/PageHeader';
 import Pagination from '@/components/Pagination';
 import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/components/Toast';
+import AbsensiWizardModal from '@/components/admin/AbsensiWizardModal';
 
 const PAGE_SIZE = 25;
 
@@ -49,6 +50,7 @@ export default function AbsensiPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [page, setPage] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
+  const [foWizardOpen, setFoWizardOpen] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
@@ -216,6 +218,19 @@ export default function AbsensiPage() {
       </PageHeader>
 
       <div style={{ padding: 'var(--space-8)' }}>
+        {/* Tombol Catat Hadir — Front Office / Admin (via wizard) */}
+        {(currentUser?.role === 'front_office' || currentUser?.role === 'admin') && filterTanggal === todayWIB() && (
+          <div style={{ background: 'var(--surface-elevated)', padding: 'var(--space-6)', borderRadius: 'var(--radius-xl)', marginBottom: 'var(--space-8)', border: '1px solid var(--border-default)' }}>
+            <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, marginBottom: 'var(--space-2)' }}>Catat Hadir Petugas</h3>
+            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginBottom: 'var(--space-4)' }}>
+              Pilih layanan, ambil foto, lalu konfirmasi nama petugas yang hadir.
+            </p>
+            <button className="btn btn--primary" onClick={() => setFoWizardOpen(true)}>
+              <LogIn size={18} /> Catat Hadir
+            </button>
+          </div>
+        )}
+
         {/* Tombol Absen Mandiri (Khusus Petugas) */}
         {currentUser?.role === 'petugas' && filterTanggal === todayWIB() && (
           <div style={{ background: 'var(--surface-elevated)', padding: 'var(--space-6)', borderRadius: 'var(--radius-xl)', marginBottom: 'var(--space-8)', border: '1px solid var(--border-default)' }}>
@@ -230,7 +245,7 @@ export default function AbsensiPage() {
                   <CheckCircle2 size={18} style={{ color: 'var(--color-success-500)' }}/> Sudah Hadir
                 </button>
               )}
-              
+
               {myTodayAbsensi && !myTodayAbsensi.jam_pulang ? (
                  <button className="btn btn--secondary" onClick={handleAbsenPulang} disabled={actionLoading}>
                    <LogOutIcon size={18} /> Absen Pulang
@@ -241,7 +256,7 @@ export default function AbsensiPage() {
                  </button>
               ) : null}
             </div>
-            
+
             {myTodayAbsensi && myTodayAbsensi.status === 'pending' && (
               <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-warning-600)', marginTop: 'var(--space-3)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
                 <Clock size={14} /> Absensi Anda sedang menunggu persetujuan (approval) Admin.
@@ -371,6 +386,20 @@ export default function AbsensiPage() {
           {!loading && <Pagination page={page} pageSize={PAGE_SIZE} total={totalCount} onPageChange={setPage} />}
         </div>
       </div>
+
+      {/* Wizard hadir FO */}
+      {currentUser && (currentUser.role === 'front_office' || currentUser.role === 'admin') && (
+        <AbsensiWizardModal
+          isOpen={foWizardOpen}
+          foId={currentUser.id}
+          onClose={() => setFoWizardOpen(false)}
+          onSuccess={() => {
+            setFoWizardOpen(false);
+            setLoading(true);
+            void fetchData();
+          }}
+        />
+      )}
     </>
   );
 }

@@ -114,7 +114,25 @@ export default function PelayananWizardModal({
         setEmail(data.email || '');
         setKeperluanAwal(data.keperluan_awal || '');
 
-        // Prapopulasi form OSS
+        // Reset semua field form-type-specific terlebih dahulu agar tidak ada
+        // sisa data dari tiket sebelumnya (stale state) saat pengunjung baru
+        // belum memiliki data OSS / Perizinan.
+        setNamaUsaha('');
+        setTipePelakuUsaha('');
+        setStatusPenanamanModal('');
+        setLokasiUsaha('');
+        setSkalaUsaha('');
+        setSektorUsahaKbli('');
+        setTindakLanjutOss('');
+        setUraianSolusi('');
+        setCatatanInternal('');
+        setNamaPerusahaan('');
+        setOpdTeknis('');
+        setUraianPermohonan('');
+        setTindakLanjutPerizinan('');
+        setCatatanPetugas('');
+
+        // Prapopulasi form OSS (hanya jika data sudah ada)
         if (data.form_type === 'oss' && data.data_oss) {
           setNamaUsaha(data.data_oss.nama_usaha || '');
           setTipePelakuUsaha(data.data_oss.tipe_pelaku_usaha || '');
@@ -127,7 +145,7 @@ export default function PelayananWizardModal({
           setCatatanInternal(data.data_oss.catatan_internal || '');
         }
 
-        // Prapopulasi form Perizinan
+        // Prapopulasi form Perizinan (hanya jika data sudah ada)
         if (data.form_type === 'perizinan' && data.data_perizinan) {
           setNamaPerusahaan(data.data_perizinan.nama_perusahaan || '');
           setOpdTeknis(data.data_perizinan.opd_teknis || '');
@@ -337,8 +355,7 @@ export default function PelayananWizardModal({
       style={{
         position: 'fixed',
         inset: 0,
-        backgroundColor: 'rgba(15, 23, 42, 0.7)',
-        backdropFilter: 'blur(4px)',
+        backgroundColor: 'rgba(15, 23, 42, 0.45)',
         zIndex: 1000,
         display: 'flex',
         alignItems: 'center',
@@ -348,19 +365,19 @@ export default function PelayananWizardModal({
     >
       <div
         style={{
-          background: 'var(--surface-elevated, #ffffff)',
+          background: '#ffffff',
           borderRadius: 'var(--radius-2xl, 16px)',
           width: '100%',
           maxWidth: '760px',
           maxHeight: '90vh',
           display: 'flex',
           flexDirection: 'column',
-          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+          boxShadow: '0 10px 40px rgba(15, 23, 42, 0.12), 0 2px 6px rgba(15, 23, 42, 0.04)',
           border: '1px solid var(--border-default, #e2e8f0)',
           overflow: 'hidden',
         }}
       >
-        {/* Header */}
+        {/* Header — bersih, aksen primary halus */}
         <div
           style={{
             padding: 'var(--space-5) var(--space-6)',
@@ -368,7 +385,7 @@ export default function PelayananWizardModal({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            background: 'var(--bg-secondary, #f8fafc)',
+            background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
           }}
         >
           <div>
@@ -882,7 +899,7 @@ export default function PelayananWizardModal({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            background: 'var(--bg-secondary, #f8fafc)',
+            background: '#ffffff',
             gap: 'var(--space-3)',
           }}
         >
@@ -904,7 +921,7 @@ export default function PelayananWizardModal({
                   onClose();
                 }}
               >
-                {isLocked ? 'Tutup' : 'Simpan & Tutup'}
+                {isLocked ? 'Tutup' : 'Tutup (Draf tersimpan)'}
               </button>
             )}
           </div>
@@ -916,8 +933,9 @@ export default function PelayananWizardModal({
                 className="btn btn--secondary btn--sm"
                 disabled={savingDraft}
                 onClick={saveDraftNow}
+                title="Simpan data tanpa menyelesaikan antrian. Anda bisa lanjut mengisi nanti."
               >
-                <Save size={16} /> {savingDraft ? 'Menyimpan…' : 'Simpan Draf'}
+                <Save size={16} /> {savingDraft ? 'Menyimpan…' : 'Simpan'}
               </button>
             )}
 
@@ -936,12 +954,13 @@ export default function PelayananWizardModal({
                   className="btn btn--primary btn--sm"
                   disabled={finalizing}
                   onClick={handleFinalize}
+                  title="Kunci data & selesaikan antrian. Tidak dapat diubah kembali."
                   style={{
                     backgroundColor: 'var(--color-success-600, #16a34a)',
                     borderColor: 'var(--color-success-600, #16a34a)',
                   }}
                 >
-                  <CheckCircle2 size={16} /> {finalizing ? 'Menyelesaikan…' : 'Selesaikan Pelayanan'}
+                  <CheckCircle2 size={16} /> {finalizing ? 'Menyelesaikan…' : 'Selesaikan Antrian'}
                 </button>
               )
             )}
