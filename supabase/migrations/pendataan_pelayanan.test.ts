@@ -62,3 +62,57 @@ describe('202608290001_pendataan_pelayanan migration', () => {
     expect(bare).toMatch(/CREATE POLICY perizinan_update_staff ON public\.pelayanan_perizinan/i);
   });
 });
+
+describe('202608310001_finalize_pelayanan_rpc migration', () => {
+  const rpcSql = readFileSync(join(__dirname, '202608310001_finalize_pelayanan_rpc.sql'), 'utf8');
+  const rpcBare = rpcSql.replace(/--[^\n]*/g, '');
+
+  it('defines an atomic SECURITY DEFINER rpc finalize_pelayanan', () => {
+    expect(rpcBare).toMatch(
+      /CREATE OR REPLACE FUNCTION public\.finalize_pelayanan\(\s*p_tiket_id\s+uuid,\s*p_form_type\s+text,\s*p_payload\s+jsonb\s*\)/i
+    );
+    expect(rpcBare).toMatch(/SECURITY DEFINER/i);
+    expect(rpcBare).toMatch(/SET search_path = pg_catalog, public/i);
+    expect(rpcBare).toMatch(/RETURNS jsonb/i);
+  });
+
+  it('enforces authorization: role check and petugas layanan ownership', () => {
+    expect(rpcBare).toMatch(/FORBIDDEN: petugas tidak ditemukan atau tidak aktif/i);
+    expect(rpcBare).toMatch(/FORBIDDEN: petugas tidak berwenang atas layanan tiket ini/i);
+    expect(rpcBare).toMatch(/v_role = 'admin'\s*OR v_role = 'front_office'\s*OR\s*\(v_role = 'petugas' AND v_staff\.layanan_id = v_tiket\.layanan_id\)/i);
+  });
+
+  it('rejects finalize when ticket is not being served (INVALID_STATUS) and respects lock', () => {
+    expect(rpcBare).toMatch(/INVALID_STATUS: tiket belum dalam status dilayani/i);
+    expect(rpcBare).toMatch(/v_tiket\.status <>\s*'dilayani'/i);
+    expect(rpcBare).toMatch(/LOCKED: data pelayanan sudah terkunci dan tidak dapat diubah/i);
+  });
+
+  it('sets petugas_id only on INSERT and never on UPDATE (kepemilikan draft tetap)', () => {
+    // INSERT menyertakan petugas_id
+    expect(rpcBare).toMatch(
+      /INSERT INTO public\.pelayanan_oss \([\s\S]*?petugas_id[\s\S]*?\) VALUES/i
+    );
+    expect(rpcBare).toMatch(
+      /INSERT INTO public\.pelayanan_perizinan \([\s\S]*?petugas_id[\s\S]*?\) VALUES/i
+    );
+    // Blok UPDATE ... SET tidak boleh menyentuh petugas_id
+    const ossUpdate = rpcBare.match(/UPDATE public\.pelayanan_oss SET([\s\S]*?)WHERE tiket_id/i);
+    const pzUpdate = rpcBare.match(/UPDATE public\.pelayanan_perizinan SET([\s\S]*?)WHERE tiket_id/i);
+    expect(ossUpdate).toBeTruthy();
+    expect(pzUpdate).toBeTruthy();
+    expect(ossUpdate?.[1]).not.toMatch(/petugas_id/);
+    expect(pzUpdate?.[1]).not.toMatch(/petugas_id/);
+  });
+
+  it('completes visit/tiket status in the same transaction and grants execute only to authenticated', () => {
+    expect(rpcBare).toMatch(/UPDATE public\.visit\s+SET status = 'selesai', waktu_selesai = v_now/i);
+    expect(rpcBare).toMatch(/UPDATE public\.tiket_antrean\s+SET status = 'selesai', waktu_selesai = v_now/i);
+    expect(rpcBare).toMatch(
+      /REVOKE ALL ON FUNCTION public\.finalize_pelayanan\(uuid, text, jsonb\) FROM PUBLIC, anon/i
+    );
+    expect(rpcBare).toMatch(
+      /GRANT EXECUTE ON FUNCTION public\.finalize_pelayanan\(uuid, text, jsonb\) TO authenticated/i
+    );
+  });
+});

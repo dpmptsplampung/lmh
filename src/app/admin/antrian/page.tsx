@@ -22,6 +22,7 @@ import PageHeader from '@/components/layout/PageHeader';
 import Pagination from '@/components/Pagination';
 import WalkinWizard from '@/components/WalkinWizard';
 import PelayananWizardModal from '@/components/admin/PelayananWizardModal';
+import { isLayananPendataan } from '@/lib/pelayanan';
 import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/components/Toast';
 
@@ -67,11 +68,6 @@ export default function AntrianPage() {
     rataWaktuMenit: number;
   }>({ totalSelesai: 0, rataWaktuMenit: 0 });
   const [activeWizardTiketId, setActiveWizardTiketId] = useState<string | null>(null);
-
-  const isLayananPendataan = (layananNama: string): boolean => {
-    const norm = layananNama.toLowerCase();
-    return norm.includes('oss') || norm.includes('perizinan');
-  };
 
   useEffect(() => {
     fetchData();

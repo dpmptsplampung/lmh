@@ -3,8 +3,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react';
 import PelayananWizardModal from './PelayananWizardModal';
 
+// toastMock harus stabil antar-render: jika vi.fn() dibuat baru di dalam
+// factory setiap render, loadData (useCallback dep toast) berubah identitas
+// terus-menerus dan memicu infinite re-render (test hang).
+const { toastMock } = vi.hoisted(() => ({ toastMock: vi.fn() }));
+
 vi.mock('@/components/Toast', () => ({
-  useToast: () => ({ toast: vi.fn() }),
+  useToast: () => ({ toast: toastMock }),
 }));
 
 describe('PelayananWizardModal component', () => {
@@ -14,6 +19,7 @@ describe('PelayananWizardModal component', () => {
   beforeEach(() => {
     global.fetch = mockFetch;
     mockFetch.mockReset();
+    toastMock.mockReset();
   });
 
   afterEach(() => {
@@ -59,10 +65,52 @@ describe('PelayananWizardModal component', () => {
     });
 
     // Step 2: Data Usaha & Lokasi (menampilkan tipe pelaku usaha, status penanaman modal, lokasi usaha)
+    // getAllByText: teks label juga muncul di <option> placeholder select, jadi ada >1 match.
     fireEvent.click(screen.getByRole('button', { name: /2\. Data Usaha & Lokasi/i }));
     expect(screen.getByText(/Nama Usaha \/ Merk Usaha/i)).toBeInTheDocument();
-    expect(screen.getByText(/Tipe Pelaku Usaha \(Opsional\)/i)).toBeInTheDocument();
-    expect(screen.getByText(/Status Penanaman Modal \(Opsional\)/i)).toBeInTheDocument();
-    expect(screen.getByText(/Lokasi Usaha \(Opsional\)/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Tipe Pelaku Usaha \(Opsional\)/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/Status Penanaman Modal \(Opsional\)/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/Lokasi Usaha \(Opsional\)/i).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('clears pending autosave on unmount so no PATCH fires after the modal is gone', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        tiket_id: 't-101',
+        legacy_visit_id: 'v-101',
+        nomor_display: 'A-001',
+        layanan_id: 'l-oss',
+        layanan_nama: 'Helpdesk OSS',
+        form_type: 'oss',
+        nama_pemohon: 'Budi Hartono',
+        alamat_pemohon: null,
+        no_hp: null,
+        email: null,
+        keperluan_awal: null,
+        status_tiket: 'dilayani',
+        is_locked: false,
+        status_draft: 'belum_diisi',
+      }),
+    });
+
+    const { unmount } = render(
+      <PelayananWizardModal isOpen={true} tiketId="t-101" onClose={vi.fn()} />
+    );
+
+    // Tunggu data terpopulasi
+    await screen.findByDisplayValue('Budi Hartono');
+
+    // Ubah field → menjadwalkan autosave (debounce 1 detik)
+    fireEvent.change(screen.getByDisplayValue('Budi Hartono'), {
+      target: { value: 'Budi Hartono S' },
+    });
+
+    // Unmount sebelum debounce selesai — timer harus dibersihkan
+    unmount();
+
+    // Tunggu melewati jendela debounce: tidak boleh ada PATCH terpicu
+    await new Promise((resolve) => setTimeout(resolve, 1300));
+    expect(mockFetch).toHaveBeenCalledTimes(1); // hanya GET awal, tanpa PATCH
   });
 });

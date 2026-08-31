@@ -1,22 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { determineFormType, canAccessPelayananStaff } from '@/lib/pelayanan';
 import {
   ossPelayananDraftSchema,
   ossPelayananFinalSchema,
   perizinanPelayananDraftSchema,
   perizinanPelayananFinalSchema,
-  FormPelayananType,
   PelayananInitialData,
 } from '@/lib/types/pelayanan';
 
 export const dynamic = 'force-dynamic';
-
-function determineFormType(layananNama: string): FormPelayananType | null {
-  const norm = layananNama.toLowerCase();
-  if (norm.includes('oss')) return 'oss';
-  if (norm.includes('perizinan')) return 'perizinan';
-  return null;
-}
 
 export async function GET(
   request: NextRequest,
@@ -55,6 +48,11 @@ export async function GET(
 
     if (tiketErr || !tiket) {
       return NextResponse.json({ error: 'Tiket tidak ditemukan' }, { status: 404 });
+    }
+
+    // 1b. Otorisasi: petugas hanya boleh akses tiket pada layanannya sendiri
+    if (!canAccessPelayananStaff(staff, tiket.layanan_id)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const layananData = Array.isArray(tiket.layanan) ? tiket.layanan[0] : tiket.layanan;
@@ -182,12 +180,16 @@ export async function PATCH(
     // 2. Ambil Tiket
     const { data: tiket } = await supabase
       .from('tiket_antrean')
-      .select('id, kunjungan_id, layanan:layanan_id(nama)')
+      .select('id, kunjungan_id, layanan_id, layanan:layanan_id(nama)')
       .eq('id', tiketId)
       .maybeSingle();
 
     if (!tiket) {
       return NextResponse.json({ error: 'Tiket tidak ditemukan' }, { status: 404 });
+    }
+
+    if (!canAccessPelayananStaff(staff, tiket.layanan_id)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const layananData = Array.isArray(tiket.layanan) ? tiket.layanan[0] : tiket.layanan;
@@ -202,7 +204,7 @@ export async function PATCH(
     if (formType === 'oss') {
       const { data: existing } = await supabase
         .from('pelayanan_oss')
-        .select('is_locked')
+        .select('tiket_id, is_locked')
         .eq('tiket_id', tiketId)
         .maybeSingle();
 
@@ -215,30 +217,35 @@ export async function PATCH(
         return NextResponse.json({ error: 'Invalid draft data', details: parsed.error.format() }, { status: 400 });
       }
 
-      const payload = {
-        tiket_id: tiket.id,
-        kunjungan_id: tiket.kunjungan_id,
-        petugas_id: staff.id,
+      const baseData = {
         ...parsed.data,
         status_draft: 'draft',
         is_locked: false,
         updated_at: new Date().toISOString(),
       };
 
-      const { error: upsertErr } = await supabase
-        .from('pelayanan_oss')
-        .upsert(payload, { onConflict: 'tiket_id' });
+      // Baris eksisting → update tanpa mengubah petugas_id (kepemilikan tetap
+      // milik petugas asli meski admin ikut menyunting). Baris baru → insert
+      // dengan petugas_id = penyimpan pertama.
+      const { error: saveErr } = existing
+        ? await supabase.from('pelayanan_oss').update(baseData).eq('tiket_id', tiketId)
+        : await supabase.from('pelayanan_oss').insert({
+            tiket_id: tiket.id,
+            kunjungan_id: tiket.kunjungan_id,
+            petugas_id: staff.id,
+            ...baseData,
+          });
 
-      if (upsertErr) {
-        console.error('[PATCH pelayanan_oss]', upsertErr);
-        return NextResponse.json({ error: upsertErr.message }, { status: 400 });
+      if (saveErr) {
+        console.error('[PATCH pelayanan_oss]', saveErr);
+        return NextResponse.json({ error: 'Gagal menyimpan draft OSS' }, { status: 400 });
       }
 
       return NextResponse.json({ ok: true, message: 'Draft OSS tersimpan' });
     } else {
       const { data: existing } = await supabase
         .from('pelayanan_perizinan')
-        .select('is_locked')
+        .select('tiket_id, is_locked')
         .eq('tiket_id', tiketId)
         .maybeSingle();
 
@@ -251,23 +258,26 @@ export async function PATCH(
         return NextResponse.json({ error: 'Invalid draft data', details: parsed.error.format() }, { status: 400 });
       }
 
-      const payload = {
-        tiket_id: tiket.id,
-        kunjungan_id: tiket.kunjungan_id,
-        petugas_id: staff.id,
+      const baseData = {
         ...parsed.data,
         status_draft: 'draft',
         is_locked: false,
         updated_at: new Date().toISOString(),
       };
 
-      const { error: upsertErr } = await supabase
-        .from('pelayanan_perizinan')
-        .upsert(payload, { onConflict: 'tiket_id' });
+      // Baris eksisting → update tanpa mengubah petugas_id; baru → insert.
+      const { error: saveErr } = existing
+        ? await supabase.from('pelayanan_perizinan').update(baseData).eq('tiket_id', tiketId)
+        : await supabase.from('pelayanan_perizinan').insert({
+            tiket_id: tiket.id,
+            kunjungan_id: tiket.kunjungan_id,
+            petugas_id: staff.id,
+            ...baseData,
+          });
 
-      if (upsertErr) {
-        console.error('[PATCH pelayanan_perizinan]', upsertErr);
-        return NextResponse.json({ error: upsertErr.message }, { status: 400 });
+      if (saveErr) {
+        console.error('[PATCH pelayanan_perizinan]', saveErr);
+        return NextResponse.json({ error: 'Gagal menyimpan draft Perizinan' }, { status: 400 });
       }
 
       return NextResponse.json({ ok: true, message: 'Draft Perizinan tersimpan' });
@@ -305,12 +315,16 @@ export async function POST(
     // 2. Ambil Tiket
     const { data: tiket } = await supabase
       .from('tiket_antrean')
-      .select('id, legacy_visit_id, kunjungan_id, layanan:layanan_id(nama)')
+      .select('id, legacy_visit_id, kunjungan_id, layanan_id, layanan:layanan_id(nama)')
       .eq('id', tiketId)
       .maybeSingle();
 
     if (!tiket) {
       return NextResponse.json({ error: 'Tiket tidak ditemukan' }, { status: 404 });
+    }
+
+    if (!canAccessPelayananStaff(staff, tiket.layanan_id)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const layananData = Array.isArray(tiket.layanan) ? tiket.layanan[0] : tiket.layanan;
@@ -321,8 +335,9 @@ export async function POST(
     }
 
     const body = await request.json();
-    const nowIso = new Date().toISOString();
 
+    // Validasi ketat field wajib di server sebelum finalize
+    let finalData: Record<string, unknown>;
     if (formType === 'oss') {
       // Validasi ketat field wajib OSS: nama_pemohon, nama_usaha, uraian_solusi, tindak_lanjut
       const parsed = ossPelayananFinalSchema.safeParse(body);
@@ -335,25 +350,7 @@ export async function POST(
           { status: 422 }
         );
       }
-
-      const payload = {
-        tiket_id: tiket.id,
-        kunjungan_id: tiket.kunjungan_id,
-        petugas_id: staff.id,
-        ...parsed.data,
-        status_draft: 'selesai',
-        is_locked: true,
-        updated_at: nowIso,
-      };
-
-      const { error: upsertErr } = await supabase
-        .from('pelayanan_oss')
-        .upsert(payload, { onConflict: 'tiket_id' });
-
-      if (upsertErr) {
-        console.error('[POST finalize pelayanan_oss]', upsertErr);
-        return NextResponse.json({ error: upsertErr.message }, { status: 400 });
-      }
+      finalData = parsed.data;
     } else {
       // Validasi ketat field wajib Perizinan: nama_pemohon, nama_perusahaan, opd_teknis, uraian_permohonan, tindak_lanjut
       const parsed = perizinanPelayananFinalSchema.safeParse(body);
@@ -366,45 +363,43 @@ export async function POST(
           { status: 422 }
         );
       }
-
-      const payload = {
-        tiket_id: tiket.id,
-        kunjungan_id: tiket.kunjungan_id,
-        petugas_id: staff.id,
-        ...parsed.data,
-        status_draft: 'selesai',
-        is_locked: true,
-        updated_at: nowIso,
-      };
-
-      const { error: upsertErr } = await supabase
-        .from('pelayanan_perizinan')
-        .upsert(payload, { onConflict: 'tiket_id' });
-
-      if (upsertErr) {
-        console.error('[POST finalize pelayanan_perizinan]', upsertErr);
-        return NextResponse.json({ error: upsertErr.message }, { status: 400 });
-      }
+      finalData = parsed.data;
     }
 
-    // 3. Update status tiket dan visit ke 'selesai'
-    if (tiket.legacy_visit_id) {
-      await supabase
-        .from('visit')
-        .update({ status: 'selesai', waktu_selesai: nowIso })
-        .eq('id', tiket.legacy_visit_id);
-    } else {
-      await supabase
-        .from('tiket_antrean')
-        .update({ status: 'selesai', waktu_selesai: nowIso })
-        .eq('id', tiket.id);
+    // Finalize atomik via RPC (migrasi 202608310001): upsert data + lock +
+    // selesaikan visit/tiket dalam SATU transaksi DB. Timestamp dari DB now().
+    const { data: rpcData, error: rpcErr } = await supabase.rpc('finalize_pelayanan', {
+      p_tiket_id: tiketId,
+      p_form_type: formType,
+      p_payload: finalData,
+    });
+
+    if (rpcErr) {
+      const msg = rpcErr.message || '';
+      console.error('[POST finalize_pelayanan]', msg);
+      if (msg.includes('LOCKED')) {
+        return NextResponse.json(
+          { error: 'Data pelayanan sudah terkunci dan tidak dapat diubah' },
+          { status: 403 }
+        );
+      }
+      if (msg.includes('INVALID_STATUS')) {
+        return NextResponse.json(
+          { error: 'Tiket belum dalam status dilayani sehingga tidak dapat diselesaikan' },
+          { status: 409 }
+        );
+      }
+      if (msg.includes('FORBIDDEN')) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
+      return NextResponse.json({ error: 'Gagal menyelesaikan pelayanan' }, { status: 400 });
     }
 
     return NextResponse.json({
       ok: true,
       message: 'Pelayanan berhasil diselesaikan dan data telah dikunci',
       is_locked: true,
-      waktu_selesai: nowIso,
+      waktu_selesai: (rpcData as { waktu_selesai?: string } | null)?.waktu_selesai ?? null,
     });
   } catch (err) {
     console.error('[POST /api/admin/pelayanan/finalize]', err);

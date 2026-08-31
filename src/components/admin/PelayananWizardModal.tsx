@@ -80,6 +80,17 @@ export default function PelayananWizardModal({
   const formType: FormPelayananType | null = initialData?.form_type ?? null;
   const autosaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Bersihkan autosave tertunda saat komponen unmount agar tidak ada PATCH
+  // liar terpicu setelah modal ditutup / komponen dibongkar.
+  useEffect(() => {
+    return () => {
+      if (autosaveTimeoutRef.current) {
+        clearTimeout(autosaveTimeoutRef.current);
+        autosaveTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
   // 1. Fetch data saat modal dibuka
   const loadData = useCallback(
     async (id: string, isCurrent: () => boolean) => {
