@@ -41,7 +41,7 @@ interface ReservasiResult {
   } | null;
 }
 
-type ScanState = 'scanning' | 'found' | 'not_found' | 'processed' | 'error';
+type ScanState = 'scanning' | 'found' | 'not_found' | 'processed' | 'error' | 'hangus';
 
 interface CheckInUpdateData {
   status: string;
@@ -88,6 +88,17 @@ export default function AdminScanPage() {
       pengunjung: Array.isArray(data.pengunjung) ? data.pengunjung[0] : data.pengunjung,
       layanan: Array.isArray(data.layanan) ? data.layanan[0] : data.layanan,
     };
+
+    // QUE-15: QR hangus — reservasi sudah ditandai no_show (cron) atau
+    // tanggal_rencana-nya sudah lewat tapi cron belum jalan.
+    if (
+      normalized.status === 'no_show' ||
+      (normalized.status === 'terjadwal' && normalized.tanggal_rencana < todayWIB())
+    ) {
+      setResult(normalized);
+      setScanState('hangus');
+      return;
+    }
 
     setResult(normalized);
     setScanState('found');
@@ -323,6 +334,27 @@ export default function AdminScanPage() {
                   <h3 style={{ fontWeight: 600, marginBottom: 'var(--space-2)' }}>Tidak Ditemukan</h3>
                   <p style={{ fontSize: 'var(--text-sm)', marginBottom: 'var(--space-4)' }}>
                     QR code tidak terdaftar atau reservasi sudah kadaluarsa.
+                  </p>
+                  <button className="btn btn--secondary btn--sm" onClick={handleReset}>
+                    <RotateCcw size={14} />
+                    Scan Ulang
+                  </button>
+                </div>
+              )}
+
+              {scanState === 'hangus' && result && (
+                <div className={styles.notFound}>
+                  <XCircle size={48} className={styles.notFoundIcon} />
+                  <h3 style={{ fontWeight: 600, marginBottom: 'var(--space-2)' }}>
+                    QR Sudah Hangus
+                  </h3>
+                  <p style={{ fontSize: 'var(--text-sm)', marginBottom: 'var(--space-2)' }}>
+                    Reservasi ini kedaluwarsa karena pengunjung tidak datang pada jadwalnya
+                    {result.tanggal_rencana ? ` (${formatDate(result.tanggal_rencana)})` : ''}.
+                  </p>
+                  <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginBottom: 'var(--space-4)' }}>
+                    Status: <strong>no_show</strong>. QR code tidak dapat digunakan lagi.
+                    Minta pengunjung membuat reservasi baru.
                   </p>
                   <button className="btn btn--secondary btn--sm" onClick={handleReset}>
                     <RotateCcw size={14} />

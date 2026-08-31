@@ -156,6 +156,7 @@ export default function MeDashboard() {
       dilayani:  { label: '● Sedang Dilayani', className: 'badge--published' },
       selesai:   { label: '✓ Selesai', className: 'badge--selesai' },
       batal:     { label: '✕ Batal', className: 'badge--nonaktif' },
+      no_show:   { label: '⚠️ Hangus — Tidak Hadir', className: 'badge--nonaktif' },
     };
     return map[status] || { label: status, className: 'badge--draft' };
   };
@@ -166,7 +167,7 @@ export default function MeDashboard() {
     });
 
   const upcomingReservasi = reservasiList.filter(
-    r => r.status === 'terjadwal'
+    r => r.status === 'terjadwal' && r.tanggal_rencana >= todayWIB()
   );
   const todayReservasi = reservasiList.filter(
     r => r.tanggal_rencana === todayWIB() && (r.status === 'menunggu' || r.status === 'dilayani')
