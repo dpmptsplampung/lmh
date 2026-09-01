@@ -44,7 +44,7 @@ describe('RekapLayananTable', () => {
   afterEach(() => cleanup());
 
   it('renders filter form and initial fetch', async () => {
-    render(<RekapLayananTable isPetugas={false} initialLayananId={null} />);
+    render(<RekapLayananTable isPetugas={false} initialLayananId={null} options={[]} />);
     await waitFor(() => {
       expect(mockFetch).toHaveBeenCalled();
     });
@@ -55,14 +55,14 @@ describe('RekapLayananTable', () => {
       ok: true,
       json: async () => ({ total: 0, rows: [] }),
     });
-    render(<RekapLayananTable isPetugas={false} initialLayananId={null} />);
+    render(<RekapLayananTable isPetugas={false} initialLayananId={null} options={[]} />);
     await waitFor(() => {
       expect(screen.getByText(/tidak ada tiket selesai/i)).toBeInTheDocument();
     });
   });
 
   it('renders rows with formatted fields', async () => {
-    render(<RekapLayananTable isPetugas={false} initialLayananId={null} />);
+    render(<RekapLayananTable isPetugas={false} initialLayananId={null} options={[]} />);
     await waitFor(() => {
       expect(screen.getByText(/A-001/)).toBeInTheDocument();
     });
@@ -75,7 +75,7 @@ describe('RekapLayananTable', () => {
       ok: true,
       json: async () => ({ total: 0, rows: [] }),
     });
-    render(<RekapLayananTable isPetugas={false} initialLayananId={null} />);
+    render(<RekapLayananTable isPetugas={false} initialLayananId={null} options={[]} />);
     await waitFor(() => {
       const exportBtn = screen.getByRole('button', { name: /download excel/i });
       expect(exportBtn).toBeDisabled();
@@ -83,23 +83,18 @@ describe('RekapLayananTable', () => {
   });
 
   it('shows error state on fetch failure', async () => {
-    // Layanan-options fetch returns success first (so it doesn't consume the error response).
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ options: [] }),
-    });
     mockFetch.mockResolvedValueOnce({
       ok: false,
       json: async () => ({ error: 'Server error' }),
     });
-    render(<RekapLayananTable isPetugas={false} initialLayananId={null} />);
+    render(<RekapLayananTable isPetugas={false} initialLayananId={null} options={[]} />);
     await waitFor(() => {
       expect(screen.getByText(/coba lagi/i)).toBeInTheDocument();
     });
   });
 
   it('opens detail panel on row click', async () => {
-    render(<RekapLayananTable isPetugas={false} initialLayananId={null} />);
+    render(<RekapLayananTable isPetugas={false} initialLayananId={null} options={[]} />);
     await waitFor(() => {
       expect(screen.getByText(/A-001/)).toBeInTheDocument();
     });

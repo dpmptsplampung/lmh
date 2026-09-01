@@ -8,7 +8,7 @@ import RekapTiketDetailPanel from '@/components/admin/RekapTiketDetailPanel';
 import { formatTanggalId, formatWaktuId, hitungDurasiMenit } from '@/lib/rekap/format';
 import type { RekapTicketRow } from '@/lib/rekap/excel';
 
-interface LayananOption {
+export interface LayananOption {
   id: string;
   nama: string;
 }
@@ -18,11 +18,11 @@ const PAGE_SIZE = 25;
 interface Props {
   isPetugas: boolean;
   initialLayananId: string | null;
+  options: LayananOption[];
 }
 
-export default function RekapLayananTable({ isPetugas, initialLayananId }: Props) {
+export default function RekapLayananTable({ isPetugas, initialLayananId, options }: Props) {
   const { toast } = useToast();
-  const [options, setOptions] = useState<LayananOption[]>([]);
   const [layananId, setLayananId] = useState<string>(initialLayananId ?? '');
   const [dari, setDari] = useState<string>(() => {
     const d = new Date();
@@ -39,26 +39,6 @@ export default function RekapLayananTable({ isPetugas, initialLayananId }: Props
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<RekapTicketRow | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Load options (only for admin/FO; petugas already has fixed layanan)
-  useEffect(() => {
-    if (isPetugas) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch('/api/admin/rekap/layanan-options');
-        const body = await res.json();
-        if (!cancelled && res.ok) {
-          setOptions(body.options ?? []);
-        }
-      } catch {
-        // silent
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [isPetugas]);
 
   const fetchRows = useCallback(async () => {
     setLoading(true);

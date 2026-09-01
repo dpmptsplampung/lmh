@@ -21,7 +21,7 @@ import {
 import PageHeader from '@/components/layout/PageHeader';
 import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/components/Toast';
-import RekapLayananTable from '@/components/admin/RekapLayananTable';
+import RekapLayananTable, { type LayananOption } from '@/components/admin/RekapLayananTable';
 
 interface RekapRow {
   layanan_id: string;
@@ -91,6 +91,7 @@ export default function AdminRekapPage() {
   // page knows whether to render the Layanan tab with a locked layanan filter).
   const [isPetugas, setIsPetugas] = useState(false);
   const [initialLayananId, setInitialLayananId] = useState<string | null>(null);
+  const [layananOptions, setLayananOptions] = useState<LayananOption[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -101,6 +102,7 @@ export default function AdminRekapPage() {
         if (!cancelled && res.ok) {
           setIsPetugas(!!body.is_petugas);
           setInitialLayananId(body.default_layanan_id ?? null);
+          setLayananOptions((body.options ?? []) as LayananOption[]);
         }
       } catch {
         // silent — RekapLayananTable will retry on mount
@@ -564,7 +566,11 @@ export default function AdminRekapPage() {
 
         {/* TAB 4: REKAP PER LAYANAN */}
         {activeTab === 'layanan' && (
-          <RekapLayananTable isPetugas={isPetugas} initialLayananId={initialLayananId} />
+          <RekapLayananTable
+            isPetugas={isPetugas}
+            initialLayananId={initialLayananId}
+            options={layananOptions}
+          />
         )}
 
         {/* Download CSV Button */}
