@@ -29,6 +29,15 @@ vi.mock('@/components/WalkinWizard', () => ({
   ),
 }));
 
+// Mock PelayananWizardModal: render teks "Pendataan Pelayanan" saat isOpen=true,
+// teks "PendataanClosed" saat isOpen=false. Memudahkan verifikasi auto-open
+// tanpa harus mock endpoint /api/admin/pelayanan/[tiketId].
+vi.mock('@/components/admin/PelayananWizardModal', () => ({
+  default: ({ isOpen }: { isOpen: boolean }) => (
+    <div data-testid="pelayanan-wizard">{isOpen ? 'Pendataan Pelayanan' : 'PendataanClosed'}</div>
+  ),
+}));
+
 import AntrianPage from './page';
 import { createClient } from '@/lib/supabase/client';
 
@@ -207,6 +216,46 @@ describe('Admin antrian operational lifecycle', () => {
     expect(payload.status).toBe('dilayani');
     expect(typeof payload.waktu_mulai_layan).toBe('string');
     expect(payload.waktu_selesai).toBeUndefined();
+  });
+
+  it('Mulai Layanan auto-opens PelayananWizardModal for Helpdesk OSS', async () => {
+    buildMock({
+      rows: [baseRow({ status: 'menunggu' })],
+    });
+
+    render(<AntrianPage />);
+
+    // Sebelum klik: wizard tertutup
+    expect(screen.getByTestId('pelayanan-wizard')).toHaveTextContent('PendataanClosed');
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /mulai layanan/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /mulai layanan/i }));
+
+    // Setelah klik: wizard harus auto-buka karena Helpdesk OSS layanan pendataan
+    await waitFor(() => {
+      expect(screen.getByTestId('pelayanan-wizard')).toHaveTextContent('Pendataan Pelayanan');
+    });
+  });
+
+  it('Mulai Layanan does NOT auto-open wizard for non-pendataan layanan (e.g. P4)', async () => {
+    buildMock({
+      rows: [baseRow({ status: 'menunggu', layanan: { nama: 'BPJS Kesehatan' } })],
+    });
+
+    render(<AntrianPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /mulai layanan/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /mulai layanan/i }));
+
+    // Tunggu fetchData selesai, wizard harus tetap tertutup untuk layanan non-pendataan
+    await new Promise(r => setTimeout(r, 50));
+    expect(screen.getByTestId('pelayanan-wizard')).toHaveTextContent('PendataanClosed');
   });
 
   it('Selesai is only available for dilayani and sets waktu_selesai', async () => {

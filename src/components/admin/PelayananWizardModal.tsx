@@ -157,15 +157,16 @@ export default function PelayananWizardModal({
         setStep(1);
       } catch (e) {
         if (!isCurrent()) return;
+        // Jangan auto-close pada error: tampilkan pesan agar user tahu kenapa
+        // wizard gagal load, dan bisa menutup sendiri atau retry.
         toast(e instanceof Error ? e.message : 'Gagal memuat data', 'error');
-        onClose();
       } finally {
         if (isCurrent()) {
           setLoading(false);
         }
       }
     },
-    [toast, onClose]
+    [toast]
   );
 
   useEffect(() => {

@@ -209,8 +209,13 @@ export default function AntrianPage() {
       } else {
         toast('Layanan dimulai', 'success');
         await fetchData();
+        // Buka wizard pendataan untuk layanan yang didukung (Helpdesk OSS /
+        // Layanan Perizinan DPMPTSP). Layanan lain (mis. P4 / investasi)
+        // tidak punya form pendataan — tampilkan selesai saja.
         if (isLayananPendataan(layananNama)) {
           setActiveWizardTiketId(tiketId);
+        } else {
+          toast('Layanan ini tidak memiliki form pendataan', 'info');
         }
       }
     } catch (e) {
@@ -595,6 +600,21 @@ export default function AntrianPage() {
                                   <Volume2 size={14} style={{ marginRight: '4px' }} />
                                   Panggil
                                 </button>
+                                {/* Tombol manual 'Lengkapi Data' untuk layanan pendataan
+                                   — berguna bila wizard tidak auto-buka setelah Mulai Layanan.
+                                   Untuk OSS/Perizinan, Mulai Layanan akan auto-buka wizard;
+                                   tombol ini memberi fallback eksplisit. */}
+                                {isLayananPendataan(resolveLayananNama(a)) && (
+                                  <button
+                                    className="btn btn--secondary btn--sm"
+                                    onClick={() => setActiveWizardTiketId(a.id)}
+                                    title="Buka form pendataan secara manual"
+                                    style={{ padding: '4px 10px', fontSize: '12px' }}
+                                  >
+                                    <FileEdit size={14} style={{ marginRight: '4px' }} />
+                                    Lengkapi Data
+                                  </button>
+                                )}
                                 <button
                                   className="btn btn--primary btn--sm"
                                   onClick={() => handleMulaiLayanan(a.legacy_visit_id, a.id, resolveLayananNama(a))}
