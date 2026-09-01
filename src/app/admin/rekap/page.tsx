@@ -21,6 +21,7 @@ import {
 import PageHeader from '@/components/layout/PageHeader';
 import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/components/Toast';
+import RekapLayananTable from '@/components/admin/RekapLayananTable';
 
 interface RekapRow {
   layanan_id: string;
@@ -74,7 +75,7 @@ interface RekapPerizinanRow {
   created_at: string;
 }
 
-type TabType = 'umum' | 'oss' | 'perizinan';
+type TabType = 'umum' | 'oss' | 'perizinan' | 'layanan';
 
 export default function AdminRekapPage() {
   const { toast } = useToast();
@@ -86,6 +87,29 @@ export default function AdminRekapPage() {
   const [rolling, setRolling] = useState(false);
   const [mulai, setMulai] = useState(addDaysWIB(-6));
   const [selesai, setSelesai] = useState(todayWIB());
+  // Role-scoped options for the Layanan tab (lifted from RekapLayananTable so the
+  // page knows whether to render the Layanan tab with a locked layanan filter).
+  const [isPetugas, setIsPetugas] = useState(false);
+  const [initialLayananId, setInitialLayananId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/admin/rekap/layanan-options');
+        const body = await res.json();
+        if (!cancelled && res.ok) {
+          setIsPetugas(!!body.is_petugas);
+          setInitialLayananId(body.default_layanan_id ?? null);
+        }
+      } catch {
+        // silent — RekapLayananTable will retry on mount
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -149,6 +173,11 @@ export default function AdminRekapPage() {
   };
 
   const handleExportCsv = async () => {
+    // Layanan tab has its own Download Excel button inside RekapLayananTable
+    if (activeTab === 'layanan') {
+      return;
+    }
+
     try {
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
@@ -272,6 +301,13 @@ export default function AdminRekapPage() {
             style={{ borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }}
           >
             <FileCheck size={16} /> Pendataan Perizinan DPMPTSP
+          </button>
+          <button
+            className={`btn ${activeTab === 'layanan' ? 'btn--primary' : 'btn--ghost'} btn--sm`}
+            onClick={() => setActiveTab('layanan')}
+            style={{ borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }}
+          >
+            <BarChart2 size={16} /> Rekap Per Layanan
           </button>
         </div>
 
@@ -526,18 +562,25 @@ export default function AdminRekapPage() {
           </div>
         )}
 
+        {/* TAB 4: REKAP PER LAYANAN */}
+        {activeTab === 'layanan' && (
+          <RekapLayananTable isPetugas={isPetugas} initialLayananId={initialLayananId} />
+        )}
+
         {/* Download CSV Button */}
-        <div style={{ marginTop: 'var(--space-4)', display: 'flex', justifyContent: 'flex-end' }}>
-          <button className="btn btn--ghost btn--sm" onClick={handleExportCsv}>
-            <Download size={14} /> Unduh CSV (
-            {activeTab === 'umum'
-              ? 'Rekap Umum'
-              : activeTab === 'oss'
-              ? `OSS - ${ossRows.length} baris`
-              : `Perizinan - ${perizinanRows.length} baris`}
-            )
-          </button>
-        </div>
+        {activeTab !== 'layanan' && (
+          <div style={{ marginTop: 'var(--space-4)', display: 'flex', justifyContent: 'flex-end' }}>
+            <button className="btn btn--ghost btn--sm" onClick={handleExportCsv}>
+              <Download size={14} /> Unduh CSV (
+              {activeTab === 'umum'
+                ? 'Rekap Umum'
+                : activeTab === 'oss'
+                ? `OSS - ${ossRows.length} baris`
+                : `Perizinan - ${perizinanRows.length} baris`}
+              )
+            </button>
+          </div>
+        )}
       </div>
     </>
   );
