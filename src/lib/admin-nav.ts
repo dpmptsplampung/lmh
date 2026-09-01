@@ -34,7 +34,7 @@ export const ADMIN_NAV: AdminNavEntry[] = [
   { label: 'Jadwal Layanan', href: '/admin/settings/jadwal', iconKey: 'jadwal', roles: ['admin', 'petugas', 'front_office'] },
   { label: 'Pengaturan', href: '/admin/settings', iconKey: 'settings', roles: ['admin'] },
   { label: 'Kelola Layar', href: '/admin/layar', iconKey: 'layar', roles: ['admin'] },
-  { label: 'Rekap Harian', href: '/admin/rekap', iconKey: 'rekap', roles: ['admin', 'front_office'] },
+  { label: 'Rekap Harian', href: '/admin/rekap', iconKey: 'rekap', roles: ['admin', 'petugas', 'front_office'] },
   { label: 'Dokumen Peraturan', href: '/admin/dokumen', iconKey: 'dokumen', roles: ['admin'] },
   { label: 'Konten Landing', href: '/admin/settings/landing', iconKey: 'landing', roles: ['admin'] },
   { label: 'Tampilan Publik', href: '/', iconKey: 'public', roles: ['admin', 'petugas', 'front_office'] },
