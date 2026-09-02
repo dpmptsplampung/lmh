@@ -51,6 +51,7 @@ export const FORWARD_MIGRATION_FILES = [
   '202608310001_finalize_pelayanan_rpc.sql',
   '202608310002_reservasi_no_show.sql',
   '202608310003_absensi_foto_fo.sql',
+  '202609020001_estimasi_hari_libur.sql',
 ] as const;
 
 export function listMigrationFiles(): string[] {

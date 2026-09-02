@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { Clock, Users, CheckCircle2, Loader2 } from 'lucide-react';
+import { Clock, Users, CheckCircle2, Loader2, CalendarOff, DoorClosed } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import styles from './EstimasiAntrean.module.css';
 
@@ -17,6 +17,12 @@ export interface LoketEstimasi {
   sample_count?: number | null;
 }
 
+/** Tanggal hari ini menurut zona waktu kantor (WIB) dalam format YYYY-MM-DD —
+ *  seluruh logika jadwal & hari_libur memakai Asia/Jakarta. */
+function tanggalWIB(): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' });
+}
+
 function isProvisional(row: LoketEstimasi): boolean {
   // View may not expose sample_count; default duration 15 with no history is provisional.
   // Treat explicit 0 as provisional; missing sample_count also treated as provisional
@@ -25,9 +31,10 @@ function isProvisional(row: LoketEstimasi): boolean {
   return true;
 }
 
-type WaitLevel = 'normal' | 'warning' | 'danger' | 'empty';
+type WaitLevel = 'normal' | 'warning' | 'danger' | 'empty' | 'tutup';
 
-function waitLevel(row: LoketEstimasi): WaitLevel {
+function waitLevel(row: LoketEstimasi, tutup: boolean): WaitLevel {
+  if (tutup) return 'tutup';
   if (row.antre_count === 0) return 'empty';
   if (row.estimasi_tunggu_total_menit > 60) return 'danger';
   if (row.estimasi_tunggu_total_menit > 30) return 'warning';
@@ -38,6 +45,10 @@ export default function EstimasiAntrean() {
   const [lokets, setLokets] = useState<LoketEstimasi[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /** Keterangan hari libur nasional (dari tabel hari_libur) jika hari ini libur. */
+  const [liburHariIni, setLiburHariIni] = useState<string | null>(null);
+  /** layanan_id yang tutup hari ini menurut is_layanan_buka_jadwal(). */
+  const [tutupIds, setTutupIds] = useState<Set<string>>(new Set());
 
   const fetchLokets = useCallback(async () => {
     const supabase = createClient();
@@ -51,7 +62,38 @@ export default function EstimasiAntrean() {
       return;
     }
     setError(null);
-    setLokets((data ?? []) as LoketEstimasi[]);
+    const rows = (data ?? []) as LoketEstimasi[];
+    setLokets(rows);
+
+    // --- Status buka/tutup hari ini (WIB) ---
+    const today = tanggalWIB();
+    // 1. Hari libur nasional (tabel hari_libur) → banner untuk seluruh section.
+    const { data: liburRows } = await supabase
+      .from('hari_libur')
+      .select('keterangan')
+      .eq('tanggal', today)
+      .limit(1);
+    setLiburHariIni(Array.isArray(liburRows) && liburRows.length > 0 ? liburRows[0].keterangan : null);
+
+    // 2. Status per layanan via fungsi jadwal (pengecualian menang atas pola mingguan).
+    //    Gagal cek tutup tidak boleh memblokir tampilan antrean — anggap buka.
+    try {
+      const results = await Promise.all(
+        rows.map((row) =>
+          supabase.rpc('is_layanan_buka_jadwal', {
+            p_layanan_id: row.layanan_id,
+            p_tanggal: today,
+            p_jam: null,
+          }),
+        ),
+      );
+      const tutup = new Set(
+        rows.filter((_, i) => results[i].data === false).map((row) => row.layanan_id),
+      );
+      setTutupIds(tutup);
+    } catch {
+      setTutupIds(new Set());
+    }
   }, []);
 
   useEffect(() => {
@@ -93,6 +135,15 @@ export default function EstimasiAntrean() {
         </p>
       </div>
 
+      {!loading && liburHariIni && (
+        <div className={styles.holidayBanner} role="status">
+          <CalendarOff size={18} />
+          <span>
+            Hari ini <strong>libur ({liburHariIni})</strong>. Layanan loket tutup — silakan berkunjung pada hari kerja berikutnya.
+          </span>
+        </div>
+      )}
+
       {loading && (
         <div className={styles.loading}>
           <Loader2 size={24} className={styles.spinner} />
@@ -113,16 +164,22 @@ export default function EstimasiAntrean() {
       {!loading && !error && lokets.length > 0 && (
         <div className={styles.grid}>
           {lokets.map((loket) => {
-            const level = waitLevel(loket);
+            const tutup = tutupIds.has(loket.layanan_id);
+            const level = waitLevel(loket, tutup);
             return (
-              <div key={loket.layanan_id} className={styles.card}>
+              <div key={loket.layanan_id} className={styles.card} data-tutup={tutup || undefined}>
                 <div className={styles.cardHeader}>
                   <h3 className={styles.loketName}>{loket.layanan_nama}</h3>
                   <span
                     className={`${styles.badge} ${styles[`badge_${level}`]}`}
                     data-wait-level={level === 'empty' ? 'normal' : level}
                   >
-                    {level === 'empty' ? (
+                    {level === 'tutup' ? (
+                      <>
+                        <DoorClosed size={14} />
+                        Tutup hari ini
+                      </>
+                    ) : level === 'empty' ? (
                       <>
                         <CheckCircle2 size={14} />
                         Tidak ada antrean
