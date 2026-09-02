@@ -45,3 +45,7 @@ next-env.d.ts
 
 # Claude agent worktrees (temporer, bukan source)
 .claude/worktrees/
+
+# Audit internal — tidak untuk di-commit ke repo publik
+/docs/audit/
+/docs/prompts/

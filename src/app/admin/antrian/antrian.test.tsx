@@ -74,7 +74,10 @@ function buildMock(opts: {
   // The mock must handle both paths.
   const range = vi.fn().mockResolvedValue({ data: rows, count: rows.length });
   const order = vi.fn().mockReturnValue({ range, eq: vi.fn().mockReturnValue({ range }) });
-  const eqTanggal = vi.fn().mockReturnValue({ order });
+  // tiket_antrean stats query: .select('waktu_mulai_layan, waktu_selesai', {count})
+  //   .eq('tanggal').eq('status','selesai')  — directly awaited, no .order()
+  const statsEq = vi.fn().mockResolvedValue({ data: rows, count: rows.length });
+  const eqTanggal = vi.fn().mockReturnValue({ order, eq: statsEq });
   const tiketSelect = vi.fn().mockReturnValue({ eq: eqTanggal });
 
   // petugas query chain: .select().eq().single()
@@ -104,6 +107,8 @@ function buildMock(opts: {
 
   // visit table: used for status updates (handleMulaiLayanan / handleSelesaikan)
   const visitInsert = vi.fn().mockResolvedValue({ error: null });
+  const visitEq = vi.fn().mockResolvedValue({ error: null });
+  const visitUpdate = vi.fn().mockReturnValue({ eq: visitEq });
 
   const mock = {
     auth: {
@@ -114,13 +119,15 @@ function buildMock(opts: {
     from: vi.fn((table: string) => {
       if (table === 'petugas') return { select: petugasSelect };
       if (table === 'tiket_antrean') return { select: tiketSelect };
-      if (table === 'visit') return { update, insert: visitInsert };
+      if (table === 'visit') return { update: visitUpdate, insert: visitInsert };
       if (table === 'layanan') return { select: layananSelect };
       return {};
     }),
     rpc: vi.fn().mockResolvedValue({ error: null }),
     _update: update,
     _updateEq: updateEq,
+    _visitUpdate: visitUpdate,
+    _visitEq: visitEq,
   };
 
   (createClient as unknown as ReturnType<typeof vi.fn>).mockReturnValue(mock);
@@ -209,10 +216,10 @@ describe('Admin antrian operational lifecycle', () => {
     fireEvent.click(screen.getByRole('button', { name: /mulai layanan/i }));
 
     await waitFor(() => {
-      expect(mock._update).toHaveBeenCalled();
+      expect(mock._visitUpdate).toHaveBeenCalled();
     });
 
-    const payload = mock._update.mock.calls[0][0] as Record<string, unknown>;
+    const payload = mock._visitUpdate.mock.calls[0][0] as Record<string, unknown>;
     expect(payload.status).toBe('dilayani');
     expect(typeof payload.waktu_mulai_layan).toBe('string');
     expect(payload.waktu_selesai).toBeUndefined();
@@ -260,7 +267,15 @@ describe('Admin antrian operational lifecycle', () => {
 
   it('Selesai is only available for dilayani and sets waktu_selesai', async () => {
     const mock = buildMock({
-      rows: [baseRow({ status: 'dilayani', waktu_mulai_layan: new Date().toISOString() })],
+      // Non-pendataan layanan so Selesai updates visit directly (pendataan
+      // layanan seperti Helpdesk OSS intercepts via PelayananWizardModal).
+      rows: [
+        baseRow({
+          status: 'dilayani',
+          layanan: { nama: 'BPJS Kesehatan' },
+          waktu_mulai_layan: new Date().toISOString(),
+        }),
+      ],
     });
 
     render(<AntrianPage />);
@@ -273,12 +288,13 @@ describe('Admin antrian operational lifecycle', () => {
     fireEvent.click(screen.getByRole('button', { name: /selesai/i }));
 
     await waitFor(() => {
-      expect(mock._update).toHaveBeenCalled();
+      expect(mock._visitUpdate).toHaveBeenCalled();
     });
 
-    const payload = mock._update.mock.calls[0][0] as Record<string, unknown>;
+    const payload = mock._visitUpdate.mock.calls[0][0] as Record<string, unknown>;
     expect(payload.status).toBe('selesai');
     expect(typeof payload.waktu_selesai).toBe('string');
+    expect(mock._visitEq).toHaveBeenCalledWith('id', 'v-1');
   });
 
   it('does not offer Selesai directly from menunggu', async () => {

@@ -366,6 +366,8 @@ describe('K3 checkin page: auth gate', () => {
   });
 
   // I1.b: verify the check-in INSERT now targets the visit spine with asal='walk_in'
+  // Longer timeout: under full-suite load the consent_log + visit inserts can
+  // exceed the default 5s (flaky in CI/vmForks). Logic is covered by assertions.
   it('inserts into visit with asal=walk_in on submit', async () => {
     const { inserts } = buildMockSupabase({
       user: { id: 'google-user-2' },
@@ -403,5 +405,5 @@ describe('K3 checkin page: auth gate', () => {
 
     // No row should be inserted into the legacy kunjungan table
     expect(inserts.find((i) => i.table === 'kunjungan')).toBeUndefined();
-  });
+  }, 10000);
 });

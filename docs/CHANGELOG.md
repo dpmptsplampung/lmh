@@ -4,6 +4,37 @@ Semua perubahan penting pada project LMH didokumentasikan di sini.
 Format: [Keep a Changelog](https://keepachangelog.com/). Pemversian
 mengikuti [Semantic Versioning](https://semver.org/).
 
+## [2.4.0] — 2026-09-02
+
+Rekap per layanan + pendataan pelayanan + no-show reservasi.
+
+### Fitur
+- **Rekap per layanan** (`/admin/rekap` tab ke-4): petugas auto-scoped ke
+  `layanan_id` sendiri (RLS + API enforcement), admin/FO bisa pilih layanan
+  via dropdown. Filter status `selesai`, search server-side (debounced,
+  ILIKE lintas relasi), pagination 25/halaman, side panel detail tiket
+  read-only (a11y: Escape/click-outside/`aria-modal`).
+- **Export Excel** (`.xlsx` via exceljs, server-side): 26 kolom lengkap,
+  header beku, cap 50.000 baris dengan header `X-Rekap-Truncated` + toast;
+  setiap export tercatat di `audit_log` (aktor, layanan, rentang, total,
+  truncated).
+- **Pendataan pelayanan**: wizard Helpdesk OSS + Perizinan DPMPTSP dengan
+  tombol simpan/selesaikan terpisah, finalisasi atomik via RPC
+  `finalize_pelayanan` (celah otorisasi petugas per-layanan ditutup).
+- **Reservasi no-show + QR hangus**: penanda `no_show`, guard trigger
+  `trg_visit_qr_hangus`, pg_cron harian; QR reservasi kedaluwarsa otomatis
+  hangus.
+- **Absensi foto front-office**: kolom `foto_url` + bucket `absensi-foto`
+  (private, 5MB) + param `p_foto_url` opsional di `catat_absensi`.
+
+### Teknis
+- `exceljs` ditambahkan untuk export server-side.
+- CI kini juga dijalankan pada push/PR ke `development` (sebelumnya hanya
+  `main`).
+- Perbaikan test: mock antrian mengikuti chain stats `tiket_antrean` dan
+  jalur `visit.update`; timeout checkin dinaikkan untuk stabilitas di full
+  suite; daftar migrasi approved mencakup `202608310003_absensi_foto_fo`.
+
 ## [2.2.0] — 2026-07-28
 
 Audit role & fitur (petugas layanan, live chat, Gemini bot) — 10 temuan
