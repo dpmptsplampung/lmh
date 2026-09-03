@@ -5,7 +5,7 @@ import { Search, Download, RefreshCw, AlertCircle, Loader2, Eye } from 'lucide-r
 import Pagination from '@/components/Pagination';
 import { useToast } from '@/components/Toast';
 import RekapTiketDetailPanel from '@/components/admin/RekapTiketDetailPanel';
-import { formatTanggalId, formatWaktuId, hitungDurasiMenit } from '@/lib/rekap/format';
+import { formatTanggalId, formatWaktuId, hitungDurasiMenit, todayWIB } from '@/lib/rekap/format';
 import type { RekapTicketRow } from '@/lib/rekap/excel';
 
 export interface LayananOption {
@@ -25,11 +25,11 @@ export default function RekapLayananTable({ isPetugas, initialLayananId, options
   const { toast } = useToast();
   const [layananId, setLayananId] = useState<string>(initialLayananId ?? '');
   const [dari, setDari] = useState<string>(() => {
-    const d = new Date();
+    const d = new Date(todayWIB());
     d.setDate(d.getDate() - 30);
     return d.toISOString().slice(0, 10);
   });
-  const [sampai, setSampai] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [sampai, setSampai] = useState<string>(() => todayWIB());
   const [q, setQ] = useState('');
   const [page, setPage] = useState(0);
   const [rows, setRows] = useState<RekapTicketRow[]>([]);
@@ -84,6 +84,15 @@ export default function RekapLayananTable({ isPetugas, initialLayananId, options
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, [fetchRows, q]);
+
+  const durasiPerBaris = rows.map((r) =>
+    hitungDurasiMenit(r.waktu_mulai_layan, r.waktu_selesai),
+  );
+  const durasiValid = durasiPerBaris.filter((d): d is number => d != null);
+  const rataDurasi =
+    durasiValid.length > 0
+      ? Math.round(durasiValid.reduce((s, d) => s + d, 0) / durasiValid.length)
+      : 0;
 
   const handleExport = async () => {
     setExporting(true);
@@ -183,14 +192,7 @@ export default function RekapLayananTable({ isPetugas, initialLayananId, options
           <span className="stat-card__label">Total Selesai (rentang)</span>
         </div>
         <div className="stat-card">
-          <span className="stat-card__value">
-            {rows.length > 0
-              ? Math.round(
-                  rows.reduce((s, r) => s + (hitungDurasiMenit(r.waktu_mulai_layan, r.waktu_selesai) ?? 0), 0) /
-                    rows.filter(r => hitungDurasiMenit(r.waktu_mulai_layan, r.waktu_selesai) != null).length,
-                ) || 0
-              : 0}
-          </span>
+          <span className="stat-card__value">{rataDurasi}</span>
           <span className="stat-card__label">Rata-rata Durasi (mnt, halaman ini)</span>
         </div>
       </div>

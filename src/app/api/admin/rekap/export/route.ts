@@ -3,14 +3,17 @@ import { createClient } from '@/lib/supabase/server';
 import { exportQuerySchema } from '@/lib/rekap/schemas';
 import { buildTicketsQuery } from '@/lib/rekap/query';
 import { buildRekapWorkbook, type RekapTicketRow } from '@/lib/rekap/excel';
+import { slugify } from '@/lib/rekap/format';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 const MAX_ROWS = 50000;
 
-function slugify(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+/** Encode as RFC 6266 filename* (UTF-8) — aman untuk nama layanan non-ASCII. */
+function contentDisposition(filename: string): string {
+  const ascii = filename.replace(/[^\x20-\x7e]/g, '_').replace(/"/g, "'");
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
 }
 
 export async function GET(request: NextRequest) {
@@ -152,7 +155,7 @@ export async function GET(request: NextRequest) {
     headers: {
       'Content-Type':
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Content-Disposition': contentDisposition(filename),
       'Cache-Control': 'no-store',
       'X-Rekap-Truncated': truncated ? 'true' : 'false',
     },

@@ -4,7 +4,7 @@ export function escapeIlikeWildcards(s: string): string {
   return s.replace(/[%_]/g, '\\$&');
 }
 
-interface TicketsQueryParams {
+export interface TicketsQueryParams {
   layananId: string | null;
   q: string;
   dari: string;

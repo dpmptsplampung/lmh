@@ -27,6 +27,8 @@ export async function GET(request: NextRequest) {
 
   const rawParams: Record<string, string> = {};
   const sp = request.nextUrl?.searchParams ?? new URL(request.url).searchParams;
+  // Last-value-wins: jika key diulang (mis. ?q=a&q=b), hanya nilai terakhir
+  // yang dipakai. Skema query hanya mendefinisikan satu nilai per key.
   sp.forEach((v, k) => {
     rawParams[k] = v;
   });

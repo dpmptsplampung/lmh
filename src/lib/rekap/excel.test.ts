@@ -53,8 +53,8 @@ describe('buildRekapWorkbook', () => {
     headerRow.eachCell((cell) => headers.push(String(cell.value)));
     expect(headers).toContain('No Antrian');
     expect(headers).toContain('Nama Pengunjung');
-    expect(headers).toContain('Nama Usaha');
-    expect(headers).toContain('Nama Perusahaan');
+    expect(headers).toContain('[OSS] Nama Usaha');
+    expect(headers).toContain('[Perizinan] Nama Perusahaan');
   });
 
   it('produces empty workbook for empty rows', async () => {

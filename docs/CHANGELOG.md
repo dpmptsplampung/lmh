@@ -34,6 +34,13 @@ Rekap per layanan + pendataan pelayanan + no-show reservasi.
 - Perbaikan test: mock antrian mengikuti chain stats `tiket_antrean` dan
   jalur `visit.update`; timeout checkin dinaikkan untuk stabilitas di full
   suite; daftar migrasi approved mencakup `202608310003_absensi_foto_fo`.
+- `migration-docs.test.ts` tidak lagi spawn CLI (`npx supabase`) di suite —
+  output `--help` dimock, menghilangkan flake timeout 20s di full suite.
+- Rekap per layanan (follow-up): label kolom Excel berprefix
+  `[OSS]`/`[Perizinan]`, `Content-Disposition` RFC 6266 (`filename*=` UTF-8),
+  `formatTanggalId` date-only tanpa shift WIB, `todayWIB()` untuk default
+  rentang, rata-rata durasi denominator skip baris null, `slugify` +
+  `TicketsQueryParams` diekspor untuk dipakai caller.
 
 ## [2.2.0] — 2026-07-28
 
