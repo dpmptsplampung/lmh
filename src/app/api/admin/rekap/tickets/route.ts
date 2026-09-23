@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { ticketsQuerySchema } from '@/lib/rekap/schemas';
 import { buildTicketsQuery } from '@/lib/rekap/query';
-import type { RekapTicketRow } from '@/lib/rekap/excel';
+import { mapRawTicketRow } from '@/lib/rekap/rows';
 
 export const dynamic = 'force-dynamic';
 
@@ -70,25 +70,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Gagal memuat rekap' }, { status: 500 });
   }
 
-  const rows: RekapTicketRow[] = (data ?? []).map((r: Record<string, unknown>) => {
-    const oss = r.pelayanan_oss as RekapTicketRow['pelayanan_oss'];
-    const per = r.pelayanan_perizinAN as RekapTicketRow['pelayanan_perizinAN'];
-    const form_type: RekapTicketRow['form_type'] = oss ? 'oss' : per ? 'perizinAN' : null;
-    return {
-      id: r.id as string,
-      nomor_display: r.nomor_display as string,
-      tanggal: r.tanggal as string,
-      waktu_terbit: r.waktu_terbit as string,
-      waktu_mulai_layan: (r.waktu_mulai_layan as string | null) ?? null,
-      waktu_selesai: (r.waktu_selesai as string | null) ?? null,
-      status: r.status as string,
-      kunjungan: r.kunjungan as RekapTicketRow['kunjungan'],
-      petugas: r.petugas as RekapTicketRow['petugas'],
-      form_type,
-      pelayanan_oss: oss ?? null,
-      pelayanan_perizinAN: per ?? null,
-    };
-  });
+  const rows = (data ?? []).map((r: Record<string, unknown>) => mapRawTicketRow(r));
 
   return NextResponse.json({ total: count ?? 0, rows });
 }

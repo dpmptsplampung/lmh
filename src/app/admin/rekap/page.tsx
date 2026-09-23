@@ -22,6 +22,7 @@ import PageHeader from '@/components/layout/PageHeader';
 import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/components/Toast';
 import RekapLayananTable, { type LayananOption } from '@/components/admin/RekapLayananTable';
+import { toCsv } from '@/lib/csv';
 
 interface RekapRow {
   layanan_id: string;
@@ -162,13 +163,19 @@ export default function AdminRekapPage() {
   const handleRollupHariIni = async () => {
     setRolling(true);
     try {
-      const supabase = createClient();
-      const { error } = await supabase.rpc('rollup_rekap_harian', { p_tanggal: todayWIB() });
-      if (error) throw error;
+      // rollup_rekap_harian hanya bisa dieksekusi service_role — panggil
+      // endpoint server, bukan rpc dari browser (yang selalu ditolak RLS).
+      const res = await fetch('/api/admin/rekap/rollup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dari: todayWIB(), sampai: todayWIB() }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? 'Gagal menjalankan rollup');
       toast('Rekap hari ini berhasil diperbarui', 'success');
       await loadData();
-    } catch {
-      toast('Gagal menjalankan rollup', 'error');
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Gagal menjalankan rollup', 'error');
     } finally {
       setRolling(false);
     }
@@ -183,49 +190,124 @@ export default function AdminRekapPage() {
     try {
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
+      const { data: me } = await supabase
+        .from('petugas')
+        .select('role')
+        .eq('auth_user_id', user?.id ?? '')
+        .maybeSingle();
 
       let csv = '';
       let filename = '';
+      let barisCount = 0;
 
       if (activeTab === 'umum') {
-        csv = [
-          'Tanggal,Layanan,Hadir,Selesai,Tidak Terlayani,Rata Durasi (mnt)',
-          ...rows.map((r) => {
-            const nama = r.layanan ? (Array.isArray(r.layanan) ? r.layanan[0]?.nama : r.layanan.nama) : r.layanan_id;
-            return `${r.tanggal},"${nama}",${r.total_hadir},${r.total_selesai},${r.total_tidak_terlayani},${r.rata_durasi_menit != null ? Math.round(r.rata_durasi_menit) : ''}`;
-          }),
-        ].join('\n');
+        csv = toCsv(
+          [
+            { key: 'tanggal', label: 'Tanggal' },
+            { key: 'layanan', label: 'Layanan' },
+            { key: 'hadir', label: 'Hadir' },
+            { key: 'selesai', label: 'Selesai' },
+            { key: 'tidak_terlayani', label: 'Tidak Terlayani' },
+            { key: 'batal', label: 'Batal' },
+            { key: 'rata_durasi', label: 'Rata Durasi (mnt)' },
+          ],
+          rows.map((r) => ({
+            tanggal: r.tanggal,
+            layanan: r.layanan
+              ? (Array.isArray(r.layanan) ? r.layanan[0]?.nama : r.layanan.nama)
+              : r.layanan_id,
+            hadir: r.total_hadir,
+            selesai: r.total_selesai,
+            tidak_terlayani: r.total_tidak_terlayani,
+            batal: r.total_batal,
+            rata_durasi: r.rata_durasi_menit != null ? Math.round(r.rata_durasi_menit) : '',
+          })),
+        );
         filename = `rekap_layanan_${mulai}_${selesai}.csv`;
+        barisCount = rows.length;
       } else if (activeTab === 'oss') {
-        csv = [
-          'Tanggal,Nomor Tiket,Nama Pemohon,No HP,Nama Usaha,Tipe Pelaku Usaha,Status Penanaman Modal,Lokasi Usaha,Skala Usaha,KBLI,Tindakan,Uraian Solusi,Petugas,Status',
-          ...ossRows.map((r) => {
-            return `"${r.tanggal}","${r.nomor_display}","${r.nama_pemohon}","${r.no_hp || ''}","${r.nama_usaha}","${r.tipe_pelaku_usaha || ''}","${r.status_penanaman_modal || ''}","${r.lokasi_usaha || ''}","${r.skala_usaha || ''}","${r.sektor_usaha_kbli || ''}","${r.tindak_lanjut}","${(r.uraian_solusi || '').replace(/"/g, '""')}","${r.nama_petugas}","${r.status_draft}"`;
-          }),
-        ].join('\n');
+        csv = toCsv(
+          [
+            { key: 'tanggal', label: 'Tanggal' },
+            { key: 'nomor_display', label: 'Nomor Tiket' },
+            { key: 'nama_pemohon', label: 'Nama Pemohon' },
+            { key: 'no_hp', label: 'No HP' },
+            { key: 'nama_usaha', label: 'Nama Usaha' },
+            { key: 'tipe_pelaku_usaha', label: 'Tipe Pelaku Usaha' },
+            { key: 'status_penanaman_modal', label: 'Status Penanaman Modal' },
+            { key: 'lokasi_usaha', label: 'Lokasi Usaha' },
+            { key: 'skala_usaha', label: 'Skala Usaha' },
+            { key: 'sektor_usaha_kbli', label: 'KBLI' },
+            { key: 'tindak_lanjut', label: 'Tindakan' },
+            { key: 'uraian_solusi', label: 'Uraian Solusi' },
+            { key: 'nama_petugas', label: 'Petugas' },
+            { key: 'status_draft', label: 'Status' },
+          ],
+          ossRows.map((r) => ({
+            tanggal: r.tanggal,
+            nomor_display: r.nomor_display,
+            nama_pemohon: r.nama_pemohon,
+            no_hp: r.no_hp ?? '',
+            nama_usaha: r.nama_usaha,
+            tipe_pelaku_usaha: r.tipe_pelaku_usaha ?? '',
+            status_penanaman_modal: r.status_penanaman_modal ?? '',
+            lokasi_usaha: r.lokasi_usaha ?? '',
+            skala_usaha: r.skala_usaha ?? '',
+            sektor_usaha_kbli: r.sektor_usaha_kbli ?? '',
+            tindak_lanjut: r.tindak_lanjut,
+            uraian_solusi: r.uraian_solusi ?? '',
+            nama_petugas: r.nama_petugas,
+            status_draft: r.status_draft,
+          })),
+        );
         filename = `rekap_pelayanan_oss_${mulai}_${selesai}.csv`;
+        barisCount = ossRows.length;
       } else if (activeTab === 'perizinan') {
-        csv = [
-          'Tanggal,Nomor Tiket,Nama Pemohon,No HP,Nama Perusahaan,OPD Teknis,Uraian Permohonan,Tindak Lanjut,Catatan Petugas,Petugas,Status',
-          ...perizinanRows.map((r) => {
-            return `"${r.tanggal}","${r.nomor_display}","${r.nama_pemohon}","${r.no_hp || ''}","${r.nama_perusahaan}","${r.opd_teknis}","${(r.uraian_permohonan || '').replace(/"/g, '""')}","${r.tindak_lanjut}","${(r.catatan_petugas || '').replace(/"/g, '""')}","${r.nama_petugas}","${r.status_draft}"`;
-          }),
-        ].join('\n');
+        csv = toCsv(
+          [
+            { key: 'tanggal', label: 'Tanggal' },
+            { key: 'nomor_display', label: 'Nomor Tiket' },
+            { key: 'nama_pemohon', label: 'Nama Pemohon' },
+            { key: 'no_hp', label: 'No HP' },
+            { key: 'nama_perusahaan', label: 'Nama Perusahaan' },
+            { key: 'opd_teknis', label: 'OPD Teknis' },
+            { key: 'uraian_permohonan', label: 'Uraian Permohonan' },
+            { key: 'tindak_lanjut', label: 'Tindak Lanjut' },
+            { key: 'catatan_petugas', label: 'Catatan Petugas' },
+            { key: 'nama_petugas', label: 'Petugas' },
+            { key: 'status_draft', label: 'Status' },
+          ],
+          perizinanRows.map((r) => ({
+            tanggal: r.tanggal,
+            nomor_display: r.nomor_display,
+            nama_pemohon: r.nama_pemohon,
+            no_hp: r.no_hp ?? '',
+            nama_perusahaan: r.nama_perusahaan,
+            opd_teknis: r.opd_teknis,
+            uraian_permohonan: r.uraian_permohonan ?? '',
+            tindak_lanjut: r.tindak_lanjut,
+            catatan_petugas: r.catatan_petugas ?? '',
+            nama_petugas: r.nama_petugas,
+            status_draft: r.status_draft,
+          })),
+        );
         filename = `rekap_pelayanan_perizinan_${mulai}_${selesai}.csv`;
+        barisCount = perizinanRows.length;
       }
 
       // RPT-06: Catat ekspor data ke audit_log
-      if (user) {
+      if (user && me) {
         await supabase.from('audit_log').insert({
           actor_id: user.id,
-          actor_role: 'admin',
+          actor_role: me.role,
           aksi: 'export_csv',
           entitas: `rekap_${activeTab}`,
-          detail: { mulai, selesai, baris_count: activeTab === 'umum' ? rows.length : activeTab === 'oss' ? ossRows.length : perizinanRows.length },
+          detail: { mulai, selesai, baris_count: barisCount },
         });
       }
 
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      // BOM agar Excel membaca UTF-8 dengan benar.
+      const blob = new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8;' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
       a.download = filename;
