@@ -35,12 +35,11 @@ export default function LayarAntrianPage() {
     const supabase = createClient();
 
     const channel = supabase
-      // WP-22: subscribe to tiket_antrean changes; v_antrian_loket now reads from it.
-      // visit writes still propagate via trg_visit_dual_write, so either table works.
-      .channel('layar_antrian_tiket_changes')
+      // Kanal siaran publik dari trigger DB — anon tidak bisa postgres_changes.
+      .channel('antrean:publik')
       .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'tiket_antrean' },
+        'broadcast',
+        { event: '*' },
         () => { void fetchLokets(); },
       );
 
@@ -53,10 +52,10 @@ export default function LayarAntrianPage() {
       if (!cancelled) setLoading(false);
     })();
 
-    // T-8: Polling fallback every 30s — layar di lobby tanpa pengawasan
+    // T-8: Polling cadangan 15 dtk — layar di lobi tanpa pengawasan
     pollTimer = setInterval(() => {
       void fetchLokets();
-    }, 30_000);
+    }, 15_000);
 
     return () => {
       cancelled = true;

@@ -49,12 +49,14 @@ export default function AdminPengaduanPage() {
   const [tab, setTab] = useState<'layanan' | 'integritas'>('layanan');
   const [userRole, setUserRole] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [page, setPage] = useState(0);
+  const [total, setTotal] = useState(0);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`/api/admin/pengaduan?jalur=${tab}`);
+      const res = await fetch(`/api/admin/pengaduan?jalur=${tab}&page=${page}&page_size=50`);
       const json = await res.json();
       if (!res.ok) {
         setError(json.error ?? 'Gagal memuat');
@@ -62,12 +64,13 @@ export default function AdminPengaduanPage() {
         return;
       }
       setRows(json.rows ?? []);
+      setTotal(json.total ?? 0);
     } catch {
       setError('Gangguan jaringan.');
     } finally {
       setLoading(false);
     }
-  }, [tab]);
+  }, [tab, page]);
 
   const loadRole = useCallback(async () => {
     try {
@@ -92,6 +95,8 @@ export default function AdminPengaduanPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
   }, [load]);
+
+  const totalPages = Math.max(1, Math.ceil(total / 50));
 
   const ubahStatus = async (id: string, status: string) => {
     const res = await fetch('/api/admin/pengaduan', {
@@ -130,6 +135,29 @@ export default function AdminPengaduanPage() {
       </div>
 
       {error && <p style={{ color: 'var(--color-danger-600, #dc2626)' }}>{error}</p>}
+      {totalPages > 1 && (
+        <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', margin: 'var(--space-2) 0' }}>
+          <button
+            type="button"
+            className="btn btn--secondary btn--sm"
+            disabled={page === 0}
+            onClick={() => setPage((p) => Math.max(0, p - 1))}
+          >
+            Sebelumnya
+          </button>
+          <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-neutral-500)' }}>
+            Halaman {page + 1} dari {totalPages} ({total} pengaduan)
+          </span>
+          <button
+            type="button"
+            className="btn btn--secondary btn--sm"
+            disabled={page >= totalPages - 1}
+            onClick={() => setPage((p) => p + 1)}
+          >
+            Berikutnya
+          </button>
+        </div>
+      )}
       {loading ? (
         <Loader2 className="spin" />
       ) : rows.length === 0 ? (

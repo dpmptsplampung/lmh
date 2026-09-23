@@ -85,8 +85,10 @@ export default function LayarTokenPage({
     const supabase = createClient();
 
     const channel = supabase
-      .channel('layar_token_' + token)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tiket_antrean' },
+      // Kanal siaran publik dari trigger DB (postgres_changes menghormati RLS;
+      // anon tidak boleh SELECT tiket_antrean).
+      .channel('antrean:publik')
+      .on('broadcast', { event: '*' },
         () => { void fetchData(); })
       .subscribe();
 
@@ -97,8 +99,8 @@ export default function LayarTokenPage({
       if (!cancelled) setLoading(false);
     })();
 
-    // Polling fallback every 30s (DSP-03)
-    const poll = setInterval(() => { void fetchData(); }, 30_000);
+    // Polling cadangan 15 dtk — layar tanpa pengawasan
+    const poll = setInterval(() => { void fetchData(); }, 15_000);
 
     return () => {
       cancelled = true;

@@ -146,7 +146,7 @@ describe('I2 EstimasiAntrean component: smoke tests', () => {
     expect(screen.getByText(/Belum ada data antrean|Tidak ada loket/i)).toBeInTheDocument();
   });
 
-  it('subscribes to Supabase Realtime on the visit table', async () => {
+  it('berlangganan kanal siaran publik antrean (bukan visit yang tak terbaca anon)', async () => {
     const mock = buildMockSupabase([]);
     render(<EstimasiAntrean />);
 
@@ -154,8 +154,8 @@ describe('I2 EstimasiAntrean component: smoke tests', () => {
       expect(mock.channel).toHaveBeenCalled();
     });
     expect(mock._channelApi.on).toHaveBeenCalledWith(
-      'postgres_changes',
-      expect.objectContaining({ event: '*', schema: 'public', table: 'visit' }),
+      'broadcast',
+      expect.objectContaining({ event: '*' }),
       expect.any(Function),
     );
     expect(mock._channelApi.subscribe).toHaveBeenCalled();

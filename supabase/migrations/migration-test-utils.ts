@@ -53,6 +53,7 @@ export const FORWARD_MIGRATION_FILES = [
   '202608310003_absensi_foto_fo.sql',
   '202609020001_estimasi_hari_libur.sql',
   '202609230002_faq_fts.sql',
+  '202609230003_antrean_realtime.sql',
 ] as const;
 
 export function listMigrationFiles(): string[] {

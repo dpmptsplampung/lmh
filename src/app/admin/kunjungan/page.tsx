@@ -18,6 +18,7 @@ import PageHeader from '@/components/layout/PageHeader';
 import Pagination from '@/components/Pagination';
 import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
+import { useRealtimeRefetch } from '@/lib/hooks/useRealtimeRefetch';
 import { useToast } from '@/components/Toast';
 
 const PAGE_SIZE = 25;
@@ -91,6 +92,10 @@ export default function KunjunganPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadData();
   }, [loadData]);
+
+  // Fase 3: data menyegarkan sendiri via realtime + polling cadangan 30 dtk.
+  useRealtimeRefetch(loadData, { table: 'visit', pollMs: 30_000 });
+
 
   const getTiket = (k: KunjunganRow): TiketData | null => {
     const arr = Array.isArray(k.tiket_antrean) ? k.tiket_antrean : (k.tiket_antrean ? [k.tiket_antrean] : []);

@@ -109,6 +109,8 @@ export default function WalkinWizard({
     setError('');
     try {
       const supabase = createClient();
+      // Idempotensi: klik ganda tombol daftar tidak menghasilkan 2 tiket.
+      const clientRequestId = crypto.randomUUID();
       const { error: insertError } = await supabase.from('visit').insert({
         asal: 'walk_in',
         nama: visitorName.trim(),
@@ -119,6 +121,7 @@ export default function WalkinWizard({
         tujuan: 'loket',
         status: 'menunggu',
         waktu_masuk: new Date().toISOString(),
+        client_request_id: clientRequestId,
       });
       if (insertError) throw insertError;
       setSuccess(true);

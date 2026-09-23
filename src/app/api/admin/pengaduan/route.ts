@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,9 +43,32 @@ export async function GET(request: NextRequest) {
     query = query.eq('jalur', 'layanan').eq('layanan_id', me.layanan_id);
   }
 
-  const { data, error, count } = await query.limit(100);
+  // Paginasi eksplisit: tanpa .range() PostgREST memotong di 1.000 baris dan
+  // .limit(100) menyembunyikan sisanya tanpa indikasi.
+  const pageParams = z
+    .object({
+      page: z.coerce.number().int().min(0).default(0),
+      page_size: z.coerce.number().int().min(1).max(100).default(50),
+    })
+    .safeParse({
+      page: request.nextUrl.searchParams.get('page') ?? undefined,
+      page_size: request.nextUrl.searchParams.get('page_size') ?? undefined,
+    });
+  if (!pageParams.success) {
+    return NextResponse.json({ error: 'Parameter halaman tidak valid' }, { status: 422 });
+  }
+  const from = pageParams.data.page * pageParams.data.page_size;
+  const { data, error, count } = await query.range(
+    from,
+    from + pageParams.data.page_size - 1,
+  );
   if (error) return NextResponse.json({ error: 'Gagal memuat pengaduan' }, { status: 500 });
-  return NextResponse.json({ total: count ?? 0, rows: data ?? [] });
+  return NextResponse.json({
+    total: count ?? 0,
+    page: pageParams.data.page,
+    page_size: pageParams.data.page_size,
+    rows: data ?? [],
+  });
 }
 
 // Ubah status pengaduan (verifikasi, proses, selesai, dll) — dicatat di riwayat.

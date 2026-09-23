@@ -33,6 +33,7 @@ import {
 import PageHeader from '@/components/layout/PageHeader';
 import WalkinWizard from '@/components/WalkinWizard';
 import { createClient } from '@/lib/supabase/client';
+import { useRealtimeRefetch } from '@/lib/hooks/useRealtimeRefetch';
 import { useToast } from '@/components/Toast';
 import styles from './dashboard.module.css';
 
@@ -240,6 +241,10 @@ export default function AdminDashboard() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadData();
   }, [loadData]);
+
+  // Fase 3: data menyegarkan sendiri via realtime + polling cadangan 30 dtk.
+  useRealtimeRefetch(loadData, { table: 'visit', pollMs: 30_000 });
+
 
   return (
     <>
