@@ -1,48 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
-import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { createClient as createServerClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
-// P0: service-role is only for broadcast after an authorized write.
+// P0: service-role only after an authorized, ownership-checked write.
 // Auth + ownership are enforced explicitly — never trust client-supplied pengirim.
-
-// Broadcast reliably: supabase-js v2 only delivers channel.send() after the
-// channel has joined (SUBSCRIBED). Sending before subscribe drops the message.
-// The SUBSCRIBED wait is bounded by a timeout: broadcast is best-effort, so an
-// unreachable realtime server must never hang the POST response.
-const BROADCAST_JOIN_TIMEOUT_MS = 3000;
-
-export async function broadcastNewMessage(
-  adminClient: SupabaseClient,
-  sesiId: string,
-  message: unknown,
-): Promise<void> {
-  const channel = adminClient.channel(`chat-room-${sesiId}`);
-  try {
-    const joined = new Promise<boolean>((resolve) => {
-      channel.subscribe((status: string) => {
-        if (status === 'SUBSCRIBED') resolve(true);
-      });
-    });
-    const timedOut = new Promise<boolean>((resolve) =>
-      setTimeout(() => resolve(false), BROADCAST_JOIN_TIMEOUT_MS),
-    );
-    const ok = await Promise.race([joined, timedOut]);
-    if (!ok) return; // Realtime unreachable — skip broadcast, don't hang the write.
-    await channel.send({
-      type: 'broadcast',
-      event: 'new_message',
-      payload: { message },
-    });
-  } catch {
-    // Broadcast failure must not fail the write.
-  } finally {
-    try { await channel.unsubscribe(); } catch { /* ignore */ }
-  }
-}
+// Realtime kini disiarkan oleh database (migrasi 202609230001) dan/atau
+// ditarik via polling — bukan per-request dari serverless (rapuh & timeout).
 
 function getServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -69,7 +35,7 @@ type Actor =
   | { kind: 'staff'; role: 'admin' | 'petugas' | 'front_office'; layananId: string | null }
   | { kind: 'pengunjung'; pengunjungId: string };
 
-async function resolveActor(
+export async function resolveActor(
   adminClient: NonNullable<ReturnType<typeof getServiceClient>>,
   authUserId: string,
 ): Promise<Actor | null> {
@@ -97,7 +63,7 @@ async function resolveActor(
   return { kind: 'pengunjung', pengunjungId: pengunjung.id };
 }
 
-function canAccessSesi(
+export function canAccessSesi(
   actor: Actor,
   sesi: { pengunjung_id: string | null; layanan_id: string | null },
 ): boolean {
@@ -218,24 +184,45 @@ export async function POST(request: NextRequest) {
   // Force role — never trust client-supplied pengirim (impersonation vector).
   const pengirim = actor.kind === 'staff' ? 'petugas' : 'pengunjung';
 
-  const { data, error } = await adminClient
-    .from('chat_pesan')
-    .insert({
-      sesi_id: parsed.data.sesi_id,
-      pengirim,
-      isi: parsed.data.isi.trim(),
-      client_uuid: parsed.data.client_uuid ?? null,
-    })
-    .select('id, pengirim, isi, created_at, client_uuid')
-    .single();
+  type InsertError = { code?: string; message: string } | null;
+  let data: Record<string, unknown> | null;
+  let error: InsertError;
+  try {
+    const inserted = await adminClient
+      .from('chat_pesan')
+      .insert({
+        sesi_id: parsed.data.sesi_id,
+        pengirim,
+        isi: parsed.data.isi.trim(),
+        client_uuid: parsed.data.client_uuid ?? null,
+      })
+      .select('id, pengirim, isi, created_at, client_uuid')
+      .single();
+    data = inserted.data as Record<string, unknown> | null;
+    error = inserted.error as InsertError;
+
+    // Idempotensi: retry/klik ganda dengan client_uuid sama dikembalikan
+    // sebagai 200 (bukan baris kedua) berkat indeks unik di migrasi 202609230001.
+    if (error && (error as { code?: string }).code === '23505' && parsed.data.client_uuid) {
+      const existing = await adminClient
+        .from('chat_pesan')
+        .select('id, pengirim, isi, created_at, client_uuid')
+        .eq('sesi_id', parsed.data.sesi_id)
+        .eq('client_uuid', parsed.data.client_uuid)
+        .maybeSingle();
+      if (existing.data) {
+        return NextResponse.json({ message: existing.data, duplicate: true }, { status: 200 });
+      }
+    }
+  } catch (e) {
+    console.error('[api/chat/messages POST] unexpected:', e);
+    return NextResponse.json({ error: 'Failed to insert message' }, { status: 500 });
+  }
 
   if (error) {
     console.error('[api/chat/messages POST] error:', error);
     return NextResponse.json({ error: 'Failed to insert message' }, { status: 500 });
   }
-
-  // Best-effort realtime broadcast for cross-client sync.
-  await broadcastNewMessage(adminClient, parsed.data.sesi_id, data);
 
   return NextResponse.json({ message: data }, { status: 201 });
 }

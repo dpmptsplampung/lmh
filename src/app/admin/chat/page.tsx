@@ -282,11 +282,20 @@ export default function AdminChatPage() {
     // publication/connection hiccups, this keeps the thread fresh (4s).
     const poll = setInterval(() => { loadMessages(); }, 4000);
 
-    // Background broadcast listener (instant sub-50ms sync without polling)
-    const broadcastChannel = supabase
-      .channel(`chat-room-${selectedSession.id}`)
-      .on('broadcast', { event: 'new_message' }, (payload) => {
-        const newMsg = payload.payload.message as Message;
+    // Listener postgres_changes (chat_pesan terpublikasi — migrasi 202609230001):
+    // sinkron instan lintas klien tanpa siaran per-request dari serverless.
+    const pesanChannel = supabase
+      .channel(`chat-pesan-admin-${selectedSession.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'chat_pesan',
+          filter: `sesi_id=eq.${selectedSession.id}`,
+        },
+        (payload) => {
+          const newMsg = payload.new as Message;
         setMessages(prev => {
           // Dedup utama: client_uuid (optimistic vs server). Fallback lama:
           // isi+pengirim untuk pesan tanpa uuid.
@@ -317,7 +326,7 @@ export default function AdminChatPage() {
     return () => {
       active = false;
       clearInterval(poll);
-      supabase.removeChannel(broadcastChannel);
+      supabase.removeChannel(pesanChannel);
     };
   }, [selectedSession, toast]);
 
@@ -385,72 +394,57 @@ export default function AdminChatPage() {
   const handleSelesaikanSesi = async () => {
     if (!selectedSession) return;
     try {
-      const supabase = createClient();
-      const { error: updateErr } = await supabase
-        .from('chat_sesi')
-        .update({ status: 'selesai' })
-        .eq('id', selectedSession.id);
-      if (updateErr) throw updateErr;
+      const res = await fetch('/api/chat/sesi', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sesi_id: selectedSession.id, aksi: 'selesaikan' }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? 'Gagal menyelesaikan sesi');
+      }
+      setSelectedSession((prev) => (prev ? { ...prev, status: 'selesai' } : null));
       toast('Sesi chat diselesaikan', 'success');
     } catch (err) {
-      console.error(err);
-      toast('Gagal menyelesaikan sesi', 'error');
+      toast(err instanceof Error ? err.message : 'Gagal menyelesaikan sesi', 'error');
     }
   };
 
   const handleAmbilAlih = async () => {
     if (!selectedSession) return;
     try {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      let myPetugasId: string | null = null;
-      if (user) {
-        const { data: p } = await supabase
-          .from('petugas').select('id').eq('auth_user_id', user.id).maybeSingle();
-        myPetugasId = p?.id ?? null;
-      }
-
-      const { error: updateErr } = await supabase
-        .from('chat_sesi')
-        .update({ status: 'aktif', ditangani_oleh: myPetugasId })
-        .eq('id', selectedSession.id);
-      if (updateErr) throw updateErr;
-
-      await supabase.from('chat_pesan').insert({
-        sesi_id: selectedSession.id,
-        pengirim: 'bot',
-        isi: '✓ Percakapan ini telah diambil alih oleh petugas loket. Pesan Anda akan dibalas langsung oleh petugas.',
+      const res = await fetch('/api/chat/sesi', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sesi_id: selectedSession.id, aksi: 'takeover' }),
       });
-
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? 'Gagal mengambil alih chat');
+      }
       setSelectedSession((prev) => (prev ? { ...prev, status: 'aktif' } : null));
       toast('Berhasil mengambil alih chat', 'success');
     } catch (err) {
-      console.error(err);
-      toast('Gagal mengambil alih chat', 'error');
+      toast(err instanceof Error ? err.message : 'Gagal mengambil alih chat', 'error');
     }
   };
 
   const handleKembalikanKeBot = async () => {
     if (!selectedSession) return;
     try {
-      const supabase = createClient();
-      const { error: updateErr } = await supabase
-        .from('chat_sesi')
-        .update({ status: 'bot', ditangani_oleh: null })
-        .eq('id', selectedSession.id);
-      if (updateErr) throw updateErr;
-
-      await supabase.from('chat_pesan').insert({
-        sesi_id: selectedSession.id,
-        pengirim: 'bot',
-        isi: '↩ Percakapan dikembalikan ke asisten virtual. Silakan lanjutkan pertanyaan Anda.',
+      const res = await fetch('/api/chat/sesi', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sesi_id: selectedSession.id, aksi: 'kembali_ke_bot' }),
       });
-
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? 'Gagal mengembalikan sesi ke bot');
+      }
       setSelectedSession((prev) => (prev ? { ...prev, status: 'bot' } : null));
       toast('Sesi dikembalikan ke bot', 'success');
     } catch (err) {
-      console.error(err);
-      toast('Gagal mengembalikan sesi ke bot', 'error');
+      toast(err instanceof Error ? err.message : 'Gagal mengembalikan sesi ke bot', 'error');
     }
   };
 

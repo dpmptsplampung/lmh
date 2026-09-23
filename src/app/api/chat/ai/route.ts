@@ -6,7 +6,6 @@ import { getGenerativeClient, getChatModel, getEmbeddingModel, buildRagContext, 
 import { normalizeQuestion } from '@/lib/chat/normalize';
 import { generateWithFallback } from '@/lib/llm/registry';
 import { redactPii, detectPromptInjection } from '@/lib/pii';
-import { broadcastNewMessage } from '../messages/route';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -322,7 +321,7 @@ export async function POST(request: NextRequest) {
     isi: jawaban,
     sumber_faq_id: isExactMatch && faqMatches.length > 0 ? faqMatches[0].id : null,
   };
-  const { data: botMsg, error: botInsertErr } = await adminClient
+  const { error: botInsertErr } = await adminClient
     .from('chat_pesan')
     .insert(botPengirim)
     .select('id, pengirim, isi, created_at')
@@ -330,9 +329,9 @@ export async function POST(request: NextRequest) {
 
   if (botInsertErr) {
     console.error('[api/chat/ai] gagal menyimpan pesan bot:', botInsertErr);
-  } else {
-    await broadcastNewMessage(adminClient, sesi_id, botMsg);
   }
+  // Penyiaran realtime kini dari trigger DB / polling — lihat migrasi
+  // 202609230001; tidak ada siaran per-request dari serverless.
 
   if (eskalasi) {
     const { error: statusErr } = await adminClient

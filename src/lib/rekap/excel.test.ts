@@ -27,7 +27,7 @@ const baseRow: RekapTicketRow = {
     uraian_solusi: 'Solusi X',
     catatan_internal: null,
   } as RekapTicketRow['pelayanan_oss'],
-  pelayanan_perizinAN: null,
+  pelayanan_perizinan: null,
 };
 
 describe('buildRekapWorkbook', () => {
@@ -63,5 +63,31 @@ describe('buildRekapWorkbook', () => {
     await wb.xlsx.load(buf as unknown as ExcelJS.Buffer);
     const ws = wb.getWorksheet('Rekap Layanan') ?? wb.worksheets[0];
     expect(ws!.rowCount).toBe(1); // only header
+  });
+
+  it('mengisi kolom [Perizinan] untuk tiket perizinan (regresi kolom kosong)', async () => {
+    const rowPerizinan: RekapTicketRow = {
+      ...baseRow,
+      form_type: 'perizinan',
+      pelayanan_oss: null,
+      pelayanan_perizinan: {
+        id: 'pz-1',
+        nama_pemohon: 'Siti',
+        nama_perusahaan: 'CV Maju Bersama',
+        opd_teknis: 'DPMPTSP',
+        uraian_permohonan: 'Izin usaha industri',
+        tindak_lanjut: 'diproses',
+        catatan_petugas: null,
+      },
+    };
+    const buf = (await buildRekapWorkbook([rowPerizinan])) as unknown as Buffer;
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buf as unknown as ExcelJS.Buffer);
+    const ws = wb.getWorksheet('Rekap Layanan') ?? wb.worksheets[0];
+    const dataRow = ws!.getRow(2);
+    const values: string[] = [];
+    dataRow.eachCell((cell) => values.push(String(cell.value)));
+    expect(values).toContain('CV Maju Bersama');
+    expect(values).toContain('DPMPTSP');
   });
 });

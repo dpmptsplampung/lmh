@@ -28,6 +28,7 @@ import WalkinWizard from '@/components/WalkinWizard';
 import PelayananWizardModal from '@/components/admin/PelayananWizardModal';
 import { isLayananPendataan } from '@/lib/pelayanan';
 import { createClient } from '@/lib/supabase/client';
+import { toCsv } from '@/lib/csv';
 import { useToast } from '@/components/Toast';
 
 const PAGE_SIZE = 25;
@@ -314,20 +315,32 @@ export default function AntrianPage() {
 
   const handleDownloadAbsenCsv = () => {
     const layananLabel = layananNamaHeader ?? 'semua_layanan';
-    const rows_csv = [
-      'Tanggal,Nama Petugas,Jam Masuk,Jam Pulang,Status',
-      ...rekapAbsensi.map(a => {
-        const jamMasuk = a.jam_masuk
-          ? new Date(a.jam_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
-          : '';
-        const jamPulang = a.jam_pulang
-          ? new Date(a.jam_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
-          : '';
-        const statusLabel = a.status === 'approved' ? 'Disetujui' : a.status === 'pending' ? 'Menunggu' : a.status === 'ditolak' ? 'Ditolak' : 'Alpa';
-        return `"${a.tanggal}","${a.petugas?.nama ?? ''}","${jamMasuk}","${jamPulang}","${statusLabel}"`;
-      }),
-    ].join('\n');
-    const blob = new Blob([rows_csv], { type: 'text/csv;charset=utf-8;' });
+    const rowsAbsen = rekapAbsensi.map((a) => ({
+      tanggal: a.tanggal,
+      nama_petugas: a.petugas?.nama ?? '',
+      jam_masuk: a.jam_masuk
+        ? new Date(a.jam_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+        : '',
+      jam_pulang: a.jam_pulang
+        ? new Date(a.jam_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+        : '',
+      status:
+        a.status === 'approved' ? 'Disetujui'
+        : a.status === 'pending' ? 'Menunggu'
+        : a.status === 'ditolak' ? 'Ditolak'
+        : 'Alpa',
+    }));
+    const rows_csv = toCsv(
+      [
+        { key: 'tanggal', label: 'Tanggal' },
+        { key: 'nama_petugas', label: 'Nama Petugas' },
+        { key: 'jam_masuk', label: 'Jam Masuk' },
+        { key: 'jam_pulang', label: 'Jam Pulang' },
+        { key: 'status', label: 'Status' },
+      ],
+      rowsAbsen,
+    );
+    const blob = new Blob([`\ufeff${rows_csv}`], { type: 'text/csv;charset=utf-8;' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = `daftar_hadir_${layananLabel.replace(/\s+/g, '_')}_${tanggal}.csv`;

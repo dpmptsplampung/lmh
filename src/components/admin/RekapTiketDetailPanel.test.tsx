@@ -28,7 +28,7 @@ const baseRow: RekapTicketRow = {
     uraian_solusi: 'Solusi X',
     catatan_internal: null,
   },
-  pelayanan_perizinAN: null,
+  pelayanan_perizinan: null,
 };
 
 describe('RekapTiketDetailPanel', () => {
@@ -68,7 +68,7 @@ describe('RekapTiketDetailPanel', () => {
   });
 
   it('shows "tidak ada pendataan" when no form_type', () => {
-    const row: RekapTicketRow = { ...baseRow, form_type: null, pelayanan_oss: null, pelayanan_perizinAN: null };
+    const row: RekapTicketRow = { ...baseRow, form_type: null, pelayanan_oss: null, pelayanan_perizinan: null };
     render(<RekapTiketDetailPanel tiket={row} onClose={() => {}} />);
     expect(screen.getByText(/tidak memiliki data pendataan/i)).toBeInTheDocument();
   });

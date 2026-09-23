@@ -35,9 +35,9 @@ export interface RekapTicketRow {
   status: string;
   kunjungan: { nama: string; asal: string; qr_token: string | null } | null;
   petugas: { nama: string } | null;
-  form_type: 'oss' | 'perizinAN' | null;
+  form_type: 'oss' | 'perizinan' | null;
   pelayanan_oss: RekapPelayananOss | null;
-  pelayanan_perizinAN: RekapPelayananPerizin | null;
+  pelayanan_perizinan: RekapPelayananPerizin | null;
 }
 
 const COLUMNS: Array<{ header: string; key: keyof RekapTicketRow | string; width: number }> = [
@@ -69,8 +69,9 @@ const COLUMNS: Array<{ header: string; key: keyof RekapTicketRow | string; width
 ];
 
 function rowToCells(r: RekapTicketRow): Record<string, string | number | null> {
-  const o = r.pelayanan_oss;
-  const p = r.pelayanan_perizinAN;
+  // PostgREST kadang mengembalikan embed sebagai array; normalisasi defensif.
+  const o = asSingle(r.pelayanan_oss);
+  const p = asSingle(r.pelayanan_perizinan);
   const durasi = hitungDurasiMenit(r.waktu_mulai_layan, r.waktu_selesai);
   return {
     tanggal: formatTanggalId(r.tanggal),
@@ -99,6 +100,11 @@ function rowToCells(r: RekapTicketRow): Record<string, string | number | null> {
     per_tindak: p?.tindak_lanjut ?? '',
     per_catatan: p?.catatan_petugas ?? '',
   };
+}
+
+export function asSingle<T>(v: T | T[] | null | undefined): T | null {
+  if (Array.isArray(v)) return v[0] ?? null;
+  return (v as T | null | undefined) ?? null;
 }
 
 export async function buildRekapWorkbook(rows: RekapTicketRow[]): Promise<ExcelJS.Buffer> {

@@ -37,7 +37,7 @@ export default function RekapTiketDetailPanel({ tiket, onClose }: Props) {
 
   const durasi = hitungDurasiMenit(tiket.waktu_mulai_layan, tiket.waktu_selesai);
   const o = tiket.pelayanan_oss;
-  const p = tiket.pelayanan_perizinAN;
+  const p = tiket.pelayanan_perizinan;
 
   return (
     <>
@@ -137,7 +137,7 @@ export default function RekapTiketDetailPanel({ tiket, onClose }: Props) {
               </section>
             )}
 
-            {tiket.form_type === 'perizinAN' && p && (
+            {tiket.form_type === 'perizinan' && p && (
               <section>
                 <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 700, marginBottom: 'var(--space-3)', display: 'flex', alignItems: 'center', gap: 6 }}>
                   <FileText size={14} /> Pendataan PerizinAN
