@@ -103,10 +103,12 @@ export default function EstimasiAntrean() {
     // not unsubscribe() (leaves it registered; next mount gets it back and .on() throws)
     const supabase = createClient();
     const channel = supabase
-      .channel('visit_changes')
+      // tiket_antrean tidak terbaca anon (RLS) — pakai kanal siaran publik
+      // dari trigger DB (migrasi 202609230003, tanpa PII).
+      .channel('antrean:publik')
       .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'visit' },
+        'broadcast',
+        { event: '*' },
         () => { void fetchLokets(); },
       );
 

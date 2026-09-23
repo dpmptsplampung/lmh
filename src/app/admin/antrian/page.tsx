@@ -30,6 +30,7 @@ import { isLayananPendataan } from '@/lib/pelayanan';
 import { createClient } from '@/lib/supabase/client';
 import { toCsv } from '@/lib/csv';
 import { useToast } from '@/components/Toast';
+import { useRealtimeRefetch } from '@/lib/hooks/useRealtimeRefetch';
 
 const PAGE_SIZE = 25;
 
@@ -93,6 +94,10 @@ export default function AntrianPage() {
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tanggal, page]);
+
+  // Fase 3: antrean menyegarkan sendiri saat ada perubahan tiket
+  // (postgres_changes — staff RLS) + polling cadangan 30 dtk.
+  useRealtimeRefetch(fetchData, { table: 'tiket_antrean', pollMs: 30_000 });
 
   async function fetchData() {
     try {

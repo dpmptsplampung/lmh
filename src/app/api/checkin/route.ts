@@ -13,6 +13,8 @@ const bodySchema = z.object({
   pengunjung_id: z.uuid().optional(),
   consent_given: z.boolean().optional(),
   versi_kebijakan: z.string().min(1).max(32).optional(),
+  // Idempotensi: uuid dari klien (klik ganda / replay offline → 1 kunjungan).
+  client_request_id: z.string().uuid().optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -82,6 +84,9 @@ export async function POST(request: NextRequest) {
       tujuan: 'loket',
       status: 'menunggu',
       waktu_masuk: new Date().toISOString(),
+      ...(parsed.data.client_request_id
+        ? { client_request_id: parsed.data.client_request_id }
+        : {}),
       // Bind to authenticated profile when present so SKM/notif/history attach.
       ...(resolvedPengunjungId ? { pengunjung_id: resolvedPengunjungId } : {}),
     })
@@ -89,6 +94,23 @@ export async function POST(request: NextRequest) {
     .maybeSingle();
 
   if (insertError) {
+    // Duplikat idempotensi: kembalikan kunjungan yang sudah ada (200).
+    if (
+      (insertError as { code?: string }).code === '23505' &&
+      parsed.data.client_request_id
+    ) {
+      const { data: existing } = await supabase
+        .from('visit')
+        .select('id')
+        .eq('client_request_id', parsed.data.client_request_id)
+        .maybeSingle();
+      if (existing) {
+        return NextResponse.json(
+          { id: existing.id, message: 'Check-in sudah tercatat', duplicate: true },
+          { status: 200 },
+        );
+      }
+    }
     console.error('[checkin] gagal menyimpan visit', insertError);
     return NextResponse.json(
       { error: 'Gagal menyimpan. Silakan coba lagi.' },

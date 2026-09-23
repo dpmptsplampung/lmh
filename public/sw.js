@@ -3,7 +3,7 @@
 // Framework-agnostic (no build step) — served from /public.
 // Registered by root layout (offline) + /me/notifications (push).
 
-const CACHE_VERSION = 'lmh-v1';
+const CACHE_VERSION = 'lmh-v2';
 const PRECACHE_URLS = [
   '/',
   '/offline',
@@ -75,6 +75,10 @@ self.addEventListener('fetch', (event) => {
 
   // Health probes must always reach the runtime and must never use offline data.
   if (url.pathname.startsWith('/api/health/')) return;
+
+  // API dinamis (antrean, rekap, pengaduan, dsb.) tidak boleh tersaji dari
+  // cache stale-while-revalidate — data lama membuat petugas melihat antrean beku.
+  if (url.pathname.startsWith('/api/')) return;
 
   // Static assets: cache-first
   if (url.pathname.startsWith('/_next/static/') || url.pathname === '/logo.png' || url.pathname === '/manifest.json') {
