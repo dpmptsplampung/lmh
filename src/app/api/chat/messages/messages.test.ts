@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
-import { broadcastNewMessage } from './route';
 
 const serverState = {
   callerId: 'auth-user-1' as string | null,
@@ -21,7 +20,7 @@ vi.mock('@supabase/supabase-js', () => ({
   createClient: vi.fn(),
 }));
 
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
 
 function buildRequest(url: string, opts: { method?: string; body?: unknown } = {}) {
   const reqOpts: RequestInit = { method: opts.method || 'GET' };
@@ -51,6 +50,7 @@ function mockAdmin(opts: {
   } | null;
   messages?: Array<{ id: string; pengirim: string; isi: string; created_at: string }>;
   insertResult?: { data: unknown; error: unknown };
+  existing?: { id: string; pengirim: string; isi: string; created_at: string; client_uuid: string | null } | null;
 }) {
   const sesi = opts.sesi === undefined
     ? {
@@ -99,6 +99,10 @@ function mockAdmin(opts: {
           eq: vi.fn().mockReturnThis(),
           order: vi.fn().mockResolvedValue({
             data: opts.messages ?? [],
+            error: null,
+          }),
+          maybeSingle: vi.fn().mockResolvedValue({
+            data: opts.existing ?? null,
             error: null,
           }),
           insert: vi.fn().mockReturnThis(),
@@ -318,15 +322,29 @@ describe('/api/chat/messages API Route', () => {
     expect(res.status).toBe(403);
   });
 
-  it('broadcasts new_message after subscribing to the session channel', async () => {
-    const order: string[] = [];
-    const fakeChannel = {
-      subscribe: (cb?: (s: string) => void) => { order.push('subscribe'); cb?.('SUBSCRIBED'); return Promise.resolve('SUBSCRIBED'); },
-      send: async () => { order.push('send'); return 'ok'; },
-      unsubscribe: async () => { order.push('unsubscribe'); return 'ok'; },
+  it('POST retry dengan client_uuid sama mengembalikan pesan lama (200, duplicate)', async () => {
+    const existing = {
+      id: 'm-existing',
+      pengirim: 'pengunjung',
+      isi: 'Halo',
+      created_at: '2026-07-23T10:01:00Z',
+      client_uuid: '7ef5bde1-42ab-4c7d-9ef1-1a2b3c4d5e6f',
     };
-    const adminClient = { channel: () => fakeChannel } as unknown as SupabaseClient;
-    await broadcastNewMessage(adminClient, 'sesi-1', { id: 'm1' });
-    expect(order).toEqual(['subscribe', 'send', 'unsubscribe']);
+    mockAdmin({
+      actor: { kind: 'pengunjung', id: PENGUNJUNG },
+      insertResult: { data: null, error: { code: '23505', message: 'duplicate key' } },
+      existing,
+    });
+    const { POST } = await import('./route');
+    const res = await POST(
+      buildRequest('http://localhost/api/chat/messages', {
+        method: 'POST',
+        body: { sesi_id: SESI, isi: 'Halo', client_uuid: '7ef5bde1-42ab-4c7d-9ef1-1a2b3c4d5e6f' },
+      }),
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.duplicate).toBe(true);
+    expect(body.message.id).toBe('m-existing');
   });
 });

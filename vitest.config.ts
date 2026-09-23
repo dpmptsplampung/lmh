@@ -31,7 +31,7 @@ export default defineConfig({
         "**/*.d.ts",
         // Rolldown 1.1.5 (remap v8) gagal mem-parse berkas ini saat coverage
         // ("Expected `from` but found `{`" pada `import type`). Wrapper tipis
-        // service-role tanpa test sendiri - dikecualikan agar gate coverage
+        // service-role tanpa test sendiri — dikecualikan agar gate coverage
         // tidak gagal palsu. Lepas bila rolldown diperbarui.
         "src/lib/supabase/service.ts",
       ],

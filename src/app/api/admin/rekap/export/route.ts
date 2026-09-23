@@ -1,14 +1,13 @@
 import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { exportQuerySchema } from '@/lib/rekap/schemas';
-import { buildTicketsQuery } from '@/lib/rekap/query';
+import { fetchAllTicketRows } from '@/lib/rekap/exportAll';
 import { buildRekapWorkbook, type RekapTicketRow } from '@/lib/rekap/excel';
+import { mapRawTicketRow } from '@/lib/rekap/rows';
 import { slugify } from '@/lib/rekap/format';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-
-const MAX_ROWS = 50000;
 
 /** Encode as RFC 6266 filename* (UTF-8) — aman untuk nama layanan non-ASCII. */
 function contentDisposition(filename: string): string {
@@ -89,48 +88,25 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const baseQuery = buildTicketsQuery(supabase, {
-    layananId: effectiveLayananId,
-    q: parsed.data.q,
-    dari: parsed.data.dari,
-    sampai: parsed.data.sampai,
-    from: 0,
-    to: MAX_ROWS - 1,
-  });
-
-  const { data, error } = await baseQuery;
-  if (error) {
+  let fetched: Awaited<ReturnType<typeof fetchAllTicketRows>>;
+  try {
+    fetched = await fetchAllTicketRows(supabase, {
+      layananId: effectiveLayananId,
+      q: parsed.data.q,
+      dari: parsed.data.dari,
+      sampai: parsed.data.sampai,
+    });
+  } catch (e) {
+    console.error('[api/admin/rekap/export] gagal memuat tiket:', e);
     return new Response(JSON.stringify({ error: 'Gagal memuat rekap' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
     });
   }
 
-  const rows: RekapTicketRow[] = (data ?? []).map((r: Record<string, unknown>) => {
-    const oss = r.pelayanan_oss as RekapTicketRow['pelayanan_oss'];
-    const per = r.pelayanan_perizinAN as RekapTicketRow['pelayanan_perizinAN'];
-    const form_type: RekapTicketRow['form_type'] = oss
-      ? 'oss'
-      : per
-        ? 'perizinAN'
-        : null;
-    return {
-      id: r.id as string,
-      nomor_display: r.nomor_display as string,
-      tanggal: r.tanggal as string,
-      waktu_terbit: r.waktu_terbit as string,
-      waktu_mulai_layan: (r.waktu_mulai_layan as string | null) ?? null,
-      waktu_selesai: (r.waktu_selesai as string | null) ?? null,
-      status: r.status as string,
-      kunjungan: r.kunjungan as RekapTicketRow['kunjungan'],
-      petugas: r.petugas as RekapTicketRow['petugas'],
-      form_type,
-      pelayanan_oss: oss ?? null,
-      pelayanan_perizinAN: per ?? null,
-    };
-  });
+  const rows: RekapTicketRow[] = fetched.rows.map(mapRawTicketRow);
 
-  const truncated = rows.length >= MAX_ROWS;
+  const truncated = fetched.truncated;
   const buf = await buildRekapWorkbook(rows);
 
   await supabase.from('audit_log').insert({

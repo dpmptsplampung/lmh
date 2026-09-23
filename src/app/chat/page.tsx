@@ -35,6 +35,7 @@ interface Message {
   pengirim: 'pengunjung' | 'bot' | 'petugas';
   isi: string;
   waktu: string;
+  client_uuid?: string | null;
 }
 
 interface FAQ {
@@ -320,11 +321,26 @@ export default function PublicChatPage() {
       })
       .catch(() => {});
 
-    // Subscribe to new messages in this session via Broadcast
-    const broadcastChannel = supabase
-      .channel(`chat-room-${sesiId}`)
-      .on('broadcast', { event: 'new_message' }, (payload) => {
-        const newMsg = payload.payload.message;
+    // Pesan baru via postgres_changes (chat_pesan terpublikasi — migrasi
+    // 202609230001). Baris dari DB membawa id server + client_uuid.
+    const pesanChannel = supabase
+      .channel(`chat-pesan-pengunjung-${sesiId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'chat_pesan',
+          filter: `sesi_id=eq.${sesiId}`,
+        },
+        (payload) => {
+          const newMsg = payload.new as {
+            id: string;
+            pengirim: 'pengunjung' | 'bot' | 'petugas';
+            isi: string;
+            created_at: string;
+            client_uuid?: string | null;
+          };
         setMessages((prev) => {
           // Dedup: id server → client_uuid (optimistic) → fallback isi+pengirim.
           if (prev.some((m) => m.id === newMsg.id)) return prev;
@@ -403,8 +419,42 @@ export default function PublicChatPage() {
       )
       .subscribe();
 
+    // Polling cadangan 5 dtk: bila realtime terhenti (publikasi/koneksi),
+    // utas tetap segar tanpa "harus refresh".
+    const poll = setInterval(() => {
+      fetch(`/api/chat/messages?sesi_id=${sesiId}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (!data?.messages) return;
+          setMessages((prev) => {
+            const server = (data.messages as Array<{
+              id: string;
+              pengirim: 'pengunjung' | 'bot' | 'petugas';
+              isi: string;
+              created_at: string;
+              client_uuid?: string | null;
+            }>).map((m) => ({
+              id: m.id,
+              pengirim: m.pengirim,
+              isi: m.isi,
+              client_uuid: m.client_uuid ?? null,
+              waktu: new Date(m.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+            }));
+            const serverUuids = new Set(server.map((m) => m.client_uuid).filter(Boolean));
+            // Simpan pesan optimistic (id user-<uuid>) yang belum dikonfirmasi.
+            const pending = prev.filter(
+              (m) => m.id.startsWith('user-') && !serverUuids.has(m.id.slice(5)),
+            );
+            return [...server, ...pending];
+          });
+          if (data.status) setSesiStatus(data.status);
+        })
+        .catch(() => {});
+    }, 5000);
+
     return () => {
-      supabase.removeChannel(broadcastChannel);
+      clearInterval(poll);
+      supabase.removeChannel(pesanChannel);
       supabase.removeChannel(sessionChannel);
     };
   }, [sesiId]);
@@ -578,14 +628,9 @@ export default function PublicChatPage() {
           };
           setMessages((prev) => [...prev, limitMsg]);
         } else if (data && data.jawaban) {
-          // Server sudah menyimpan pesan bot + broadcast; tampilkan saja.
-          const botReply: Message = {
-            id: `bot-reply-${msgIdCounter++}`,
-            pengirim: 'bot',
-            isi: data.jawaban,
-            waktu: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-          };
-          setMessages((prev) => [...prev, botReply]);
+          // Server sudah menyimpan balasan bot ke chat_pesan. JANGAN menambah
+          // salinan lokal — INSERT event / polling yang menyajikannya, kalau
+          // tidak balasan bot selalu tampil dobel.
           if (data.eskalasi) {
             // Server (route /api/chat/ai) juga sudah mengubah status sesi.
             setSesiStatus('eskalasi');
