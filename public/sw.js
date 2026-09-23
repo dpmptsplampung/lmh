@@ -3,7 +3,7 @@
 // Framework-agnostic (no build step) — served from /public.
 // Registered by root layout (offline) + /me/notifications (push).
 
-const CACHE_VERSION = 'lmh-v1';
+const CACHE_VERSION = 'lmh-v2';
 const PRECACHE_URLS = [
   '/',
   '/offline',
