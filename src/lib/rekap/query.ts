@@ -25,8 +25,8 @@ export function buildTicketsQuery(
       waktu_terbit, waktu_mulai_layan, waktu_selesai,
       kunjungan:kunjungan_id(nama, asal, qr_token),
       petugas:dilayani_oleh(nama),
-      pelayanan_oss:tiket_id(*),
-      pelayanan_perizinan:tiket_id(*)
+      pelayanan_oss(*),
+      pelayanan_perizinan(*)
     `,
       { count: 'exact' },
     )

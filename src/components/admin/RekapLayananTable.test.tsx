@@ -30,7 +30,7 @@ const sampleRow = {
   petugas: { nama: 'Andi' },
   form_type: null,
   pelayanan_oss: null,
-  pelayanan_perizinAN: null,
+  pelayanan_perizinan: null,
 };
 
 describe('RekapLayananTable', () => {
