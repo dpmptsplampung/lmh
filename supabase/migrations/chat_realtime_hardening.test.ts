@@ -19,6 +19,7 @@ describe('chat realtime hardening migration', () => {
   });
 
   it('membuat indeks unik (sesi_id, client_uuid) untuk idempotensi', () => {
+    expect(sql).toMatch(/DELETE FROM public\.chat_pesan a\s+WHERE EXISTS/);
     expect(sql).toMatch(/CREATE UNIQUE INDEX IF NOT EXISTS uq_chat_pesan_sesi_client_uuid/i);
     expect(sql).toMatch(/WHERE client_uuid IS NOT NULL/i);
   });

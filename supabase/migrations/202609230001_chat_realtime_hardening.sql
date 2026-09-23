@@ -30,6 +30,19 @@ ALTER TABLE public.chat_pesan REPLICA IDENTITY FULL;
 -- 2. Idempotensi pesan: satu baris per (sesi_id, client_uuid). Retry jaringan /
 --    klik ganda tidak lagi menghasilkan pesan dobel di database.
 DROP INDEX IF EXISTS idx_chat_pesan_client_uuid;
+
+-- Dedup dulu: pesan dobel lama (pra-migrasi) akan menggagalkan CREATE UNIQUE
+-- INDEX ("could not create unique index" — terverifikasi di Postgres 16 uji).
+-- Simpan baris pertama (id terkecil) per (sesi_id, client_uuid).
+DELETE FROM public.chat_pesan a
+WHERE EXISTS (
+  SELECT 1 FROM public.chat_pesan b
+  WHERE b.sesi_id = a.sesi_id
+    AND b.client_uuid = a.client_uuid
+    AND a.client_uuid IS NOT NULL
+    AND b.id < a.id
+);
+
 CREATE UNIQUE INDEX IF NOT EXISTS uq_chat_pesan_sesi_client_uuid
   ON public.chat_pesan(sesi_id, client_uuid)
   WHERE client_uuid IS NOT NULL;
