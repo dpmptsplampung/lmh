@@ -35,6 +35,7 @@ const geminiState = {
 };
 
 vi.mock('@/lib/gemini', () => ({
+  getSystemPrompt: (layananNama?: string) => `sys-${layananNama ?? 'default'}`,
   getGenerativeClient: () => {
     if (!geminiState.apiKeySet) return null;
     return {

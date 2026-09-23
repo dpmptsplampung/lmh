@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createServiceClient, type SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { createClient as createServerClient } from '@/lib/supabase/server';
-import { getGenerativeClient, getChatModel, getEmbeddingModel, buildRagContext, type FaqMatch } from '@/lib/gemini';
+import { getGenerativeClient, getChatModel, getEmbeddingModel, buildRagContext, getSystemPrompt, type FaqMatch } from '@/lib/gemini';
+import { normalizeQuestion } from '@/lib/chat/normalize';
+import { generateWithFallback } from '@/lib/llm/registry';
 import { redactPii, detectPromptInjection } from '@/lib/pii';
 
 export const dynamic = 'force-dynamic';
@@ -21,6 +23,10 @@ const SIMILARITY_THRESHOLD = 0.7;
 const RATE_LIMIT_ACTION = 'chat_ai_call';
 const RATE_LIMIT_MAX = 10;
 const RATE_LIMIT_WINDOW_SEC = 60;
+
+// Ambang tingkat 0 (pencocok FAQ deterministik). Bisa dioverride via env
+// BOT_FTS_THRESHOLD tanpa deploy.
+const FTS_THRESHOLD = Number(process.env.BOT_FTS_THRESHOLD) || 0.15;
 
 function getServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -132,6 +138,41 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // 2d. TINGKAT 0 — pencocok FAQ deterministik di Postgres (tanpa LLM).
+  // Bot tetap menjawab pertanyaan yang tercantum di FAQ resmi walau kuota
+  // seluruh penyedia LLM habis. Jawaban dikirim VERBATIM (teks resmi).
+  try {
+    const { data: ftsMatches, error: ftsErr } = await adminClient.rpc('match_faq_teks', {
+      p_layanan: layanan_id,
+      p_q: normalizeQuestion(pertanyaan),
+      p_limit: 3,
+    });
+    if (!ftsErr && Array.isArray(ftsMatches) && ftsMatches.length > 0) {
+      const top = ftsMatches[0] as { id: string; pertanyaan: string; jawaban: string; skor: number };
+      if (top.skor >= FTS_THRESHOLD) {
+        await logAiCall(adminClient, sesi_id, pertanyaan, [top.id], top.jawaban, null, false, 'fts_exact');
+        const { error: ftsInsertErr } = await adminClient.from('chat_pesan').insert({
+          sesi_id,
+          pengirim: 'bot',
+          isi: top.jawaban,
+          sumber_faq_id: top.id,
+        });
+        if (ftsInsertErr) {
+          console.error('[api/chat/ai] gagal menyimpan balasan tingkat-0:', ftsInsertErr);
+        }
+        return NextResponse.json({
+          jawaban: top.jawaban,
+          sumber: [{ id: top.id, pertanyaan: top.pertanyaan }],
+          eskalasi: false,
+          reason: 'fts_exact',
+        });
+      }
+    }
+  } catch (e) {
+    // RPC belum terpasang / DB gangguan → lanjut jalur lama, jangan gagalkan chat.
+    console.warn('[api/chat/ai] tingkat-0 dilewati:', e instanceof Error ? e.message : e);
+  }
+
   // 3. Embed the user's question
   let queryEmbedding: number[];
   try {
@@ -212,35 +253,29 @@ export async function POST(request: NextRequest) {
     context = `[INFORMASI LAYANAN]: Jawablah pertanyaan pengunjung secara ramah dan membantu berdasar pedoman layanan publik DPMPTSP Provinsi Lampung. Sampaikan bahwa petugas kami juga siap membantu bila dibutuhkan informasi lanjutan.\n\n${partialContext}`;
   }
 
-  // 7. Call Gemini with system prompt
+  // 7. Generasi jawaban: jalur utama (SDK Gemini) → penyedia cadangan
+  //    OpenAI-compatible (env LLM_CHAT_PROVIDERS) → jawaban jujur templat.
   let jawaban = '';
-  try {
-    const chatModel = getChatModel(genAI, layananNama);
-    const result = await chatModel.generateContent([
-      context,
-      pertanyaan,
-    ]);
-    jawaban = redactPii(result.response.text());
-    if (!jawaban || jawaban.trim().length === 0) {
-      if (isExactMatch) {
-        await logAiCall(
-          adminClient,
-          sesi_id,
-          pertanyaan,
-          faqIds,
-          null,
-          topSim,
-          true,
-          'ai_error',
-        );
-        return NextResponse.json(
-          { jawaban: null, eskalasi: true, reason: 'ai_error' },
-          { status: 200 },
-        );
-      }
-      jawaban = 'Terima kasih atas pertanyaan Anda. Petugas loket kami siap membantu Anda lebih lanjut.';
-    }
-  } catch {
+  const reply = await generateWithFallback(
+    genAI
+      ? {
+          name: 'gemini',
+          generate: async () => {
+            const chatModel = getChatModel(genAI, layananNama);
+            const result = await chatModel.generateContent([context, pertanyaan]);
+            return result.response.text();
+          },
+        }
+      : null,
+    {
+      system: getSystemPrompt(layananNama),
+      prompt: `${context}\n\nPertanyaan pengunjung: ${pertanyaan}`,
+    },
+  );
+  if (reply && reply.text && reply.text.trim().length > 0) {
+    jawaban = redactPii(reply.text);
+  }
+  if (!jawaban || jawaban.trim().length === 0) {
     if (isExactMatch) {
       await logAiCall(
         adminClient,
@@ -254,10 +289,12 @@ export async function POST(request: NextRequest) {
       );
       return NextResponse.json(
         { jawaban: null, eskalasi: true, reason: 'ai_error' },
-        { status: 200 },
-      );
-    }
-    jawaban = 'Terima kasih atas pertanyaan Anda. Mohon tunggu sebentar, petugas kami siap membantu Anda.';
+      { status: 200 },
+    );
+  }
+    jawaban = reply === null
+      ? 'Terima kasih atas pertanyaan Anda. Mohon tunggu sebentar, petugas kami siap membantu Anda.'
+      : 'Terima kasih atas pertanyaan Anda. Petugas loket kami siap membantu Anda lebih lanjut.';
   }
 
   // 8. INSERT to chat_ai_log for audit.
