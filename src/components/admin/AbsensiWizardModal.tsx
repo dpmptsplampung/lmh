@@ -177,6 +177,16 @@ export default function AbsensiWizardModal({
   };
 
   // ── Finalisasi ────────────────────────────────────────────────────────────
+  // decode data:image/...;base64 tanpa fetch (CSP connect-src memblok fetch ke data: URL)
+  const dataUrlToBlob = (dataUrl: string): Blob => {
+    const [meta, b64] = dataUrl.split(',');
+    const mime = meta.match(/data:(.*?);/)?.[1] ?? 'image/jpeg';
+    const bytes = atob(b64);
+    const arr = new Uint8Array(bytes.length);
+    for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+    return new Blob([arr], { type: mime });
+  };
+
   const handleSelesai = async () => {
     if (!w.selectedPetugasId) { toast('Pilih nama petugas terlebih dahulu', 'warning'); return; }
     if (!w.fotoDataUrl) { toast('Foto wajib diambil', 'warning'); return; }
@@ -185,7 +195,8 @@ export default function AbsensiWizardModal({
       setSubmitting(true);
       const supabase = createClient();
 
-      const blob = await (await fetch(w.fotoDataUrl)).blob();
+      // fetch(dataURL) diblokir CSP connect-src di production — decode manual.
+      const blob = dataUrlToBlob(w.fotoDataUrl);
       const filePath = `${todayWIB()}/${w.selectedPetugasId}_${Date.now()}.jpg`;
       const { error: uploadError } = await supabase.storage
         .from('absensi-foto')

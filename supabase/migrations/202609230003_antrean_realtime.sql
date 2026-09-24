@@ -38,9 +38,8 @@ BEGIN
     'nomor_display', NEW.nomor_display,
     'status', NEW.status
   );
-  PERFORM realtime.broadcast_changes(
-    'antrean:publik'::text, TG_OP::text, TG_OP::text,
-    TG_TABLE_NAME::text, TG_TABLE_SCHEMA::text, v_payload, NULL::jsonb
+  PERFORM realtime.send(
+    v_payload, TG_OP::text, 'antrean:publik'::text, false
   );
   RETURN NULL;
 END $$;
