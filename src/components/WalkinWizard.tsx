@@ -19,7 +19,7 @@ interface LayananItem {
 
 // Pengelompokan layanan untuk wizard walk-in (berdasarkan nama di tabel layanan)
 const LAYANAN_DPMPTSP = new Set([
-  'Layanan Perizinan DPMPTSP Provinsi Lampung',
+  'Non OSS (SiCantik Lampung)',
   'Helpdesk OSS',
   'Investment Gallery',
   'Matchmaking UMKM',

@@ -114,6 +114,7 @@ export const perizinanPelayananDraftSchema = z.object({
   email: z.string().trim().optional().nullable(),
   keperluan_awal: z.string().trim().optional().nullable(),
   nama_perusahaan: z.string().trim().optional().nullable(),
+  lokasi_usaha: z.string().trim().optional().nullable(),
   opd_teknis: z.string().trim().optional().nullable(),
   uraian_permohonan: z.string().trim().optional().nullable(),
   tindak_lanjut: z.string().trim().optional().nullable(),

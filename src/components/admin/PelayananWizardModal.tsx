@@ -75,6 +75,7 @@ export default function PelayananWizardModal({
   const [uraianPermohonan, setUraianPermohonan] = useState('');
   const [tindakLanjutPerizinan, setTindakLanjutPerizinan] = useState<string>('');
   const [catatanPetugas, setCatatanPetugas] = useState('');
+  const [lokasiUsahaPerizinan, setLokasiUsahaPerizinan] = useState('');
 
   const isLocked = initialData?.is_locked ?? false;
   const formType: FormPelayananType | null = initialData?.form_type ?? null;
@@ -131,6 +132,7 @@ export default function PelayananWizardModal({
         setUraianPermohonan('');
         setTindakLanjutPerizinan('');
         setCatatanPetugas('');
+        setLokasiUsahaPerizinan('');
 
         // Prapopulasi form OSS (hanya jika data sudah ada)
         if (data.form_type === 'oss' && data.data_oss) {
@@ -152,6 +154,7 @@ export default function PelayananWizardModal({
           setUraianPermohonan(data.data_perizinan.uraian_permohonan || '');
           setTindakLanjutPerizinan(data.data_perizinan.tindak_lanjut || '');
           setCatatanPetugas(data.data_perizinan.catatan_petugas || '');
+          setLokasiUsahaPerizinan(data.data_perizinan.lokasi_usaha || '');
         }
 
         setStep(1);
@@ -214,6 +217,7 @@ export default function PelayananWizardModal({
               uraian_permohonan: uraianPermohonan,
               tindak_lanjut: tindakLanjutPerizinan,
               catatan_petugas: catatanPetugas,
+              lokasi_usaha: lokasiUsahaPerizinan || null,
             };
 
       const res = await fetch(`/api/admin/pelayanan/${tiketId}`, {
@@ -256,6 +260,7 @@ export default function PelayananWizardModal({
     uraianPermohonan,
     tindakLanjutPerizinan,
     catatanPetugas,
+    lokasiUsahaPerizinan,
   ]);
 
   const triggerAutosave = useCallback(() => {
@@ -323,6 +328,7 @@ export default function PelayananWizardModal({
               uraian_permohonan: uraianPermohonan.trim(),
               tindak_lanjut: tindakLanjutPerizinan.trim(),
               catatan_petugas: catatanPetugas.trim() || null,
+              lokasi_usaha: lokasiUsahaPerizinan.trim() || null,
             };
 
       const res = await fetch(`/api/admin/pelayanan/${tiketId}`, {
@@ -774,6 +780,21 @@ export default function PelayananWizardModal({
                         {validationErrors.uraian_permohonan}
                       </p>
                     )}
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Lokasi Usaha (Opsional)</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={lokasiUsahaPerizinan}
+                      disabled={isLocked}
+                      onChange={(e) => {
+                        setLokasiUsahaPerizinan(e.target.value);
+                        triggerAutosave();
+                      }}
+                      placeholder="Kabupaten/Kota atau wilayah lokasi kegiatan usaha (mis. Bandar Lampung)"
+                    />
                   </div>
                 </div>
               )}

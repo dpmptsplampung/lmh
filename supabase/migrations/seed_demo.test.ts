@@ -25,7 +25,7 @@ describe('production and demo seed separation', () => {
     expect(serviceValues).toHaveLength(1);
     const tuples = serviceValues[0]!.match(/\('[^']+',\s*'(?:konsultatif|mitra|modul_publik)',\s*(?:true|false)\)/gi) ?? [];
     expect(tuples).toHaveLength(10);
-    for (const name of ['Helpdesk OSS', 'Sertifikasi Halal', 'BPJS Kesehatan', 'Bank Lampung', 'Matchmaking UMKM', 'Investment Gallery', 'BALMON', 'Sertifikasi Mutu Keamanan Hasil Perikanan', 'Layanan Jasa Industri', 'Layanan Perizinan DPMPTSP Provinsi Lampung']) {
+    for (const name of ['Helpdesk OSS', 'Sertifikasi Halal', 'BPJS Kesehatan', 'Bank Lampung', 'Matchmaking UMKM', 'Investment Gallery', 'BALMON', 'Sertifikasi Mutu Keamanan Hasil Perikanan', 'Layanan Jasa Industri', 'Non OSS (SiCantik Lampung)']) {
       expect(seed).toContain(name);
     }
   });

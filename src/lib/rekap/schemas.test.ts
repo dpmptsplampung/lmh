@@ -55,6 +55,13 @@ describe('rekap schemas', () => {
   });
 
   describe('exportQuerySchema', () => {
+    it('defaults tab to layanan and accepts only supported export tabs', () => {
+      expect(exportQuerySchema.parse({}).tab).toBe('layanan');
+      expect(exportQuerySchema.parse({ tab: 'umum' }).tab).toBe('umum');
+      expect(exportQuerySchema.parse({ tab: 'oss' }).tab).toBe('oss');
+      expect(exportQuerySchema.parse({ tab: 'perizinan' }).tab).toBe('perizinan');
+      expect(exportQuerySchema.safeParse({ tab: 'lain' }).success).toBe(false);
+    });
     it('rejects page and page_size', () => {
       const r = exportQuerySchema.safeParse({ page: '0', page_size: '25' });
       expect(r.success).toBe(false);

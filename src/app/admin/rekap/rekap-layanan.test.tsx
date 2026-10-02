@@ -74,7 +74,12 @@ vi.mock('@/lib/supabase/client', () => ({
 }));
 
 vi.mock('@/components/layout/PageHeader', () => ({
-  default: ({ title }: { title: string }) => <h1>{title}</h1>,
+  default: ({ title, children }: { title: string; children?: React.ReactNode }) => (
+    <div>
+      <h1>{title}</h1>
+      {children}
+    </div>
+  ),
 }));
 
 // Mock the page's `fetch('/api/admin/rekap/layanan-options')` call on mount.
@@ -98,7 +103,17 @@ describe('Admin rekap page - new tab', () => {
     await new Promise((r) => setTimeout(r, 50));
     expect(screen.getByRole('button', { name: /rekap umum harian/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /pendataan helpdesk oss/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /pendataan perizinan dpmptsp/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /non oss \(sicantik lampung\)/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /rekap per layanan/i })).toBeInTheDocument();
+  });
+
+  it('shows a filter bar with Download Excel button per non-layanan tab and no CSV button', async () => {
+    render(<AdminRekapPage />);
+    // Tunggu sampai data termuat & filter-bar muncul (async, bukan sleep fixed).
+    await screen.findByRole('button', { name: /download excel/i });
+    expect(screen.queryByRole('button', { name: /unduh csv/i })).not.toBeInTheDocument();
+    // Input tanggal kini di filter-bar bawah tab, bukan di header.
+    expect(screen.getByLabelText(/dari tanggal/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/sampai tanggal/i)).toBeInTheDocument();
   });
 });

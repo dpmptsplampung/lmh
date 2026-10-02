@@ -97,6 +97,27 @@ describe('GET /api/admin/rekap/export', () => {
     expect(buf[1]).toBe(0x4b);
   });
 
+  it('returns the workbook when audit_log insert fails', async () => {
+    const mock = buildMock({ role: 'admin', layananId: null, rows: [] });
+    const auditError = { message: 'RLS denied' };
+    const auditInsert = vi.fn().mockResolvedValue({ error: auditError });
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const defaultFrom = mock.from.getMockImplementation()!;
+    mock.from.mockImplementation((table: string) =>
+      table === 'audit_log' ? { insert: auditInsert } : defaultFrom(table),
+    );
+    (createClient as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(mock);
+
+    const res = await GET(new NextRequest('http://localhost/api/admin/rekap/export'));
+
+    expect(res.status).toBe(200);
+    expect(auditInsert).toHaveBeenCalledOnce();
+    expect(errorSpy).toHaveBeenCalledWith(
+      '[api/admin/rekap/export] audit_log insert gagal:',
+      auditError,
+    );
+  });
+
   it('returns 403 for petugas accessing other layanan', async () => {
     const mock = buildMock({ role: 'petugas', layananId: 'svc-oss', rows: [] });
     (createClient as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
@@ -107,4 +128,25 @@ describe('GET /api/admin/rekap/export', () => {
     const res = await GET(new NextRequest(url));
     expect(res.status).toBe(403);
   });
+
+  it.each([
+    ['umum', 'rekap_harian_layanan'],
+    ['oss', 'v_rekap_pelayanan_oss'],
+    ['perizinan', 'v_rekap_pelayanan_perizinan'],
+  ] as const)('uses %s recap source for tab=%s', async (tab, source) => {
+    const mock = buildMock({ role: 'petugas', layananId: 'svc-oss', rows: [] });
+    (createClient as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(mock);
+    const res = await GET(new NextRequest('http://localhost/api/admin/rekap/export?tab=' + tab + '&dari=2026-09-01&sampai=2026-09-30'));
+    expect(res.status).toBe(200);
+    expect(mock.from).toHaveBeenCalledWith(source);
+  });
+
+  it('defaults tab to layanan and retains ticket export behavior', async () => {
+    const mock = buildMock({ role: 'petugas', layananId: 'svc-oss', rows: [] });
+    (createClient as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(mock);
+    const res = await GET(new NextRequest('http://localhost/api/admin/rekap/export?dari=2026-09-01&sampai=2026-09-30'));
+    expect(res.status).toBe(200);
+    expect(mock.from).toHaveBeenCalledWith('tiket_antrean');
+  });
+
 });

@@ -55,6 +55,7 @@ export const FORWARD_MIGRATION_FILES = [
   '202609230001_chat_realtime_hardening.sql',
   '202609230002_faq_fts.sql',
   '202609230003_antrean_realtime.sql',
+  '202610010001_non_oss_rename.sql',
 ] as const;
 
 export function listMigrationFiles(): string[] {

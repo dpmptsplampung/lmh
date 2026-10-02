@@ -224,4 +224,56 @@ describe('API Route /api/admin/pelayanan/[tiketId]', () => {
     );
     expect(insertOss).not.toHaveBeenCalled();
   });
+
+  it('forwards lokasi_usaha when finalizing Non OSS so the replacement RPC can persist it', async () => {
+    const serverMod = await import('@/lib/supabase/server');
+    const createClient = serverMod.createClient as unknown as ReturnType<typeof vi.fn>;
+    const rpcFinalize = vi.fn().mockResolvedValue({
+      data: { ok: true, is_locked: true, waktu_selesai: '2026-10-01T03:00:00Z' },
+      error: null,
+    });
+    createClient.mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'u-petugas' } }, error: null }) },
+      from: vi.fn((table: string) => {
+        if (table === 'petugas') return mockPetugas();
+        if (table === 'tiket_antrean') return mockTiket({ layanan: { nama: 'Non OSS (SiCantik Lampung)' } });
+        if (table === 'pelayanan_perizinan') return { select: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ maybeSingle: vi.fn().mockResolvedValue({ data: null }) }) }) };
+        return {};
+      }),
+      rpc: rpcFinalize,
+    });
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest('POST', {
+      nama_pemohon: 'Siti', nama_perusahaan: 'PT Maju', lokasi_usaha: 'Lampung Selatan',
+      opd_teknis: 'DPMPTSP', uraian_permohonan: 'Izin usaha', tindak_lanjut: 'Diproses',
+    }), { params: Promise.resolve({ tiketId: 't1' }) });
+    expect(res.status).toBe(200);
+    expect(rpcFinalize).toHaveBeenCalledWith('finalize_pelayanan', expect.objectContaining({
+      p_form_type: 'perizinan',
+      p_payload: expect.objectContaining({ lokasi_usaha: 'Lampung Selatan' }),
+    }));
+  });
+
+  it('persists lokasi_usaha in a perizinan draft PATCH payload', async () => {
+    const serverMod = await import('@/lib/supabase/server');
+    const createClient = serverMod.createClient as unknown as ReturnType<typeof vi.fn>;
+    const updatePerizinan = vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) });
+    createClient.mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'u-petugas' } }, error: null }) },
+      from: vi.fn((table: string) => {
+        if (table === 'petugas') return mockPetugas();
+        if (table === 'tiket_antrean') return mockTiket({ layanan: { nama: 'Non OSS (SiCantik Lampung)' } });
+        if (table === 'pelayanan_perizinan') return {
+          select: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ maybeSingle: vi.fn().mockResolvedValue({ data: { tiket_id: 't1', is_locked: false } }) }) }),
+          update: updatePerizinan,
+        };
+        return {};
+      }),
+    });
+    const { PATCH } = await import('./route');
+    const res = await PATCH(buildRequest('PATCH', { nama_pemohon: 'Siti', lokasi_usaha: 'Lampung Selatan' }), { params: Promise.resolve({ tiketId: 't1' }) });
+    expect(res.status).toBe(200);
+    expect(updatePerizinan).toHaveBeenCalledWith(expect.objectContaining({ lokasi_usaha: 'Lampung Selatan' }));
+  });
+
 });

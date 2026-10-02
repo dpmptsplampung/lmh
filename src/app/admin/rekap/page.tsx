@@ -4,7 +4,7 @@
 // Mendukung:
 // 1. Rekap Agregat Harian Layanan (rekap_harian_layanan)
 // 2. Rekap Pelayanan Helpdesk OSS (v_rekap_pelayanan_oss)
-// 3. Rekap Pelayanan Perizinan DPMPTSP (v_rekap_pelayanan_perizinan)
+// 3. Rekap Pelayanan Non OSS / SiCantik Lampung (v_rekap_pelayanan_perizinan)
 
 import { useState, useEffect, useCallback } from 'react';
 import { todayWIB, addDaysWIB } from '@/lib/time';
@@ -17,12 +17,12 @@ import {
   XCircle,
   Building2,
   FileCheck,
+  Loader2,
 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/components/Toast';
 import RekapLayananTable, { type LayananOption } from '@/components/admin/RekapLayananTable';
-import { toCsv } from '@/lib/csv';
 
 interface RekapRow {
   layanan_id: string;
@@ -86,6 +86,7 @@ export default function AdminRekapPage() {
   const [perizinanRows, setPerizinanRows] = useState<RekapPerizinanRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [rolling, setRolling] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [mulai, setMulai] = useState(addDaysWIB(-6));
   const [selesai, setSelesai] = useState(todayWIB());
   // Role-scoped options for the Layanan tab (lifted from RekapLayananTable so the
@@ -181,140 +182,37 @@ export default function AdminRekapPage() {
     }
   };
 
-  const handleExportCsv = async () => {
-    // Layanan tab has its own Download Excel button inside RekapLayananTable
-    if (activeTab === 'layanan') {
-      return;
-    }
-
+  // Unduh Excel per tab via endpoint server (audit_log dicatat di sisi server).
+  // Tab 'layanan' punya tombol Download Excel sendiri di dalam RekapLayananTable.
+  const handleExportExcel = async (tab: 'umum' | 'oss' | 'perizinan') => {
+    setExporting(true);
     try {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      const { data: me } = await supabase
-        .from('petugas')
-        .select('role')
-        .eq('auth_user_id', user?.id ?? '')
-        .maybeSingle();
-
-      let csv = '';
-      let filename = '';
-      let barisCount = 0;
-
-      if (activeTab === 'umum') {
-        csv = toCsv(
-          [
-            { key: 'tanggal', label: 'Tanggal' },
-            { key: 'layanan', label: 'Layanan' },
-            { key: 'hadir', label: 'Hadir' },
-            { key: 'selesai', label: 'Selesai' },
-            { key: 'tidak_terlayani', label: 'Tidak Terlayani' },
-            { key: 'batal', label: 'Batal' },
-            { key: 'rata_durasi', label: 'Rata Durasi (mnt)' },
-          ],
-          rows.map((r) => ({
-            tanggal: r.tanggal,
-            layanan: r.layanan
-              ? (Array.isArray(r.layanan) ? r.layanan[0]?.nama : r.layanan.nama)
-              : r.layanan_id,
-            hadir: r.total_hadir,
-            selesai: r.total_selesai,
-            tidak_terlayani: r.total_tidak_terlayani,
-            batal: r.total_batal,
-            rata_durasi: r.rata_durasi_menit != null ? Math.round(r.rata_durasi_menit) : '',
-          })),
-        );
-        filename = `rekap_layanan_${mulai}_${selesai}.csv`;
-        barisCount = rows.length;
-      } else if (activeTab === 'oss') {
-        csv = toCsv(
-          [
-            { key: 'tanggal', label: 'Tanggal' },
-            { key: 'nomor_display', label: 'Nomor Tiket' },
-            { key: 'nama_pemohon', label: 'Nama Pemohon' },
-            { key: 'no_hp', label: 'No HP' },
-            { key: 'nama_usaha', label: 'Nama Usaha' },
-            { key: 'tipe_pelaku_usaha', label: 'Tipe Pelaku Usaha' },
-            { key: 'status_penanaman_modal', label: 'Status Penanaman Modal' },
-            { key: 'lokasi_usaha', label: 'Lokasi Usaha' },
-            { key: 'skala_usaha', label: 'Skala Usaha' },
-            { key: 'sektor_usaha_kbli', label: 'KBLI' },
-            { key: 'tindak_lanjut', label: 'Tindakan' },
-            { key: 'uraian_solusi', label: 'Uraian Solusi' },
-            { key: 'nama_petugas', label: 'Petugas' },
-            { key: 'status_draft', label: 'Status' },
-          ],
-          ossRows.map((r) => ({
-            tanggal: r.tanggal,
-            nomor_display: r.nomor_display,
-            nama_pemohon: r.nama_pemohon,
-            no_hp: r.no_hp ?? '',
-            nama_usaha: r.nama_usaha,
-            tipe_pelaku_usaha: r.tipe_pelaku_usaha ?? '',
-            status_penanaman_modal: r.status_penanaman_modal ?? '',
-            lokasi_usaha: r.lokasi_usaha ?? '',
-            skala_usaha: r.skala_usaha ?? '',
-            sektor_usaha_kbli: r.sektor_usaha_kbli ?? '',
-            tindak_lanjut: r.tindak_lanjut,
-            uraian_solusi: r.uraian_solusi ?? '',
-            nama_petugas: r.nama_petugas,
-            status_draft: r.status_draft,
-          })),
-        );
-        filename = `rekap_pelayanan_oss_${mulai}_${selesai}.csv`;
-        barisCount = ossRows.length;
-      } else if (activeTab === 'perizinan') {
-        csv = toCsv(
-          [
-            { key: 'tanggal', label: 'Tanggal' },
-            { key: 'nomor_display', label: 'Nomor Tiket' },
-            { key: 'nama_pemohon', label: 'Nama Pemohon' },
-            { key: 'no_hp', label: 'No HP' },
-            { key: 'nama_perusahaan', label: 'Nama Perusahaan' },
-            { key: 'opd_teknis', label: 'OPD Teknis' },
-            { key: 'uraian_permohonan', label: 'Uraian Permohonan' },
-            { key: 'tindak_lanjut', label: 'Tindak Lanjut' },
-            { key: 'catatan_petugas', label: 'Catatan Petugas' },
-            { key: 'nama_petugas', label: 'Petugas' },
-            { key: 'status_draft', label: 'Status' },
-          ],
-          perizinanRows.map((r) => ({
-            tanggal: r.tanggal,
-            nomor_display: r.nomor_display,
-            nama_pemohon: r.nama_pemohon,
-            no_hp: r.no_hp ?? '',
-            nama_perusahaan: r.nama_perusahaan,
-            opd_teknis: r.opd_teknis,
-            uraian_permohonan: r.uraian_permohonan ?? '',
-            tindak_lanjut: r.tindak_lanjut,
-            catatan_petugas: r.catatan_petugas ?? '',
-            nama_petugas: r.nama_petugas,
-            status_draft: r.status_draft,
-          })),
-        );
-        filename = `rekap_pelayanan_perizinan_${mulai}_${selesai}.csv`;
-        barisCount = perizinanRows.length;
+      const params = new URLSearchParams({ tab, dari: mulai, sampai: selesai });
+      const res = await fetch(`/api/admin/rekap/export?${params}`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        toast(body.error ?? 'Gagal mengekspor Excel', 'error');
+        return;
       }
-
-      // RPT-06: Catat ekspor data ke audit_log
-      if (user && me) {
-        await supabase.from('audit_log').insert({
-          actor_id: user.id,
-          actor_role: me.role,
-          aksi: 'export_csv',
-          entitas: `rekap_${activeTab}`,
-          detail: { mulai, selesai, baris_count: barisCount },
-        });
-      }
-
-      // BOM agar Excel membaca UTF-8 dengan benar.
-      const blob = new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8;' });
+      const blob = await res.blob();
+      const dispo = res.headers.get('Content-Disposition') ?? '';
+      const match = /filename="?([^";]+)"?/.exec(dispo);
+      const filename = match?.[1] ?? `rekap_${tab}_${mulai}_${selesai}.xlsx`;
+      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
+      a.href = url;
       a.download = filename;
       a.click();
-      toast('Berkas CSV berhasil diunduh', 'success');
+      URL.revokeObjectURL(url);
+      if (res.headers.get('X-Rekap-Truncated') === 'true') {
+        toast('Data terpotong ke 50.000 baris. Persempit rentang tanggal.', 'warning');
+      } else {
+        toast('Berkas Excel berhasil diunduh', 'success');
+      }
     } catch {
-      toast('Gagal mengekspor CSV', 'error');
+      toast('Gagal mengekspor Excel', 'error');
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -329,21 +227,6 @@ export default function AdminRekapPage() {
         description="Laporan agregat harian dan data substantif konsultasi perizinan"
       >
         <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center', flexWrap: 'wrap' }}>
-          <input
-            type="date"
-            className="form-input"
-            value={mulai}
-            onChange={(e) => setMulai(e.target.value)}
-            style={{ width: 140, fontSize: 'var(--text-sm)', padding: 'var(--space-2) var(--space-3)' }}
-          />
-          <span style={{ color: 'var(--text-tertiary)' }}>s.d.</span>
-          <input
-            type="date"
-            className="form-input"
-            value={selesai}
-            onChange={(e) => setSelesai(e.target.value)}
-            style={{ width: 140, fontSize: 'var(--text-sm)', padding: 'var(--space-2) var(--space-3)' }}
-          />
           <button className="btn btn--ghost btn--sm" onClick={loadData}>
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} /> Refresh
           </button>
@@ -384,7 +267,7 @@ export default function AdminRekapPage() {
             onClick={() => setActiveTab('perizinan')}
             style={{ borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }}
           >
-            <FileCheck size={16} /> Pendataan Perizinan DPMPTSP
+            <FileCheck size={16} /> Non OSS (SiCantik Lampung)
           </button>
           <button
             className={`btn ${activeTab === 'layanan' ? 'btn--primary' : 'btn--ghost'} btn--sm`}
@@ -394,6 +277,53 @@ export default function AdminRekapPage() {
             <BarChart2 size={16} /> Rekap Per Layanan
           </button>
         </div>
+
+        {/* Filter bar per tab (umum/oss/perizinan): rentang tanggal + Download Excel di kanan.
+            Tab layanan punya filter sendiri di dalam RekapLayananTable. */}
+        {activeTab !== 'layanan' && (
+          <div
+            style={{
+              display: 'flex',
+              gap: 'var(--space-3)',
+              alignItems: 'flex-end',
+              flexWrap: 'wrap',
+              marginBottom: 'var(--space-6)',
+            }}
+          >
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label" htmlFor="rekap-dari">Dari tanggal</label>
+              <input
+                id="rekap-dari"
+                type="date"
+                className="form-input"
+                value={mulai}
+                onChange={(e) => setMulai(e.target.value)}
+                style={{ width: 160 }}
+              />
+            </div>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label" htmlFor="rekap-sampai">Sampai tanggal</label>
+              <input
+                id="rekap-sampai"
+                type="date"
+                className="form-input"
+                value={selesai}
+                onChange={(e) => setSelesai(e.target.value)}
+                style={{ width: 160 }}
+              />
+            </div>
+            <div style={{ marginLeft: 'auto' }}>
+              <button
+                className="btn btn--primary btn--sm"
+                onClick={() => handleExportExcel(activeTab as 'umum' | 'oss' | 'perizinan')}
+                disabled={loading || exporting}
+              >
+                {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                {' '}Download Excel
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* TAB 1: REKAP UMUM */}
         {activeTab === 'umum' && (
@@ -571,7 +501,7 @@ export default function AdminRekapPage() {
           </div>
         )}
 
-        {/* TAB 3: PENDATAAN PERIZINAN DPMPTSP */}
+        {/* TAB 3: PENDATAAN NON OSS (SICANTIK LAMPUNG) */}
         {activeTab === 'perizinan' && (
           <div className="table-wrapper">
             {loading ? (
@@ -601,7 +531,7 @@ export default function AdminRekapPage() {
                   {perizinanRows.length === 0 ? (
                     <tr>
                       <td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: 'var(--space-8)' }}>
-                        Belum ada data pendataan Perizinan DPMPTSP pada rentang tanggal ini.
+                        Belum ada data pendataan Non OSS (SiCantik Lampung) pada rentang tanggal ini.
                       </td>
                     </tr>
                   ) : (
@@ -653,21 +583,6 @@ export default function AdminRekapPage() {
             initialLayananId={initialLayananId}
             options={layananOptions}
           />
-        )}
-
-        {/* Download CSV Button */}
-        {activeTab !== 'layanan' && (
-          <div style={{ marginTop: 'var(--space-4)', display: 'flex', justifyContent: 'flex-end' }}>
-            <button className="btn btn--ghost btn--sm" onClick={handleExportCsv}>
-              <Download size={14} /> Unduh CSV (
-              {activeTab === 'umum'
-                ? 'Rekap Umum'
-                : activeTab === 'oss'
-                ? `OSS - ${ossRows.length} baris`
-                : `Perizinan - ${perizinanRows.length} baris`}
-              )
-            </button>
-          </div>
         )}
       </div>
     </>

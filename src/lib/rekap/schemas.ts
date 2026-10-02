@@ -4,6 +4,7 @@ import { addDaysWIB, todayWIB } from '@/lib/time';
 const uuidSchema = z.string().uuid().optional();
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format tanggal harus YYYY-MM-DD');
 const qSchema = z.string().max(100).default('');
+const exportTabSchema = z.enum(['umum', 'oss', 'perizinan', 'layanan']).default('layanan');
 
 const dateRangeBase = {
   dari: dateSchema.default(() => addDaysWIB(-30)),
@@ -21,6 +22,7 @@ export const ticketsQuerySchema = z.object({
 export const exportQuerySchema = z.object({
   layanan_id: uuidSchema,
   q: qSchema,
+  tab: exportTabSchema,
   ...dateRangeBase,
 }).strict();
 

@@ -7,13 +7,13 @@ import type { FormPelayananType } from '@/lib/types/pelayanan';
 
 /**
  * Menentukan tipe form pendataan dari nama layanan.
- * Layanan yang mengandung "oss" → form OSS, mengandung "perizinan" → form Perizinan.
+ * "Non OSS" harus diperiksa lebih dulu karena juga memuat substring "oss".
  * Selain itu layanan tidak mendukung pendataan teknis.
  */
 export function determineFormType(layananNama: string): FormPelayananType | null {
   const norm = layananNama.toLowerCase();
+  if (norm.includes('non oss') || norm.includes('perizinan')) return 'perizinan';
   if (norm.includes('oss')) return 'oss';
-  if (norm.includes('perizinan')) return 'perizinan';
   return null;
 }
 

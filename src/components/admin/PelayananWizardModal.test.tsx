@@ -73,6 +73,64 @@ describe('PelayananWizardModal component', () => {
     expect(screen.getAllByText(/Lokasi Usaha \(Opsional\)/i).length).toBeGreaterThanOrEqual(1);
   });
 
+  it('form Perizinan mengirim lokasi_usaha pada payload autosave', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        tiket_id: 't-202',
+        legacy_visit_id: 'v-202',
+        nomor_display: 'B-002',
+        layanan_id: 'l-perizinan',
+        layanan_nama: 'Non OSS (SiCantik Lampung)',
+        form_type: 'perizinan',
+        nama_pemohon: 'Siti Rahma',
+        alamat_pemohon: null,
+        no_hp: null,
+        email: null,
+        keperluan_awal: null,
+        status_tiket: 'dilayani',
+        is_locked: false,
+        status_draft: 'belum_diisi',
+        data_perizinan: {
+          nama_perusahaan: 'PT Sinar Lampung',
+          opd_teknis: 'Dinas ESDM',
+          uraian_permohonan: 'Izin galian C',
+          tindak_lanjut: '',
+          catatan_petugas: '',
+        },
+      }),
+    });
+    // PATCH autosave mengembalikan ok.
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ({}) });
+
+    render(<PelayananWizardModal isOpen={true} tiketId="t-202" onClose={vi.fn()} />);
+
+    await screen.findByDisplayValue('Siti Rahma');
+
+    // Step 2: form perizinan punya input Lokasi Usaha.
+    fireEvent.click(screen.getByRole('button', { name: /2\. Data Usaha & Lokasi/i }));
+    const lokasiInput = screen.getByPlaceholderText(/kabupaten\/kota/i);
+    fireEvent.change(lokasiInput, { target: { value: 'Bandar Lampung' } });
+    // Debounce autosave memakai closure render sebelumnya, jadi PATCH pertama
+    // membawa nilai pra-commit. Perubahan kedua memicu PATCH berikutnya yang
+    // membawa lokasi_usaha yang sudah ter-commit (perilaku yang sama berlaku
+    // untuk field OSS lokasiUsaha).
+    fireEvent.change(screen.getByDisplayValue('PT Sinar Lampung'), {
+      target: { value: 'PT Sinar Lampung Jaya' },
+    });
+
+    // Tunggu autosave lalu pastikan ada PATCH yang mengirim lokasi_usaha.
+    await waitFor(
+      () => {
+        const patchBodies = mockFetch.mock.calls
+          .filter((c) => (c[1] as RequestInit | undefined)?.method === 'PATCH')
+          .map((c) => JSON.parse((c[1] as RequestInit).body as string));
+        expect(patchBodies.some((b) => b.lokasi_usaha === 'Bandar Lampung')).toBe(true);
+      },
+      { timeout: 3000 }
+    );
+  });
+
   it('clears pending autosave on unmount so no PATCH fires after the modal is gone', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,

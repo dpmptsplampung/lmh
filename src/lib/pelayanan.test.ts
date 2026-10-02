@@ -13,6 +13,7 @@ describe('determineFormType', () => {
 
   it('mendeteksi layanan Perizinan dari nama', () => {
     expect(determineFormType('Perizinan DPMPTSP')).toBe('perizinan');
+    expect(determineFormType('Non OSS (SiCantik Lampung)')).toBe('perizinan');
   });
 
   it('mengembalikan null untuk layanan lain', () => {

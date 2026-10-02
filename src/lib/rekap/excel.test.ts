@@ -1,7 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import ExcelJS from 'exceljs';
-import { buildRekapWorkbook } from './excel';
-import type { RekapTicketRow } from './excel';
+import { buildRekapWorkbook, type RekapTicketRow } from './excel';
 
 const baseRow: RekapTicketRow = {
   id: 't-1',
@@ -26,68 +25,83 @@ const baseRow: RekapTicketRow = {
     tindak_lanjut: 'disposisi',
     uraian_solusi: 'Solusi X',
     catatan_internal: null,
-  } as RekapTicketRow['pelayanan_oss'],
+  },
   pelayanan_perizinan: null,
 };
 
+async function loadWorkbook(buf: ExcelJS.Buffer) {
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(buf);
+  return wb;
+}
+
 describe('buildRekapWorkbook', () => {
-  it('returns a valid xlsx buffer', async () => {
-    const buf = (await buildRekapWorkbook([baseRow])) as unknown as Buffer;
+  it('returns a valid xlsx buffer for the legacy layanan tab', async () => {
+    const buf = await buildRekapWorkbook('layanan', [baseRow]);
     expect(buf).toBeInstanceOf(Buffer);
-    expect(buf.length).toBeGreaterThan(0);
-    // First 4 bytes of xlsx: PK\x03\x04 (zip magic)
-    expect(buf[0]).toBe(0x50);
-    expect(buf[1]).toBe(0x4b);
-    expect(buf[2]).toBe(0x03);
-    expect(buf[3]).toBe(0x04);
+    expect(Array.from(buf as unknown as Uint8Array).slice(0, 4)).toEqual([0x50, 0x4b, 0x03, 0x04]);
+    const wb = await loadWorkbook(buf);
+    expect(wb.getWorksheet('Rekap Layanan')).toBeDefined();
   });
 
-  it('contains headers including OSS and Perizinan columns', async () => {
-    const buf = (await buildRekapWorkbook([baseRow])) as unknown as Buffer;
-    const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(buf as unknown as ExcelJS.Buffer);
-    const ws = wb.getWorksheet('Rekap Layanan') ?? wb.worksheets[0];
-    expect(ws).toBeDefined();
-    const headerRow = ws!.getRow(1);
-    const headers: string[] = [];
-    headerRow.eachCell((cell) => headers.push(String(cell.value)));
-    expect(headers).toContain('No Antrian');
-    expect(headers).toContain('Nama Pengunjung');
-    expect(headers).toContain('[OSS] Nama Usaha');
-    expect(headers).toContain('[Perizinan] Nama Perusahaan');
-  });
-
-  it('produces empty workbook for empty rows', async () => {
-    const buf = (await buildRekapWorkbook([])) as unknown as Buffer;
-    const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(buf as unknown as ExcelJS.Buffer);
-    const ws = wb.getWorksheet('Rekap Layanan') ?? wb.worksheets[0];
-    expect(ws!.rowCount).toBe(1); // only header
-  });
-
-  it('mengisi kolom [Perizinan] untuk tiket perizinan (regresi kolom kosong)', async () => {
-    const rowPerizinan: RekapTicketRow = {
-      ...baseRow,
-      form_type: 'perizinan',
-      pelayanan_oss: null,
-      pelayanan_perizinan: {
-        id: 'pz-1',
-        nama_pemohon: 'Siti',
-        nama_perusahaan: 'CV Maju Bersama',
-        opd_teknis: 'DPMPTSP',
-        uraian_permohonan: 'Izin usaha industri',
-        tindak_lanjut: 'diproses',
-        catatan_petugas: null,
+  it('writes OSS phone numbers as text and sizes columns from header or content', async () => {
+    const buf = await buildRekapWorkbook('oss', [
+      {
+        tanggal: '2026-08-31',
+        nomor_display: 'OSS-001',
+        nama_pemohon: 'Budi',
+        no_hp: '081234567890',
+        nama_usaha: 'Usaha Dengan Nama Yang Cukup Panjang',
+        tipe_pelaku_usaha: null,
+        status_penanaman_modal: null,
+        lokasi_usaha: null,
+        skala_usaha: null,
+        sektor_usaha_kbli: null,
+        tindak_lanjut: 'Selesai',
+        uraian_solusi: 'Solusi',
+        nama_petugas: 'Andi',
+        status_draft: 'selesai',
       },
-    };
-    const buf = (await buildRekapWorkbook([rowPerizinan])) as unknown as Buffer;
-    const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(buf as unknown as ExcelJS.Buffer);
-    const ws = wb.getWorksheet('Rekap Layanan') ?? wb.worksheets[0];
-    const dataRow = ws!.getRow(2);
-    const values: string[] = [];
-    dataRow.eachCell((cell) => values.push(String(cell.value)));
-    expect(values).toContain('CV Maju Bersama');
-    expect(values).toContain('DPMPTSP');
+    ]);
+    const ws = (await loadWorkbook(buf)).getWorksheet('Helpdesk OSS')!;
+    expect(ws.getCell('D2').value).toBe('081234567890');
+    expect(ws.getCell('D2').numFmt).toBe('@');
+    expect(ws.getColumn(5).width).toBeGreaterThan('Nama Usaha'.length + 2);
+    expect(ws.getColumn(5).width).toBeLessThanOrEqual(50);
+  });
+
+  it('uses the required perizinan sheet name and exact column order', async () => {
+    const buf = await buildRekapWorkbook('perizinan', [
+      {
+        tanggal: '2026-10-01',
+        nomor_display: 'NON-001',
+        nama_pemohon: 'Siti',
+        no_hp: '081300000001',
+        nama_perusahaan: 'PT Maju',
+        email: 'siti@example.test',
+        lokasi_usaha: 'Lampung Selatan',
+        opd_teknis: 'DPMPTSP',
+        uraian_permohonan: 'Izin usaha',
+        tindak_lanjut: 'Diproses',
+        catatan_petugas: 'Lengkap',
+        nama_petugas: 'Andi',
+        status_draft: 'selesai',
+      },
+    ]);
+    const ws = (await loadWorkbook(buf)).getWorksheet('Non OSS')!;
+    const headers: string[] = [];
+    ws.getRow(1).eachCell((cell) => headers.push(String(cell.value)));
+    expect(headers).toEqual([
+      'Tanggal', 'Nomor Tiket', 'Nama Pemohon', 'No HP', 'Nama Perusahaan', 'Email',
+      'Lokasi Usaha', 'OPD Teknis', 'Uraian Permohonan', 'Tindak Lanjut',
+      'Catatan Petugas', 'Petugas', 'Status',
+    ]);
+    expect(ws.getCell('D2').value).toBe('081300000001');
+    expect(ws.getCell('D2').numFmt).toBe('@');
+  });
+
+  it('creates an empty sheet with its header only', async () => {
+    const ws = (await loadWorkbook(await buildRekapWorkbook('umum', []))).getWorksheet('Rekap Umum')!;
+    expect(ws.rowCount).toBe(1);
   });
 });
