@@ -376,7 +376,7 @@ export default function PelayananWizardModal({
           borderRadius: 'var(--radius-2xl, 16px)',
           width: '100%',
           maxWidth: '760px',
-          maxHeight: '90vh',
+          maxHeight: 'calc(100dvh - 2rem)',
           display: 'flex',
           flexDirection: 'column',
           boxShadow: '0 10px 40px rgba(15, 23, 42, 0.12), 0 2px 6px rgba(15, 23, 42, 0.04)',

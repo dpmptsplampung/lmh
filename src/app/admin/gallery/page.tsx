@@ -478,7 +478,7 @@ export default function AdminGalleryPage() {
       {/* Add/Edit Modal */}
       {showForm && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
-          <div style={{ background: 'var(--color-neutral-0)', borderRadius: 'var(--radius-xl)', padding: 'var(--space-6)', width: '100%', maxWidth: 540, maxHeight: '90vh', overflowY: 'auto' }}>
+          <div style={{ background: 'var(--color-neutral-0)', borderRadius: 'var(--radius-xl)', padding: 'var(--space-6)', width: '100%', maxWidth: 540, maxHeight: 'calc(100dvh - 2rem)', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-5)' }}>
               <h3 style={{ fontWeight: 700 }}>{editingId ? 'Edit Dokumen' : 'Tambah Dokumen Baru'}</h3>
               <button className="btn btn--ghost btn--sm" onClick={() => setShowForm(false)}>
@@ -571,7 +571,7 @@ export default function AdminGalleryPage() {
       {/* Detail View Modal */}
       {viewingDoc && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
-          <div style={{ background: 'var(--color-neutral-0)', borderRadius: 'var(--radius-xl)', padding: 'var(--space-6)', width: '100%', maxWidth: 640, maxHeight: '90vh', overflowY: 'auto' }}>
+          <div style={{ background: 'var(--color-neutral-0)', borderRadius: 'var(--radius-xl)', padding: 'var(--space-6)', width: '100%', maxWidth: 640, maxHeight: 'calc(100dvh - 2rem)', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
               <h3 style={{ fontWeight: 700, fontSize: 'var(--text-base)' }}>Detail Dokumen</h3>
               <button className="btn btn--ghost btn--sm" onClick={() => { setViewingDoc(null); setSignedUrl(null); }}><X size={18} /></button>

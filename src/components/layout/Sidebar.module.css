@@ -4,22 +4,32 @@
   left: 0;
   width: var(--sidebar-width);
   height: 100vh;
-  background: var(--glass-bg-strong);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  height: 100dvh;
+  /* Tanpa backdrop-filter: di belakang sidebar hanya latar statis, dan blur di
+     atas kontainer yang berisi area scroll memicu kedip di Chrome. */
+  background: #fbfcff;
   border-right: 1px solid var(--glass-border);
   display: flex;
   flex-direction: column;
-  z-index: var(--z-sticky);
-  transition: transform var(--transition-base);
+  /* Skala lapisan layout: header 90 < sidebar 100 < overlay/laci/tombol 140-160
+     < SEMUA modal halaman (>=200). Dulu sidebar 1100 menutupi modal ber-z 200/1000. */
+  z-index: 100;
+  transition: transform var(--transition-base), visibility 0s;
+  outline: none;
 }
 
 .brand {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: var(--space-3);
-  padding: var(--space-6) var(--space-5);
+  padding: var(--space-4) var(--space-5);
   border-bottom: 1px solid var(--border-default);
+}
+
+.brandLogo {
+  max-width: 100%;
+  max-height: 120px;
 }
 
 .brandIcon {
@@ -54,7 +64,13 @@
 
 .nav {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  /* Akar bug "scroll error": tanpa ini, roda mouse di ujung menu menggulir
+     HALAMAN di belakangnya. Gutter stabil mencegah lebar item bergeser saat
+     scrollbar muncul begitu menu selesai dimuat. */
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   padding: var(--space-4) var(--space-3);
   display: flex;
   flex-direction: column;
@@ -67,10 +83,11 @@
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-lg);
+  min-height: 44px;
   color: var(--text-secondary);
   font-size: var(--text-sm);
   font-weight: 500;
-  transition: all var(--transition-fast);
+  transition: background-color var(--transition-fast), color var(--transition-fast);
   text-decoration: none;
   position: relative;
 }
@@ -108,6 +125,7 @@
 
 .footer {
   padding: var(--space-4) var(--space-3);
+  padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
   border-top: 1px solid var(--border-default);
 }
 
@@ -127,9 +145,9 @@
 .mobileToggle {
   display: none;
   position: fixed;
-  top: var(--space-4);
-  left: var(--space-4);
-  z-index: calc(var(--z-modal) + 1);
+  top: max(12px, env(safe-area-inset-top, 0px));
+  left: max(var(--space-4), env(safe-area-inset-left, 0px));
+  z-index: 160;
   width: 44px;
   height: 44px;
   border-radius: var(--radius-lg);
@@ -149,13 +167,19 @@
   position: fixed;
   inset: 0;
   background: var(--surface-overlay);
-  z-index: calc(var(--z-modal) - 1);
+  z-index: 140;
 }
 
 @media (max-width: 1024px) {
   .sidebar {
     transform: translateX(-100%);
-    z-index: var(--z-modal);
+    /* Tertutup = keluar dari urutan Tab/pembaca layar (tanpa ini link di luar
+       layar tetap bisa difokus). Ditunda selesai animasi tutup. */
+    visibility: hidden;
+    transition: transform var(--transition-base), visibility 0s linear 250ms; /* literal: var() berisi durasi+easing sehingga deklarasi tidak valid */
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-left: env(safe-area-inset-left, 0px);
+    z-index: 150;
     /* --sidebar-width di-override jadi 0 di mobile untuk menghapus margin
        konten; sidebar sendiri butuh lebar nyata agar terlihat saat dibuka. */
     width: 280px;
@@ -165,6 +189,8 @@
 
   .sidebarOpen {
     transform: translateX(0);
+    visibility: visible;
+    transition: transform var(--transition-base), visibility 0s;
   }
 
   .mobileToggle {
@@ -173,5 +199,9 @@
 
   .overlay {
     display: block;
+  }
+
+  .brandLogo {
+    max-height: 80px;
   }
 }

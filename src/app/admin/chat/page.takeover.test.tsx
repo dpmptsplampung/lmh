@@ -66,4 +66,16 @@ describe('admin chat: Ambil Alih -> kotak balasan', () => {
       expect(box!.getAttribute('contenteditable')).toBe('true');
     });
   });
+
+  it('kembali ke daftar menandai sesi terbaca: titik unread tidak muncul lagi', async () => {
+    render(<AdminChatPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /Helpdesk OSS/ }));
+    // Pesan baru masuk saat sesi terbuka (refetch daftar lewat Ambil Alih).
+    row = { ...row, last_pesan_at: '2026-01-01T00:05:00Z' };
+    fireEvent.click(await screen.findByRole('button', { name: /Ambil Alih Chat/ }));
+    await waitFor(() => expect(screen.getByText(/Ditangani oleh Anda/)).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /Daftar sesi/ }));
+    const item = await screen.findByRole('button', { name: /Helpdesk OSS/ });
+    expect(item.querySelector('[aria-label="Pesan belum dibalas"]')).toBeNull();
+  });
 });

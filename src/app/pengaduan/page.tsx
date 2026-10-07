@@ -9,6 +9,10 @@ import { createClient } from '@/lib/supabase/client';
 // Dua jalur: 'layanan' (boleh diteruskan ke layanan) & 'integritas' (rahasia, hanya Admin).
 
 type LayananOpt = { id: string; nama: string };
+// Radio/checkbox cukup besar untuk disentuh (area klik = seluruh label, min 44px)
+const radioStyle: React.CSSProperties = { width: 20, height: 20, flexShrink: 0, marginTop: 2 };
+const rowStyle: React.CSSProperties = { display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-start', cursor: 'pointer', minHeight: 44 };
+
 type Phase = 'form' | 'submitting' | 'done' | 'error';
 
 function PengaduanForm() {
@@ -94,15 +98,15 @@ function PengaduanForm() {
       <div>
         <label style={{ fontWeight: 600, display: 'block', marginBottom: 'var(--space-2)' }}>Jenis Pengaduan</label>
         <div style={{ display: 'grid', gap: 'var(--space-2)' }}>
-          <label style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-start', cursor: 'pointer' }}>
-            <input type="radio" name="jalur" checked={jalur === 'layanan'} onChange={() => setJalur('layanan')} />
+          <label style={rowStyle}>
+            <input type="radio" name="jalur" checked={jalur === 'layanan'} onChange={() => setJalur('layanan')} style={radioStyle} />
             <span>
               <strong>Pengaduan Layanan</strong> — antrean lama, informasi tidak jelas, sistem error.
               Dapat diteruskan ke layanan terkait.
             </span>
           </label>
-          <label style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-start', cursor: 'pointer' }}>
-            <input type="radio" name="jalur" checked={jalur === 'integritas'} onChange={() => setJalur('integritas')} />
+          <label style={rowStyle}>
+            <input type="radio" name="jalur" checked={jalur === 'integritas'} onChange={() => setJalur('integritas')} style={radioStyle} />
             <span style={{ color: 'var(--color-danger-600, #dc2626)' }}>
               <strong>Pengaduan Perilaku / Integritas / Pungli</strong> — petugas minta uang, perilaku tidak pantas.
               <em> Dirahasiakan: hanya dibaca pimpinan, tidak oleh petugas.</em>
@@ -140,8 +144,8 @@ function PengaduanForm() {
         />
       </div>
 
-      <label style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', cursor: 'pointer' }}>
-        <input type="checkbox" checked={anonim} onChange={(e) => setAnonim(e.target.checked)} />
+      <label style={{ ...rowStyle, alignItems: 'center' }}>
+        <input type="checkbox" checked={anonim} onChange={(e) => setAnonim(e.target.checked)} style={radioStyle} />
         <span>Kirim sebagai anonim (tanpa kontak; status tidak bisa dilacak)</span>
       </label>
 
@@ -177,8 +181,8 @@ function PengaduanForm() {
 export default function PengaduanPage() {
   return (
     <main style={{ maxWidth: 720, margin: '0 auto', padding: 'var(--space-6) var(--space-4)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
-        <ShieldAlert size={28} style={{ color: 'var(--color-primary-500)' }} />
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
+        <ShieldAlert size={28} style={{ color: 'var(--color-primary-500)', flexShrink: 0, marginTop: 4 }} />
         <div>
           <h1 style={{ margin: 0 }}>Kanal Pengaduan</h1>
           <p style={{ margin: 0, color: 'var(--color-neutral-500)' }}>
@@ -190,7 +194,7 @@ export default function PengaduanPage() {
         <PengaduanForm />
       </Suspense>
       <p style={{ marginTop: 'var(--space-4)', textAlign: 'center' }}>
-        <Link href="/pengaduan/lacak" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+        <Link href="/pengaduan/lacak" style={{ display: 'inline-flex', gap: 6, alignItems: 'center', minHeight: 44 }}>
           <ClipboardList size={14} /> Sudah punya tiket? Lacak status pengaduan
         </Link>
       </p>

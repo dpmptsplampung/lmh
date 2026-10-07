@@ -203,6 +203,7 @@
   align-items: center;
   justify-content: center;
   padding: var(--space-4);
+  overflow-y: auto;
   animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -215,6 +216,8 @@
   border-radius: var(--radius-2xl, 1rem);
   width: 100%;
   max-width: 440px;
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
   padding: var(--space-6, 1.5rem);
   display: flex;
   flex-direction: column;

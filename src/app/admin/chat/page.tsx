@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
+  ArrowLeft,
   MessageSquare,
   Bot,
   CheckCircle2,
@@ -24,6 +25,8 @@ import {
   type ChatMsg,
   type RtState,
 } from '@/app/chat/merge';
+import styles from './chat.module.css';
+import ui from '@/app/chat/chat-ui.module.css';
 import '@chatscope/chat-ui-kit-styles/dist/default/styles.min.css';
 import {
   MainContainer,
@@ -80,7 +83,6 @@ export default function AdminChatPage() {
   const [myPetugasId, setMyPetugasId] = useState<string | null>(null);
 
   const { toast } = useToast();
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const selectedIdRef = useRef<string | null>(null);
   const layananFilterRef = useRef<string | null>(null);
   const showSelesaiRef = useRef(false);
@@ -124,9 +126,7 @@ export default function AdminChatPage() {
     }
   };
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  // Auto-scroll pesan baru ditangani chatscope MessageList (hanya bila sedang di dasar).
 
   // Daftar sesi: satu RPC ringkas (tanpa memuat semua pesan). Urutan respons
   // dijaga lewat nomor urut agar fetch lama tidak menimpa yang baru.
@@ -265,6 +265,9 @@ export default function AdminChatPage() {
   useOnSubscribed(rt, loadMessages, threadLive);
   useFallbackPoll(loadMessages, rt, { fastMs: 5000, slowMs: 30000, enabled: threadLive });
 
+  // Tandai sesi terbaca sampai ada pesan yang lebih baru (dipakai saat membuka & meninggalkan sesi).
+  const markRead = (c: Record<string, string | null>, row: RingkasRow) => ({ ...c, [row.id]: row.last_pesan_at });
+
   const handleSelectSession = (session: RingkasRow) => {
     if (session.id !== selectedId) {
       // Reset utas: pesan sesi sebelumnya tidak boleh terbawa; fetch lama diabaikan.
@@ -278,11 +281,10 @@ export default function AdminChatPage() {
     setSnapshot(session);
     // Sesi yang dibuka dianggap sudah dibaca.
     setCleared((c) => {
-      const next = { ...c, [session.id]: session.last_pesan_at };
+      const next = markRead(c, session);
       // Sesi yang ditinggalkan: tandai terbaca sampai pesan lebih baru.
       const prevRow = selectedId ? sessions.find((s) => s.id === selectedId) : null;
-      if (prevRow) next[prevRow.id] = prevRow.last_pesan_at;
-      return next;
+      return prevRow ? markRead(next, prevRow) : next;
     });
     // Nama pengunjung tidak ada di RPC ringkas: ambil satu baris saat dibuka.
     if (!kontak[session.id]) {
@@ -297,6 +299,12 @@ export default function AdminChatPage() {
           }
         });
     }
+  };
+
+  // Mobile: kembali ke daftar. Sesi yang ditinggalkan diperlakukan sama seperti berpindah sesi.
+  const handleBackToList = () => {
+    if (selectedSession) setCleared((c) => markRead(c, selectedSession));
+    setSelectedId(null);
   };
 
   const holderName = (s: RingkasRow) =>
@@ -380,7 +388,7 @@ export default function AdminChatPage() {
   };
 
   const namaSender = (p: Message['pengirim']) =>
-    p === 'petugas' ? 'Petugas' : p === 'bot' ? 'BOT FAQ' : 'Pengunjung';
+    p === 'petugas' ? 'Petugas' : p === 'bot' ? 'Bot FAQ' : 'Pengunjung';
 
   return (
     <>
@@ -389,23 +397,9 @@ export default function AdminChatPage() {
         description="Panel petugas — tangani chat pengunjung yang masuk"
       />
 
-      <div style={{
-        display: 'flex',
-        height: 'calc(100vh - var(--header-height) - 80px)',
-        margin: 'var(--space-8)',
-        borderRadius: 'var(--radius-xl)',
-        overflow: 'hidden',
-        border: '1px solid var(--border-default)',
-        background: 'var(--surface-elevated)',
-      }}>
+      <div className={styles.layout} data-selected={selectedSession ? 'true' : 'false'}>
         {/* Session List */}
-        <div style={{
-          width: '340px',
-          borderRight: '1px solid var(--border-default)',
-          display: 'flex',
-          flexDirection: 'column',
-          background: 'var(--surface-primary)',
-        }}>
+        <div className={styles.list}>
           <div style={{
             padding: 'var(--space-4)',
             borderBottom: '1px solid var(--border-default)',
@@ -503,19 +497,15 @@ export default function AdminChatPage() {
         </div>
 
         {/* Chat Thread */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <div className={styles.thread}>
           {selectedSession ? (
             <>
               {/* Thread Header */}
-              <div style={{
-                padding: 'var(--space-4)',
-                borderBottom: '1px solid var(--border-default)',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                background: 'var(--surface-primary)',
-              }}>
+              <div className={styles.threadHeader}>
                 <div>
+                  <button type="button" className={`btn btn--secondary btn--sm ${styles.backBtn}`} onClick={handleBackToList}>
+                    <ArrowLeft size={14} /> Daftar sesi
+                  </button>
                   <h3 style={{ fontWeight: 600, fontSize: 'var(--text-base)', marginBottom: '4px' }}>
                     {kontak[selectedSession.id] || 'Pengunjung'}
                   </h3>
@@ -527,7 +517,7 @@ export default function AdminChatPage() {
                   </div>
                 </div>
                 {selectedSession.status !== 'selesai' && (
-                  <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                  <div className={styles.threadActions}>
                     {!canReply && (
                       <button className="btn btn--primary btn--sm" onClick={handleAmbilAlih}>
                         Ambil Alih Chat
@@ -579,13 +569,13 @@ export default function AdminChatPage() {
                 </div>
               )}
               {/* Chatscope Messages Area */}
-              <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+              <div className={ui.shell}>
                 <MainContainer responsive>
                   <ChatContainer>
                     <MessageList>
                       {messages.map((msg) => (
                         <ChatMessage
-                          key={msg.id}
+                          key={msg.client_uuid ?? msg.id}
                           model={{
                             message: msg.isi,
                             sentTime: waktuLabel(msg.created_at),
@@ -605,14 +595,13 @@ export default function AdminChatPage() {
                         placeholder={canReply ? 'Ketik balasan Anda...' : 'Ambil alih chat untuk membalas'}
                         value={messageInput}
                         onChange={(val) => setMessageInput(val)}
-                        onSend={(_html, textContent) => handleSendMessage(textContent)}
+                        onSend={(_html, _text, innerText) => handleSendMessage(innerText)}
                         attachButton={false}
                         disabled={!canReply || sending}
                       />
                     )}
                   </ChatContainer>
                 </MainContainer>
-                <div ref={messagesEndRef} />
               </div>
             </>
           ) : (

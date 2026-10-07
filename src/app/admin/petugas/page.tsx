@@ -167,7 +167,7 @@ export default function AdminPetugasPage() {
         </Link>
       </PageHeader>
 
-      <div style={{ padding: 'var(--space-8)' }}>
+      <div style={{ padding: 'clamp(var(--space-4), 4vw, var(--space-8))' }}>
         <div className="table-wrapper">
           {loading ? (
             <div style={{ padding: 'var(--space-8)', textAlign: 'center' }}>

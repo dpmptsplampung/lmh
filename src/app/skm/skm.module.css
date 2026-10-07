@@ -87,7 +87,7 @@
 
 .scaleRow {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--space-2);
 }
 
@@ -202,7 +202,8 @@
   font-weight: 700;
   cursor: pointer;
   transition: background var(--transition-base, 0.15s);
-  min-width: 240px;
+  min-width: min(240px, 100%);
+  min-height: 44px;
 }
 
 .submitBtn:hover:not(:disabled) {
@@ -277,4 +278,18 @@
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 640px) {
+  .skmPage {
+    padding: var(--space-3);
+  }
+
+  .skmCard {
+    padding: var(--space-4);
+  }
+
+  .submitBtn {
+    width: 100%;
+  }
 }

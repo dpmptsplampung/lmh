@@ -17,6 +17,14 @@ export interface ChatMsg {
 export const waktuLabel = (iso: string) =>
   new Date(iso).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
 
+/** "Petugas Helpdesk OSS"; fallback "Petugas Loket" bila nama layanan tak tersedia. */
+export const petugasLabel = (layananNama?: string | null) =>
+  layananNama?.trim() ? `Petugas ${layananNama.trim()}` : 'Petugas Loket';
+
+/** Label pengirim di atas bubble (sisi pengunjung). */
+export const senderLabel = (pengirim: ChatMsg['pengirim'], layananNama?: string | null) =>
+  pengirim === 'bot' ? 'Bot FAQ' : pengirim === 'petugas' ? petugasLabel(layananNama) : 'Anda';
+
 /**
  * Gabungkan pesan server (poll penuh atau satu event realtime) ke state.
  * - Pesan server di-union per id (urutan created_at).

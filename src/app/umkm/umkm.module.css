@@ -713,3 +713,10 @@
   }
 }
 
+/* Target sentuh minimal 44px (WCAG 2.5.5) */
+.categoryPill,
+.sisiToggleBtn,
+.inquiryBtn,
+.tabButton {
+  min-height: 44px;
+}

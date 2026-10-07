@@ -48,6 +48,7 @@
   --color-danger-700: #b91c1c;
 
   /* Neutral */
+  --color-neutral-0: #ffffff;
   --color-neutral-50: #f8fafc;
   --color-neutral-100: #f1f5f9;
   --color-neutral-200: #e2e8f0;
@@ -92,7 +93,8 @@
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
 
   /* Font Sizes */
-  --text-xs: 0.75rem;
+  /* Lantai 12px: root font mengecil di HP (14px), tanpa lantai 0.75rem = 10.5px */
+  --text-xs: max(0.75rem, 12px);
   --text-sm: 0.875rem;
   --text-base: 1rem;
   --text-lg: 1.125rem;
@@ -191,6 +193,8 @@
 
 html {
   font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   scroll-behavior: smooth;
@@ -201,9 +205,15 @@ body {
   font-size: var(--text-base);
   line-height: 1.6;
   color: var(--text-primary);
-  background: linear-gradient(160deg, #e8edfb 0%, #f4f6fd 45%, #fdf8ee 100%);
-  background-attachment: fixed;
+  /* Gradien latar ada di body::before (layer fixed). `background-attachment:
+     fixed` di body dihapus: tidak didukung iOS Safari dan memaksa repaint saat
+     scroll, yang membuat panel kaca (backdrop-filter) berkedip. */
+  background-color: #f4f6fd;
   min-height: 100vh;
+  min-height: 100dvh;
+  overflow-wrap: break-word;
+  /* clip (bukan hidden) agar position: sticky tetap jalan; mencegah geser horizontal */
+  overflow-x: clip;
 }
 
 /* Ambient color blobs — glassmorphism needs a vibrant backdrop to blur against.
@@ -217,7 +227,8 @@ body::before {
   background:
     radial-gradient(ellipse 55% 45% at 8% 4%, rgba(129, 140, 248, 0.22), transparent 70%),
     radial-gradient(ellipse 45% 40% at 92% 18%, rgba(125, 211, 252, 0.18), transparent 70%),
-    radial-gradient(ellipse 50% 45% at 78% 96%, rgba(252, 211, 77, 0.16), transparent 70%);
+    radial-gradient(ellipse 50% 45% at 78% 96%, rgba(252, 211, 77, 0.16), transparent 70%),
+    linear-gradient(160deg, #e8edfb 0%, #f4f6fd 45%, #fdf8ee 100%);
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -427,6 +438,7 @@ img, video {
 }
 
 .form-input,
+.input,
 .form-select,
 .form-textarea {
   width: 100%;
@@ -443,12 +455,14 @@ img, video {
 }
 
 .form-input:hover,
+.input:hover,
 .form-select:hover,
 .form-textarea:hover {
   border-color: var(--border-hover);
 }
 
 .form-input:focus,
+.input:focus,
 .form-select:focus,
 .form-textarea:focus {
   border-color: var(--border-focus);
@@ -457,6 +471,7 @@ img, video {
 }
 
 .form-input::placeholder,
+.input::placeholder,
 .form-textarea::placeholder {
   color: var(--text-tertiary);
 }
@@ -616,13 +631,13 @@ img, video {
 /* Grid Layouts */
 .grid-stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
   gap: var(--space-6);
 }
 
 .grid-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr));
   gap: var(--space-6);
 }
 
@@ -729,6 +744,11 @@ img, video {
   border-radius: var(--radius-md);
 }
 
+/* Alias: halaman lama memakai className="input" / "spin" */
+.spin {
+  animation: spin 0.8s linear infinite;
+}
+
 /* Loading Spinner */
 .spinner {
   width: 20px;
@@ -815,11 +835,39 @@ img, video {
   .grid-cards {
     grid-template-columns: 1fr;
   }
+
+  /* >=16px mencegah iOS Safari zoom otomatis saat fokus ke input
+     (root font di sini 14px, jadi 1rem = 14px terlalu kecil). */
+  .form-input,
+  .input,
+  .form-select,
+  .form-textarea {
+    font-size: 16px;
+    min-height: 44px;
+  }
 }
 
 @media (max-width: 480px) {
   .grid-stats {
     grid-template-columns: 1fr;
+  }
+
+  /* Label tombol panjang membungkus, bukan melebar keluar layar 320px */
+  .btn {
+    white-space: normal;
+    text-align: center;
+    line-height: 1.25;
+    max-width: 100%;
+  }
+
+  .toast-container {
+    left: var(--space-4);
+    right: var(--space-4);
+    bottom: max(var(--space-4), env(safe-area-inset-bottom, 0px));
+  }
+
+  .table-wrapper {
+    -webkit-overflow-scrolling: touch;
   }
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mergeMessages, rtFromStatus, type ChatMsg } from './merge';
+import { mergeMessages, petugasLabel, rtFromStatus, senderLabel, type ChatMsg } from './merge';
 
 const m = (id: string, t: string, extra: Partial<ChatMsg> = {}): ChatMsg => ({
   id,
@@ -52,5 +52,21 @@ describe('transient notice', () => {
   it('hilang saat pesan bot server tiba', () => {
     const prev = [m('n', '10', { pengirim: 'bot', local: 'notice', transient: true })];
     expect(mergeMessages(prev, [m('b', '11', { pengirim: 'bot' })]).map((x) => x.id)).toEqual(['b']);
+  });
+});
+
+describe('label pengirim', () => {
+  it('menyebut nama layanan, fallback Petugas Loket bila kosong', () => {
+    expect(petugasLabel('Helpdesk OSS')).toBe('Petugas Helpdesk OSS');
+    expect(petugasLabel(' Bank Lampung ')).toBe('Petugas Bank Lampung');
+    expect(petugasLabel(undefined)).toBe('Petugas Loket');
+    expect(petugasLabel('  ')).toBe('Petugas Loket');
+  });
+
+  it('senderLabel: bot, petugas (dengan layanan), pengunjung', () => {
+    expect(senderLabel('bot', 'Helpdesk OSS')).toBe('Bot FAQ');
+    expect(senderLabel('petugas', 'Helpdesk OSS')).toBe('Petugas Helpdesk OSS');
+    expect(senderLabel('petugas', null)).toBe('Petugas Loket');
+    expect(senderLabel('pengunjung', 'X')).toBe('Anda');
   });
 });

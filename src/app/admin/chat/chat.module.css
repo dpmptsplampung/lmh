@@ -1,0 +1,81 @@
+/* Tata letak panel petugas: daftar sesi (kiri) + utas (kanan).
+   <=900px menjadi satu panel: daftar dulu, memilih sesi membuka utas dengan
+   tombol "Daftar sesi" untuk kembali. */
+
+.layout {
+  display: flex;
+  height: calc(100vh - var(--header-height) - 112px);
+  height: calc(100dvh - var(--header-height) - 112px);
+  min-height: 420px;
+  margin: var(--space-8);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  border: 1px solid var(--border-default);
+  background: var(--surface-elevated);
+}
+
+.list {
+  width: 340px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border-default);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-primary);
+}
+
+.thread {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.threadHeader {
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--border-default);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  background: var(--surface-primary);
+}
+
+.threadActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.backBtn {
+  display: none;
+}
+
+@media (max-width: 1024px) {
+  .layout {
+    margin: var(--space-2) 0;
+    height: calc(100vh - 160px);
+    height: calc(100dvh - 160px);
+  }
+}
+
+@media (max-width: 900px) {
+  .layout {
+    border-radius: var(--radius-lg);
+  }
+
+  .list {
+    width: 100%;
+    border-right: 0;
+  }
+
+  .layout[data-selected='true'] .list,
+  .layout[data-selected='false'] .thread {
+    display: none;
+  }
+
+  .backBtn {
+    display: inline-flex;
+    margin-bottom: var(--space-2);
+  }
+}

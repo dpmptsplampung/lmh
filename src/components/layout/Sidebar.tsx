@@ -31,7 +31,7 @@ import {
   TableProperties,
   ScrollText,
 } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
 import { makeThrottle } from '@/app/chat/merge';
@@ -72,7 +72,16 @@ const navItems = ADMIN_NAV.map((entry) => ({
 
 export default function Sidebar() {
   const pathname = usePathname();
+  // Laci mobile. Pindah halaman (link, Back/Forward) menutupnya: reset saat
+  // render (pola resmi React "adjust state on prop change", tanpa effect).
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [prevPath, setPrevPath] = useState(pathname);
+  if (prevPath !== pathname) {
+    setPrevPath(pathname);
+    setMobileOpen(false);
+  }
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const sidebarRef = useRef<HTMLElement>(null);
   const [userRole, setUserRole] = useState<string | null | undefined>(undefined);
   const [userName, setUserName] = useState<string>('');
   const [eskalasiCount, setEskalasiCount] = useState(0);
@@ -135,6 +144,41 @@ export default function Sidebar() {
     };
   }, []);
 
+  // Laci terbuka: kunci scroll halaman, Esc menutup (fokus kembali ke tombol),
+  // dan menutup bila layar melebar jadi desktop (>1024px).
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const toggle = toggleRef.current;
+    sidebarRef.current?.focus();
+    // Konten di belakang laci tak bisa difokus/dibaca (aria-modal setara):
+    // semua saudara aside selain tombol & overlay diberi inert.
+    const aside = sidebarRef.current;
+    const inerted = aside
+      ? Array.from(aside.parentElement?.children ?? []).filter(
+          (el) => el !== aside && el !== toggle && !el.hasAttribute('data-sidebar-overlay'),
+        )
+      : [];
+    inerted.forEach((el) => el.setAttribute('inert', ''));
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setMobileOpen(false);
+        toggle?.focus();
+      }
+    };
+    const mq = window.matchMedia('(min-width: 1025px)');
+    const onMq = () => { if (mq.matches) setMobileOpen(false); };
+    document.addEventListener('keydown', onKey);
+    mq.addEventListener('change', onMq);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      inerted.forEach((el) => el.removeAttribute('inert'));
+      document.removeEventListener('keydown', onKey);
+      mq.removeEventListener('change', onMq);
+    };
+  }, [mobileOpen]);
+
   const isActive = (href: string) => {
     if (href === '/') return pathname === '/';
     if (href === '/admin') return pathname === '/admin';
@@ -159,9 +203,13 @@ export default function Sidebar() {
     <>
       {/* Mobile toggle button */}
       <button
+        ref={toggleRef}
+        type="button"
         className={styles.mobileToggle}
         onClick={() => setMobileOpen(!mobileOpen)}
-        aria-label="Toggle menu"
+        aria-label={mobileOpen ? 'Tutup menu' : 'Buka menu'}
+        aria-expanded={mobileOpen}
+        aria-controls="admin-sidebar"
       >
         {mobileOpen ? <X size={24} /> : <Menu size={24} />}
       </button>
@@ -170,25 +218,36 @@ export default function Sidebar() {
       {mobileOpen && (
         <div
           className={styles.overlay}
-          onClick={() => setMobileOpen(false)}
+          data-sidebar-overlay
+          aria-hidden="true"
+          onClick={() => {
+            setMobileOpen(false);
+            toggleRef.current?.focus();
+          }}
         />
       )}
 
-      <aside className={cn(styles.sidebar, mobileOpen && styles.sidebarOpen)}>
+      <aside
+        id="admin-sidebar"
+        ref={sidebarRef}
+        tabIndex={-1}
+        className={cn(styles.sidebar, mobileOpen && styles.sidebarOpen)}
+      >
         {/* Brand */}
-        <div className={styles.brand} style={{ padding: 'var(--space-4) var(--space-5)', justifyContent: 'center' }}>
+        <div className={styles.brand}>
           <Image 
             src="/logo.png" 
             alt="Lampung Maju Hub Logo" 
             width={180} 
             height={80} 
-            style={{ objectFit: 'contain', width: '100%', height: 'auto' }} 
+            className={styles.brandLogo}
+            style={{ objectFit: 'contain', width: 'auto', height: 'auto' }} 
             priority
           />
         </div>
 
         {/* Navigation */}
-        <nav className={styles.nav}>
+        <nav className={styles.nav} aria-label="Menu admin">
           {navItems.filter(item => {
             if (userRole === undefined || userRole === null) return false;
             if (!item.roles) return true;
@@ -201,6 +260,7 @@ export default function Sidebar() {
                 styles.navItem,
                 isActive(item.href) && styles.navItemActive
               )}
+              aria-current={isActive(item.href) ? 'page' : undefined}
               onClick={() => setMobileOpen(false)}
             >
               <span className={styles.navIcon}>{item.icon}</span>

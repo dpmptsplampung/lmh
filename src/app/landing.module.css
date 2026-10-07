@@ -467,3 +467,24 @@
   transform: translateY(-2px);
 }
 
+/* Target sentuh minimal 44px */
+.navLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+.footerLinks a,
+.footerContactItem a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+@media (max-width: 480px) {
+  /* Tombol chat melayang tidak menutupi tepi layar/home indicator */
+  .floatingChat {
+    bottom: max(var(--space-4), env(safe-area-inset-bottom, 0px));
+    right: var(--space-4);
+  }
+}

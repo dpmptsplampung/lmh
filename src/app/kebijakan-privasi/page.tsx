@@ -31,7 +31,7 @@ export default function KebijakanPrivasiPage() {
         }}
       >
         <p style={{ fontSize: 'var(--text-sm)', marginBottom: 'var(--space-4)' }}>
-          <Link href="/" style={{ color: 'var(--color-primary-600)' }}>
+          <Link href="/" style={{ color: 'var(--color-primary-600)', display: 'inline-flex', alignItems: 'center', minHeight: 44 }}>
             ← Beranda
           </Link>
         </p>

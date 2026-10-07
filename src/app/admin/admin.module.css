@@ -1,14 +1,19 @@
 .adminLayout {
   display: flex;
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 .adminContent {
   flex: 1;
+  /* Tanpa ini anak flex selebar tabel/konten melebar melewati layar (halaman
+     bergeser horizontal); min-width:0 membuat tabel scroll di wrapper-nya. */
+  min-width: 0;
   margin-left: var(--sidebar-width);
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  min-height: 100dvh;
   /* transparent — body gradient + blobs show through, glass cards float above */
 }
 
@@ -24,5 +29,6 @@
 
   .adminBody {
     padding: var(--space-4);
+    padding-bottom: max(var(--space-4), env(safe-area-inset-bottom, 0px));
   }
 }

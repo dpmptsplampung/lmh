@@ -333,6 +333,7 @@ export default function UMKMPage() {
         <Link href="/" style={{
           display: 'flex',
           alignItems: 'center',
+          minHeight: 44,
           gap: 'var(--space-1)',
           fontSize: 'var(--text-sm)',
           color: 'var(--text-secondary)',

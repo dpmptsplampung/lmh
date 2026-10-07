@@ -685,3 +685,8 @@
     padding: var(--space-6);
   }
 }
+
+/* Target sentuh minimal 44px */
+.galleryNavBack {
+  min-height: 44px;
+}

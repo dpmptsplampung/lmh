@@ -61,6 +61,7 @@
   flex-direction: column;
   overflow: hidden;
   height: calc(100vh - 120px);
+  height: calc(100dvh - 120px);
 }
 
 /* Setup Sesi State */
@@ -318,8 +319,7 @@
    Ini mengatasi flex-direction:row pada .cs-main-container yang membuat
    flex-basis dibaca sebagai lebar dan tinggi chat-container collapse ke 0. */
 .chatContainer :global(.cs-main-container),
-.chatContainer :global(.cs-chat-container),
-.chatContainer :global(.cs-message-list) {
+.chatContainer :global(.cs-chat-container) {
   position: absolute;
   top: 0;
   left: 0;
@@ -329,11 +329,23 @@
   width: auto;
 }
 
+/* Daftar pesan mengisi sisa tinggi DI ATAS kotak ketik (kolom flex), bukan
+   menimpa seluruh kontainer — kalau tidak, pesan terakhir & indikator
+   "mengetik" tersembunyi di balik field ketik. */
+.chatContainer :global(.cs-message-list) {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  height: auto;
+}
+
 /* perfect-scrollbar (.ps) menaruh touch-action:none inline yang mematikan
    scroll sentuh di HP; inline style hanya bisa dikalahkan !important.
    Library mengharapkan .scrollbar-container absolute mengisi message-list agar
-   konten meluap lalu bisa di-scroll (bukan relative yang ikut mengembang). */
-.chatContainer :global(.scrollbar-container),
+   konten meluap lalu bisa di-scroll (bukan relative yang ikut mengembang).
+   Dibatasi ke .cs-message-list: kelas yang sama dipakai field ketik, yang harus
+   tetap statis agar bisa auto-grow. */
+.chatContainer :global(.cs-message-list) :global(.scrollbar-container),
 .chatContainer :global(.cs-message-list__scroll-wrapper) {
   position: absolute !important;
   top: 0 !important;
@@ -344,6 +356,12 @@
   overscroll-behavior-y: auto !important;
   overflow-y: auto !important;
   -webkit-overflow-scrolling: touch !important;
+}
+
+/* Daftar pesan memakai scrollbar native (di atas); rel perfect-scrollbar dobel & dimatikan. */
+.chatContainer :global(.cs-message-list) :global(.ps__rail-y),
+.chatContainer :global(.cs-message-list) :global(.ps__rail-x) {
+  display: none !important;
 }
 
 /* Typing Indicator Animation */

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import {
@@ -14,7 +14,8 @@ import {
 import { createClient } from '@/lib/supabase/client';
 import { LAYANAN_LIST } from '@/lib/constants';
 import styles from './chat.module.css';
-import { mergeMessages, rtFromStatus, useFallbackPoll, useOnSubscribed, waktuLabel, type ChatMsg, type RtState } from './merge';
+import ui from './chat-ui.module.css';
+import { mergeMessages, petugasLabel, rtFromStatus, senderLabel, useFallbackPoll, useOnSubscribed, waktuLabel, type ChatMsg, type RtState } from './merge';
 import '@chatscope/chat-ui-kit-styles/dist/default/styles.min.css';
 import {
   MainContainer,
@@ -49,6 +50,17 @@ const PII_DISCLAIMER =
 const OFFLINE_BANNER_TEXT =
   'Anda sedang offline. Pesan tidak dapat dikirim dan tidak akan diterima petugas. Silakan coba lagi saat koneksi kembali.';
 
+function subscribeOnline(cb: () => void) {
+  window.addEventListener('online', cb);
+  window.addEventListener('offline', cb);
+  return () => {
+    window.removeEventListener('online', cb);
+    window.removeEventListener('offline', cb);
+  };
+}
+// navigator.onLine bisa undefined di Node; anggap online kecuali eksplisit false.
+const getOnline = () => navigator.onLine !== false;
+
 export default function PublicChatPage() {
   const [layananList, setLayananList] = useState<Layanan[]>([]);
   const [loadingLayanan, setLoadingLayanan] = useState(true);
@@ -65,6 +77,9 @@ export default function PublicChatPage() {
   const [selectedLayananId, setSelectedLayananId] = useState('');
   const [isSessionActive, setIsSessionActive] = useState(false);
   const [sesiId, setSesiId] = useState<string | null>(null);
+  // Layanan milik SESI (bukan dropdown): sumber nama di banner & label petugas,
+  // dipulihkan dari chat_sesi.layanan_id saat reload.
+  const [sesiLayananId, setSesiLayananId] = useState<string | null>(null);
   const [loadingSetup, setLoadingSetup] = useState(false);
 
   // Chat Thread States
@@ -72,30 +87,23 @@ export default function PublicChatPage() {
   const [sesiStatus, setSesiStatus] = useState<'bot' | 'eskalasi' | 'aktif' | 'selesai'>('bot');
   const [faqs, setFaqs] = useState<FAQ[]>([]);
   const [isBotTyping, setIsBotTyping] = useState(false);
+  // Penghitung kiriman yang menunggu bot, supaya kiriman beruntun tidak saling mematikan indikator.
+  const typingCount = useRef(0);
+  const bumpTyping = (d: 1 | -1) => {
+    typingCount.current = Math.max(0, typingCount.current + d);
+    setIsBotTyping(typingCount.current > 0);
+  };
 
   // I8: PDP consent — required before starting chat session
   const [consentGiven, setConsentGiven] = useState(false);
 
   // Offline detection: pesan TIDAK boleh disimpan ke sesi palsu — tampilkan
   // banner jujur + nonaktifkan input selama offline.
-  const [isOnline, setIsOnline] = useState(() =>
-    typeof navigator === 'undefined' ? true : navigator.onLine,
-  );
+  // useSyncExternalStore: snapshot server = true (deterministik). Node >=21 punya
+  // `navigator` global tanpa `onLine`; membacanya saat render membuat SSR merender
+  // banner offline dan memicu hydration mismatch.
+  const isOnline = useSyncExternalStore(subscribeOnline, getOnline, () => true);
   const [setupError, setSetupError] = useState('');
-
-  const threadEndRef = useRef<HTMLDivElement>(null);
-
-  // Track koneksi browser (online/offline events)
-  useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
 
   // Cek Auth dan Profil Pengunjung
   useEffect(() => {
@@ -194,7 +202,7 @@ export default function PublicChatPage() {
           // Verify session is still active
           const { data: sessionData, error: sessionErr } = await supabase
             .from('chat_sesi')
-            .select('status, kontak_pengunjung')
+            .select('status, kontak_pengunjung, layanan_id')
             .eq('id', savedSesiId)
             .single();
 
@@ -206,6 +214,7 @@ export default function PublicChatPage() {
 
           setSesiId(savedSesiId);
           setSelectedLayananId(savedLayananId);
+          setSesiLayananId(sessionData.layanan_id ?? savedLayananId);
           setSesiStatus(sessionData.status);
           if (sessionData.kontak_pengunjung) {
             setVisitorName(sessionData.kontak_pengunjung);
@@ -344,10 +353,8 @@ export default function PublicChatPage() {
     }
   }, [sesiId, rt, syncMessages]);
 
-  // Scroll to bottom on new messages
-  useEffect(() => {
-    threadEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  // Auto-scroll ke pesan baru ditangani chatscope MessageList: hanya bila pengguna
+  // sedang di dasar (tidak menyeret yang sedang membaca pesan lama).
 
   const handleStartSession = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -417,6 +424,7 @@ export default function PublicChatPage() {
       if (error) throw error;
 
       setSesiId(session.id);
+      setSesiLayananId(selectedLayananId);
       setSesiStatus(session.status);
       
       // Save to local storage
@@ -478,14 +486,12 @@ export default function PublicChatPage() {
       else setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, local: undefined } : m)));
       return true;
     } catch {
-      if (typeof navigator !== 'undefined' && !navigator.onLine) setIsOnline(false);
       setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, local: 'failed' } : m)));
       return false;
     }
   };
 
   const askAI = async (text: string) => {
-    setIsBotTyping(true);
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), AI_TIMEOUT_MS);
     const slow = setTimeout(
@@ -514,9 +520,7 @@ export default function PublicChatPage() {
         else if (data.eskalasi === true) setSesiStatus('eskalasi');
       }
     } catch {
-      if (typeof navigator !== 'undefined' && !navigator.onLine) {
-        setIsOnline(false);
-      } else {
+      if (typeof navigator === 'undefined' || navigator.onLine) {
         setMessages((prev) => [
           ...prev,
           notice(
@@ -532,7 +536,6 @@ export default function PublicChatPage() {
       clearTimeout(timer);
       clearTimeout(slow);
       setMessages((prev) => prev.filter((m) => !m.transient));
-      setIsBotTyping(false);
     }
   };
 
@@ -553,16 +556,26 @@ export default function PublicChatPage() {
       local: 'pending',
     };
     setMessages((prev) => [...prev, msg]);
+    await sendAndAsk(msg);
+  };
 
-    const saved = await postPesan(msg);
-    // AI hanya dipanggil saat sesi benar-benar mode bot.
-    if (saved && sesiStatusRef.current === 'bot') await askAI(isi);
+  // Simpan pesan lalu (mode bot) minta jawaban AI. Indikator "mengetik" langsung
+  // tampil begitu pesan dikirim, tidak menunggu simpan selesai.
+  const sendAndAsk = async (msg: Message) => {
+    const botMode = sesiStatusRef.current === 'bot';
+    if (botMode) bumpTyping(1);
+    try {
+      const saved = await postPesan(msg);
+      // AI hanya dipanggil saat sesi benar-benar mode bot.
+      if (saved && sesiStatusRef.current === 'bot') await askAI(msg.isi);
+    } finally {
+      if (botMode) bumpTyping(-1);
+    }
   };
 
   const handleRetry = async (msg: Message) => {
     setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, local: 'pending' } : m)));
-    const saved = await postPesan(msg);
-    if (saved && sesiStatusRef.current === 'bot') await askAI(msg.isi);
+    await sendAndAsk(msg);
   };
 
   const handleEscalateManual = async () => {
@@ -573,6 +586,10 @@ export default function PublicChatPage() {
     // menulis status sesi / pesan bot secara langsung.)
     await handleSendMessage('Saya ingin berbicara dengan petugas loket.');
   };
+
+  const sesiLayananNama = layananList.find((l) => l.id === sesiLayananId)?.nama;
+  // Bubble milik pengunjung terakhir yang sudah tersimpan -> status "Terkirim".
+  const lastSentId = [...messages].reverse().find((m) => m.pengirim === 'pengunjung')?.id;
 
   return (
     <div className={styles.chatPage}>
@@ -771,7 +788,7 @@ export default function PublicChatPage() {
               {sesiStatus === 'aktif' && (
                 <>
                   <CheckCircle2 size={12} style={{ color: 'var(--color-success-500)' }} />
-                  <span>Terhubung langsung dengan Petugas Loket</span>
+                  <span>Terhubung langsung dengan {petugasLabel(sesiLayananNama)}</span>
                 </>
               )}
               {sesiStatus === 'selesai' && (
@@ -804,31 +821,37 @@ export default function PublicChatPage() {
             )}
 
             {/* Chatscope UI Container */}
-            <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+            <div className={ui.shell}>
               <MainContainer responsive>
                 <ChatContainer>
                   <MessageList
-                    typingIndicator={isBotTyping ? <TypingIndicator content="Bot FAQ sedang mengetik..." /> : undefined}
+                    typingIndicator={isBotTyping ? <TypingIndicator content="Bot FAQ sedang mengetik…" /> : undefined}
                   >
                     <div style={{ textAlign: 'center', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', lineHeight: 1.5, padding: 'var(--space-2) var(--space-4)' }}>
                       {PII_DISCLAIMER}
                     </div>
                     {messages.map((msg) => (
                       <ChatMessage
-                        key={msg.id}
+                        // client_uuid stabil dari optimistic -> pesan server: tidak remount/berkedip.
+                        key={msg.client_uuid ?? msg.id}
                         model={{
                           message: msg.isi,
                           sentTime: waktuLabel(msg.created_at),
-                          sender: msg.pengirim === 'bot' ? 'BOT FAQ' : msg.pengirim === 'petugas' ? 'PETUGAS LOKET' : 'Anda',
+                          sender: senderLabel(msg.pengirim, sesiLayananNama),
                           direction: msg.pengirim === 'pengunjung' ? 'outgoing' : 'incoming',
                           position: 'single',
                         }}
                       >
-                        <ChatMessage.Header sender={msg.pengirim === 'bot' ? 'BOT FAQ' : msg.pengirim === 'petugas' ? 'PETUGAS LOKET' : 'Anda'} sentTime={waktuLabel(msg.created_at)} />
-                        {msg.local === 'pending' && <ChatMessage.Footer>Mengirim…</ChatMessage.Footer>}
+                        <ChatMessage.Header sender={senderLabel(msg.pengirim, sesiLayananNama)} sentTime={waktuLabel(msg.created_at)} />
+                        {msg.local === 'pending' && (
+                          <ChatMessage.Footer><span className={ui.msgStatus} role="status">Mengirim…</span></ChatMessage.Footer>
+                        )}
+                        {!msg.local && msg.id === lastSentId && (
+                          <ChatMessage.Footer><span className={ui.msgStatus}>Terkirim</span></ChatMessage.Footer>
+                        )}
                         {msg.local === 'failed' && (
                           <ChatMessage.Footer>
-                            <span style={{ color: 'var(--color-danger-600)' }}>Gagal terkirim. </span>
+                            <span className={ui.msgStatusFailed}>Gagal terkirim. </span>
                             <button type="button" className="btn btn--secondary btn--sm" onClick={() => handleRetry(msg)}>
                               Kirim ulang
                             </button>
@@ -861,7 +884,7 @@ export default function PublicChatPage() {
                     placeholder={!isOnline ? 'Anda sedang offline...' : (sesiStatus === 'selesai' ? 'Sesi chat ditutup...' : 'Ketik pertanyaan Anda...')}
                     disabled={sesiStatus === 'selesai' || !isOnline}
                     attachButton={false}
-                    onSend={(_html, textContent) => handleSendMessage(textContent)}
+                    onSend={(_html, _text, innerText) => handleSendMessage(innerText)} // innerText: baris baru (Shift+Enter) ikut terkirim
                   />
                 </ChatContainer>
               </MainContainer>

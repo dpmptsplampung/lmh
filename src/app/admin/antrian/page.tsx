@@ -457,6 +457,7 @@ export default function AntrianPage() {
                       Belum ada catatan absensi untuk tanggal ini.
                     </div>
                   ) : (
+                    <div className="table-wrapper" style={{ border: 'none', borderRadius: 0, boxShadow: 'none' }}>
                     <table className="table" style={{ marginTop: 0 }}>
                       <thead>
                         <tr>
@@ -495,6 +496,7 @@ export default function AntrianPage() {
                         ))}
                       </tbody>
                     </table>
+                    </div>
                   )}
                 </div>
               )}

@@ -240,7 +240,9 @@ export default function AbsensiWizardModal({
         width: '100%', maxWidth: '520px',
         boxShadow: '0 10px 40px rgba(15, 23, 42, 0.12), 0 2px 6px rgba(15, 23, 42, 0.04)',
         border: '1px solid var(--border-default, #e2e8f0)',
-        overflow: 'hidden',
+        overflowX: 'hidden',
+        overflowY: 'auto',
+        maxHeight: 'calc(100dvh - 2rem)',
       }}>
         {/* Header */}
         <div style={{

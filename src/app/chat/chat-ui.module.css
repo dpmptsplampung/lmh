@@ -1,0 +1,239 @@
+/* Tampilan chatscope yang dipakai bersama /chat (pengunjung) dan /admin/chat (petugas).
+   Kelas chatscope bersifat GLOBAL, jadi semua override dibungkus :global() dan
+   dikunci di bawah .shell agar tidak bocor ke halaman lain. Selector sengaja
+   diawali `.shell :global(.cs-chat-container)` untuk menang atas CSS bawaan
+   chatscope tanpa bergantung pada urutan impor. */
+
+.shell {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.shell :global(.cs-main-container),
+.shell :global(.cs-chat-container) {
+  background: transparent;
+  border: 0;
+}
+
+.shell :global(.cs-chat-container) :global(.cs-message-list) {
+  background: transparent;
+}
+
+/* Scrollbar tipis tanpa tombol panah; rel perfect-scrollbar di field ketik disembunyikan. */
+.shell :global(.scrollbar-container) {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-neutral-300) transparent;
+}
+
+.shell :global(.cs-message-input) :global(.ps__rail-y),
+.shell :global(.cs-message-input) :global(.ps__rail-x) {
+  display: none;
+}
+
+/* ---------- Bubble ---------- */
+
+.shell :global(.cs-message--incoming) :global(.cs-message__content) {
+  background: var(--surface-secondary);
+  color: var(--text-primary);
+  border-radius: var(--radius-xl) var(--radius-xl) var(--radius-xl) 4px;
+}
+
+.shell :global(.cs-message--outgoing) :global(.cs-message__content) {
+  background: var(--color-primary-600);
+  color: #fff;
+  border-radius: var(--radius-xl) var(--radius-xl) 4px var(--radius-xl);
+}
+
+.shell :global(.cs-message__content) {
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  padding: var(--space-2) var(--space-3);
+}
+
+.shell :global(.cs-message__header),
+.shell :global(.cs-message__footer) {
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+}
+
+.shell :global(.cs-message__header) :global(.cs-message__sender-name),
+.shell :global(.cs-message__header) :global(.cs-message__sent-time),
+.shell :global(.cs-message__footer) :global(.cs-message__sender-name) {
+  color: var(--text-tertiary);
+}
+
+.shell :global(.cs-message--outgoing) :global(.cs-message__footer) {
+  justify-content: flex-end;
+}
+
+/* Pesan baru masuk halus: hanya elemen yang baru dipasang yang beranimasi
+   (key React stabil), jadi refetch/merge tidak membuat pesan lama berkedip. */
+.shell :global(.cs-message) {
+  animation: msgIn 180ms ease-out both;
+}
+
+@keyframes msgIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Status kiriman kecil di bawah bubble: "Mengirim…" / "Terkirim". */
+.msgStatus {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.msgStatusFailed {
+  color: var(--color-danger-600);
+}
+
+/* ---------- Indikator mengetik ---------- */
+
+.shell :global(.cs-message-list) :global(.cs-typing-indicator) {
+  background: var(--glass-bg-strong);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  padding: var(--space-1) var(--space-4);
+}
+
+.shell :global(.cs-typing-indicator__dot) {
+  background-color: var(--color-primary-600);
+}
+
+.shell :global(.cs-typing-indicator__text) {
+  color: var(--text-secondary);
+}
+
+/* ---------- Field ketik (pill) ---------- */
+
+.shell :global(.cs-chat-container) :global(.cs-message-input) {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  /* safe-area: tidak tertutup home-indicator iOS (aktif bila viewport-fit=cover) */
+  padding-bottom: calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
+  background: var(--glass-bg-strong);
+  border-top: 1px solid var(--border-default);
+}
+
+.shell :global(.cs-chat-container) :global(.cs-message-input) :global(.cs-message-input__content-editor-wrapper) {
+  flex: 1;
+  min-width: 0;
+  margin: 0 !important;
+  padding: 10px var(--space-4);
+  min-height: 44px;
+  box-sizing: border-box;
+  background: var(--color-neutral-100);
+  border: 1.5px solid var(--border-default);
+  border-radius: 24px;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast),
+    background var(--transition-fast);
+}
+
+.shell :global(.cs-chat-container) :global(.cs-message-input) :global(.cs-message-input__content-editor-wrapper):focus-within {
+  background: #fff;
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+}
+
+/* Auto-grow: contenteditable memanjang sampai ±5 baris, lalu scroll. */
+.shell :global(.cs-message-input__content-editor-container) {
+  background: transparent;
+  font-size: max(16px, 1rem); /* >=16px: iOS tidak zoom saat fokus */
+  line-height: 1.4;
+  min-height: 1.4em;
+  max-height: 7em;
+}
+
+.shell :global(.cs-message-input__content-editor) {
+  background: transparent;
+  color: var(--text-primary);
+  font-family: inherit;
+}
+
+.shell :global(.cs-message-input__content-editor[data-placeholder]:empty:before) {
+  color: var(--text-tertiary);
+}
+
+/* Disabled */
+.shell :global(.cs-chat-container) :global(.cs-message-input--disabled) :global(.cs-message-input__content-editor-wrapper) {
+  background: var(--color-neutral-100);
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.shell :global(.cs-message-input--disabled) :global(.cs-message-input__content-editor-container),
+.shell :global(.cs-message-input--disabled) :global(.cs-message-input__content-editor) {
+  background: transparent;
+  cursor: not-allowed;
+}
+
+/* Tombol kirim: lingkaran primer, target sentuh 44px */
+.shell :global(.cs-message-input__tools) {
+  align-self: flex-end;
+}
+
+.shell :global(.cs-message-input__tools) :global(.cs-button--send) {
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.15rem;
+  color: #fff;
+  background: var(--color-primary-600);
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.3);
+  cursor: pointer;
+  transition: background var(--transition-fast), transform var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+.shell :global(.cs-message-input__tools) :global(.cs-button--send):hover:not(:disabled) {
+  background: var(--color-primary-700);
+}
+
+.shell :global(.cs-message-input__tools) :global(.cs-button--send):active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.shell :global(.cs-message-input__tools) :global(.cs-button--send):focus-visible {
+  outline: 3px solid rgba(99, 102, 241, 0.45);
+  outline-offset: 2px;
+}
+
+.shell :global(.cs-message-input__tools) :global(.cs-button--send):disabled {
+  background: var(--color-neutral-300);
+  color: #fff;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+@media (max-width: 768px) {
+  /* layar kecil: batasi ±4 baris agar daftar pesan tetap terlihat saat keyboard muncul */
+  .shell :global(.cs-message-input__content-editor-container) {
+    max-height: 5.6em;
+  }
+
+  .shell :global(.cs-chat-container) :global(.cs-message-input) {
+    padding: var(--space-2) var(--space-3);
+    padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell :global(.cs-message) {
+    animation: none;
+  }
+}

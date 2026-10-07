@@ -1,6 +1,6 @@
 .summaryGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
   gap: var(--space-5);
   margin-bottom: var(--space-8);
 }
@@ -135,4 +135,29 @@
   font-family: var(--font-display);
   font-weight: 700;
   font-size: var(--text-base);
+}
+
+/* HP: kartu ringkasan rapat, tabel muat 4 kolom tanpa terpotong */
+@media (max-width: 640px) {
+  .summaryGrid {
+    grid-template-columns: repeat(auto-fit, minmax(min(140px, 100%), 1fr));
+    gap: var(--space-3);
+    margin-bottom: var(--space-5);
+  }
+
+  .summaryCard,
+  .chartCard,
+  .tableSection {
+    padding: var(--space-3);
+  }
+
+  .chartBody {
+    height: 240px;
+  }
+
+  .table th,
+  .table td {
+    padding: var(--space-2);
+    letter-spacing: 0;
+  }
 }

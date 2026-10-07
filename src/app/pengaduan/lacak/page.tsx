@@ -89,7 +89,7 @@ export default function LacakPengaduanPage() {
       )}
 
       <p style={{ marginTop: 'var(--space-4)', textAlign: 'center' }}>
-        <Link href="/pengaduan">Buat pengaduan baru</Link>
+        <Link href="/pengaduan" style={{ display: 'inline-flex', alignItems: 'center', minHeight: 44 }}>Buat pengaduan baru</Link>
       </p>
     </main>
   );

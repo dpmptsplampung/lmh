@@ -101,7 +101,7 @@ const modalCardStyle: React.CSSProperties = {
   padding: 'var(--space-6, 24px)',
   width: '100%',
   maxWidth: 600,
-  maxHeight: '90vh',
+  maxHeight: 'calc(100dvh - 2rem)',
   overflowY: 'auto',
   boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
 };

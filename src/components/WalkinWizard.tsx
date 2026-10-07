@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   UserPlus,
   X,
@@ -18,6 +18,9 @@ interface LayananItem {
 }
 
 // Pengelompokan layanan untuk wizard walk-in (berdasarkan nama di tabel layanan)
+// Batas panjang keperluan
+const KEPERLUAN_MAX = 500;
+
 const LAYANAN_DPMPTSP = new Set([
   'Non OSS (SiCantik Lampung)',
   'Helpdesk OSS',
@@ -51,6 +54,8 @@ export default function WalkinWizard({
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
+  // Guard sinkron: klik ganda sebelum re-render tidak boleh mengirim 2x.
+  const submittingRef = useRef(false);
 
   useEffect(() => {
     async function loadLayanan() {
@@ -95,16 +100,21 @@ export default function WalkinWizard({
       return;
     }
     setError('');
-    // Petugas dengan layanan tetap: lewati langkah pilih layanan.
-    setStep(fixedLayananId ? 3 : 2);
+    setStep(2);
   };
 
+  // Klik layanan hanya MEMILIH; pengiriman hanya lewat tombol Simpan.
   const handleLayananSelect = (id: string) => {
     setSelectedLayananId(id);
-    setStep(3);
+    document.getElementById('ww-reason')?.focus();
   };
 
+  const keperluanTrim = visitorKeperluan.trim();
+  const canSave = !!selectedLayananId && keperluanTrim.length > 0 && !saving;
+
   const handleSubmit = async () => {
+    if (!canSave || submittingRef.current) return;
+    submittingRef.current = true;
     setSaving(true);
     setError('');
     try {
@@ -116,7 +126,7 @@ export default function WalkinWizard({
         nama: visitorName.trim(),
         kontak_hp: visitorPhone.trim() || null,
         asal_instansi: visitorAsal.trim(),
-        keperluan: visitorKeperluan.trim() || null,
+        keperluan: keperluanTrim,
         layanan_id: selectedLayananId,
         tujuan: 'loket',
         status: 'menunggu',
@@ -132,6 +142,7 @@ export default function WalkinWizard({
         : 'Gagal menyimpan kunjungan walk-in. Silakan coba lagi.';
       setError(msg);
     } finally {
+      submittingRef.current = false;
       setSaving(false);
     }
   };
@@ -146,7 +157,7 @@ export default function WalkinWizard({
   };
   const cardStyle: React.CSSProperties = {
     background: '#ffffff', borderRadius: 'var(--radius-2xl, 16px)',
-    width: 'min(560px, 92vw)', maxHeight: '88vh', overflowY: 'auto',
+    width: 'min(560px, 92vw)', maxHeight: 'calc(100dvh - 2rem)', overflowY: 'auto',
     padding: 'var(--space-6, 24px)',
     boxShadow: '0 10px 40px rgba(15, 23, 42, 0.12), 0 2px 6px rgba(15, 23, 42, 0.04)',
     border: '1px solid var(--border-default, #e2e8f0)',
@@ -217,91 +228,93 @@ export default function WalkinWizard({
                     {error && <p className="form-error" role="alert">{error}</p>}
                     <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                       <button type="button" className="btn btn--primary" onClick={handleNextStep}>
-                        {fixedLayananId ? 'Lanjut Konfirmasi' : 'Lanjut Pilih Layanan'} <ChevronRight size={16} />
+                        {fixedLayananId ? 'Lanjut Isi Keperluan' : 'Lanjut Pilih Layanan'} <ChevronRight size={16} />
                       </button>
                     </div>
                   </div>
                 )}
 
-                {step === 2 && !fixedLayananId && (
+                {step === 2 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-                    <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                      Layanan apa yang ingin diakses <strong>{visitorName}</strong> hari ini?
-                    </p>
-                    {layananList.length === 0 ? (
-                      <p className="form-error" role="alert">Gagal memuat daftar layanan</p>
+                    {fixedLayananId ? (
+                      <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                        <strong>{visitorName}</strong> akan didaftarkan ke loket <strong>{selectedLayananName}</strong>.
+                      </p>
                     ) : (
-                      (() => {
-                        const dpmptsp = layananList.filter((l) => LAYANAN_DPMPTSP.has(l.nama));
-                        const p4 = layananList.filter((l) => !LAYANAN_DPMPTSP.has(l.nama));
-                        const renderGrid = (items: LayananItem[]) => (
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 'var(--space-2)' }}>
-                            {items.map((layanan) => (
-                              <button
-                                type="button" key={layanan.id}
-                                className={`btn ${selectedLayananId === layanan.id ? 'btn--primary' : 'btn--secondary'}`}
-                                onClick={() => handleLayananSelect(layanan.id)}
-                                style={{ justifyContent: 'flex-start', gap: 'var(--space-2)' }}
-                              >
-                                <Building2 size={18} />
-                                <span style={{ fontSize: 'var(--text-sm)' }}>{layanan.nama}</span>
-                              </button>
-                            ))}
-                          </div>
-                        );
-                        return (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-                            <div>
-                              <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--text-tertiary)', marginBottom: 'var(--space-2)' }}>LAYANAN DPMPTSP</div>
-                              {renderGrid(dpmptsp)}
-                            </div>
-                            <div>
-                              <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--text-tertiary)', marginBottom: 'var(--space-2)' }}>LAYANAN P4 (INSTANSI MITRA)</div>
-                              {renderGrid(p4)}
-                            </div>
-                          </div>
-                        );
-                      })()
+                      <>
+                        <p id="ww-layanan-label" style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                          Layanan apa yang ingin diakses <strong>{visitorName}</strong> hari ini? (pilih satu)
+                        </p>
+                        {layananList.length === 0 ? (
+                          <p className="form-error" role="alert">Gagal memuat daftar layanan</p>
+                        ) : (
+                          (() => {
+                            const dpmptsp = layananList.filter((l) => LAYANAN_DPMPTSP.has(l.nama));
+                            const p4 = layananList.filter((l) => !LAYANAN_DPMPTSP.has(l.nama));
+                            const renderGrid = (items: LayananItem[]) => (
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 'var(--space-2)' }}>
+                                {items.map((layanan) => (
+                                  <button
+                                    type="button" key={layanan.id}
+                                    aria-pressed={selectedLayananId === layanan.id}
+                                    className={`btn ${selectedLayananId === layanan.id ? 'btn--primary' : 'btn--secondary'}`}
+                                    onClick={() => handleLayananSelect(layanan.id)}
+                                    style={{ justifyContent: 'flex-start', gap: 'var(--space-2)', textAlign: 'left', height: 'auto', minHeight: 44, whiteSpace: 'normal', overflowWrap: 'anywhere' }}
+                                  >
+                                    <Building2 size={18} style={{ flexShrink: 0 }} />
+                                    <span style={{ fontSize: 'var(--text-sm)' }}>{layanan.nama}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            );
+                            return (
+                              <div role="group" aria-labelledby="ww-layanan-label" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+                                {dpmptsp.length > 0 && (
+                                  <div>
+                                    <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--text-tertiary)', marginBottom: 'var(--space-2)' }}>LAYANAN DPMPTSP</div>
+                                    {renderGrid(dpmptsp)}
+                                  </div>
+                                )}
+                                {p4.length > 0 && (
+                                  <div>
+                                    <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--text-tertiary)', marginBottom: 'var(--space-2)' }}>LAYANAN P4 (INSTANSI MITRA)</div>
+                                    {renderGrid(p4)}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()
+                        )}
+                      </>
                     )}
                     <div className="form-group">
-                      <label className="form-label" htmlFor="ww-reason">Keperluan</label>
-                      <input
-                        id="ww-reason" type="text" className="form-input"
-                        placeholder="Detail keperluan singkat (opsional)..."
+                      <label className="form-label form-label--required" htmlFor="ww-reason">Keperluan</label>
+                      <textarea
+                        id="ww-reason" className="form-textarea"
+                        rows={3} maxLength={KEPERLUAN_MAX} required
+                        placeholder="Tuliskan keperluan kunjungan secara singkat..."
+                        aria-describedby="ww-reason-hint"
                         value={visitorKeperluan} onChange={(e) => setVisitorKeperluan(e.target.value)}
-                        autoComplete="off"
+                        style={{ minHeight: 80 }}
                       />
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                      <button type="button" className="btn btn--secondary" onClick={() => setStep(1)}>
-                        <ChevronLeft size={16} /> Kembali
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {step === 3 && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-                    <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
-                      Apakah data kunjungan <strong>{visitorName}</strong> sudah benar?
-                    </p>
-                    <div style={{ fontSize: 'var(--text-sm)', display: 'grid', gap: 'var(--space-2)' }}>
-                      <div><strong>Nama:</strong> {visitorName}</div>
-                      {visitorPhone.trim() && <div><strong>HP:</strong> {visitorPhone}</div>}
-                      <div><strong>Asal:</strong> {visitorAsal}</div>
-                      <div><strong>Layanan:</strong> {selectedLayananName}</div>
-                      {visitorKeperluan.trim() && <div><strong>Keperluan:</strong> {visitorKeperluan}</div>}
+                      <div id="ww-reason-hint" style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: 'var(--space-1)', display: 'flex', justifyContent: 'space-between', gap: 'var(--space-2)' }}>
+                        <span>
+                          {!selectedLayananId
+                            ? 'Pilih layanan dan isi keperluan untuk menyimpan.'
+                            : keperluanTrim.length === 0
+                              ? 'Keperluan wajib diisi.'
+                              : ' '}
+                        </span>
+                        <span>{visitorKeperluan.length}/{KEPERLUAN_MAX}</span>
+                      </div>
                     </div>
                     {error && <p className="form-error" role="alert">{error}</p>}
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <button
-                        type="button" className="btn btn--secondary"
-                        onClick={() => setStep(fixedLayananId ? 1 : 2)}
-                      >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-2)' }}>
+                      <button type="button" className="btn btn--secondary" onClick={() => setStep(1)} disabled={saving}>
                         <ChevronLeft size={16} /> Kembali
                       </button>
-                      <button type="button" className="btn btn--primary" onClick={handleSubmit} disabled={saving}>
-                        {saving ? <Loader2 size={16} className="animate-pulse" /> : <CheckCircle2 size={16} />} Daftarkan
+                      <button type="button" className="btn btn--primary" onClick={handleSubmit} disabled={!canSave}>
+                        {saving ? <Loader2 size={16} className="animate-pulse" /> : <CheckCircle2 size={16} />} Simpan
                       </button>
                     </div>
                   </div>
