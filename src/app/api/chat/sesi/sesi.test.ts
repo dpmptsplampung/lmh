@@ -32,6 +32,10 @@ function buildReq(body: unknown) {
 interface MakeClientOpts {
   actor: Record<string, unknown> | null;
   sesiStatus?: string;
+  role?: string;
+  ditangani?: string | null;
+  raceLost?: boolean;
+  updateVals?: unknown[];
 }
 
 function makeClient(opts: MakeClientOpts) {
@@ -46,7 +50,7 @@ function makeClient(opts: MakeClientOpts) {
           select: () => ({
             eq: () => ({
               maybeSingle: async () => ({
-                data: opts.actor?.kind === 'staff' ? { id: 'st-1', role: 'admin', layanan_id: null } : null,
+                data: opts.actor?.kind === 'staff' ? { id: 'st-1', nama: 'Budi', role: opts.role ?? 'admin', layanan_id: opts.role === 'petugas' ? 'ly-1' : null } : null,
                 error: null,
               }),
             }),
@@ -67,14 +71,19 @@ function makeClient(opts: MakeClientOpts) {
           select: () => ({
             eq: () => ({
               maybeSingle: async () => ({
-                data: { id: SESI, status: opts.sesiStatus ?? 'eskalasi', pengunjung_id: 'pg-1', layanan_id: 'ly-1' },
+                data: { id: SESI, status: opts.sesiStatus ?? 'eskalasi', pengunjung_id: 'pg-1', layanan_id: 'ly-1', ditangani_oleh: opts.ditangani ?? null },
                 error: null,
               }),
             }),
           }),
-          update: () => ({
-            eq: async () => ({ error: null }),
-          }),
+          update: (vals: unknown) => {
+            opts.updateVals?.push(vals);
+            const b: Record<string, unknown> = {};
+            b.eq = () => b;
+            b.is = () => b;
+            b.select = async () => ({ data: opts.raceLost ? [] : [{ id: SESI }], error: null });
+            return b;
+          },
         };
       }
       if (t === 'chat_pesan') {
@@ -141,5 +150,54 @@ describe('POST /api/chat/sesi', () => {
     const { POST } = await import('./route');
     const res = await POST(buildReq({ sesi_id: SESI, aksi: 'takeover' }));
     expect(res.status).toBe(409);
+  });
+
+  const staff = { kind: 'staff', role: 'petugas', layananId: 'ly-1', id: 'st-1' };
+
+  it('petugas tidak boleh merebut sesi aktif petugas lain (409 + pemegang)', async () => {
+    const client = makeClient({ actor: staff, role: 'petugas', sesiStatus: 'aktif', ditangani: 'st-2' });
+    mockAdmin.mockReturnValue(client);
+    const { POST } = await import('./route');
+    const res = await POST(buildReq({ sesi_id: SESI, aksi: 'takeover' }));
+    expect(res.status).toBe(409);
+    expect((await res.json()).holder.id).toBe('st-2');
+    expect(client.chatPesanInsert).not.toHaveBeenCalled();
+  });
+
+  it('admin boleh mengambil alih sesi aktif petugas lain', async () => {
+    mockAdmin.mockReturnValue(makeClient({ actor: staff, role: 'admin', sesiStatus: 'aktif', ditangani: 'st-2' }));
+    const { POST } = await import('./route');
+    const res = await POST(buildReq({ sesi_id: SESI, aksi: 'takeover' }));
+    expect(res.status).toBe(200);
+  });
+
+  it('takeover berulang oleh pemegang yang sama idempoten (tanpa pesan ganda)', async () => {
+    const client = makeClient({ actor: staff, role: 'petugas', sesiStatus: 'aktif', ditangani: 'st-1' });
+    mockAdmin.mockReturnValue(client);
+    const { POST } = await import('./route');
+    const res = await POST(buildReq({ sesi_id: SESI, aksi: 'takeover' }));
+    expect(res.status).toBe(200);
+    expect((await res.json()).unchanged).toBe(true);
+    expect(client.chatPesanInsert).not.toHaveBeenCalled();
+  });
+
+  it('update bersyarat kalah balapan -> 409 tanpa pesan sistem', async () => {
+    const client = makeClient({ actor: staff, role: 'admin', sesiStatus: 'eskalasi', raceLost: true });
+    mockAdmin.mockReturnValue(client);
+    const { POST } = await import('./route');
+    const res = await POST(buildReq({ sesi_id: SESI, aksi: 'takeover' }));
+    expect(res.status).toBe(409);
+    expect(client.chatPesanInsert).not.toHaveBeenCalled();
+    expect(client.auditInsert).not.toHaveBeenCalled();
+  });
+
+  it('petugas biasa tidak boleh menyelesaikan/mengembalikan sesi petugas lain', async () => {
+    for (const aksi of ['selesaikan', 'kembali_ke_bot']) {
+      mockAdmin.mockReturnValue(makeClient({ actor: staff, role: 'petugas', sesiStatus: 'aktif', ditangani: 'st-2' }));
+      vi.resetModules();
+      const { POST } = await import('./route');
+      const res = await POST(buildReq({ sesi_id: SESI, aksi }));
+      expect(res.status).toBe(409);
+    }
   });
 });

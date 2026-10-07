@@ -14,6 +14,7 @@ import {
 import { createClient } from '@/lib/supabase/client';
 import { LAYANAN_LIST } from '@/lib/constants';
 import styles from './chat.module.css';
+import { mergeMessages, rtFromStatus, useFallbackPoll, useOnSubscribed, waktuLabel, type ChatMsg, type RtState } from './merge';
 import '@chatscope/chat-ui-kit-styles/dist/default/styles.min.css';
 import {
   MainContainer,
@@ -30,13 +31,7 @@ interface Layanan {
   chatbot_aktif: boolean;
 }
 
-interface Message {
-  id: string;
-  pengirim: 'pengunjung' | 'bot' | 'petugas';
-  isi: string;
-  waktu: string;
-  client_uuid?: string | null;
-}
+type Message = ChatMsg;
 
 interface FAQ {
   id: string;
@@ -44,8 +39,8 @@ interface FAQ {
   jawaban: string;
 }
 
-// Module-level counter for pure unique IDs in handlers
-let msgIdCounter = 0;
+const AI_SLOW_MS = 20000; // tampilkan "masih diproses"
+const AI_TIMEOUT_MS = 65000; // server maxDuration 60 dtk
 
 const CONSENT_VERSION = '1.0';
 const CONSENT_TEXT = 'Saya setuju data saya diproses sesuai Kebijakan Privasi.';
@@ -74,7 +69,6 @@ export default function PublicChatPage() {
 
   // Chat Thread States
   const [messages, setMessages] = useState<Message[]>([]);
-  const [_messageInput, setMessageInput] = useState('');
   const [sesiStatus, setSesiStatus] = useState<'bot' | 'eskalasi' | 'aktif' | 'selesai'>('bot');
   const [faqs, setFaqs] = useState<FAQ[]>([]);
   const [isBotTyping, setIsBotTyping] = useState(false);
@@ -221,22 +215,6 @@ export default function PublicChatPage() {
 
           await fetchFAQs(savedLayananId);
 
-          // Fetch previous messages
-          const { data: previousMessages, error: msgErr } = await supabase
-            .from('chat_pesan')
-            .select('id, pengirim, isi, created_at')
-            .eq('sesi_id', savedSesiId)
-            .order('created_at', { ascending: true });
-
-          if (!msgErr && previousMessages) {
-            const formattedMessages: Message[] = previousMessages.map(m => ({
-              id: m.id,
-              pengirim: m.pengirim as 'pengunjung' | 'bot' | 'petugas',
-              isi: m.isi,
-              waktu: new Date(m.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
-            }));
-            setMessages(formattedMessages);
-          }
         } catch (e) {
           console.error('Error restoring session:', e);
         }
@@ -297,167 +275,74 @@ export default function PublicChatPage() {
     }
   }, [layananList]);
 
-  // Setup Real-time listener & sync for incoming messages
+  // Sinkron pesan: satu channel realtime (pesan + status sesi). Poll hanya
+  // cadangan (lihat useFallbackPoll).
+  const [rt, setRt] = useState<RtState>('connecting');
+  const syncSeq = useRef(0);
+  const sesiStatusRef = useRef(sesiStatus);
+  useEffect(() => {
+    sesiStatusRef.current = sesiStatus;
+  }, [sesiStatus]);
+
+  const applyStatus = useCallback((status: 'bot' | 'eskalasi' | 'aktif' | 'selesai') => {
+    setSesiStatus(status);
+    if (status === 'selesai') {
+      localStorage.removeItem('lmh_chat_sesi_id');
+      localStorage.removeItem('lmh_chat_layanan_id');
+    }
+  }, []);
+
+  const syncMessages = useCallback(async () => {
+    if (!sesiId) return;
+    const seq = ++syncSeq.current;
+    try {
+      const res = await fetch(`/api/chat/messages?sesi_id=${sesiId}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (seq !== syncSeq.current) return; // respons usang
+      if (data.messages) setMessages((prev) => mergeMessages(prev, data.messages as Message[]));
+      if (data.status) applyStatus(data.status);
+    } catch {
+      /* jaringan putus: sinkron berikutnya mencoba lagi */
+    }
+  }, [sesiId, applyStatus]);
+
   useEffect(() => {
     if (!sesiId) return;
-
     const supabase = createClient();
-
-    // Fetch initial history immediately via API
-    fetch(`/api/chat/messages?sesi_id=${sesiId}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.messages) {
-          setMessages(
-            data.messages.map((m: { id: string; pengirim: string; isi: string; created_at: string }) => ({
-              id: m.id,
-              pengirim: m.pengirim as 'pengunjung' | 'bot' | 'petugas',
-              isi: m.isi,
-              waktu: new Date(m.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-            }))
-          );
-        }
-        if (data.status) setSesiStatus(data.status);
-      })
-      .catch(() => {});
-
-    // Pesan baru via postgres_changes (chat_pesan terpublikasi — migrasi
-    // 202609230001). Baris dari DB membawa id server + client_uuid.
-    const pesanChannel = supabase
-      .channel(`chat-pesan-pengunjung-${sesiId}`)
+    let active = true;
+    const channel = supabase
+      .channel(`chat-sesi-${sesiId}`)
       .on(
         'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'chat_pesan',
-          filter: `sesi_id=eq.${sesiId}`,
-        },
-        (payload) => {
-          const newMsg = payload.new as {
-            id: string;
-            pengirim: 'pengunjung' | 'bot' | 'petugas';
-            isi: string;
-            created_at: string;
-            client_uuid?: string | null;
-          };
-        setMessages((prev) => {
-          // Dedup: id server → client_uuid (optimistic) → fallback isi+pengirim.
-          if (prev.some((m) => m.id === newMsg.id)) return prev;
-          if (newMsg.client_uuid && prev.some((m) => m.id === `user-${newMsg.client_uuid}`)) {
-            return prev.map((m) =>
-              m.id === `user-${newMsg.client_uuid}`
-                ? {
-                    id: newMsg.id,
-                    pengirim: newMsg.pengirim as 'pengunjung' | 'bot' | 'petugas',
-                    isi: newMsg.isi,
-                    waktu: new Date(newMsg.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-                  }
-                : m,
-            );
-          }
-          const isLocalEcho = prev.some(
-            (m) =>
-              m.isi === newMsg.isi &&
-              m.pengirim === newMsg.pengirim &&
-              !m.id.match(/^[0-9a-f]{8}-/),
-          );
-          if (isLocalEcho) return prev;
-
-          return [
-            ...prev,
-            {
-              id: newMsg.id,
-              pengirim: newMsg.pengirim as 'pengunjung' | 'bot' | 'petugas',
-              isi: newMsg.isi,
-              waktu: new Date(newMsg.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-            },
-          ];
-        });
-      })
-      .subscribe();
-
-    // Subscribe to session changes (status updates)
-    const sessionChannel = supabase
-      .channel(`session_${sesiId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'chat_sesi',
-          filter: `id=eq.${sesiId}`,
-        },
-        (payload) => {
-          const updatedSesi = payload.new as { status: 'bot' | 'eskalasi' | 'aktif' | 'selesai' };
-          setSesiStatus(updatedSesi.status);
-
-          if (updatedSesi.status === 'aktif') {
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: `system-${Date.now()}`,
-                pengirim: 'bot',
-                isi: '✓ Hubungan tersambung. Anda kini terhubung langsung dengan petugas kami.',
-                waktu: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-              },
-            ]);
-          } else if (updatedSesi.status === 'selesai') {
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: `system-${Date.now()}`,
-                pengirim: 'bot',
-                isi: '✕ Sesi chat telah ditutup oleh petugas. Terima kasih.',
-                waktu: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-              },
-            ]);
-            localStorage.removeItem('lmh_chat_sesi_id');
-            localStorage.removeItem('lmh_chat_layanan_id');
-          }
-        }
+        { event: 'INSERT', schema: 'public', table: 'chat_pesan', filter: `sesi_id=eq.${sesiId}` },
+        (payload) => setMessages((prev) => mergeMessages(prev, [payload.new as Message])),
       )
-      .subscribe();
-
-    // Polling cadangan 5 dtk: bila realtime terhenti (publikasi/koneksi),
-    // utas tetap segar tanpa "harus refresh".
-    const poll = setInterval(() => {
-      fetch(`/api/chat/messages?sesi_id=${sesiId}`)
-        .then((res) => (res.ok ? res.json() : null))
-        .then((data) => {
-          if (!data?.messages) return;
-          setMessages((prev) => {
-            const server = (data.messages as Array<{
-              id: string;
-              pengirim: 'pengunjung' | 'bot' | 'petugas';
-              isi: string;
-              created_at: string;
-              client_uuid?: string | null;
-            }>).map((m) => ({
-              id: m.id,
-              pengirim: m.pengirim,
-              isi: m.isi,
-              client_uuid: m.client_uuid ?? null,
-              waktu: new Date(m.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-            }));
-            const serverUuids = new Set(server.map((m) => m.client_uuid).filter(Boolean));
-            // Simpan pesan optimistic (id user-<uuid>) yang belum dikonfirmasi.
-            const pending = prev.filter(
-              (m) => m.id.startsWith('user-') && !serverUuids.has(m.id.slice(5)),
-            );
-            return [...server, ...pending];
-          });
-          if (data.status) setSesiStatus(data.status);
-        })
-        .catch(() => {});
-    }, 5000);
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'chat_sesi', filter: `id=eq.${sesiId}` },
+        (payload) => applyStatus((payload.new as { status: 'bot' | 'eskalasi' | 'aktif' | 'selesai' }).status),
+      )
+      .subscribe((status) => {
+        if (active) setRt(rtFromStatus(status));
+      });
 
     return () => {
-      clearInterval(poll);
-      supabase.removeChannel(pesanChannel);
-      supabase.removeChannel(sessionChannel);
+      active = false;
+      supabase.removeChannel(channel);
     };
-  }, [sesiId]);
+  }, [sesiId, syncMessages, applyStatus]);
+
+  const live = !!sesiId && sesiStatus !== 'selesai';
+  // Catch-up saat channel SUBSCRIBED (awal & reconnect); poll hanya cadangan.
+  useOnSubscribed(rt, syncMessages, live);
+  useFallbackPoll(syncMessages, rt, { fastMs: 5000, slowMs: 30000, enabled: live });
+  useEffect(() => {
+    if (sesiId && rt !== 'ok') {
+      const t = setTimeout(syncMessages, 0); // muat awal bila realtime belum tersambung
+      return () => clearTimeout(t);
+    }
+  }, [sesiId, rt, syncMessages]);
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -549,7 +434,8 @@ export default function PublicChatPage() {
           id: 'welcome',
           pengirim: 'bot',
           isi: welcomeText,
-          waktu: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+          created_at: new Date().toISOString(),
+          local: 'notice',
         },
       ]);
 
@@ -564,20 +450,16 @@ export default function PublicChatPage() {
     setLoadingSetup(false);
   };
 
-  const handleSendMessage = async (text: string) => {
-    if (!text.trim() || !sesiId) return;
-    if (!isOnline) return; // Offline: input seharusnya nonaktif; abaikan kirim.
+  const notice = (isi: string, transient = false): Message => ({
+    id: `notice-${crypto.randomUUID()}`,
+    pengirim: 'bot',
+    isi,
+    created_at: new Date().toISOString(),
+    local: 'notice',
+    transient,
+  });
 
-    const clientUuid = crypto.randomUUID();
-    const userMsg: Message = {
-      id: `user-${clientUuid}`,
-      pengirim: 'pengunjung',
-      isi: text.trim(),
-      waktu: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-    };
-
-    // Insert user message to database — pesan hanya boleh tampil setelah
-    // benar-benar tersimpan, supaya petugas pasti melihatnya.
+  const postPesan = async (msg: Message): Promise<boolean> => {
     try {
       const res = await fetch('/api/chat/messages', {
         method: 'POST',
@@ -585,95 +467,102 @@ export default function PublicChatPage() {
         body: JSON.stringify({
           sesi_id: sesiId,
           pengirim: 'pengunjung',
-          isi: text.trim(),
-          client_uuid: clientUuid,
+          isi: msg.isi,
+          client_uuid: msg.client_uuid,
         }),
       });
       if (!res.ok) throw new Error('Insert failed');
+      const data = await res.json().catch(() => ({}));
+      // Pesan server menggantikan pesan optimistic (client_uuid sama).
+      if (data.message) setMessages((prev) => mergeMessages(prev, [data.message as Message]));
+      else setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, local: undefined } : m)));
+      return true;
+    } catch {
+      if (typeof navigator !== 'undefined' && !navigator.onLine) setIsOnline(false);
+      setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, local: 'failed' } : m)));
+      return false;
+    }
+  };
+
+  const askAI = async (text: string) => {
+    setIsBotTyping(true);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), AI_TIMEOUT_MS);
+    const slow = setTimeout(
+      () => setMessages((prev) => [...prev, notice('Pertanyaan Anda masih diproses. Jawaban akan muncul otomatis di sini; tidak perlu mengirim ulang.', true)]),
+      AI_SLOW_MS,
+    );
+    try {
+      const res = await fetch('/api/chat/ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pertanyaan: text, layanan_id: selectedLayananId, sesi_id: sesiId }),
+        signal: ctrl.signal,
+      });
+      const data = await res.json().catch(() => null);
+
+      if (res.status === 429) {
+        setMessages((prev) => [...prev, notice('Anda mengirim pertanyaan terlalu cepat. Mohon tunggu sebentar lalu coba lagi.')]);
+      } else if (!res.ok || !data) {
+        setMessages((prev) => [...prev, notice('Maaf, asisten virtual sedang tidak tersedia. Silakan coba lagi beberapa saat.')]);
+      } else {
+        // Balasan bot sudah tersimpan di server: tampilkan langsung (dedupe
+        // per id terhadap realtime/poll). Status hanya berubah bila server
+        // yang mengonfirmasi.
+        if (data.pesan) setMessages((prev) => mergeMessages(prev, [data.pesan as Message]));
+        if (data.status) applyStatus(data.status);
+        else if (data.eskalasi === true) setSesiStatus('eskalasi');
+      }
     } catch {
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
         setIsOnline(false);
+      } else {
+        setMessages((prev) => [
+          ...prev,
+          notice(
+            ctrl.signal.aborted
+              ? 'Asisten virtual belum menjawab. Jika jawaban belum muncul, tekan "Hubungkan ke Petugas".'
+              : 'Maaf, asisten virtual sedang tidak tersedia. Silakan coba lagi beberapa saat.',
+          ),
+        ]);
+        // Server bisa saja sudah menyimpan balasan/eskalasi: ambil kebenarannya.
+        syncMessages();
       }
-      return;
+    } finally {
+      clearTimeout(timer);
+      clearTimeout(slow);
+      setMessages((prev) => prev.filter((m) => !m.transient));
+      setIsBotTyping(false);
     }
+  };
 
-    setMessages((prev) => [...prev, userMsg]);
-    setMessageInput('');
+  const handleSendMessage = async (text: string) => {
+    const isi = text.trim();
+    if (!isi || !sesiId || !isOnline) return;
+    if (sesiStatusRef.current === 'selesai') return;
 
-    // If not taken over by officer: ask RAG AI assistant (/api/chat/ai)
-    if (sesiStatus !== 'aktif' && sesiStatus !== 'selesai') {
-      setLoadingSetup(true);
-      setIsBotTyping(true);
+    // Tampilkan dulu (optimistic) lalu simpan; client_uuid dipakai server &
+    // realtime untuk dedupe.
+    const clientUuid = crypto.randomUUID();
+    const msg: Message = {
+      id: `user-${clientUuid}`,
+      pengirim: 'pengunjung',
+      isi,
+      created_at: new Date().toISOString(),
+      client_uuid: clientUuid,
+      local: 'pending',
+    };
+    setMessages((prev) => [...prev, msg]);
 
-      // Call the RAG AI route. Fail-safe: any error → eskalasi ke petugas.
-      try {
-        const res = await fetch('/api/chat/ai', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            pertanyaan: text.trim(),
-            layanan_id: selectedLayananId,
-            sesi_id: sesiId,
-          }),
-        });
-        const data = await res.json();
+    const saved = await postPesan(msg);
+    // AI hanya dipanggil saat sesi benar-benar mode bot.
+    if (saved && sesiStatusRef.current === 'bot') await askAI(isi);
+  };
 
-        if (res.status === 429) {
-          // Rate limit: jujur ke pengunjung, jangan eskalasi palsu.
-          const limitMsg: Message = {
-            id: `bot-limit-${msgIdCounter++}`,
-            pengirim: 'bot',
-            isi: 'Anda mengirim pertanyaan terlalu cepat. Mohon tunggu sebentar lalu coba lagi.',
-            waktu: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-          };
-          setMessages((prev) => [...prev, limitMsg]);
-        } else if (data && data.jawaban) {
-          // Server sudah menyimpan balasan bot ke chat_pesan. JANGAN menambah
-          // salinan lokal — INSERT event / polling yang menyajikannya, kalau
-          // tidak balasan bot selalu tampil dobel.
-          if (data.eskalasi) {
-            // Server (route /api/chat/ai) juga sudah mengubah status sesi.
-            setSesiStatus('eskalasi');
-          }
-        } else {
-          // AI tidak menjawab: server tetap menandai eskalasi bila perlu.
-          const eskalasiText = data?.eskalasi === false
-            ? 'Maaf, asisten virtual sedang tidak dapat menjawab. Silakan coba pertanyaan lain atau kembali pada jam kerja.'
-            : 'Maaf, saya belum yakin karena informasi ini belum ada di aturan resmi kami, saya akan menghubungkan Anda ke petugas.\n\nSaya akan meneruskan sesi chat ini ke petugas loket untuk dibantu secara manual. Mohon tunggu...';
-          const botReply: Message = {
-            id: `bot-escalate-${msgIdCounter++}`,
-            pengirim: 'bot',
-            isi: eskalasiText,
-            waktu: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-          };
-          setMessages((prev) => [...prev, botReply]);
-          if (data?.eskalasi !== false) {
-            setSesiStatus('eskalasi');
-          }
-        }
-      } catch {
-        // Offline saat memanggil AI: jangan eskalasi — tandai offline saja,
-        // pesan pengunjung sudah tersimpan dan bisa dijawab ulang saat online.
-        if (typeof navigator !== 'undefined' && !navigator.onLine) {
-          setIsOnline(false);
-          setLoadingSetup(false);
-          setIsBotTyping(false);
-          return;
-        }
-        // Network/fetch error: fail-safe message (status sesi tidak diubah —
-        // pengunjung dapat mencoba lagi; eskalasi nyata terjadi di server).
-        const botReply: Message = {
-          id: `bot-err-${msgIdCounter++}`,
-          pengirim: 'bot',
-          isi: 'Maaf, asisten AI sedang tidak tersedia. Silakan coba lagi beberapa saat.',
-          waktu: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-        };
-        setMessages((prev) => [...prev, botReply]);
-      } finally {
-        setLoadingSetup(false);
-        setIsBotTyping(false);
-      }
-    }
+  const handleRetry = async (msg: Message) => {
+    setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, local: 'pending' } : m)));
+    const saved = await postPesan(msg);
+    if (saved && sesiStatusRef.current === 'bot') await askAI(msg.isi);
   };
 
   const handleEscalateManual = async () => {
@@ -929,13 +818,22 @@ export default function PublicChatPage() {
                         key={msg.id}
                         model={{
                           message: msg.isi,
-                          sentTime: msg.waktu,
+                          sentTime: waktuLabel(msg.created_at),
                           sender: msg.pengirim === 'bot' ? 'BOT FAQ' : msg.pengirim === 'petugas' ? 'PETUGAS LOKET' : 'Anda',
                           direction: msg.pengirim === 'pengunjung' ? 'outgoing' : 'incoming',
                           position: 'single',
                         }}
                       >
-                        <ChatMessage.Header sender={msg.pengirim === 'bot' ? 'BOT FAQ' : msg.pengirim === 'petugas' ? 'PETUGAS LOKET' : 'Anda'} sentTime={msg.waktu} />
+                        <ChatMessage.Header sender={msg.pengirim === 'bot' ? 'BOT FAQ' : msg.pengirim === 'petugas' ? 'PETUGAS LOKET' : 'Anda'} sentTime={waktuLabel(msg.created_at)} />
+                        {msg.local === 'pending' && <ChatMessage.Footer>Mengirim…</ChatMessage.Footer>}
+                        {msg.local === 'failed' && (
+                          <ChatMessage.Footer>
+                            <span style={{ color: 'var(--color-danger-600)' }}>Gagal terkirim. </span>
+                            <button type="button" className="btn btn--secondary btn--sm" onClick={() => handleRetry(msg)}>
+                              Kirim ulang
+                            </button>
+                          </ChatMessage.Footer>
+                        )}
                       </ChatMessage>
                     ))}
                     
@@ -961,7 +859,7 @@ export default function PublicChatPage() {
                   
                   <MessageInput
                     placeholder={!isOnline ? 'Anda sedang offline...' : (sesiStatus === 'selesai' ? 'Sesi chat ditutup...' : 'Ketik pertanyaan Anda...')}
-                    disabled={sesiStatus === 'selesai' || loadingSetup || !isOnline}
+                    disabled={sesiStatus === 'selesai' || !isOnline}
                     attachButton={false}
                     onSend={(_html, textContent) => handleSendMessage(textContent)}
                   />

@@ -4,6 +4,11 @@
 // completions) sehingga menambah vendor = baris env, bukan kode baru.
 
 import { todayWIB } from '@/lib/time';
+import { logServerEvent } from '@/lib/observability/logger';
+
+function failCause(e: unknown): string {
+  return (e instanceof Error ? e.message : String(e)).slice(0, 200);
+}
 
 export interface ProviderSpec {
   name: string;
@@ -164,14 +169,17 @@ export async function generateWithFallback(
     deps.dailyLimit ?? (Number(process.env.LLM_DAILY_LIMIT) || DEFAULT_DAILY_LIMIT);
 
   if (primary) {
-    const st = getState(states, primary.name);
+    // Kunci state dipisah dari entri spec (SDK vs OpenAI-compatible punya
+    // kuota/cooldown sendiri walau sama-sama bernama "gemini").
+    const st = getState(states, `primary:${primary.name}`);
     if (canAttempt(st, now(), dailyLimit)) {
       try {
         const text = await primary.generate();
         recordSuccess(st);
         return { text, provider: primary.name };
-      } catch {
+      } catch (e) {
         recordFailure(st, now());
+        logServerEvent('warn', { operation: 'llm.primary_failed', provider: primary.name, cause: failCause(e) });
       }
     }
   }
@@ -185,8 +193,9 @@ export async function generateWithFallback(
       const text = await callOpenAICompatible(fetcher, spec, input);
       recordSuccess(st);
       return { text, provider: spec.name };
-    } catch {
+    } catch (e) {
       recordFailure(st, now());
+      logServerEvent('warn', { operation: 'llm.provider_failed', provider: spec.name, cause: failCause(e) });
     }
   }
   return null;

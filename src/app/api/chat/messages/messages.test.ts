@@ -36,7 +36,7 @@ const LAYANAN = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const PENGUNJUNG = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 
 type ActorConfig =
-  | { kind: 'staff'; role: 'admin' | 'petugas'; layanan_id: string | null }
+  | { kind: 'staff'; role: 'admin' | 'petugas'; layanan_id: string | null; aktif?: boolean }
   | { kind: 'pengunjung'; id: string }
   | { kind: 'none' };
 
@@ -47,6 +47,7 @@ function mockAdmin(opts: {
     status: string;
     pengunjung_id: string | null;
     layanan_id: string | null;
+    ditangani_oleh?: string | null;
   } | null;
   messages?: Array<{ id: string; pengirim: string; isi: string; created_at: string }>;
   insertResult?: { data: unknown; error: unknown };
@@ -70,7 +71,7 @@ function mockAdmin(opts: {
           maybeSingle: vi.fn().mockResolvedValue({
             data:
               opts.actor.kind === 'staff'
-                ? { role: opts.actor.role, layanan_id: opts.actor.layanan_id }
+                ? { id: 'pt-1', role: opts.actor.role, layanan_id: opts.actor.layanan_id, aktif: opts.actor.aktif ?? true }
                 : null,
             error: null,
           }),
@@ -276,6 +277,7 @@ describe('/api/chat/messages API Route', () => {
   it('POST forces pengirim=petugas for staff', async () => {
     const mock = mockAdmin({
       actor: { kind: 'staff', role: 'petugas', layanan_id: LAYANAN },
+      sesi: { id: SESI, status: 'aktif', pengunjung_id: PENGUNJUNG, layanan_id: LAYANAN, ditangani_oleh: 'pt-1' },
       insertResult: {
         data: {
           id: 'm3',
@@ -346,5 +348,52 @@ describe('/api/chat/messages API Route', () => {
     const body = await res.json();
     expect(body.duplicate).toBe(true);
     expect(body.message.id).toBe('m-existing');
+  });
+
+  it('POST menolak sesi selesai dengan 409', async () => {
+    mockAdmin({
+      actor: { kind: 'pengunjung', id: PENGUNJUNG },
+      sesi: { id: SESI, status: 'selesai', pengunjung_id: PENGUNJUNG, layanan_id: LAYANAN },
+    });
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest('/api/chat/messages', { method: 'POST', body: { sesi_id: SESI, isi: 'Halo' } }));
+    expect(res.status).toBe(409);
+  });
+
+  it('petugas nonaktif ditolak (403)', async () => {
+    mockAdmin({ actor: { kind: 'staff', role: 'admin', layanan_id: null, aktif: false } });
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest('/api/chat/messages', { method: 'POST', body: { sesi_id: SESI, isi: 'Halo' } }));
+    expect(res.status).toBe(403);
+  });
+
+  const post = async () => {
+    const { POST } = await import('./route');
+    return POST(buildRequest('/api/chat/messages', { method: 'POST', body: { sesi_id: SESI, isi: 'Halo' } }));
+  };
+
+  it('petugas ditolak 409 pada sesi bot tanpa takeover', async () => {
+    mockAdmin({ actor: { kind: 'staff', role: 'petugas', layanan_id: LAYANAN } });
+    const res = await post();
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe('perlu_takeover');
+  });
+
+  it('petugas ditolak 409 pada sesi dipegang petugas lain', async () => {
+    mockAdmin({
+      actor: { kind: 'staff', role: 'petugas', layanan_id: LAYANAN },
+      sesi: { id: SESI, status: 'aktif', pengunjung_id: PENGUNJUNG, layanan_id: LAYANAN, ditangani_oleh: 'pt-2' },
+    });
+    const res = await post();
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe('dipegang_lain');
+  });
+
+  it('admin boleh membalas sesi bot/dipegang lain', async () => {
+    mockAdmin({
+      actor: { kind: 'staff', role: 'admin', layanan_id: null },
+      sesi: { id: SESI, status: 'aktif', pengunjung_id: PENGUNJUNG, layanan_id: LAYANAN, ditangani_oleh: 'pt-2' },
+    });
+    expect((await post()).status).toBe(201);
   });
 });

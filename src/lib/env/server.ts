@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { logServerEvent } from '@/lib/observability/logger';
 
 const serviceKeys = [
   'NEXT_PUBLIC_SUPABASE_URL',
@@ -34,6 +35,12 @@ const serverEnvSchema = z.object({
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL: z.string().optional(),
   GEMINI_EMBEDDING_MODEL: z.string().optional(),
+  // Rantai LLM cadangan (opsional), lihat docs/ENVIRONMENT_VARIABLES.md.
+  LLM_CHAT_PROVIDERS: z.string().optional(),
+  LLM_DAILY_LIMIT: z.string().optional(),
+  GROQ_API_KEY: z.string().optional(),
+  OPENROUTER_API_KEY: z.string().optional(),
+  MISTRAL_API_KEY: z.string().optional(),
   LMH_DEV_RETURN_LINK: z.string().optional(),
 }).superRefine((env, context) => {
   if (env.APP_ENV !== 'staging' && env.APP_ENV !== 'production') return;
@@ -98,5 +105,10 @@ export function parseRuntimeEnv(input: Record<string, string | undefined> = proc
     }
   }
 
-  return parseServerEnv(input);
+  const env = parseServerEnv(input);
+  if (!['GEMINI_API_KEY', 'GROQ_API_KEY', 'OPENROUTER_API_KEY', 'MISTRAL_API_KEY'].some((k) => input[k]?.trim())) {
+    // Bot tetap menjawab dari FAQ (FTS) tetapi tidak ada LLM/embedding.
+    logServerEvent('warn', { operation: 'env.no_ai_provider', detail: 'Tidak ada kunci penyedia AI; chat bot hanya FAQ/eskalasi' });
+  }
+  return env;
 }

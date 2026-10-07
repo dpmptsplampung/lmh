@@ -32,7 +32,7 @@ const postBodySchema = z.object({
 });
 
 type Actor =
-  | { kind: 'staff'; role: 'admin' | 'petugas' | 'front_office'; layananId: string | null }
+  | { kind: 'staff'; role: 'admin' | 'petugas' | 'front_office'; layananId: string | null; petugasId?: string }
   | { kind: 'pengunjung'; pengunjungId: string };
 
 export async function resolveActor(
@@ -41,15 +41,19 @@ export async function resolveActor(
 ): Promise<Actor | null> {
   const { data: petugas } = await adminClient
     .from('petugas')
-    .select('role, layanan_id')
+    .select('id, role, layanan_id, aktif')
     .eq('auth_user_id', authUserId)
     .maybeSingle();
+
+  // Petugas nonaktif tidak boleh bertindak sebagai staf (maupun pengunjung).
+  if (petugas && petugas.aktif === false) return null;
 
   if (petugas && (petugas.role === 'admin' || petugas.role === 'petugas' || petugas.role === 'front_office')) {
     return {
       kind: 'staff',
       role: petugas.role,
       layananId: petugas.layanan_id ?? null,
+      petugasId: petugas.id,
     };
   }
 
@@ -169,7 +173,7 @@ export async function POST(request: NextRequest) {
 
   const { data: sesiData, error: sesiErr } = await adminClient
     .from('chat_sesi')
-    .select('id, status, pengunjung_id, layanan_id')
+    .select('id, status, pengunjung_id, layanan_id, ditangani_oleh')
     .eq('id', parsed.data.sesi_id)
     .maybeSingle();
 
@@ -179,6 +183,22 @@ export async function POST(request: NextRequest) {
   }
   if (!sesiData || !canAccessSesi(actor, sesiData)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  if (sesiData.status === 'selesai') {
+    return NextResponse.json({ error: 'Sesi sudah selesai' }, { status: 409 });
+  }
+
+  // Server menegakkan aturan yang digerbangkan UI: petugas (bukan admin/FO)
+  // hanya boleh membalas sesi yang ia pegang sendiri.
+  if (actor.kind === 'staff' && actor.role === 'petugas') {
+    const held = sesiData.ditangani_oleh as string | null | undefined;
+    if (sesiData.status === 'bot') {
+      return NextResponse.json({ error: 'Ambil alih sesi terlebih dahulu', code: 'perlu_takeover' }, { status: 409 });
+    }
+    if (sesiData.status === 'aktif' && held && held !== actor.petugasId) {
+      return NextResponse.json({ error: 'Sesi sedang ditangani petugas lain', code: 'dipegang_lain' }, { status: 409 });
+    }
   }
 
   // Force role — never trust client-supplied pengirim (impersonation vector).

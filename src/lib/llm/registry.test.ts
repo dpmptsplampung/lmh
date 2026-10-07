@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { todayWIB } from '@/lib/time';
 import {
   parseChatProviderSpec,
   generateWithFallback,
@@ -51,6 +52,7 @@ describe('pemutus arus & kuota', () => {
   });
 
   it('kuota harian menolak, reset saat ganti hari WIB', () => {
+    st.day = todayWIB(); // tanggal tetap membuat tes basi: canAttempt mereset hari lampau
     st.usedToday = DEFAULT_DAILY_LIMIT;
     expect(canAttempt(st, 0, DEFAULT_DAILY_LIMIT)).toBe(false);
     st.day = '2026-09-22';
@@ -98,6 +100,22 @@ describe('generateWithFallback', () => {
     );
     expect(result).toBeNull();
     delete process.env.GROQ_API_KEY;
+  });
+
+  it('state primary SDK terpisah dari entri spec bernama sama', async () => {
+    process.env.GEMINI_API_KEY = 'k';
+    const states = new Map();
+    const fakeFetch = (async () =>
+      new Response(JSON.stringify({ choices: [{ message: { content: 'oai' } }] }), { status: 200 })) as unknown as typeof fetch;
+    const result = await generateWithFallback(
+      { name: 'gemini', generate: async () => { throw new Error('x'); } },
+      input,
+      { spec: 'gemini:m', fetcher: fakeFetch, states },
+    );
+    expect(result?.text).toBe('oai');
+    expect(states.get('primary:gemini')?.failStreak).toBe(1);
+    expect(states.get('gemini')?.usedToday).toBe(1);
+    delete process.env.GEMINI_API_KEY;
   });
 
   it('penyedia tanpa kunci dilewati', async () => {

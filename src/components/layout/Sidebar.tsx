@@ -34,6 +34,7 @@ import {
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
+import { makeThrottle } from '@/app/chat/merge';
 import { ADMIN_NAV, type AdminNavEntry } from '@/lib/admin-nav';
 import styles from './Sidebar.module.css';
 
@@ -79,6 +80,7 @@ export default function Sidebar() {
   useEffect(() => {
     const supabase = createClient();
     let channel: ReturnType<typeof supabase.channel> | null = null;
+    let throttleCancel: (() => void) | null = null;
 
     async function getUserRole() {
       const {
@@ -110,14 +112,17 @@ export default function Sidebar() {
           const { count } = await badgeQuery;
           setEskalasiCount(count ?? 0);
         };
-        await refreshBadge();
+        const badgeThrottle = makeThrottle(() => { refreshBadge(); }, 1500);
+        throttleCancel = badgeThrottle.cancel;
 
         channel = supabase
           .channel('sidebar-eskalasi-badge')
           .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_sesi' }, () => {
-            refreshBadge();
+            badgeThrottle.call();
           })
-          .subscribe();
+          .subscribe((st) => {
+            if (st === 'SUBSCRIBED') refreshBadge(); // catch-up saat (re)connect
+          });
       } else {
         setUserRole(null);
       }
@@ -125,6 +130,7 @@ export default function Sidebar() {
     getUserRole();
 
     return () => {
+      throttleCancel?.();
       if (channel) supabase.removeChannel(channel);
     };
   }, []);

@@ -23,7 +23,17 @@ Do not copy the marked replacement values from `.env.example` into staging or pr
 | `GEMINI_API_KEY` | Optional | Optional | Required | Required | No |
 | `GEMINI_MODEL` | Optional/defaults may apply | Optional | Required | Required | No |
 | `GEMINI_EMBEDDING_MODEL` | Optional/defaults may apply | Optional | Required | Required | No |
+| `LLM_CHAT_PROVIDERS` | Optional | Optional | Optional | Optional | No |
+| `LLM_DAILY_LIMIT` | Optional (default 200 per provider per day, WIB) | Optional | Optional | Optional | No |
+| `GROQ_API_KEY` / `OPENROUTER_API_KEY` / `MISTRAL_API_KEY` | Optional | Optional | Optional | Optional | No |
 | `LMH_DEV_RETURN_LINK` | May be `set` only for deliberate local debugging | Unset | Must not be `set` | Must not be `set` | No |
+
+## Chat bot LLM chain
+
+- Primary: Google SDK (`GEMINI_API_KEY`, `GEMINI_MODEL`). Fallback chain: `LLM_CHAT_PROVIDERS`, format `provider:model[@KEY_ENV],...` in priority order, e.g. `gemini:gemini-flash-latest,groq:llama-3.3-70b-versatile,openrouter:<model>,mistral:<model>`. Built-in providers: `gemini` (OpenAI-compatible endpoint, key `GEMINI_API_KEY`), `groq`, `openrouter`, `mistral`, `ollama`; unknown names use `<NAME>_BASE_URL`, `<NAME>_API_KEY`, `<NAME>_MODEL`. Providers without a key are skipped.
+- Circuit breaker (3 failures -> 10 minute cooldown) and daily quota are in-memory per serverless instance; the SDK primary (`primary:gemini`) and the spec entry `gemini` keep separate state.
+- If no provider key is set, startup logs a warning (`env.no_ai_provider`); the bot then answers from FAQ full-text match or escalates to staff.
+- `BOT_FTS_THRESHOLD` (default 0.15) overrides the deterministic FAQ match threshold.
 
 ## Vercel Setup
 

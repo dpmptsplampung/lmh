@@ -7,11 +7,23 @@ import {
   CheckCircle2,
   AlertCircle,
   Loader2,
+  Wifi,
+  WifiOff,
 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/components/Toast';
 import { truncate, relativeTime } from '@/lib/utils';
+import {
+  mergeMessages,
+  rtFromStatus,
+  useFallbackPoll,
+  useOnSubscribed,
+  makeThrottle,
+  waktuLabel,
+  type ChatMsg,
+  type RtState,
+} from '@/app/chat/merge';
 import '@chatscope/chat-ui-kit-styles/dist/default/styles.min.css';
 import {
   MainContainer,
@@ -21,36 +33,24 @@ import {
   MessageInput,
 } from '@chatscope/chat-ui-kit-react';
 
-interface Session {
+type Status = 'bot' | 'eskalasi' | 'aktif' | 'selesai';
+
+// Baris RPC public.chat_sesi_ringkas (ringkasan per sesi, tanpa memuat pesan).
+interface RingkasRow {
   id: string;
+  status: Status;
   layanan_id: string;
-  kontak_pengunjung: string | null;
-  status: 'bot' | 'eskalasi' | 'aktif' | 'selesai';
+  pengunjung_id: string | null;
+  ditangani_oleh: string | null;
   created_at: string;
   updated_at: string;
-  layanan: { nama: string } | null;
-  last_message?: string;
-  last_message_at?: string;
-  unread?: number;
+  last_pesan: string | null;
+  last_pesan_at: string | null;
+  last_pengirim: 'pengunjung' | 'petugas' | 'bot' | null;
+  unread: boolean;
 }
 
-interface Message {
-  id: string;
-  pengirim: 'pengunjung' | 'bot' | 'petugas';
-  isi: string;
-  created_at: string;
-  client_uuid?: string | null;
-}
-
-type SessionQueryRow = {
-  id: string;
-  layanan_id: string;
-  kontak_pengunjung: string | null;
-  status: 'bot' | 'eskalasi' | 'aktif' | 'selesai';
-  created_at: string;
-  updated_at: string;
-  layanan: { nama: string } | { nama: string }[] | null;
-};
+type Message = ChatMsg;
 
 const statusConfig = {
   bot: { label: 'Bot', icon: <Bot size={12} />, className: 'badge--bot' },
@@ -60,15 +60,46 @@ const statusConfig = {
 };
 
 export default function AdminChatPage() {
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [selectedSession, setSelectedSession] = useState<Session | null>(null);
+  const [sessions, setSessions] = useState<RingkasRow[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Cadangan bila sesi terpilih hilang dari daftar (mis. selesai & disembunyikan).
+  const [snapshot, setSnapshot] = useState<RingkasRow | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [messageInput, setMessageInput] = useState('');
   const [loading, setLoading] = useState(true);
   const [loadingDraft, setLoadingDraft] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState('');
+  const [showSelesai, setShowSelesai] = useState(false);
+  const [rt, setRt] = useState<RtState>('connecting');
+  const [layananNama, setLayananNama] = useState<Record<string, string>>({});
+  const [petugasNama, setPetugasNama] = useState<Record<string, string>>({});
+  const [kontak, setKontak] = useState<Record<string, string>>({});
+  // Sesi yang sudah dibuka: id -> last_pesan_at saat dibaca. Badge baru muncul lagi bila ada pesan lebih baru.
+  const [cleared, setCleared] = useState<Record<string, string | null>>({});
+  const [myPetugasId, setMyPetugasId] = useState<string | null>(null);
 
   const { toast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const selectedIdRef = useRef<string | null>(null);
+  const layananFilterRef = useRef<string | null>(null);
+  const showSelesaiRef = useRef(false);
+  const listSeq = useRef(0);
+  const msgSeq = useRef(0);
+  // client_uuid dipertahankan selama teks yang sama belum terkirim, sehingga
+  // klik ulang setelah gagal bersifat idempoten di server.
+  const pendingSend = useRef<{ text: string; uuid: string } | null>(null);
+
+  const selectedSession =
+    sessions.find((s) => s.id === selectedId) ??
+    (snapshot && snapshot.id === selectedId ? snapshot : null);
+
+  useEffect(() => {
+    selectedIdRef.current = selectedId;
+  }, [selectedId]);
+  useEffect(() => {
+    showSelesaiRef.current = showSelesai;
+  }, [showSelesai]);
 
   const handleGenerateDraft = async () => {
     if (!selectedSession || loadingDraft) return;
@@ -93,360 +124,263 @@ export default function AdminChatPage() {
     }
   };
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
   useEffect(() => {
-    scrollToBottom();
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const fetchSessions = useCallback(async (layananId: string | null) => {
+  // Daftar sesi: satu RPC ringkas (tanpa memuat semua pesan). Urutan respons
+  // dijaga lewat nomor urut agar fetch lama tidak menimpa yang baru.
+  const fetchSessions = useCallback(async () => {
+    const seq = ++listSeq.current;
     const supabase = createClient();
-    let query = supabase
-      .from('chat_sesi')
-      .select(`
-        id, layanan_id, kontak_pengunjung, status, created_at, updated_at,
-        layanan:layanan_id ( nama )
-      `)
-      .order('updated_at', { ascending: false });
-
-    if (layananId) {
-      query = query.eq('layanan_id', layananId);
-    }
-
-    const { data, error: fetchErr } = await query;
-    if (fetchErr) {
+    const { data, error } = await supabase.rpc('chat_sesi_ringkas', {
+      p_limit: 100,
+      p_include_selesai: showSelesaiRef.current,
+    });
+    if (seq !== listSeq.current) return;
+    if (error) {
       toast('Gagal memuat sesi chat', 'error');
       return;
     }
-
-    if (!data) return;
-
-    const formatted: Session[] = (data as SessionQueryRow[]).map(d => ({
-      ...d,
-      layanan: Array.isArray(d.layanan) ? d.layanan[0] : d.layanan,
-    }));
-
-    const sessionIds = formatted.map(s => s.id);
-    const latestMap: Record<string, { isi: string; created_at: string }> = {};
-    const visitorMap: Record<string, { id: string; created_at: string }[]> = {};
-    const staffMap: Record<string, string> = {};
-
-    if (sessionIds.length > 0) {
-      // Satu query agregat (bukan N+1): ambil semua pesan sesi pada daftar,
-      // lalu hitung unread per sesi = pesan pengunjung setelah pesan
-      // bot/petugas terakhir (belum dijawab).
-      const { data: allMessages } = await supabase
-        .from('chat_pesan')
-        .select('id, sesi_id, pengirim, isi, created_at')
-        .in('sesi_id', sessionIds)
-        .order('created_at', { ascending: false });
-
-      for (const msg of allMessages || []) {
-        if (!latestMap[msg.sesi_id]) {
-          latestMap[msg.sesi_id] = { isi: msg.isi, created_at: msg.created_at };
-        }
-        if (msg.pengirim === 'pengunjung') {
-          if (!visitorMap[msg.sesi_id]) visitorMap[msg.sesi_id] = [];
-          visitorMap[msg.sesi_id].push({ id: msg.id, created_at: msg.created_at });
-        } else if (!staffMap[msg.sesi_id]) {
-          staffMap[msg.sesi_id] = msg.created_at;
-        }
-      }
+    let rows = (data ?? []) as RingkasRow[];
+    // Petugas biasa hanya melihat layanannya sendiri.
+    if (layananFilterRef.current) {
+      rows = rows.filter((r) => r.layanan_id === layananFilterRef.current);
     }
-
-    const withMessages: Session[] = formatted.map(s => ({
-      ...s,
-      last_message: latestMap[s.id]?.isi,
-      last_message_at: latestMap[s.id]?.created_at,
-      unread: (visitorMap[s.id] || []).filter(
-        (m) => !staffMap[s.id] || m.created_at > staffMap[s.id],
-      ).length,
-    }));
-
-    setSessions(withMessages);
-
-    setSelectedSession(prev => {
-      if (!prev) return prev;
-      const updated = withMessages.find(s => s.id === prev.id);
-      return updated || prev;
-    });
+    setSessions(rows);
   }, [toast]);
 
-  // Effect 1: Load user + session list subscription (mount only)
+  // Throttle leading+trailing (400ms): tidak kelaparan saat event beruntun.
+  const rtRef = useRef<RtState>('connecting');
+
+  // Inisialisasi + satu channel realtime untuk daftar sesi DAN pesan sesi terpilih.
   useEffect(() => {
     const supabase = createClient();
+    let active = true;
     let channel: ReturnType<typeof supabase.channel> | null = null;
-    let pesanChannel: ReturnType<typeof supabase.channel> | null = null;
-    let sessionPoll: ReturnType<typeof setInterval> | null = null;
+    const throttle = makeThrottle(() => { fetchSessions(); }, 400);
+    const refetchSoon = throttle.call;
 
     async function init() {
       try {
         const { data: { user } } = await supabase.auth.getUser();
-
-        let layananId: string | null = null;
-
         if (user) {
           const { data: petugas } = await supabase
             .from('petugas')
-            .select('role, layanan_id')
+            .select('id, role, layanan_id')
             .eq('auth_user_id', user.id)
-            .single();
-
+            .maybeSingle();
           if (petugas) {
-            if (petugas.role === 'petugas') {
-              layananId = petugas.layanan_id;
-            }
+            setMyPetugasId(petugas.id);
+            if (petugas.role === 'petugas') layananFilterRef.current = petugas.layanan_id;
           }
         }
 
-        await fetchSessions(layananId);
+        // Nama layanan & petugas: tabel kecil, diambil sekali (best-effort).
+        const [{ data: lay }, { data: pet }] = await Promise.all([
+          supabase.from('layanan').select('id, nama'),
+          supabase.from('petugas').select('id, nama'),
+        ]);
+        if (active) {
+          setLayananNama(Object.fromEntries((lay ?? []).map((l) => [l.id, l.nama])));
+          setPetugasNama(Object.fromEntries((pet ?? []).map((p) => [p.id, p.nama])));
+        }
 
-        sessionPoll = setInterval(() => {
-          fetchSessions(layananId);
-        }, 3000);
+        if (!active) return;
 
         channel = supabase
-          .channel('chat-sesi-changes')
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_sesi' }, () => {
-            fetchSessions(layananId);
+          .channel('chat-admin')
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_sesi' }, refetchSoon)
+          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_pesan' }, (payload) => {
+            const msg = payload.new as Message & { sesi_id: string };
+            if (msg.sesi_id === selectedIdRef.current) {
+              setMessages((prev) => mergeMessages(prev, [msg]));
+            }
+            refetchSoon();
           })
-          .subscribe();
-
-        // Refresh daftar sesi juga saat ada pesan baru (unread/last_message berubah).
-        pesanChannel = supabase
-          .channel('chat-pesan-changes')
-          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_pesan' }, () => {
-            fetchSessions(layananId);
-          })
-          .subscribe();
+          .subscribe((status) => {
+            if (active) {
+              rtRef.current = rtFromStatus(status);
+              setRt(rtRef.current);
+            }
+          });
+        // Daftar awal dimuat saat SUBSCRIBED (catch-up); bila realtime tak tersambung, muat sekali.
+        setTimeout(() => {
+          if (active && rtRef.current !== 'ok') fetchSessions();
+        }, 3000);
       } catch (e) {
         console.error(e);
         toast('Gagal menginisialisasi chat', 'error');
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     }
     init();
 
-    // K-1: Cleanup — clear interval AND remove channels on unmount
     return () => {
-      if (sessionPoll) clearInterval(sessionPoll);
+      active = false;
+      throttle.cancel();
       if (channel) supabase.removeChannel(channel);
-      if (pesanChannel) supabase.removeChannel(pesanChannel);
     };
   }, [fetchSessions, toast]);
 
-  // Effect 2: Message broadcast + 4s polling fallback (depends on selectedSession)
+  // Cadangan: poll daftar hanya saat realtime tidak sehat; refetch saat tab
+  // kembali terlihat / online.
+  useOnSubscribed(rt, fetchSessions, !loading);
+  useFallbackPoll(fetchSessions, rt, { fastMs: 15000, slowMs: null, enabled: !loading });
+
+  // Ganti filter "selesai" -> muat ulang daftar (bukan saat render awal).
+  const firstFilter = useRef(true);
   useEffect(() => {
-    if (!selectedSession) {
+    if (firstFilter.current) {
+      firstFilter.current = false;
       return;
     }
+    fetchSessions();
+  }, [showSelesai, fetchSessions]);
 
-    let active = true;
-    const supabase = createClient();
-
-    async function loadMessages() {
-      try {
-        const res = await fetch(`/api/chat/messages?sesi_id=${selectedSession!.id}`);
-        if (!res.ok) return;
-        const data = await res.json();
-        if (active && data.messages) {
-          setMessages((prev) => {
-            const serverMsgs = data.messages as Message[];
-            // Keep optimistic messages (id starts with 'opt-') that aren't yet
-            // represented in the server response (matched by client_uuid, lalu
-            // fallback isi+pengirim untuk pesan lama).
-            const serverUuids = new Set(
-              serverMsgs.map((m) => m.client_uuid).filter(Boolean),
-            );
-            const serverTexts = new Set(serverMsgs.map((m) => `${m.pengirim}:${m.isi}`));
-            const pendingOpts = prev.filter((m) => {
-              if (!m.id.startsWith('opt-')) return false;
-              const uuid = m.id.slice(4);
-              if (serverUuids.has(uuid)) return false;
-              return !serverTexts.has(`${m.pengirim}:${m.isi}`);
-            });
-            return [...serverMsgs, ...pendingOpts];
-          });
-        }
-      } catch {
-        /* ignore fetch errors */
-      }
+  const loadMessages = useCallback(async () => {
+    const id = selectedIdRef.current;
+    if (!id) return;
+    const seq = ++msgSeq.current;
+    try {
+      const res = await fetch(`/api/chat/messages?sesi_id=${id}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      // Abaikan respons usang: sesi sudah berganti atau ada fetch yang lebih baru.
+      if (seq !== msgSeq.current || id !== selectedIdRef.current) return;
+      if (data.messages) setMessages((prev) => mergeMessages(prev, data.messages as Message[]));
+    } catch {
+      /* jaringan putus: poll/refetch berikutnya akan mencoba lagi */
     }
+  }, []);
 
-    loadMessages();
+  // Utas pesan: kunci pada id sesi (bukan objek) supaya refresh daftar tidak
+  // memicu muat ulang. Pesan sesi lain tidak terbawa.
+  useEffect(() => {
+    if (selectedId) loadMessages();
+  }, [selectedId, loadMessages]);
 
-    // Safety-net polling: broadcast is the instant path, but if the realtime
-    // publication/connection hiccups, this keeps the thread fresh (4s).
-    const poll = setInterval(() => { loadMessages(); }, 4000);
+  const threadLive = !!selectedId && selectedSession?.status !== 'selesai';
+  useOnSubscribed(rt, loadMessages, threadLive);
+  useFallbackPoll(loadMessages, rt, { fastMs: 5000, slowMs: 30000, enabled: threadLive });
 
-    // Listener postgres_changes (chat_pesan terpublikasi — migrasi 202609230001):
-    // sinkron instan lintas klien tanpa siaran per-request dari serverless.
-    const pesanChannel = supabase
-      .channel(`chat-pesan-admin-${selectedSession.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'chat_pesan',
-          filter: `sesi_id=eq.${selectedSession.id}`,
-        },
-        (payload) => {
-          const newMsg = payload.new as Message;
-        setMessages(prev => {
-          // Dedup utama: client_uuid (optimistic vs server). Fallback lama:
-          // isi+pengirim untuk pesan tanpa uuid.
-          if (newMsg.client_uuid) {
-            const hasOpt = prev.some(
-              (m) => m.id === `opt-${newMsg.client_uuid}` || m.id === newMsg.id,
-            );
-            if (hasOpt) {
-              return prev.map((m) =>
-                m.id === `opt-${newMsg.client_uuid}` ? newMsg : m,
-              );
-            }
-          } else if (
-            prev.find(
-              (m) =>
-                m.id === newMsg.id ||
-                (m.isi === newMsg.isi && m.pengirim === newMsg.pengirim && m.id.startsWith('opt-')),
-            )
-          ) {
-            return prev;
+  const handleSelectSession = (session: RingkasRow) => {
+    if (session.id !== selectedId) {
+      // Reset utas: pesan sesi sebelumnya tidak boleh terbawa; fetch lama diabaikan.
+      setMessages([]);
+      setMessageInput('');
+      setSendError('');
+      pendingSend.current = null;
+      msgSeq.current++;
+    }
+    setSelectedId(session.id);
+    setSnapshot(session);
+    // Sesi yang dibuka dianggap sudah dibaca.
+    setCleared((c) => {
+      const next = { ...c, [session.id]: session.last_pesan_at };
+      // Sesi yang ditinggalkan: tandai terbaca sampai pesan lebih baru.
+      const prevRow = selectedId ? sessions.find((s) => s.id === selectedId) : null;
+      if (prevRow) next[prevRow.id] = prevRow.last_pesan_at;
+      return next;
+    });
+    // Nama pengunjung tidak ada di RPC ringkas: ambil satu baris saat dibuka.
+    if (!kontak[session.id]) {
+      createClient()
+        .from('chat_sesi')
+        .select('kontak_pengunjung')
+        .eq('id', session.id)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (data?.kontak_pengunjung) {
+            setKontak((k) => ({ ...k, [session.id]: data.kontak_pengunjung as string }));
           }
-          if (prev.some((m) => m.id === newMsg.id)) return prev;
-          return [...prev, newMsg];
         });
-      })
-      .subscribe();
-
-    return () => {
-      active = false;
-      clearInterval(poll);
-      supabase.removeChannel(pesanChannel);
-    };
-  }, [selectedSession, toast]);
-
-  const handleSelectSession = (session: Session) => {
-    setSelectedSession(session);
-    // Sesi yang sedang dibuka dianggap sudah dibaca — reset badge unread-nya.
-    setSessions(prev =>
-      prev.map(s => (s.id === session.id ? { ...s, unread: 0 } : s)),
-    );
+    }
   };
 
+  const holderName = (s: RingkasRow) =>
+    s.ditangani_oleh ? petugasNama[s.ditangani_oleh] ?? 'petugas lain' : null;
+  const isMine = (s: RingkasRow) => !s.ditangani_oleh || s.ditangani_oleh === myPetugasId;
+  // Boleh membalas hanya bila sesi aktif dan dipegang petugas ini.
+  const canReply = !!selectedSession && selectedSession.status === 'aktif' && isMine(selectedSession);
+
+  const sesiAction = async (aksi: 'takeover' | 'kembali_ke_bot' | 'selesaikan', okMsg: string, failMsg: string) => {
+    if (!selectedSession) return;
+    try {
+      const res = await fetch('/api/chat/sesi', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sesi_id: selectedSession.id, aksi }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        const holder = body?.holder?.nama ? ` (ditangani ${body.holder.nama})` : '';
+        throw new Error(`${body.error ?? failMsg}${res.status === 409 ? holder : ''}`);
+      }
+      toast(okMsg, 'success');
+    } catch (err) {
+      toast(err instanceof Error ? err.message : failMsg, 'error');
+    } finally {
+      // Status sesungguhnya dari server (juga untuk kasus 409).
+      fetchSessions();
+      loadMessages();
+    }
+  };
+
+  const handleAmbilAlih = () => {
+    if (!selectedSession) return;
+    const holder = selectedSession.status === 'aktif' && !isMine(selectedSession) ? holderName(selectedSession) : null;
+    if (holder && !window.confirm(`Chat ini sedang ditangani ${holder}. Ambil alih sekarang?`)) return;
+    sesiAction('takeover', 'Berhasil mengambil alih chat', 'Gagal mengambil alih chat');
+  };
+  const handleKembalikanKeBot = () =>
+    sesiAction('kembali_ke_bot', 'Sesi dikembalikan ke bot', 'Gagal mengembalikan sesi ke bot');
+  const handleSelesaikanSesi = () =>
+    sesiAction('selesaikan', 'Sesi chat diselesaikan', 'Gagal menyelesaikan sesi');
+
   const handleSendMessage = async (textToSubmit: string) => {
-    if (!textToSubmit.trim() || !selectedSession) return;
-
     const text = textToSubmit.trim();
-    // messageInput should be cleared immediately
-    setMessageInput('');
+    if (!text || !selectedSession || sending || !canReply) return;
+    const sesiId = selectedSession.id;
 
-    // Optimistic update — display message immediately on officer screen.
-    // client_uuid mengaitkan pesan optimistic dengan broadcast server.
-    const clientUuid = crypto.randomUUID();
-    const optMsg: Message = {
-      id: `opt-${clientUuid}`,
-      pengirim: 'petugas',
-      isi: text,
-      created_at: new Date().toISOString(),
-    };
-    setMessages((prev) => [...prev, optMsg]);
+    // Teks yang sama dipakai ulang uuid-nya (retry idempoten).
+    if (!pendingSend.current || pendingSend.current.text !== text) {
+      pendingSend.current = { text, uuid: crypto.randomUUID() };
+    }
+    const { uuid } = pendingSend.current;
 
+    setSending(true);
+    setSendError('');
     try {
       const res = await fetch('/api/chat/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sesi_id: selectedSession.id,
-          pengirim: 'petugas',
-          isi: text,
-          client_uuid: clientUuid,
-        }),
-      });
-
-      if (!res.ok) throw new Error('Insert failed');
-
-      if (selectedSession.status !== 'aktif' && selectedSession.status !== 'selesai') {
-        const supabase = createClient();
-        const { data: { user } } = await supabase.auth.getUser();
-        let myPetugasId: string | null = null;
-        if (user) {
-          const { data: p } = await supabase
-            .from('petugas').select('id').eq('auth_user_id', user.id).maybeSingle();
-          myPetugasId = p?.id ?? null;
-        }
-        await supabase
-          .from('chat_sesi')
-          .update({ status: 'aktif', ditangani_oleh: myPetugasId })
-          .eq('id', selectedSession.id);
-        setSelectedSession((prev) => (prev ? { ...prev, status: 'aktif' } : null));
-      }
-    } catch (err) {
-      console.error(err);
-      toast('Gagal mengirim pesan', 'error');
-    }
-  };
-
-  const handleSelesaikanSesi = async () => {
-    if (!selectedSession) return;
-    try {
-      const res = await fetch('/api/chat/sesi', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sesi_id: selectedSession.id, aksi: 'selesaikan' }),
+        body: JSON.stringify({ sesi_id: sesiId, pengirim: 'petugas', isi: text, client_uuid: uuid }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body.error ?? 'Gagal menyelesaikan sesi');
+        throw new Error(body.error ?? 'Gagal mengirim pesan');
       }
-      setSelectedSession((prev) => (prev ? { ...prev, status: 'selesai' } : null));
-      toast('Sesi chat diselesaikan', 'success');
+      const body = await res.json().catch(() => ({}));
+      pendingSend.current = null;
+      if (sesiId === selectedIdRef.current) {
+        if (body.message) setMessages((prev) => mergeMessages(prev, [body.message as Message]));
+        setMessageInput('');
+      }
     } catch (err) {
-      toast(err instanceof Error ? err.message : 'Gagal menyelesaikan sesi', 'error');
+      // Teks TIDAK dihapus; petugas bisa menekan kirim lagi.
+      const msg = err instanceof Error ? err.message : 'Gagal mengirim pesan';
+      setSendError(`${msg}. Teks Anda masih ada — kirim lagi.`);
+      toast(msg, 'error');
+      fetchSessions();
+    } finally {
+      setSending(false);
     }
   };
 
-  const handleAmbilAlih = async () => {
-    if (!selectedSession) return;
-    try {
-      const res = await fetch('/api/chat/sesi', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sesi_id: selectedSession.id, aksi: 'takeover' }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error ?? 'Gagal mengambil alih chat');
-      }
-      setSelectedSession((prev) => (prev ? { ...prev, status: 'aktif' } : null));
-      toast('Berhasil mengambil alih chat', 'success');
-    } catch (err) {
-      toast(err instanceof Error ? err.message : 'Gagal mengambil alih chat', 'error');
-    }
-  };
-
-  const handleKembalikanKeBot = async () => {
-    if (!selectedSession) return;
-    try {
-      const res = await fetch('/api/chat/sesi', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sesi_id: selectedSession.id, aksi: 'kembali_ke_bot' }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error ?? 'Gagal mengembalikan sesi ke bot');
-      }
-      setSelectedSession((prev) => (prev ? { ...prev, status: 'bot' } : null));
-      toast('Sesi dikembalikan ke bot', 'success');
-    } catch (err) {
-      toast(err instanceof Error ? err.message : 'Gagal mengembalikan sesi ke bot', 'error');
-    }
-  };
+  const namaSender = (p: Message['pengirim']) =>
+    p === 'petugas' ? 'Petugas' : p === 'bot' ? 'BOT FAQ' : 'Pengunjung';
 
   return (
     <>
@@ -478,7 +412,24 @@ export default function AdminChatPage() {
             fontWeight: 600,
             fontSize: 'var(--text-sm)',
           }}>
-            Sesi Chat ({sessions.filter(s => s.status !== 'selesai').length} aktif)
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>Sesi Chat ({sessions.filter(s => s.status !== 'selesai').length} aktif)</span>
+              <span
+                role="status"
+                title={rt === 'ok' ? 'Realtime tersambung' : 'Realtime terputus — memakai pembaruan berkala'}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '11px', fontWeight: 500,
+                  color: rt === 'ok' ? 'var(--color-success-600)' : 'var(--color-danger-600)',
+                }}
+              >
+                {rt === 'ok' ? <Wifi size={12} /> : <WifiOff size={12} />}
+                {rt === 'ok' ? 'Langsung' : rt === 'connecting' ? 'Menyambung…' : 'Terputus'}
+              </span>
+            </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '12px', fontWeight: 400, marginTop: 6, cursor: 'pointer' }}>
+              <input type="checkbox" checked={showSelesai} onChange={(e) => setShowSelesai(e.target.checked)} />
+              Tampilkan sesi selesai
+            </label>
           </div>
           <div style={{ flex: 1, overflowY: 'auto' }}>
             {loading ? (
@@ -491,7 +442,8 @@ export default function AdminChatPage() {
               </div>
             ) : sessions.map((session) => {
               const config = statusConfig[session.status];
-              const unread = session.id === selectedSession?.id ? 0 : (session.unread ?? 0);
+              const unread = session.id !== selectedId && session.unread && cleared[session.id] !== session.last_pesan_at;
+              const holder = session.status === 'aktif' ? holderName(session) : null;
               return (
                 <button
                   type="button"
@@ -507,45 +459,40 @@ export default function AdminChatPage() {
                     padding: 'var(--space-4)',
                     borderBottom: '1px solid var(--color-neutral-100)',
                     cursor: 'pointer',
-                    background: selectedSession?.id === session.id ? 'var(--color-primary-50)' : 'transparent',
+                    background: selectedId === session.id ? 'var(--color-primary-50)' : 'transparent',
                     transition: 'background var(--transition-fast)',
                     minHeight: '44px',
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
-                    <span style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{session.layanan?.nama || 'Layanan'}</span>
+                    <span style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{layananNama[session.layanan_id] || 'Layanan'}</span>
                     <span className={`badge ${config.className}`} style={{ fontSize: '10px' }}>
                       {config.icon} {config.label}
                     </span>
                   </div>
-                  {session.last_message && (
+                  {session.last_pesan && (
                     <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: 'var(--space-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {truncate(session.last_message, 40)}
+                      {truncate(session.last_pesan, 40)}
                     </div>
                   )}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'var(--space-2)' }}>
                     <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                      {session.kontak_pengunjung || 'Pengunjung Anonim'}
+                      {holder ? `Ditangani: ${holder}` : kontak[session.id] || 'Pengunjung'}
                     </span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                      {unread > 0 && (
-                        <span style={{
-                          background: 'var(--color-danger-500)',
-                          color: 'white',
-                          fontSize: '10px',
-                          fontWeight: 700,
-                          borderRadius: '999px',
-                          padding: '1px 6px',
-                          minWidth: '18px',
-                          textAlign: 'center',
-                        }}>
-                          {unread}
-                        </span>
+                      {unread && (
+                        <span
+                          aria-label="Pesan belum dibalas"
+                          style={{
+                            background: 'var(--color-danger-500)',
+                            width: 10,
+                            height: 10,
+                            borderRadius: '999px',
+                          }}
+                        />
                       )}
                       <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
-                        {session.last_message_at
-                          ? relativeTime(session.last_message_at)
-                          : relativeTime(session.created_at)}
+                        {relativeTime(session.last_pesan_at ?? session.created_at)}
                       </span>
                     </div>
                   </div>
@@ -570,20 +517,23 @@ export default function AdminChatPage() {
               }}>
                 <div>
                   <h3 style={{ fontWeight: 600, fontSize: 'var(--text-base)', marginBottom: '4px' }}>
-                    {selectedSession.kontak_pengunjung || 'Pengunjung Anonim'}
+                    {kontak[selectedSession.id] || 'Pengunjung'}
                   </h3>
                   <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-                    Layanan: {selectedSession.layanan?.nama || '—'}
+                    Layanan: {layananNama[selectedSession.layanan_id] || '—'}
+                    {selectedSession.status === 'aktif' && (
+                      <> · Ditangani oleh {isMine(selectedSession) && myPetugasId ? 'Anda' : holderName(selectedSession) ?? '—'}</>
+                    )}
                   </div>
                 </div>
                 {selectedSession.status !== 'selesai' && (
                   <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-                    {selectedSession.status === 'eskalasi' && (
+                    {!canReply && (
                       <button className="btn btn--primary btn--sm" onClick={handleAmbilAlih}>
                         Ambil Alih Chat
                       </button>
                     )}
-                    {selectedSession.status === 'aktif' && (
+                    {selectedSession.status === 'aktif' && isMine(selectedSession) && (
                       <button className="btn btn--secondary btn--sm" onClick={handleKembalikanKeBot}>
                         Kembalikan ke Bot
                       </button>
@@ -605,26 +555,38 @@ export default function AdminChatPage() {
                           key={msg.id}
                           model={{
                             message: msg.isi,
-                            sentTime: new Date(msg.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-                            sender: msg.pengirim === 'petugas' ? 'Anda' : msg.pengirim === 'bot' ? 'BOT FAQ' : 'Pengunjung',
+                            sentTime: waktuLabel(msg.created_at),
+                            sender: namaSender(msg.pengirim),
                             direction: msg.pengirim === 'petugas' ? 'outgoing' : 'incoming',
                             position: 'single',
                           }}
                         >
-                          <ChatMessage.Header sender={msg.pengirim === 'petugas' ? 'Anda' : msg.pengirim === 'bot' ? 'BOT FAQ' : 'Pengunjung'} sentTime={new Date(msg.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} />
+                          <ChatMessage.Header sender={namaSender(msg.pengirim)} sentTime={waktuLabel(msg.created_at)} />
                         </ChatMessage>
                       ))}
                     </MessageList>
 
                     {selectedSession.status !== 'selesai' ? (
                       <div style={{ display: 'flex', flexDirection: 'column', background: 'var(--surface-primary)' }}>
+                        {!canReply && (
+                          <div role="status" style={{ padding: 'var(--space-2) var(--space-4)', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
+                            {selectedSession.status === 'aktif'
+                              ? `Chat ini sedang ditangani ${holderName(selectedSession) ?? 'petugas lain'}. Tekan "Ambil Alih Chat" untuk membalas.`
+                              : 'Tekan "Ambil Alih Chat" untuk mulai membalas pengunjung.'}
+                          </div>
+                        )}
+                        {sendError && (
+                          <div role="alert" style={{ padding: 'var(--space-2) var(--space-4)', fontSize: 'var(--text-xs)', color: 'var(--color-danger-700)' }}>
+                            {sendError}
+                          </div>
+                        )}
                         {/* Draft Button above input */}
                         <div style={{ display: 'flex', justifyContent: 'flex-end', padding: 'var(--space-2) var(--space-4) 0' }}>
                           <button
                             type="button"
                             className="btn btn--secondary btn--sm"
                             onClick={handleGenerateDraft}
-                            disabled={loadingDraft}
+                            disabled={loadingDraft || !canReply}
                             title="Minta Gemini memuatkan draf balasan berbasis FAQ & Dasar Hukum"
                             style={{ borderRadius: '999px', fontSize: 'var(--text-xs)', height: '28px', padding: '0 12px' }}
                           >
@@ -632,11 +594,12 @@ export default function AdminChatPage() {
                           </button>
                         </div>
                         <MessageInput
-                          placeholder="Ketik balasan Anda..."
+                          placeholder={canReply ? 'Ketik balasan Anda...' : 'Ambil alih chat untuk membalas'}
                           value={messageInput}
                           onChange={(val) => setMessageInput(val)}
                           onSend={(_html, textContent) => handleSendMessage(textContent)}
                           attachButton={false}
+                          disabled={!canReply || sending}
                         />
                       </div>
                     ) : (
@@ -646,6 +609,7 @@ export default function AdminChatPage() {
                     )}
                   </ChatContainer>
                 </MainContainer>
+                <div ref={messagesEndRef} />
               </div>
             </>
           ) : (
