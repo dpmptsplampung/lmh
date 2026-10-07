@@ -545,29 +545,8 @@ export default function AdminChatPage() {
                 )}
               </div>
 
-              {/* Chatscope Messages Area */}
-              <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-                <MainContainer responsive>
-                  <ChatContainer>
-                    <MessageList>
-                      {messages.map((msg) => (
-                        <ChatMessage
-                          key={msg.id}
-                          model={{
-                            message: msg.isi,
-                            sentTime: waktuLabel(msg.created_at),
-                            sender: namaSender(msg.pengirim),
-                            direction: msg.pengirim === 'petugas' ? 'outgoing' : 'incoming',
-                            position: 'single',
-                          }}
-                        >
-                          <ChatMessage.Header sender={namaSender(msg.pengirim)} sentTime={waktuLabel(msg.created_at)} />
-                        </ChatMessage>
-                      ))}
-                    </MessageList>
-
-                    {selectedSession.status !== 'selesai' ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', background: 'var(--surface-primary)' }}>
+              {selectedSession.status !== 'selesai' ? (
+                <div style={{ display: 'flex', flexDirection: 'column', background: 'var(--surface-primary)', borderBottom: '1px solid var(--border-default)' }}>
                         {!canReply && (
                           <div role="status" style={{ padding: 'var(--space-2) var(--space-4)', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
                             {selectedSession.status === 'aktif'
@@ -593,19 +572,43 @@ export default function AdminChatPage() {
                             {loadingDraft ? <Loader2 size={12} className="animate-pulse" /> : '⚡ Draf Gemini'}
                           </button>
                         </div>
-                        <MessageInput
-                          placeholder={canReply ? 'Ketik balasan Anda...' : 'Ambil alih chat untuk membalas'}
-                          value={messageInput}
-                          onChange={(val) => setMessageInput(val)}
-                          onSend={(_html, textContent) => handleSendMessage(textContent)}
-                          attachButton={false}
-                          disabled={!canReply || sending}
-                        />
-                      </div>
-                    ) : (
-                      <div style={{ padding: 'var(--space-4)', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 'var(--text-sm)', background: 'var(--surface-primary)' }}>
-                        Sesi chat ini sudah selesai.
-                      </div>
+                </div>
+              ) : (
+                <div style={{ padding: 'var(--space-4)', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 'var(--text-sm)', background: 'var(--surface-primary)' }}>
+                  Sesi chat ini sudah selesai.
+                </div>
+              )}
+              {/* Chatscope Messages Area */}
+              <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+                <MainContainer responsive>
+                  <ChatContainer>
+                    <MessageList>
+                      {messages.map((msg) => (
+                        <ChatMessage
+                          key={msg.id}
+                          model={{
+                            message: msg.isi,
+                            sentTime: waktuLabel(msg.created_at),
+                            sender: namaSender(msg.pengirim),
+                            direction: msg.pengirim === 'petugas' ? 'outgoing' : 'incoming',
+                            position: 'single',
+                          }}
+                        >
+                          <ChatMessage.Header sender={namaSender(msg.pengirim)} sentTime={waktuLabel(msg.created_at)} />
+                        </ChatMessage>
+                      ))}
+                    </MessageList>
+
+                    {/* MessageInput harus anak LANGSUNG ChatContainer: pembungkus <div> dibuang chatscope. */}
+                    {selectedSession.status !== 'selesai' && (
+                      <MessageInput
+                        placeholder={canReply ? 'Ketik balasan Anda...' : 'Ambil alih chat untuk membalas'}
+                        value={messageInput}
+                        onChange={(val) => setMessageInput(val)}
+                        onSend={(_html, textContent) => handleSendMessage(textContent)}
+                        attachButton={false}
+                        disabled={!canReply || sending}
+                      />
                     )}
                   </ChatContainer>
                 </MainContainer>
