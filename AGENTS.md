@@ -11,16 +11,15 @@ Model akun mitra: **individual account** (satu akun per individu), bukan akun be
 ## Repository dan autentikasi GitHub
 
 - Repository resmi: `https://github.com/dpmptsplampung/lmh.git`.
-- Semua operasi GitHub untuk repository ini—`fetch`, `pull`, `push`, branch, tag, release, issue, pull request, dan pemeriksaan remote—wajib memakai akun DPMPTSP melalui secret Doppler `GHTOKEN_DPMPTSP`.
-- Jangan memakai akun lain, token personal lain, credential interaktif, atau token yang ditempelkan ke URL remote.
-- Gunakan remote HTTPS resmi. Credential helper lokal repository mengambil token secara ephemeral dari Doppler saat Git memerlukan autentikasi.
-- Untuk GitHub CLI/API, gunakan helper DPMPTSP atau `GH_TOKEN` ephemeral dari Doppler. Jangan mencetak nilainya.
+- Semua operasi GitHub untuk repository ini—`fetch`, `pull`, `push`, branch, tag, release, issue, pull request, dan pemeriksaan remote—dilakukan lewat GitHub CLI (`gh`) di terminal, dengan akun DPMPTSP (`dpmptsplampung`) yang sudah login via `gh auth`.
+- Jangan memakai akun lain atau token yang ditempelkan ke URL remote.
+- Gunakan remote HTTPS resmi.
 - Jangan menyimpan token, password, credential, atau output secret ke file, commit, log, prompt, atau chat.
 - Jangan menjalankan `git push`, membuat release, atau operasi remote yang mengubah state tanpa instruksi eksplisit pengguna.
 - Sebelum push, periksa branch, remote, diff, status, test, lint, typecheck, dan build.
-- Jika `GHTOKEN_DPMPTSP` tidak tersedia atau autentikasi gagal, berhenti dan laporkan blocker; jangan menebak token.
+- Jika `gh` belum login atau autentikasi gagal, berhenti dan laporkan blocker; jangan menebak token.
 
-## Workflow OpenCode dan skill
+## Workflow dan skill
 
 - Baca file ini, `README.md`, `LMH-AGENT-SPEC.md`, `TASKS.md` bila relevan, `SECURITY.md`, serta spesifikasi teknis terkait sebelum bekerja.
 - Sebelum coding, baca guide Next.js yang relevan di `node_modules/next/dist/docs/`; API Next.js pada project ini dapat berbeda dari pengetahuan umum.
@@ -36,18 +35,8 @@ Model akun mitra: **individual account** (satu akun per individu), bukan akun be
 - Sebelum menyatakan selesai, baca diff aktual, scan secret, dan laporkan skill yang dipakai serta bukti test/lint/typecheck/build.
 - Jangan mengubah data nyata, `.env`, credential, backup, atau konfigurasi deployment tanpa instruksi eksplisit.
 
-## Doppler dan launcher OpenCode
-
-- Project ini menggunakan Doppler project `lmh`, config `prd`, dengan scope direktori `/home/ubuntu/Project/LMH`.
-- Secret wajib diakses melalui `doppler run -- <command>` atau environment yang diinjeksi launcher; jangan membuat atau meng-commit `.env` berisi secret.
-- Launcher `/usr/local/bin/opencode-lmh` otomatis menginjeksi `DOPPLER_TOKEN` dan `NINE_ROUTER_KEY` secara ephemeral.
-- `DOPPLER_TOKEN` dibaca dari `/root/.doppler/tokens/personal` dan `NINE_ROUTER_KEY` dari `/root/.9router/.opencode-key`; jangan mencetak, menyalin, atau menyimpan nilainya.
-- Launcher menjalankan model `9router/orchestrator` pada port OpenCode `4098`.
-- Jangan menjalankan `doppler login` dari project ini dan jangan menyimpan token Doppler di repository.
-- Untuk memeriksa secret, tampilkan nama saja dengan `doppler secrets --only-names`; jangan memakai perintah yang mencetak nilai secret.
-
 ## Remote safety
 
 - Jangan mengubah URL remote tanpa persetujuan pengguna.
-- Jangan menonaktifkan credential helper repository.
+- Jangan meng-commit `.env` atau file berisi secret; jangan mencetak nilai secret.
 - Jangan memakai `git credential approve` untuk menyimpan token permanen.
