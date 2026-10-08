@@ -58,17 +58,13 @@ export default function AdminJadwalPage() {
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
+        // RBAC Tahap 0: jadwal & libur dikelola Admin saja (FO & petugas hanya melihat).
         const { data: p } = await supabase
           .from('petugas')
-          .select('role, layanan:layanan_id(is_ptsp)')
+          .select('role')
           .eq('auth_user_id', user.id)
           .maybeSingle();
-        if (p) {
-          const isPtsp = Array.isArray(p.layanan)
-            ? p.layanan[0]?.is_ptsp
-            : (p.layanan as { is_ptsp: boolean } | null)?.is_ptsp;
-          setCanEdit(p.role === 'admin' || !!isPtsp);
-        }
+        setCanEdit(p?.role === 'admin');
       }
 
       const { data } = await supabase
@@ -92,7 +88,7 @@ export default function AdminJadwalPage() {
   };
 
   const toggleHari = (hari: number) => {
-    if (!jadwal) return;
+    if (!canEdit || !jadwal) return;
     const set = new Set(jadwal.hari_kerja);
     if (set.has(hari)) set.delete(hari);
     else set.add(hari);
@@ -100,7 +96,7 @@ export default function AdminJadwalPage() {
   };
 
   const handleSaveJadwal = async () => {
-    if (!jadwal) return;
+    if (!canEdit || !jadwal) return;
     setSaving(true);
     try {
       const supabase = createClient();
@@ -122,7 +118,7 @@ export default function AdminJadwalPage() {
       if (error) throw error;
       toast('Jadwal layanan disimpan.', 'success');
     } catch {
-      toast('Gagal menyimpan jadwal. Pastikan Anda admin atau petugas PTSP.', 'error');
+      toast('Gagal menyimpan jadwal. Hanya Admin yang dapat mengubah jadwal.', 'error');
     } finally {
       setSaving(false);
     }
@@ -130,7 +126,7 @@ export default function AdminJadwalPage() {
 
   const handleAddLibur = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!liburTanggal || !selectedLayananId) return;
+    if (!canEdit || !liburTanggal || !selectedLayananId) return;
     try {
       const supabase = createClient();
       const { error } = await supabase.from('layanan_libur').insert({
@@ -149,10 +145,13 @@ export default function AdminJadwalPage() {
   };
 
   const handleDeleteLibur = async (id: string) => {
+    if (!canEdit) return;
     try {
       const supabase = createClient();
-      const { error } = await supabase.from('layanan_libur').delete().eq('id', id);
+      // .select('id'): delete yang ditolak RLS bisa 0 baris tanpa error -> jangan lapor sukses palsu.
+      const { data: deleted, error } = await supabase.from('layanan_libur').delete().eq('id', id).select('id');
       if (error) throw error;
+      if (!deleted || deleted.length === 0) throw new Error('tidak ada baris terhapus');
       await loadData(selectedLayananId);
       toast('Tanggal libur dihapus.', 'success');
     } catch {
@@ -180,8 +179,19 @@ export default function AdminJadwalPage() {
 
       <div style={{ padding: 'var(--space-8)', maxWidth: '860px' }}>
         {!canEdit && (
-          <div role="alert" className="form-error" style={{ marginBottom: 'var(--space-4)' }}>
-            Anda hanya dapat melihat. Perubahan jadwal hanya bisa dilakukan admin atau petugas PTSP.
+          <div
+            role="status"
+            style={{
+              marginBottom: 'var(--space-4)',
+              padding: 'var(--space-3) var(--space-4)',
+              borderRadius: 'var(--radius-lg)',
+              borderLeft: '4px solid var(--color-primary-500)',
+              background: 'var(--color-primary-50)',
+              color: 'var(--color-primary-700)',
+              fontSize: 'var(--text-sm)',
+            }}
+          >
+            Jadwal ini ditetapkan Admin sesuai SOP dan jadwal resmi. Anda hanya dapat melihatnya. Hubungi Admin bila ada perubahan.
           </div>
         )}
 
@@ -292,7 +302,7 @@ export default function AdminJadwalPage() {
                     <td>{lb.keterangan || '—'}</td>
                     {canEdit && (
                       <td>
-                        <button type="button" className="btn btn--ghost btn--sm" onClick={() => handleDeleteLibur(lb.id)}>
+                        <button type="button" className="btn btn--ghost btn--sm" onClick={() => handleDeleteLibur(lb.id)} aria-label={`Hapus tanggal libur ${lb.tanggal}`}>
                           <Trash2 size={14} />
                         </button>
                       </td>

@@ -42,6 +42,9 @@ export default function AdminFAQPage() {
   const [loading, setLoading] = useState(true);
   const [layananError, setLayananError] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [role, setRole] = useState<string | null>(null); // null = belum dimuat
+  const [togglingBot, setTogglingBot] = useState(false);
+  const isAdmin = role === 'admin';
 
   // Form States
   const [editingFaqId, setEditingFaqId] = useState<string | null>(null);
@@ -147,27 +150,52 @@ export default function AdminFAQPage() {
     loadFAQs();
   }, [selectedLayananId, refreshTrigger, toast]);
 
-  // Toggle chatbot state per-service
+  // RBAC Tahap 0: bot hidup/mati = Admin saja (tabel `layanan` hanya boleh ditulis Admin).
+  // Role dibaca dari tabel petugas; selama belum terbukti admin, semua jalur tulis ditolak.
+  useEffect(() => {
+    async function loadRole() {
+      try {
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          setRole('unknown');
+          return;
+        }
+        const { data: p } = await supabase
+          .from('petugas').select('role').eq('auth_user_id', user.id).maybeSingle();
+        setRole(p?.role ?? 'unknown');
+      } catch {
+        setRole('unknown');
+      }
+    }
+    loadRole();
+  }, []);
+
+  // Toggle chatbot state per-service (Admin saja; dijaga di handler, bukan hanya di UI)
   const handleToggleChatbot = async (id: string, currentVal: boolean) => {
+    if (!isAdmin || togglingBot) return;
+    setTogglingBot(true);
     const supabase = createClient();
     try {
       const newVal = !currentVal;
-      const { error: updateErr } = await supabase
+      // .select('id'): RLS yang menolak update bisa 0 baris tanpa error -> jangan lapor sukses palsu.
+      const { data: updated, error: updateErr } = await supabase
         .from('layanan')
         .update({ chatbot_aktif: newVal })
-        .eq('id', id);
+        .eq('id', id)
+        .select('id');
 
       if (updateErr) throw updateErr;
+      if (!updated || updated.length === 0) throw new Error('tidak ada baris berubah');
 
       setLayananList((prev) =>
         prev.map((l) => (l.id === id ? { ...l, chatbot_aktif: newVal } : l))
       );
       toast('Status chatbot layanan berhasil diperbarui', 'success');
     } catch {
-      setLayananList((prev) =>
-        prev.map((l) => (l.id === id ? { ...l, chatbot_aktif: !currentVal } : l))
-      );
-      toast('Gagal memperbarui status chatbot', 'error');
+      toast('Gagal memperbarui status chatbot. Hanya Admin yang dapat mengubahnya.', 'error');
+    } finally {
+      setTogglingBot(false);
     }
   };
 
@@ -331,14 +359,31 @@ export default function AdminFAQPage() {
                       <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-secondary)' }}>
                         Auto-reply Chatbot Bot:
                       </span>
-                      <button
-                        className={`btn btn--sm ${getSelectedLayanan()?.chatbot_aktif ? 'btn--primary' : 'btn--secondary'}`}
-                        onClick={() => handleToggleChatbot(selectedLayananId, getSelectedLayanan()?.chatbot_aktif || false)}
-                      >
-                        {getSelectedLayanan()?.chatbot_aktif ? 'AKTIF (On)' : 'NONAKTIF (Off)'}
-                      </button>
+                      {isAdmin ? (
+                        <button
+                          type="button"
+                          className={`btn btn--sm ${getSelectedLayanan()?.chatbot_aktif ? 'btn--primary' : 'btn--secondary'}`}
+                          onClick={() => handleToggleChatbot(selectedLayananId, getSelectedLayanan()?.chatbot_aktif || false)}
+                          disabled={togglingBot}
+                          aria-busy={togglingBot}
+                        >
+                          {getSelectedLayanan()?.chatbot_aktif ? 'AKTIF (On)' : 'NONAKTIF (Off)'}
+                        </button>
+                      ) : (
+                        <span
+                          className={`badge ${getSelectedLayanan()?.chatbot_aktif ? 'badge--selesai' : 'badge--nonaktif'}`}
+                          data-testid="bot-status"
+                        >
+                          {getSelectedLayanan()?.chatbot_aktif ? 'AKTIF (On)' : 'NONAKTIF (Off)'}
+                        </span>
+                      )}
                     </div>
                   </div>
+                  {role !== null && !isAdmin && (
+                    <p role="note" style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', margin: '0 0 var(--space-2)' }}>
+                      Pengaturan bot dikelola Admin. Untuk menangani satu percakapan gunakan tombol Ambil alih di Live Chat.
+                    </p>
+                  )}
                   <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', margin: 0 }}>
                     Jika chatbot AKTIF, pesan pengunjung yang masuk di layanan ini akan dijawab otomatis oleh bot jika kata kuncinya sesuai FAQ di bawah. Jika tidak aktif, chat langsung diteruskan ke petugas loket.
                   </p>

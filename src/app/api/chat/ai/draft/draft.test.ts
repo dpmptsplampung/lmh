@@ -62,6 +62,7 @@ const mockServiceClient = async (
     role?: 'petugas' | 'admin';
     petugasLayananId?: string | null;
     sesiLayananId?: string;
+    aktif?: boolean;
   } = {},
 ) => {
   process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://supabase.local';
@@ -75,6 +76,7 @@ const mockServiceClient = async (
   const isPetugas = opts.isPetugas ?? true;
   const hasSesi = opts.hasSesi ?? true;
   const role = opts.role ?? 'petugas';
+  const aktif = opts.aktif ?? true;
   const petugasLayananId = opts.petugasLayananId === undefined ? 'layanan-1' : opts.petugasLayananId;
   const sesiLayananId = opts.sesiLayananId ?? 'layanan-1';
 
@@ -90,7 +92,7 @@ const mockServiceClient = async (
           eq: vi.fn().mockReturnThis(),
           maybeSingle: vi.fn().mockResolvedValue({
             data: isPetugas
-              ? { id: 'petugas-1', role, layanan_id: petugasLayananId }
+              ? { id: 'petugas-1', role, layanan_id: petugasLayananId, aktif }
               : null,
             error: null,
           }),
@@ -146,6 +148,13 @@ describe('POST /api/chat/ai/draft', () => {
 
   it('returns 403 when caller is not a petugas', async () => {
     await mockServiceClient({ isPetugas: false });
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest({ sesi_id: SESI_ID }));
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 403 when petugas is NONAKTIF (query service-role melewati RLS)', async () => {
+    await mockServiceClient({ isPetugas: true, aktif: false });
     const { POST } = await import('./route');
     const res = await POST(buildRequest({ sesi_id: SESI_ID }));
     expect(res.status).toBe(403);

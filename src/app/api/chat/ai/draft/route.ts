@@ -35,11 +35,12 @@ export async function POST(request: NextRequest) {
   // 2. Verify caller is a petugas/admin (include layanan for scope check)
   const { data: petugasRow, error: petugasErr } = await adminClient
     .from('petugas')
-    .select('id, role, layanan_id')
+    .select('id, role, layanan_id, aktif')
     .eq('auth_user_id', caller.id)
     .maybeSingle();
 
-  if (petugasErr || !petugasRow || !['petugas', 'admin'].includes(petugasRow.role)) {
+  // Query via service-role (melewati RLS): petugas NONAKTIF harus ditolak di sini.
+  if (petugasErr || !petugasRow || petugasRow.aktif !== true || !['petugas', 'admin'].includes(petugasRow.role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

@@ -5,9 +5,9 @@ import { createClient as createServiceClient } from '@supabase/supabase-js';
 export const dynamic = 'force-dynamic';
 
 // RBA-08 / RBA-07: kelola status aktif petugas & pergantian PIC.
-//  - FO: hanya MENONAKTIFKAN (satu arah, wajib alasan). TIDAK bisa mengaktifkan kembali.
-//  - Admin: menonaktifkan, mengaktifkan kembali, dan pergantian PIC (reset password +
-//    akhiri sesi pemegang lama, I-23).
+//  - Admin SAJA: menonaktifkan, mengaktifkan kembali, dan pergantian PIC (reset password +
+//    akhiri sesi pemegang lama, I-23). FO TIDAK boleh (RBAC Tahap 0, S1); RPC
+//    petugas_set_nonaktif juga menegakkannya di DB (admin aktif / service_role).
 
 function getServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -51,10 +51,10 @@ export async function POST(request: NextRequest) {
   const service = getServiceClient();
   if (!service) return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 });
 
-  // ---- RBA-08: FO/Admin menonaktifkan (wajib alasan) ----
+  // ---- RBA-08: Admin menonaktifkan (wajib alasan) ----
   if (aksi === 'nonaktifkan') {
-    if (actor.role !== 'admin' && actor.role !== 'front_office') {
-      return NextResponse.json({ error: 'Hanya Admin/FO yang boleh menonaktifkan' }, { status: 403 });
+    if (actor.role !== 'admin') {
+      return NextResponse.json({ error: 'Hanya Admin yang boleh menonaktifkan' }, { status: 403 });
     }
     if (!alasan || !alasan.trim()) {
       return NextResponse.json({ error: 'Alasan nonaktif wajib diisi (RBA-08)' }, { status: 400 });
@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
       p_alasan: alasan.trim(),
       p_actor: actor.id,
     });
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    if (error) return NextResponse.json({ error: error.message }, { status: error.code === '42501' ? 403 : 400 });
 
     // Admin mendapat pemberitahuan (RBA-08).
     await service.from('notifikasi').insert({
@@ -86,8 +86,10 @@ export async function POST(request: NextRequest) {
 
   // ---- RBA-08: Admin mengaktifkan kembali ----
   if (aksi === 'aktifkan') {
+    // Dipanggil lewat service_role (auth.uid() NULL): fungsi DB mengizinkan service_role; admin
+    // sudah diverifikasi aktif di atas (getActor).
     const { error } = await service.rpc('petugas_set_aktif', { p_petugas_id: petugas_id });
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    if (error) return NextResponse.json({ error: error.message }, { status: error.code === '42501' ? 403 : 400 });
     return NextResponse.json({ ok: true });
   }
 

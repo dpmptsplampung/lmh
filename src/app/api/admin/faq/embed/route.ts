@@ -36,11 +36,12 @@ export async function POST(request?: Request) {
 
     const { data: petugas } = await supabase
       .from('petugas')
-      .select('role')
+      .select('role, aktif')
       .eq('auth_user_id', user.id)
       .maybeSingle();
 
-    if (!petugas || petugas.role !== 'admin') {
+    // Admin NONAKTIF ditolak (route ini lanjut memakai service-role).
+    if (!petugas || petugas.role !== 'admin' || petugas.aktif !== true) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
   }

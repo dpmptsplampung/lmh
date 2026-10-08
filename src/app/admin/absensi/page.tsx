@@ -48,6 +48,7 @@ export default function AbsensiPage() {
   const [currentUser, setCurrentUser] = useState<PetugasData | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const [decidingId, setDecidingId] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
   const [foWizardOpen, setFoWizardOpen] = useState(false);
@@ -117,20 +118,32 @@ export default function AbsensiPage() {
   }, [fetchData]);
 
   const handleAbsenHadir = async () => {
-    if (!currentUser) return;
+    if (!currentUser || actionLoading) return;
     try {
       setActionLoading(true);
       const supabase = createClient();
       // SCH-08/I-09: jam absensi dari SERVER via catat_absensi(), bukan dari klien.
-      await supabase.rpc('catat_absensi', {
+      const { error } = await supabase.rpc('catat_absensi', {
         p_petugas_id: currentUser.id,
         p_sumber: 'petugas_ajukan',
         p_dicatat_oleh: currentUser.id,
       });
+      if (error) {
+        // 42501 = ditolak RLS/fungsi DB (bukan staf aktif / bukan untuk diri sendiri).
+        toast(
+          error.code === '42501'
+            ? 'Anda tidak berhak mengajukan absensi ini. Hubungi Front Office atau Admin.'
+            : 'Gagal mengajukan absensi hadir. Coba lagi.',
+          'error',
+        );
+        return;
+      }
+      toast('Absensi hadir diajukan. Menunggu persetujuan Front Office/Admin.', 'success');
       setLoading(true);
       await fetchData();
     } catch (e) {
       console.error(e);
+      toast('Gagal mengajukan absensi hadir. Coba lagi.', 'error');
     } finally {
       setActionLoading(false);
     }
@@ -156,44 +169,44 @@ export default function AbsensiPage() {
     }
   };
 
-  const handleApprove = async (id: string) => {
-    // FO & Admin boleh mengonfirmasi absensi (SCH-08).
+  // FO & Admin boleh memutuskan absensi (SCH-08) — HANYA lewat RPC setujui_absensi
+  // (tabel absensi_petugas tidak lagi di-UPDATE langsung dari klien).
+  const handleDecision = async (id: string, status: 'approved' | 'ditolak') => {
     if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'front_office')) return;
+    if (decidingId) return;
+    const aksi = status === 'approved' ? 'menyetujui' : 'menolak';
+    setDecidingId(id);
     try {
       const supabase = createClient();
-      const { error } = await supabase.from('absensi_petugas')
-        .update({ status: 'approved', approved_by: currentUser.id })
-        .eq('id', id);
-      if (error) throw error;
-      toast('Absensi disetujui', 'success');
+      const { error } = await supabase.rpc('setujui_absensi', { p_absensi_id: id, p_status: status });
+      if (error) {
+        toast(
+          error.code === '42501'
+            ? 'Hanya Front Office atau Admin yang dapat memutuskan absensi.'
+            : error.code === 'P0002'
+              ? 'Absensi tidak ditemukan. Muat ulang halaman.'
+              : `Gagal ${aksi} absensi. Coba lagi.`,
+          'error',
+        );
+        return;
+      }
+      toast(status === 'approved' ? 'Absensi disetujui' : 'Absensi ditolak', 'success');
       setLoading(true);
       await fetchData();
     } catch (e) {
       console.error(e);
-      toast('Gagal menyetujui absensi', 'error');
-    }
-  };
-
-  const handleReject = async (id: string) => {
-    if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'front_office')) return;
-    try {
-      const supabase = createClient();
-      const { error } = await supabase.from('absensi_petugas')
-        .update({ status: 'ditolak', approved_by: currentUser.id })
-        .eq('id', id);
-      if (error) throw error;
-      toast('Absensi ditolak', 'success');
-      setLoading(true);
-      await fetchData();
-    } catch (e) {
-      console.error(e);
-      toast('Gagal menolak absensi', 'error');
+      toast(`Gagal ${aksi} absensi. Coba lagi.`, 'error');
+    } finally {
+      setDecidingId(null);
     }
   };
 
   const hadirHariIni = absensi.filter(a => a.status === 'approved' || a.status === 'pending').length;
   const sudahPulang = absensi.filter(a => a.jam_pulang).length;
   const myTodayAbsensi = absensi.find(a => a.petugas_id === currentUser?.id);
+  // 'alpa' (ditandai otomatis) bukan kehadiran: petugas boleh mengajukan lagi (jadi 'pending', perlu disetujui FO/Admin).
+  const myAlpa = myTodayAbsensi?.status === 'alpa';
+  const myHadir = !!myTodayAbsensi && !myAlpa;
 
   return (
     <>
@@ -236,9 +249,9 @@ export default function AbsensiPage() {
           <div style={{ background: 'var(--surface-elevated)', padding: 'var(--space-6)', borderRadius: 'var(--radius-xl)', marginBottom: 'var(--space-8)', border: '1px solid var(--border-default)' }}>
             <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, marginBottom: 'var(--space-4)' }}>Absensi Mandiri Hari Ini</h3>
             <div style={{ display: 'flex', gap: 'var(--space-4)' }}>
-              {!myTodayAbsensi ? (
-                <button className="btn btn--primary" onClick={handleAbsenHadir} disabled={actionLoading}>
-                  <LogIn size={18} /> Absen Hadir
+              {!myHadir ? (
+                <button className="btn btn--primary" onClick={handleAbsenHadir} disabled={actionLoading} aria-busy={actionLoading}>
+                  <LogIn size={18} /> {actionLoading ? 'Memproses...' : myAlpa ? 'Ajukan Kehadiran' : 'Absen Hadir'}
                 </button>
               ) : (
                 <button className="btn btn--secondary" disabled>
@@ -246,8 +259,8 @@ export default function AbsensiPage() {
                 </button>
               )}
 
-              {myTodayAbsensi && !myTodayAbsensi.jam_pulang ? (
-                 <button className="btn btn--secondary" onClick={handleAbsenPulang} disabled={actionLoading}>
+              {myHadir && !myTodayAbsensi.jam_pulang ? (
+                 <button className="btn btn--secondary" onClick={handleAbsenPulang} disabled={actionLoading} aria-busy={actionLoading}>
                    <LogOutIcon size={18} /> Absen Pulang
                  </button>
               ) : myTodayAbsensi?.jam_pulang ? (
@@ -257,9 +270,19 @@ export default function AbsensiPage() {
               ) : null}
             </div>
 
+            {myAlpa && (
+              <p role="status" style={{ fontSize: 'var(--text-sm)', color: 'var(--color-warning-600)', marginTop: 'var(--space-3)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <Clock size={14} /> Anda tercatat Alpa hari ini. Anda masih dapat mengajukan kehadiran, tetapi harus disetujui Front Office/Admin terlebih dahulu.
+              </p>
+            )}
             {myTodayAbsensi && myTodayAbsensi.status === 'pending' && (
-              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-warning-600)', marginTop: 'var(--space-3)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                <Clock size={14} /> Absensi Anda sedang menunggu persetujuan (approval) Admin.
+              <p role="status" style={{ fontSize: 'var(--text-sm)', color: 'var(--color-warning-600)', marginTop: 'var(--space-3)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <Clock size={14} /> Absensi Anda sedang menunggu persetujuan Front Office/Admin.
+              </p>
+            )}
+            {myTodayAbsensi && myTodayAbsensi.status === 'ditolak' && (
+              <p role="status" style={{ fontSize: 'var(--text-sm)', color: 'var(--color-danger-600)', marginTop: 'var(--space-3)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <XCircle size={14} /> Absensi Anda ditolak. Hubungi Front Office/Admin.
               </p>
             )}
           </div>
@@ -352,13 +375,17 @@ export default function AbsensiPage() {
                           <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
                             <button
                               className="btn btn--secondary btn--sm"
-                              onClick={() => handleApprove(a.id)}
+                              onClick={() => handleDecision(a.id, 'approved')}
+                              disabled={decidingId !== null}
+                              aria-busy={decidingId === a.id}
                             >
                               Setujui
                             </button>
                             <button
                               className="btn btn--danger btn--sm"
-                              onClick={() => handleReject(a.id)}
+                              onClick={() => handleDecision(a.id, 'ditolak')}
+                              disabled={decidingId !== null}
+                              aria-busy={decidingId === a.id}
                             >
                               <XCircle size={14} />
                               Tolak

@@ -40,10 +40,11 @@ export async function POST(req: NextRequest) {
 
   const { data: petugas } = await supabase
     .from('petugas')
-    .select('role')
+    .select('role, aktif')
     .eq('auth_user_id', user.id)
     .single();
-  if (petugas?.role !== 'admin') {
+  // Admin NONAKTIF ditolak (route ini lanjut memakai service-role).
+  if (petugas?.role !== 'admin' || petugas.aktif !== true) {
     return NextResponse.json({ error: 'Hanya Admin' }, { status: 403 });
   }
 

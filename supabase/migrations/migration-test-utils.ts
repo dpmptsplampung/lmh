@@ -57,6 +57,8 @@ export const FORWARD_MIGRATION_FILES = [
   '202609230003_antrean_realtime.sql',
   '202610010001_non_oss_rename.sql',
   '202610070001_chat_fix_guard_ringkas.sql',
+  '202610080001_rbac_tahap0_keamanan.sql',
+  '202610080002_rbac_tahap0_layanan_admin_only.sql',
 ] as const;
 
 export function listMigrationFiles(): string[] {

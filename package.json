@@ -15,6 +15,7 @@
     "typecheck": "tsc --noEmit",
     "smoke": "node scripts/smoke.mjs",
     "test:rls": "node scripts/run-rls-tests.mjs",
+    "test:rls:tahap0": "node scripts/test-rbac-tahap0.mjs",
     "verify:baseline": "npm run lint && npm run typecheck && npm test && npm run build"
   },
   "dependencies": {

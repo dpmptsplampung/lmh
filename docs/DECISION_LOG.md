@@ -732,3 +732,25 @@ nilai uji perilaku (SEC-04) dibanding static check.
 **Verifikasi**: uji nyata di produksi — pembeku mengisi 10 baris (Senin, semua
 standby), UPDATE & DELETE ditolak trigger, nilai utuh; baris uji dibersihkan.
 **Status**: Code-complete + diterapkan di produksi.
+
+---
+
+## RBAC Tahap 0 — keamanan darurat (migrasi 202610080001/2)
+
+**Tanggal**: 8 Oktober 2026
+**Konteks**: audit hak akses menemukan fungsi SECURITY DEFINER tanpa cek peran, policy INSERT
+`WITH CHECK (true)` pada `kunjungan`/`tiket_antrean`, petugas dapat menyetujui absensinya
+sendiri, dan akun nonaktif masih lolos policy berbasis layanan. Detail: `docs/RBAC_USULAN_DRAFT.md`
+(S1-S6, N7), runbook: `docs/RUNBOOK_RBAC_TAHAP0.md`.
+**Keputusan**:
+- Dua migrasi forward: `202610080001` (semua kecuali S6) dan `202610080002` (hak tulis `layanan`
+  petugas + jadwal/libur = Admin saja, diterapkan SETELAH UI diganti).
+- **Absensi foto — opsi (ii)**: `202608310003_absensi_foto_fo.sql` (belum pernah diterapkan di
+  produksi, bukan baseline) dinetralkan menjadi stub no-op "SUPERSEDED". `catat_absensi`
+  tetap 3 argumen (CREATE OR REPLACE atomik, tanpa DROP/overload). Kolom `foto_url` dan bucket
+  `absensi-foto` dikerjakan di migrasi Tahap 1 setelah desain cek akses selesai.
+- Penerapan wajib **atomik** (`scripts/apply-migration.mjs --atomic --yes`), bukan per-statement.
+- Bug produksi `guard_absensi_tanggal_today()` (`pg_catalog.CURRENT_DATE` tidak valid) diperbaiki;
+  cron `absensi_alpa_otomatis` dijeda sampai absensi benar-benar dipakai (lihat runbook).
+**Dampak**: UI absensi/FAQ/jadwal perlu penyesuaian (daftar handoff di laporan S0).
+**Status**: kode siap ditinjau; belum diterapkan di produksi.

@@ -93,7 +93,7 @@ export default function AdminPetugasPage() {
     return l?.nama ?? '—';
   };
 
-  // RBA-08: nonaktifkan (FO/Admin, wajib alasan, satu arah untuk FO).
+  // RBA-08: nonaktifkan (hanya Admin sejak RBAC Tahap 0; wajib alasan).
   const handleNonaktifkan = async (row: PetugasRow) => {
     const alasan = window.prompt(`Alasan menonaktifkan akun "${row.nama}"? (wajib, tercatat)`);
     if (!alasan || !alasan.trim()) {
@@ -285,7 +285,7 @@ export default function AdminPetugasPage() {
                               type="button"
                               className="btn btn--danger btn--sm"
                               onClick={() => handleNonaktifkan(row)}
-                              title="Nonaktifkan (FO/Admin, wajib alasan)"
+                              title="Nonaktifkan (hanya Admin, wajib alasan)"
                             >
                               Nonaktifkan
                             </button>

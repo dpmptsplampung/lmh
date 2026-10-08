@@ -30,9 +30,10 @@ const buildRequest = (body: unknown): NextRequest => {
 interface MockServerOpts {
   user: { id: string } | null;
   role: string | null;
+  aktif?: boolean;
 }
 
-const mockServerClient = async ({ user, role }: MockServerOpts) => {
+const mockServerClient = async ({ user, role, aktif = true }: MockServerOpts) => {
   const serverMod = await import('@/lib/supabase/server');
   const createClient = serverMod.createClient as unknown as ReturnType<typeof vi.fn>;
   const mock = {
@@ -43,7 +44,7 @@ const mockServerClient = async ({ user, role }: MockServerOpts) => {
       select: vi.fn().mockReturnValue({
         eq: vi.fn().mockReturnValue({
           maybeSingle: vi.fn().mockResolvedValue({
-            data: user ? { role } : null,
+            data: user ? { role, aktif } : null,
             error: null,
           }),
         }),
@@ -158,6 +159,16 @@ describe('POST /api/admin/petugas/invite — auth', () => {
     const { POST } = await import('./route');
     const res = await POST(buildRequest(validBody));
     expect(res.status).toBe(403);
+  });
+
+  it('returns 403 when admin is NONAKTIF (service-role tidak boleh dipakai)', async () => {
+    await mockServerClient({ user: { id: 'u-1' }, role: 'admin', aktif: false });
+    const service = await mockServiceClient();
+    await mockResend();
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest(validBody));
+    expect(res.status).toBe(403);
+    expect(service.auth.admin.createUser).not.toHaveBeenCalled();
   });
 });
 
