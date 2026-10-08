@@ -38,12 +38,17 @@ async function setup(opts: {
   });
   const rpc = vi.fn().mockResolvedValue({ error: opts.rpcError ?? null });
   const insert = vi.fn().mockResolvedValue({ error: null });
+  const updateUserById = vi.fn().mockResolvedValue({ error: null });
   const sbMod = await import('@supabase/supabase-js');
   (sbMod.createClient as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
     rpc,
-    from: vi.fn().mockReturnValue({ insert }),
+    auth: { admin: { updateUserById } },
+    from: vi.fn().mockReturnValue({
+      insert,
+      select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { auth_user_id: 'auth-target' } }) }) }),
+    }),
   });
-  return { rpc, insert };
+  return { rpc, insert, updateUserById };
 }
 
 describe('POST /api/admin/petugas/status', () => {
@@ -92,7 +97,7 @@ describe('POST /api/admin/petugas/status', () => {
   });
 
   it('admin aktif menonaktifkan: RPC dipanggil dengan p_actor = id admin, notifikasi dicatat', async () => {
-    const { rpc, insert } = await setup({ actor: { id: 'p-admin', role: 'admin', aktif: true } });
+    const { rpc, insert, updateUserById } = await setup({ actor: { id: 'p-admin', role: 'admin', aktif: true } });
     const { POST } = await import('./route');
     const res = await POST(req({ aksi: 'nonaktifkan', petugas_id: TARGET, alasan: ' cuti ' }));
     expect(res.status).toBe(200);
@@ -102,6 +107,10 @@ describe('POST /api/admin/petugas/status', () => {
       p_actor: 'p-admin',
     });
     expect(insert).toHaveBeenCalled();
+    expect(insert).toHaveBeenCalledWith(expect.objectContaining({ aksi: 'akun_nonaktifkan', entitas_id: TARGET, actor_id: 'p-admin' }));
+    // Tahap 2: blokir login di Auth + akhiri sesi
+    expect(updateUserById).toHaveBeenCalledWith('auth-target', { ban_duration: '876000h' });
+    expect(rpc).toHaveBeenCalledWith('akun_akhiri_sesi', { p_auth_user_id: 'auth-target' });
   });
 
   it('galat DB 42501 dipetakan ke 403, galat lain 400', async () => {
@@ -126,5 +135,16 @@ describe('POST /api/admin/petugas/status', () => {
     const res = await mod.POST(req({ aksi: 'aktifkan', petugas_id: TARGET }));
     expect(res.status).toBe(200);
     expect(adm.rpc).toHaveBeenCalledWith('petugas_set_aktif', { p_petugas_id: TARGET });
+    expect(adm.updateUserById).toHaveBeenCalledWith('auth-target', { ban_duration: 'none' });
+    expect(adm.insert).toHaveBeenCalledWith(expect.objectContaining({ aksi: 'akun_aktifkan', entitas_id: TARGET }));
+  });
+
+  it('ganti_pic dihapus: 410 dan tidak ada panggilan Auth', async () => {
+    const adm = await setup({ actor: { id: 'p-admin', role: 'admin', aktif: true } });
+    const mod = await import('./route');
+    const res = await mod.POST(req({ aksi: 'ganti_pic', petugas_id: TARGET, email_baru: 'x@y.id' }));
+    expect(res.status).toBe(410);
+    expect(adm.updateUserById).not.toHaveBeenCalled();
+    expect(adm.rpc).not.toHaveBeenCalled();
   });
 });

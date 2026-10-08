@@ -213,6 +213,9 @@ vi.mock('@/lib/supabase/client', () => ({
   createClient: vi.fn(),
 }));
 
+const { replayMock } = vi.hoisted(() => ({ replayMock: vi.fn() }));
+vi.mock('@/lib/offline/replay', () => ({ replayQueue: replayMock }));
+
 import CheckinPage from './page';
 import { createClient } from '@/lib/supabase/client';
 
@@ -223,6 +226,7 @@ const buildMockSupabase = (opts: {
   anonThrows?: boolean;
   anonUser?: { id: string } | null;
   layanan?: { id: string; nama: string }[];
+  visitError?: { message: string; details?: string };
 }) => {
   const inserts: InsertCapture[] = [];
 
@@ -238,7 +242,7 @@ const buildMockSupabase = (opts: {
         resolve: (v: unknown) => unknown,
         reject?: (e: unknown) => unknown,
       ) =>
-        Promise.resolve({ error: null }).then(resolve, reject);
+        Promise.resolve({ error: table === 'visit' ? (opts.visitError ?? null) : null }).then(resolve, reject);
       return after;
     });
     (self as unknown as { then: unknown }).then = (
@@ -246,7 +250,7 @@ const buildMockSupabase = (opts: {
       reject?: (e: unknown) => unknown,
     ) => {
       let result = { data: null as unknown, error: null };
-      if (table === 'layanan') {
+      if (table === 'v_layanan_publik') {
         result = { data: opts.layanan ?? [], error: null };
       }
       return Promise.resolve(result).then(resolve, reject);
@@ -280,6 +284,7 @@ const buildMockSupabase = (opts: {
 describe('K3 checkin page: auth gate', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    replayMock.mockResolvedValue({ synced: 0, failed: 0 });
   });
 
   afterEach(() => {
@@ -406,4 +411,30 @@ describe('K3 checkin page: auth gate', () => {
     // No row should be inserted into the legacy kunjungan table
     expect(inserts.find((i) => i.table === 'kunjungan')).toBeUndefined();
   }, 10000);
+
+  it('layanan tutup (details LAYANAN_TUTUP) menampilkan pesan ramah', async () => {
+    buildMockSupabase({
+      user: { id: 'google-user-3' },
+      layanan: [{ id: 'lay-1', nama: 'DPMPTSP' }],
+      visitError: { message: 'x', details: 'LAYANAN_TUTUP' },
+    });
+    render(<CheckinPage />);
+    await waitFor(() => expect(screen.getByLabelText(/nama lengkap/i)).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/nama lengkap/i), { target: { value: 'Budi' } });
+    fireEvent.change(screen.getByLabelText(/layanan tujuan/i), { target: { value: 'lay-1' } });
+    fireEvent.click(screen.getByLabelText(/saya setuju data saya diproses/i));
+    fireEvent.click(screen.getByRole('button', { name: /kirim check-in/i }));
+    expect(
+      await screen.findByText('Layanan tutup pukul 16.00 WIB, buka kembali pada jam kerja berikutnya.'),
+    ).toBeInTheDocument();
+  }, 10000);
+
+  it('check-in offline yang ditolak saat replay diberitahukan ke pengguna', async () => {
+    buildMockSupabase({ user: { id: 'google-user-4' }, layanan: [{ id: 'lay-1', nama: 'DPMPTSP' }] });
+    replayMock.mockResolvedValue({ synced: 0, failed: 0, ditolak: 2 });
+    render(<CheckinPage />);
+    await waitFor(() => expect(screen.getByLabelText(/nama lengkap/i)).toBeInTheDocument());
+    window.dispatchEvent(new Event('online'));
+    expect(await screen.findByText(/2 check-in offline Anda tidak dapat diproses/i)).toBeInTheDocument();
+  });
 });

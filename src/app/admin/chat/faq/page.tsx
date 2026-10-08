@@ -16,7 +16,14 @@ import {
 import PageHeader from '@/components/layout/PageHeader';
 import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/components/Toast';
+import RoleNote from '@/components/admin/RoleNote';
+import CobaTanyaBot from '@/components/admin/settings/CobaTanyaBot';
 import styles from './faq.module.css';
+
+const ACK_KEY = 'lmh_faq_tanggung_jawab';
+const readAck = () => {
+  try { return sessionStorage.getItem(ACK_KEY) === '1'; } catch { return false; }
+};
 
 interface Layanan {
   id: string;
@@ -45,6 +52,14 @@ export default function AdminFAQPage() {
   const [role, setRole] = useState<string | null>(null); // null = belum dimuat
   const [togglingBot, setTogglingBot] = useState(false);
   const isAdmin = role === 'admin';
+  const isPetugas = role === 'petugas';
+  // Petugas wajib mencentang pernyataan tanggung jawab sekali per sesi sebelum menyimpan FAQ.
+  const [acked, setAcked] = useState(false);
+  const [ackChecked, setAckChecked] = useState(false);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setAcked(readAck());
+  }, []);
 
   // Form States
   const [editingFaqId, setEditingFaqId] = useState<string | null>(null);
@@ -225,6 +240,15 @@ export default function AdminFAQPage() {
       return;
     }
 
+    if (isPetugas && !acked && !ackChecked) {
+      setError('Centang pernyataan tanggung jawab isi FAQ terlebih dahulu.');
+      return;
+    }
+    if (isPetugas && !acked) {
+      try { sessionStorage.setItem(ACK_KEY, '1'); } catch { /* sesi privat: tanya lagi berikutnya */ }
+      setAcked(true);
+    }
+
     setSaving(true);
     setError('');
 
@@ -390,8 +414,17 @@ export default function AdminFAQPage() {
                 </div>
               )}
 
+              {(isAdmin || isPetugas) && selectedLayananId && (
+                <CobaTanyaBot layananId={selectedLayananId} layananNama={getSelectedLayanan()?.nama} />
+              )}
+
               {/* List FAQ */}
               <div className={styles.faqListCard}>
+                {isPetugas && (
+                  <RoleNote>
+                    Anda dapat menonaktifkan FAQ yang keliru. Penghapusan permanen hanya oleh Admin.
+                  </RoleNote>
+                )}
                 <div className={styles.faqListHeader}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
                     <MessageSquare size={18} style={{ color: 'var(--color-primary-600)' }} />
@@ -430,13 +463,15 @@ export default function AdminFAQPage() {
                               >
                                 <Edit2 size={12} />
                               </button>
-                              <button
-                                className="btn btn--ghost btn--sm"
-                                style={{ padding: '4px 8px', color: 'var(--color-danger-600)' }}
-                                onClick={() => handleDelete(faq.id)}
-                              >
-                                <Trash2 size={12} />
-                              </button>
+                              {!isPetugas && (
+                                <button
+                                  className="btn btn--ghost btn--sm"
+                                  style={{ padding: '4px 8px', color: 'var(--color-danger-600)' }}
+                                  onClick={() => handleDelete(faq.id)}
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              )}
                             </div>
                           </div>
                           <p className={styles.faqAnswer}>A: {faq.jawaban}</p>
@@ -540,6 +575,23 @@ export default function AdminFAQPage() {
                     FAQ Aktif (Siap dicocokkan bot)
                   </label>
                 </div>
+
+                {isPetugas && !acked && (
+                  <div className="form-group" role="note">
+                    <p style={{ fontSize: 'var(--text-sm)', margin: 0 }}>
+                      <strong>Isi FAQ ini akan dipakai bot dan dibaca pengunjung sebagai informasi resmi layanan Anda.</strong>{' '}
+                      Jika ada kesalahan informasi, itu menjadi tanggung jawab Anda sebagai petugas. Setiap perubahan tercatat atas nama akun Anda.
+                    </p>
+                    <label style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={ackChecked}
+                        onChange={(e) => setAckChecked(e.target.checked)}
+                      />
+                      Saya memahami dan bertanggung jawab atas isi FAQ ini.
+                    </label>
+                  </div>
+                )}
 
                 <div className={styles.formActions}>
                   <button type="submit" className="btn btn--primary" disabled={saving}>

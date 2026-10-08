@@ -29,7 +29,7 @@ describe('reservasi tujuan keyboard-accessible selection', () => {
       auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'auth-1' } } }) },
       from: vi.fn((table: string) => {
         if (table === 'pengunjung') return pengunjung;
-        if (table === 'layanan') return layanan;
+        if (table === 'v_layanan_publik') return layanan;
         return {};
       }),
     });

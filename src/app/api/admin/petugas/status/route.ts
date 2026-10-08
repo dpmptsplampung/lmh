@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
+import { audit } from '@/lib/akun/server';
 
 export const dynamic = 'force-dynamic';
 
 // RBA-08 / RBA-07: kelola status aktif petugas & pergantian PIC.
-//  - Admin SAJA: menonaktifkan, mengaktifkan kembali, dan pergantian PIC (reset password +
-//    akhiri sesi pemegang lama, I-23). FO TIDAK boleh (RBAC Tahap 0, S1); RPC
+//  - Admin SAJA: menonaktifkan dan mengaktifkan kembali (dicatat di audit_log lewat audit()).
+//    Aksi `ganti_pic` DIHAPUS (410): jalur itu tidak mencabut kredensial lama; ganti pemegang akun =
+//    reset sandi / ubah username-email login di PATCH /api/admin/petugas/{id}. FO TIDAK boleh (S1); RPC
 //    petugas_set_nonaktif juga menegakkannya di DB (admin aktif / service_role).
 
 function getServiceClient() {
@@ -14,6 +16,16 @@ function getServiceClient() {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return null;
   return createServiceClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
+}
+
+// ban_duration di Supabase Auth: ~100 tahun = diblokir; 'none' = buka. Sesi diakhiri lewat RPC (auth.sessions).
+async function tutupAkses(service: NonNullable<ReturnType<typeof getServiceClient>>, petugasId: string, blokir: boolean) {
+  const { data: t } = await service.from('petugas').select('auth_user_id').eq('id', petugasId).maybeSingle();
+  if (!t?.auth_user_id) return false;
+  const { error } = await service.auth.admin.updateUserById(t.auth_user_id, { ban_duration: blokir ? '876000h' : 'none' });
+  if (error) { console.error('[admin/petugas/status] ban_duration gagal', error.message); return false; }
+  if (blokir) await service.rpc('akun_akhiri_sesi', { p_auth_user_id: t.auth_user_id });
+  return true;
 }
 
 async function getActor(supabase: Awaited<ReturnType<typeof createClient>>) {
@@ -36,14 +48,13 @@ export async function POST(request: NextRequest) {
     aksi?: string;
     petugas_id?: string;
     alasan?: string;
-    email_baru?: string;
   };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
-  const { aksi, petugas_id, alasan, email_baru } = body;
+  const { aksi, petugas_id, alasan } = body;
   if (!aksi || !petugas_id) {
     return NextResponse.json({ error: 'aksi dan petugas_id diperlukan' }, { status: 400 });
   }
@@ -76,7 +87,10 @@ export async function POST(request: NextRequest) {
       idempotency_key: `nonaktif:${petugas_id}:${Date.now()}`,
       payload: { petugas_id, actor: actor.id, alasan: alasan.trim() },
     });
-    return NextResponse.json({ ok: true });
+    // Blokir login di Auth + akhiri semua sesi (akun bersama: perangkat lain ikut keluar).
+    const sesi = await tutupAkses(service, petugas_id, true);
+    await audit(service, actor, 'akun_nonaktifkan', petugas_id, { alasan: alasan.trim(), sesi_diakhiri: sesi });
+    return NextResponse.json({ ok: true, ...(sesi ? {} : { peringatan: 'Akun nonaktif, tetapi blokir/sesi Auth gagal; role sudah dicabut.' }) });
   }
 
   // ---- Admin only di bawah ini ----
@@ -90,51 +104,16 @@ export async function POST(request: NextRequest) {
     // sudah diverifikasi aktif di atas (getActor).
     const { error } = await service.rpc('petugas_set_aktif', { p_petugas_id: petugas_id });
     if (error) return NextResponse.json({ error: error.message }, { status: error.code === '42501' ? 403 : 400 });
-    return NextResponse.json({ ok: true });
+    const dibuka = await tutupAkses(service, petugas_id, false);
+    await audit(service, actor, 'akun_aktifkan', petugas_id, { blokir_dibuka: dibuka });
+    return NextResponse.json({ ok: true, ...(dibuka ? {} : { peringatan: 'Akun aktif, tetapi pembukaan blokir Auth gagal.' }) });
   }
 
-  // ---- RBA-07: pergantian PIC (reset password + akhiri sesi pemegang lama, I-23) ----
   if (aksi === 'ganti_pic') {
-    if (!email_baru || !email_baru.includes('@')) {
-      return NextResponse.json({ error: 'email_baru valid diperlukan untuk pergantian PIC' }, { status: 400 });
-    }
-    // Ambil auth_user_id pemegang lama.
-    const { data: target } = await service
-      .from('petugas')
-      .select('id, auth_user_id, nama, layanan_id')
-      .eq('id', petugas_id)
-      .maybeSingle();
-    if (!target) return NextResponse.json({ error: 'Petugas tidak ditemukan' }, { status: 404 });
-
-    // 1) Akhiri seluruh sesi pemegang lama (I-23).
-    if (target.auth_user_id) {
-      await service.auth.admin.signOut(target.auth_user_id, 'global');
-    }
-
-    // 2) Kirim undangan/reset ke pemegang baru (satu layanan satu akun; akun tidak diganti).
-    const { error: inviteErr } = await service.auth.admin.inviteUserByEmail(email_baru, {
-      redirectTo: `${process.env.NEXT_PUBLIC_PUBLIC_URL ?? ''}/auth/callback`,
-    });
-    if (inviteErr) {
-      return NextResponse.json({ error: `Gagal mengundang pemegang baru: ${inviteErr.message}` }, { status: 400 });
-    }
-
-    // 3) Catat pergantian di audit_log sebagai garis waktu pemegang (RBA-07).
-    await service.from('audit_log').insert({
-      actor_id: actor.id,
-      actor_role: 'admin',
-      aksi: 'ganti_pic',
-      entitas: 'petugas',
-      entitas_id: petugas_id,
-      detail: {
-        petugas_nama: target.nama,
-        layanan_id: target.layanan_id,
-        email_baru,
-        sesi_lama_diakhiri: true,
-      },
-    });
-
-    return NextResponse.json({ ok: true, pesan: 'Undangan dikirim ke pemegang baru; sesi lama diakhiri.' });
+    return NextResponse.json(
+      { error: 'Aksi ganti_pic sudah dihapus. Gunakan reset sandi atau ubah username/email login akun.' },
+      { status: 410 },
+    );
   }
 
   return NextResponse.json({ error: 'aksi tidak dikenal' }, { status: 400 });

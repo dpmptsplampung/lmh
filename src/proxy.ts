@@ -5,6 +5,7 @@ import { logServerEvent } from '@/lib/observability/logger';
 
 // Rute yang WAJIB login
 const protectedPrefixes = ['/admin', '/me'];
+const HALAMAN_PROFIL = '/admin/profil';
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 
 function getRequestId(request: NextRequest): string {
@@ -112,6 +113,19 @@ export async function proxy(request: NextRequest) {
     // Jika user tidak terdaftar sebagai petugas/admin, alihkan ke dashboard pengunjung (/me)
       if (role !== 'admin' && role !== 'petugas' && role !== 'front_office') {
         return attachRequestId(NextResponse.redirect(new URL('/me', request.url)), requestId);
+      }
+
+      // Akun dengan sandi sementara (reset Admin) wajib ganti sandi dulu. Hanya mengarahkan ke
+      // /admin/profil; tidak melonggarkan cek role di atas (galat/kolom hilang = tidak memaksa).
+      if (pathname !== HALAMAN_PROFIL && !pathname.startsWith(`${HALAMAN_PROFIL}/`)) {
+        const { data: flag } = await supabase
+          .from('petugas')
+          .select('wajib_ganti_sandi')
+          .eq('auth_user_id', user.id)
+          .maybeSingle();
+        if (flag?.wajib_ganti_sandi === true) {
+          return attachRequestId(NextResponse.redirect(new URL(`${HALAMAN_PROFIL}?ganti=1`, request.url)), requestId);
+        }
       }
     }
 

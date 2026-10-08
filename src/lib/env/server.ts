@@ -38,6 +38,8 @@ const serverEnvSchema = z.object({
   // Rantai LLM cadangan (opsional), lihat docs/ENVIRONMENT_VARIABLES.md.
   LLM_CHAT_PROVIDERS: z.string().optional(),
   LLM_DAILY_LIMIT: z.string().optional(),
+  // Kunci induk enkripsi rahasia konsol Admin (32 byte base64). Opsional: tanpa ini rahasia tidak bisa disimpan.
+  SETTINGS_ENCRYPTION_KEY: z.string().optional(),
   GROQ_API_KEY: z.string().optional(),
   OPENROUTER_API_KEY: z.string().optional(),
   MISTRAL_API_KEY: z.string().optional(),

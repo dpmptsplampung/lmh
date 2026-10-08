@@ -6,6 +6,7 @@ import { render, screen, waitFor, fireEvent, cleanup } from '@testing-library/re
 const h = vi.hoisted(() => ({
   toast: vi.fn(),
   layananUpdate: vi.fn(),
+  faqInsert: vi.fn(),
   state: {
     role: 'petugas' as string | null, // null = baris petugas tidak ditemukan
     updateResult: { data: [{ id: 'l1' }] as { id: string }[] | null, error: null as { message: string } | null },
@@ -31,6 +32,10 @@ vi.mock('@/lib/supabase/client', () => {
       h.layananUpdate(table, values);
       return b;
     };
+    b.insert = (values: unknown) => {
+      h.faqInsert(table, values);
+      return b;
+    };
     b.maybeSingle = () =>
       Promise.resolve({ data: table === 'petugas' && h.state.role ? { role: h.state.role } : null });
     b.then = (r: (v: unknown) => unknown, j?: (e: unknown) => unknown) => Promise.resolve(result()).then(r, j);
@@ -50,6 +55,9 @@ describe('admin FAQ: toggle bot hanya untuk Admin', () => {
   beforeEach(() => {
     h.toast.mockClear();
     h.layananUpdate.mockClear();
+    h.faqInsert.mockClear();
+    sessionStorage.clear();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) })));
     h.state.role = 'petugas';
     h.state.updateResult = { data: [{ id: 'l1' }], error: null };
   });
@@ -94,5 +102,52 @@ describe('admin FAQ: toggle bot hanya untuk Admin', () => {
     );
     expect(h.toast).not.toHaveBeenCalledWith(expect.anything(), 'success');
     expect(screen.getByRole('button', { name: /AKTIF \(On\)/ })).toBeTruthy();
+  });
+});
+
+describe('admin FAQ: petugas wajib menyatakan tanggung jawab (sekali per sesi)', () => {
+  beforeEach(() => {
+    h.faqInsert.mockClear();
+    sessionStorage.clear();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) })));
+  });
+  afterEach(cleanup);
+
+  const isiForm = async () => {
+    fireEvent.change(await screen.findByLabelText(/Pertanyaan/), { target: { value: 'Syarat NIB?' } });
+    fireEvent.change(screen.getByLabelText(/Jawaban/), { target: { value: 'KTP dan NPWP.' } });
+  };
+
+  it('petugas: tanpa centang, simpan ditolak; setelah dicentang tersimpan dan tidak ditanya lagi', async () => {
+    h.state.role = 'petugas';
+    const { container } = render(<AdminFAQPage />);
+    await screen.findByText(/menjadi tanggung jawab Anda sebagai petugas/);
+    await isiForm();
+    const form = container.querySelector('form')!;
+    fireEvent.submit(form);
+    expect(await screen.findByText(/Centang pernyataan tanggung jawab/)).toBeTruthy();
+    expect(h.faqInsert).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /Saya memahami dan bertanggung jawab/ }));
+    fireEvent.submit(form);
+    await waitFor(() => expect(h.faqInsert).toHaveBeenCalledTimes(1));
+    expect(sessionStorage.getItem('lmh_faq_tanggung_jawab')).toBe('1');
+    await waitFor(() => expect(screen.queryByText(/menjadi tanggung jawab Anda sebagai petugas/)).toBeNull());
+  });
+
+  it('petugas: tombol hapus FAQ tidak tersedia', async () => {
+    h.state.role = 'petugas';
+    render(<AdminFAQPage />);
+    expect(await screen.findByText(/Penghapusan permanen hanya oleh Admin/)).toBeTruthy();
+  });
+
+  it('admin: tidak ada peringatan dan simpan langsung', async () => {
+    h.state.role = 'admin';
+    const { container } = render(<AdminFAQPage />);
+    await screen.findByRole('button', { name: /AKTIF \(On\)/ });
+    expect(screen.queryByText(/menjadi tanggung jawab Anda sebagai petugas/)).toBeNull();
+    await isiForm();
+    fireEvent.submit(container.querySelector('form')!);
+    await waitFor(() => expect(h.faqInsert).toHaveBeenCalledTimes(1));
   });
 });

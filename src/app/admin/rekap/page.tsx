@@ -22,6 +22,7 @@ import {
 import PageHeader from '@/components/layout/PageHeader';
 import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/components/Toast';
+import RoleNote from '@/components/admin/RoleNote';
 import RekapLayananTable, { type LayananOption } from '@/components/admin/RekapLayananTable';
 
 interface RekapRow {
@@ -239,6 +240,12 @@ export default function AdminRekapPage() {
       </PageHeader>
 
       <div style={{ padding: 'var(--space-8)' }}>
+        {isPetugas && (
+          <RoleNote>
+            Data ini hanya untuk layanan{' '}
+            {layananOptions.find((o) => o.id === initialLayananId)?.nama ?? 'Anda'}. Setiap ekspor tercatat.
+          </RoleNote>
+        )}
         {/* Navigation Tabs */}
         <div
           style={{

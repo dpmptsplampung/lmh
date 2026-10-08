@@ -10,7 +10,8 @@ import type { NextRequest } from 'next/server';
 import type { Mock } from 'vitest';
 
 interface PetugasRow {
-  role: string | null;
+  role?: string | null;
+  wajib_ganti_sandi?: boolean;
 }
 
 interface MockUser {
@@ -194,7 +195,7 @@ describe('proxy — bounded failures', () => {
   });
 });
 
-describe('proxy — /admin with JWT app_metadata.role (no DB query)', () => {
+describe('proxy — /admin with JWT app_metadata.role (no role DB query)', () => {
   beforeEach(() => {
     vi.resetModules();
     setEnv();
@@ -208,7 +209,7 @@ describe('proxy — /admin with JWT app_metadata.role (no DB query)', () => {
     const res = await proxy(buildRequest('http://localhost/admin'));
     expect(res.status).toBe(200);
     expectRequestId(res);
-    expect(mockClient.from).not.toHaveBeenCalled();
+    expect(mockClient.from).toHaveBeenCalledTimes(1); // hanya cek wajib_ganti_sandi
   });
 
   it('passes when app_metadata.role = petugas (no DB query)', async () => {
@@ -219,7 +220,21 @@ describe('proxy — /admin with JWT app_metadata.role (no DB query)', () => {
     const res = await proxy(buildRequest('http://localhost/admin'));
     expect(res.status).toBe(200);
     expectRequestId(res);
-    expect(mockClient.from).not.toHaveBeenCalled();
+    expect(mockClient.from).toHaveBeenCalledTimes(1);
+  });
+
+  it('memaksa /admin/profil?ganti=1 bila wajib_ganti_sandi, kecuali di /admin/profil', async () => {
+    const m = await mockCreateServerClient({
+      user: { id: 'u-1', app_metadata: { role: 'petugas' } },
+      petugasRow: { wajib_ganti_sandi: true },
+    });
+    const { proxy } = await import('./proxy');
+    const res = await proxy(buildRequest('http://localhost/admin/antrian'));
+    expect(res.headers.get('location')).toMatch(/\/admin\/profil\?ganti=1/);
+    m.mockClient.from.mockClear();
+    const ok = await proxy(buildRequest('http://localhost/admin/profil'));
+    expect(ok.status).toBe(200);
+    expect(m.mockClient.from).not.toHaveBeenCalled();
   });
 
   it('redirects to /me when app_metadata.role = pengunjung (no DB query)', async () => {

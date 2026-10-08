@@ -309,4 +309,37 @@ describe('Admin antrian operational lifecycle', () => {
     });
     expect(screen.queryByRole('button', { name: /^selesai$|selesaikan/i })).not.toBeInTheDocument();
   });
+
+  describe('Koreksi data terkunci', () => {
+    const selesai = () =>
+      baseRow({ status: 'selesai', waktu_mulai_layan: new Date().toISOString(), waktu_selesai: new Date().toISOString() });
+
+    it('Front Office melihat tombol Koreksi Data pada tiket selesai', async () => {
+      buildMock({ rows: [selesai()], role: 'front_office' });
+      render(<AntrianPage />);
+      expect(await screen.findByRole('button', { name: /Koreksi Data/i })).toBeInTheDocument();
+    });
+
+    it('Admin melihat tombol Koreksi Data', async () => {
+      buildMock({ rows: [selesai()], role: 'admin', layananId: 'l-1' });
+      render(<AntrianPage />);
+      expect(await screen.findByRole('button', { name: /Koreksi Data/i })).toBeInTheDocument();
+    });
+
+    it('Petugas tidak melihat tombol; hanya teks data terkunci', async () => {
+      buildMock({ rows: [selesai()], role: 'petugas', layananId: 'l-1' });
+      render(<AntrianPage />);
+      expect(
+        await screen.findByText(/Data sudah dikunci\. Hubungi Front Office atau Admin untuk koreksi\./i),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Koreksi Data/i })).not.toBeInTheDocument();
+    });
+
+    it('tiket belum selesai tidak punya tombol koreksi', async () => {
+      buildMock({ rows: [baseRow({ status: 'dilayani' })], role: 'front_office' });
+      render(<AntrianPage />);
+      await screen.findByText('Budi');
+      expect(screen.queryByRole('button', { name: /Koreksi Data/i })).not.toBeInTheDocument();
+    });
+  });
 });

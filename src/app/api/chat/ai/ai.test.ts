@@ -117,6 +117,13 @@ interface MockServiceOpts {
   // Rate limit
   rateCount?: number | null;
   rateError?: { message: string } | null;
+  // Konsol: bot hidup/mati, Dokumen Peraturan, kalender
+  chatbotAktif?: boolean;
+  layananHilang?: boolean;
+  dokData?: unknown[] | null;
+  dokError?: { message: string } | null;
+  jamTutup?: string | null;
+  libur?: string[];
 }
 
 const CALLER_PENGUNJUNG_ID = 'pengunjung-1';
@@ -182,10 +189,12 @@ const mockServiceClient = async (opts: MockServiceOpts = {}) => {
   };
 
   const mock = {
-    rpc: vi.fn(async () => ({
-      data: opts.rpcData ?? [],
-      error: opts.rpcError ?? null,
-    })),
+    rpc: vi.fn(async (name: string) => {
+      if (name === 'match_dokumen_layanan') {
+        return { data: opts.dokData ?? [], error: opts.dokError ?? null };
+      }
+      return { data: opts.rpcData ?? [], error: opts.rpcError ?? null };
+    }),
     from: vi.fn().mockImplementation((table: string) => {
       if (table === 'anon_rate_limit') {
         const callCount = mock.from.mock.calls.filter((c: unknown[]) => c[0] === 'anon_rate_limit').length;
@@ -212,8 +221,26 @@ const mockServiceClient = async (opts: MockServiceOpts = {}) => {
         return {
           select: vi.fn().mockReturnValue({
             eq: vi.fn().mockReturnThis(),
-            single: vi.fn().mockResolvedValue({ data: { nama: 'Dinas A' }, error: null }),
+            single: vi.fn().mockResolvedValue({
+              data: opts.layananHilang ? null : { nama: 'Dinas A', ...(opts.chatbotAktif === undefined ? {} : { chatbot_aktif: opts.chatbotAktif }) },
+              error: null,
+            }),
           })
+        };
+      }
+      if (table === 'site_settings' && opts.jamTutup !== undefined) {
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({ maybeSingle: vi.fn().mockResolvedValue({ data: { value: opts.jamTutup }, error: null }) }),
+          }),
+        };
+      }
+      if (table === 'hari_libur' && opts.libur) {
+        const rows = opts.libur.map((tanggal) => ({ tanggal }));
+        return {
+          select: vi.fn().mockReturnValue({
+            gte: vi.fn().mockReturnValue({ lte: vi.fn().mockResolvedValue({ data: rows, error: null }) }),
+          }),
         };
       }
       return {};
@@ -231,6 +258,14 @@ const validBody = {
   layanan_id: '550e8400-e29b-41d4-a716-446655440000',
   sesi_id: SESI_ID,
 };
+
+// Cegah panggilan jaringan nyata ke penyedia cadangan (env) saat Gemini sengaja dibuat gagal.
+beforeEach(() => {
+  vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 500 })));
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 const resetGeminiState = () => {
   geminiState.apiKeySet = true;
@@ -722,3 +757,127 @@ describe('POST /api/chat/ai — prompt injection guard', () => {
   });
 });
 
+
+
+describe('POST /api/chat/ai — konsol: bot hidup/mati, lingkup, dokumen, jam layanan', () => {
+  const setWaktu = (iso: string) => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(iso));
+  };
+  beforeEach(() => {
+    vi.resetModules();
+    resetGeminiState();
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://supabase.local';
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-key';
+    process.env.GEMINI_API_KEY = 'test-key';
+    serverState.callerId = CALLER_AUTH_ID;
+    setWaktu('2026-08-05T10:00:00+07:00'); // Rabu
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+  const faqExact = [{ id: 'f-1', layanan_id: validBody.layanan_id, pertanyaan: 'Syarat NIB', jawaban: 'KTP + NPWP', similarity: 0.92 }];
+  const ask = async (opts: MockServiceOpts, pertanyaan = 'Berapa nomor HP kepala dinas?') => {
+    const mock = await mockServiceClient(opts);
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest({ ...validBody, pertanyaan }));
+    return { mock, json: await res.json(), status: res.status };
+  };
+
+  it('chatbot_aktif=false: ditolak di server (tanpa LLM, tanpa pesan bot)', async () => {
+    const { mock, json } = await ask({ chatbotAktif: false, rpcData: faqExact });
+    expect(json.ignored).toBe(true);
+    expect(json.reason).toBe('bot_nonaktif');
+    expect(json.jawaban).toBeNull();
+    expect(mock.rpc).not.toHaveBeenCalled();
+    expect(mock.from.mock.calls.some((c: unknown[]) => c[0] === 'chat_pesan')).toBe(false);
+  });
+
+  it('layanan tidak ditemukan: 404 tanpa memanggil LLM', async () => {
+    const { mock, status } = await ask({ layananHilang: true, rpcData: faqExact });
+    expect(status).toBe(404);
+    expect(mock.rpc).not.toHaveBeenCalled();
+  });
+
+  it('chatbot_aktif=true: bot menjawab seperti biasa', async () => {
+    const { json } = await ask({ chatbotAktif: true, rpcData: faqExact }, 'Apa syarat membuat NIB?');
+    expect(json.eskalasi).toBe(false);
+    expect(json.jawaban).toBe('Jawaban dari AI [1]');
+  });
+
+  it('Dokumen Peraturan dipakai sebagai sumber: terjawab tanpa eskalasi + sumber_dokumen', async () => {
+    const dok = [{ id: 'p-1', dokumen_id: 'd-1', nomor_pasal: 'Pasal 3', teks: 'NIB wajib bagi pelaku usaha.', judul: 'PP 5/2021', jenis: 'peraturan', sumber_url: null, similarity: 0.8 }];
+    const { mock, json } = await ask({ dokData: dok, rpcData: [] }, 'Apakah NIB wajib bagi pelaku usaha?');
+    expect(mock.rpc.mock.calls.some((c: unknown[]) => c[0] === 'match_dokumen_layanan')).toBe(true);
+    expect(json.eskalasi).toBe(false);
+    expect(json.reason).toBeNull();
+    expect(json.sumber_dokumen).toHaveLength(1);
+    expect(json.sumber_dokumen[0].judul).toBe('PP 5/2021');
+  });
+
+  it('indeks dokumen tidak tersedia (galat RPC): jalur FAQ tetap utuh', async () => {
+    const { json, status } = await ask({ dokError: { message: 'different vector dimensions 3072 and 768' }, rpcData: faqExact }, 'Apa syarat membuat NIB?');
+    expect(status).toBe(200);
+    expect(json.eskalasi).toBe(false);
+    expect(json.sumber).toHaveLength(1);
+    expect(json.sumber_dokumen).toEqual([]);
+  });
+
+  it('indeks dokumen tidak tersedia + tanpa FAQ: tetap eskalasi no_match seperti sebelumnya', async () => {
+    const { json } = await ask({ dokError: { message: 'boom' }, rpcData: [] });
+    expect(json.eskalasi).toBe(true);
+    expect(json.reason).toBe('no_match');
+  });
+
+  it('di luar lingkup layanan: jawaban diganti teks tolak baku, tanpa eskalasi', async () => {
+    geminiState.generateText = '[[DI_LUAR_LINGKUP]] Resep rendang: ...';
+    const { json } = await ask({ rpcData: [] }, 'Bagaimana cara membuat rendang?');
+    expect(json.reason).toBe('di_luar_lingkup');
+    expect(json.eskalasi).toBe(false);
+    expect(json.jawaban).toContain('hanya dapat membantu seputar layanan Dinas A');
+    expect(json.jawaban).not.toContain('rendang');
+  });
+
+  it('sapaan sederhana tetap dibalas (tidak ditolak)', async () => {
+    geminiState.generateText = 'Halo! Ada yang bisa dibantu?';
+    const { json } = await ask({ rpcData: [] }, 'halo');
+    expect(json.reason).toBe('greeting');
+    expect(json.jawaban).toBe('Halo! Ada yang bisa dibantu?');
+  });
+
+  it('setelah jam tutup (16:00 WIB): bot tetap menjawab, tanpa eskalasi', async () => {
+    setWaktu('2026-08-05T17:30:00+07:00');
+    geminiState.generateText = 'Petugas membantu Kamis.';
+    const { json } = await ask({ rpcData: [] });
+    expect(json.reason).toBe('setelah_jam_tutup');
+    expect(json.eskalasi).toBe(false);
+    expect(json.jawaban).toBe('Petugas membantu Kamis.');
+  });
+
+  it('jam tutup dapat diatur (site_settings): 09:00 -> pukul 10:00 sudah tutup', async () => {
+    const { json } = await ask({ rpcData: [], jamTutup: '09:00' });
+    expect(json.reason).toBe('setelah_jam_tutup');
+    expect(json.eskalasi).toBe(false);
+  });
+
+  it('hari libur nasional (hari_libur): tanpa eskalasi', async () => {
+    const { json } = await ask({ rpcData: [], libur: ['2026-08-05'] });
+    expect(json.reason).toBe('libur_nasional');
+    expect(json.eskalasi).toBe(false);
+  });
+
+  it('akhir pekan tetap weekend_mode', async () => {
+    setWaktu('2026-08-08T10:00:00+07:00'); // Sabtu
+    const { json } = await ask({ rpcData: [] });
+    expect(json.reason).toBe('weekend_mode');
+    expect(json.eskalasi).toBe(false);
+  });
+
+  it('LLM gagal di luar jam layanan: pesan menyebut hari kerja berikutnya, tanpa eskalasi', async () => {
+    setWaktu('2026-08-07T17:00:00+07:00'); // Jumat sore -> Senin 10 Agustus
+    geminiState.generateThrow = true;
+    const { json } = await ask({ rpcData: [] });
+    expect(json.eskalasi).toBe(false);
+    expect(json.jawaban).toContain('Senin, 10 Agustus 2026');
+  });
+});

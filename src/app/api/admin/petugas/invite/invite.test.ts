@@ -71,6 +71,7 @@ const mockServiceClient = async (opts: MockServiceOpts = {}) => {
   process.env.NEXT_PUBLIC_PUBLIC_URL = 'https://layanan.example.test';
   const supabaseMod = await import('@supabase/supabase-js');
   const createClient = supabaseMod.createClient as unknown as ReturnType<typeof vi.fn>;
+  const auditInsert = vi.fn().mockResolvedValue({ error: null });
   const upsertChain = {
     error: opts.insertError ?? null,
   };
@@ -97,6 +98,7 @@ const mockServiceClient = async (opts: MockServiceOpts = {}) => {
     },
     from: vi.fn().mockReturnValue({
       upsert: vi.fn().mockReturnValue(upsertChain),
+      insert: auditInsert,
     }),
   };
   createClient.mockReturnValue(mock);
@@ -362,6 +364,7 @@ describe('POST /api/admin/petugas/invite — happy path (recovery link via email
     const upsertFn = serviceMock.from('petugas').upsert;
     const upsertArg = (upsertFn as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(upsertArg.role).toBe('petugas');
+    expect(serviceMock.from('audit_log').insert).toHaveBeenCalledWith(expect.objectContaining({ aksi: 'akun_undang' }));
   });
 
   it('upserts petugas row for an existing account, then sends recovery link', async () => {

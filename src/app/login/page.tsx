@@ -4,14 +4,17 @@ import { useState, Suspense } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { AlertCircle, Loader2, Shield, Lock, Mail, ArrowLeft } from 'lucide-react';
+import { AlertCircle, CheckCircle, Loader2, Shield, Lock, User, ArrowLeft } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { resolveLoginEmail, normalizeUsername, PESAN_LOGIN_GAGAL } from '@/lib/akun/login';
 import styles from './login.module.css';
 
 function LoginContent() {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [isAdminLogin, setIsAdminLogin] = useState(false);
+  const [lupa, setLupa] = useState(false);
+  const [lupaInfo, setLupaInfo] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const router = useRouter();
@@ -53,10 +56,12 @@ function LoginContent() {
     }
   };
 
+  // Login staf/akun layanan: username ATAU email + sandi. Semua galat = pesan seragam (tidak
+  // membocorkan apakah username ada). Login Google pengunjung tidak lewat sini.
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() || !password) {
-      setErrorMessage('Email dan kata sandi wajib diisi');
+      setErrorMessage('Nama pengguna dan kata sandi wajib diisi');
       return;
     }
 
@@ -66,32 +71,67 @@ function LoginContent() {
     try {
       const supabase = createClient();
       const { data, error: authError } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
+        email: resolveLoginEmail(email),
         password: password,
       });
 
-      if (authError) throw authError;
+      if (authError || !data?.user) throw new Error('login');
 
-      if (data.user) {
-        const { data: petugas, error: dbError } = await supabase
-          .from('petugas')
-          .select('role')
-          .eq('auth_user_id', data.user.id)
-          .single();
+      const { data: petugas } = await supabase
+        .from('petugas')
+        .select('role, wajib_ganti_sandi')
+        .eq('auth_user_id', data.user.id)
+        .maybeSingle();
 
-        if (dbError || !petugas) {
-          router.push(nextPath ?? '/me');
-        } else if (petugas.role === 'admin' || petugas.role === 'petugas' || petugas.role === 'front_office') {
-          router.push('/admin');
-        } else {
-          router.push(nextPath ?? '/me');
-        }
+      if (petugas?.wajib_ganti_sandi) {
+        router.push('/admin/profil?ganti=1');
+      } else if (petugas && (petugas.role === 'admin' || petugas.role === 'petugas' || petugas.role === 'front_office')) {
+        router.push('/admin');
+      } else {
+        router.push(nextPath ?? '/me');
       }
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Email atau kata sandi salah. Silakan coba lagi.';
-      setErrorMessage(errorMsg);
+    } catch {
+      setErrorMessage(PESAN_LOGIN_GAGAL);
       setLoading(false);
     }
+  };
+
+  // Lupa sandi: jawaban selalu seragam, server tidak membocorkan keberadaan akun.
+  const handleLupa = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const username = normalizeUsername(email);
+    if (!username) {
+      setErrorMessage('Nama pengguna wajib diisi');
+      return;
+    }
+    setLoading(true);
+    setErrorMessage('');
+    setLupaInfo('');
+    try {
+      const res = await fetch('/api/auth/lupa-sandi', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username }),
+      });
+      if (res.status === 429) {
+        setErrorMessage('Terlalu sering mencoba. Silakan coba lagi beberapa menit lagi.');
+      } else if (res.ok) {
+        setLupaInfo(
+          'Jika akun tersebut memiliki email notifikasi yang sudah terverifikasi, tautan pemulihan telah dikirim. Bila email tidak diterima, hubungi Admin untuk atur ulang sandi.',
+        );
+      } else {
+        setErrorMessage('Permintaan gagal. Silakan coba lagi.');
+      }
+    } catch {
+      setErrorMessage('Gagal menghubungi server. Silakan coba lagi.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resetMessages = () => {
+    setErrorMessage('');
+    setLupaInfo('');
   };
 
   return (
@@ -105,87 +145,113 @@ function LoginContent() {
       <div className={styles.loginCard}>
         <div className={styles.loginHeader}>
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 'var(--space-4)' }}>
-            <Image 
-              src="/logo.png" 
-              alt="Lampung Maju Hub Logo" 
-              width={200} 
-              height={90} 
-              style={{ objectFit: 'contain' }} 
+            <Image
+              src="/logo.png"
+              alt="Lampung Maju Hub Logo"
+              width={200}
+              height={90}
+              style={{ objectFit: 'contain' }}
               priority
             />
           </div>
           <p className={styles.loginSubtitle}>
-            {isAdminLogin 
-              ? 'Masuk ke Panel Operator & Admin DPMPTSP Provinsi Lampung'
+            {isAdminLogin
+              ? lupa
+                ? 'Atur ulang kata sandi akun operator. Tautan dikirim ke email notifikasi yang sudah terverifikasi.'
+                : 'Masuk ke Panel Operator & Admin DPMPTSP Provinsi Lampung'
               : 'Silakan masuk dengan Google untuk mengakses layanan digital DPMPTSP Provinsi Lampung'}
           </p>
         </div>
 
         <div className={styles.loginBody}>
           {error && (
-            <div className={styles.loginError}>
+            <div className={styles.loginError} role="alert">
               <AlertCircle size={16} />
               {error}
+            </div>
+          )}
+          {lupaInfo && (
+            <div className={`${styles.loginError} ${styles.loginSuccess}`} role="status">
+              <CheckCircle size={16} />
+              {lupaInfo}
             </div>
           )}
 
           {loading ? (
             <div className={styles.loadingState}>
               <Loader2 size={32} className="animate-pulse" />
-              <span>{isAdminLogin ? 'Memproses masuk...' : 'Mengarahkan ke Google...'}</span>
+              <span>{isAdminLogin ? (lupa ? 'Mengirim permintaan...' : 'Memproses masuk...') : 'Mengarahkan ke Google...'}</span>
             </div>
           ) : (
             <>
               {isAdminLogin ? (
-                /* Form masuk email/kata sandi untuk Admin/Petugas */
-                <form onSubmit={handleEmailLogin} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+                /* Form masuk username (atau email) + kata sandi untuk Admin/Petugas/akun layanan */
+                <form onSubmit={lupa ? handleLupa : handleEmailLogin} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
                   <div className="form-group">
                     <label className="form-label form-label--required" htmlFor="email">
-                      <Mail size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }} />
-                      Email Petugas
+                      <User size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }} />
+                      Nama pengguna atau email
                     </label>
                     <input
                       id="email"
-                      type="email"
+                      type="text"
                       className="form-input"
-                      placeholder="contoh@lampungprov.go.id"
+                      placeholder="contoh: helpdesk-oss"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
+                      autoComplete="username"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
                       required
                     />
                   </div>
 
-                  <div className="form-group">
-                    <label className="form-label form-label--required" htmlFor="password">
-                      <Lock size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }} />
-                      Kata sandi
-                    </label>
-                    <input
-                      id="password"
-                      type="password"
-                      className="form-input"
-                      placeholder="••••••••"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      required
-                    />
-                  </div>
+                  {!lupa && (
+                    <div className="form-group">
+                      <label className="form-label form-label--required" htmlFor="password">
+                        <Lock size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }} />
+                        Kata sandi
+                      </label>
+                      <input
+                        id="password"
+                        type="password"
+                        className="form-input"
+                        placeholder="••••••••"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        autoComplete="current-password"
+                        required
+                      />
+                    </div>
+                  )}
 
                   <button
                     type="submit"
                     className="btn btn--primary btn--lg"
                     style={{ width: '100%', marginTop: 'var(--space-2)' }}
                   >
-                    Masuk Operator
+                    {lupa ? 'Kirim Tautan Pemulihan' : 'Masuk Operator'}
                   </button>
 
                   <button
                     type="button"
                     className="btn btn--ghost btn--sm"
-                    style={{ marginTop: 'var(--space-2)' }}
+                    onClick={() => {
+                      setLupa(!lupa);
+                      resetMessages();
+                    }}
+                  >
+                    {lupa ? 'Kembali ke Masuk' : 'Lupa kata sandi?'}
+                  </button>
+
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
                     onClick={() => {
                       setIsAdminLogin(false);
-                      setErrorMessage('');
+                      setLupa(false);
+                      resetMessages();
                     }}
                   >
                     <ArrowLeft size={14} />
@@ -251,7 +317,7 @@ function LoginContent() {
             className={styles.adminLink}
             onClick={() => {
               setIsAdminLogin(true);
-              setErrorMessage('');
+              resetMessages();
             }}
           >
             Akses Operator & Admin &rarr;

@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { getServiceClient } from '@/lib/akun/server';
 import { exportQuerySchema } from '@/lib/rekap/schemas';
 import { fetchAllTicketRows } from '@/lib/rekap/exportAll';
 import {
@@ -100,13 +101,14 @@ export async function GET(request: NextRequest) {
   }
 
   const buf = await buildRekapWorkbook(tab, rows);
-  const { error: auditError } = await supabase.from('audit_log').insert({
+  // audit_log hanya boleh ditulis server (service role); pengguna tidak punya INSERT langsung (S14).
+  const { error: auditError } = (await getServiceClient()?.from('audit_log').insert({
     actor_id: user.id,
     actor_role: me.role,
     aksi: 'export_xlsx',
     entitas: 'rekap_pelayanan',
     detail: { tab, dari, sampai, q, total_rows: rows.length, truncated },
-  });
+  })) ?? { error: { message: 'service client tidak tersedia' } };
   if (auditError) {
     console.error('[api/admin/rekap/export] audit_log insert gagal:', auditError);
   }

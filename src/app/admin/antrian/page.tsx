@@ -17,15 +17,19 @@ import {
   Volume2,
   FileText,
   FileEdit,
+  Pencil,
   UserCheck,
   ChevronDown,
   ChevronUp,
   Download,
 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
+import CalendarBanner from '@/components/admin/CalendarBanner';
+import RoleNote from '@/components/admin/RoleNote';
 import Pagination from '@/components/Pagination';
 import WalkinWizard from '@/components/WalkinWizard';
 import PelayananWizardModal from '@/components/admin/PelayananWizardModal';
+import KoreksiPelayananModal from '@/components/admin/KoreksiPelayananModal';
 import { isLayananPendataan } from '@/lib/pelayanan';
 import { createClient } from '@/lib/supabase/client';
 import { toCsv } from '@/lib/csv';
@@ -84,6 +88,7 @@ export default function AntrianPage() {
     rataWaktuMenit: number;
   }>({ totalSelesai: 0, rataWaktuMenit: 0 });
   const [activeWizardTiketId, setActiveWizardTiketId] = useState<string | null>(null);
+  const [koreksiTiketId, setKoreksiTiketId] = useState<string | null>(null);
 
   // ── Rekapitulasi Absen ────────────────────────────────────────────────────
   const [rekapOpen, setRekapOpen] = useState(false);
@@ -377,6 +382,12 @@ export default function AntrianPage() {
       </PageHeader>
 
       <div style={{ padding: 'var(--space-8)' }}>
+        <CalendarBanner />
+        {currentUser?.role === 'petugas' && layananNamaHeader && (
+          <RoleNote>
+            Anda melayani antrean {layananNamaHeader}. Pengunjung layanan lain diatur Front Office.
+          </RoleNote>
+        )}
         {unassigned ? (
           <div className="table-wrapper">
             <div className="empty-state" style={{ padding: 'var(--space-8)' }}>
@@ -678,6 +689,23 @@ export default function AntrianPage() {
                                     Lihat Data
                                   </button>
                                 )}
+                                {a.status === 'selesai' && isLayananPendataan(resolveLayananNama(a)) && (
+                                  isAdminLike ? (
+                                    <button
+                                      className="btn btn--secondary btn--xs"
+                                      onClick={() => setKoreksiTiketId(a.id)}
+                                      title="Koreksi data yang sudah dikunci (wajib alasan, tercatat di riwayat)"
+                                      style={{ fontSize: '11px', padding: '2px 6px', width: 'fit-content' }}
+                                    >
+                                      <Pencil size={12} style={{ marginRight: '3px' }} />
+                                      Koreksi Data
+                                    </button>
+                                  ) : currentUser?.role === 'petugas' && (
+                                    <small style={{ color: 'var(--text-tertiary)', maxWidth: 220 }}>
+                                      Data sudah dikunci. Hubungi Front Office atau Admin untuk koreksi.
+                                    </small>
+                                  )
+                                )}
                               </div>
                             )}
                           </td>
@@ -705,6 +733,13 @@ export default function AntrianPage() {
           </>
         )}
       </div>
+
+      <KoreksiPelayananModal
+        isOpen={Boolean(koreksiTiketId)}
+        tiketId={koreksiTiketId}
+        onClose={() => setKoreksiTiketId(null)}
+        onSuccess={fetchData}
+      />
 
       <PelayananWizardModal
         isOpen={Boolean(activeWizardTiketId)}

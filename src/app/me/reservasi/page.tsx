@@ -40,7 +40,7 @@ export default function ReservasiPage() {
     jam_rencana: '',
     keperluan: '',
   });
-  const [layananOptions, setLayananOptions] = useState<{ id: string; nama: string }[]>([]);
+  const [layananOptions, setLayananOptions] = useState<{ id: string; nama: string; status_tampilan?: string; punya_antrean?: boolean }[]>([]);
   const [pengunjungId, setPengunjungId] = useState<string | null>(null);
   const [pengunjungNama, setPengunjungNama] = useState<string | null>(null);
   const [authUserId, setAuthUserId] = useState<string | null>(null);
@@ -82,13 +82,13 @@ export default function ReservasiPage() {
       // Get layanan
       try {
         const { data, error: fetchError } = await supabase
-          .from('layanan')
-          .select('id, nama')
+          .from('v_layanan_publik')
+          .select('id, nama, status_tampilan, punya_antrean')
           .neq('tipe', 'modul_publik')
           .order('nama');
 
         if (fetchError) throw fetchError;
-        setLayananOptions(data || []);
+        setLayananOptions((data || []).filter((l) => l.punya_antrean !== false));
       } catch {
         setLayananOptions([]);
       }
@@ -413,7 +413,9 @@ export default function ReservasiPage() {
                       >
                         <option value="">— Pilih layanan —</option>
                         {layananOptions.map((l) => (
-                          <option key={l.id} value={l.id}>{l.nama}</option>
+                          <option key={l.id} value={l.id} disabled={l.status_tampilan === 'coming_soon'}>
+                            {l.nama}{l.status_tampilan === 'coming_soon' ? ' (Segera hadir)' : ''}
+                          </option>
                         ))}
                       </select>
                     )}

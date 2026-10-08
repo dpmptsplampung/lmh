@@ -276,4 +276,42 @@ describe('API Route /api/admin/pelayanan/[tiketId]', () => {
     expect(updatePerizinan).toHaveBeenCalledWith(expect.objectContaining({ lokasi_usaha: 'Lampung Selatan' }));
   });
 
+  describe('PUT koreksi data terkunci', () => {
+    const setup = async (
+      role: string,
+      rpc = vi.fn().mockResolvedValue({ data: { ok: true, perubahan: { a: 1 } }, error: null }),
+    ) => {
+      const serverMod = await import('@/lib/supabase/server');
+      (serverMod.createClient as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+        auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'u' } }, error: null }) },
+        from: vi.fn((t: string) => (t === 'petugas' ? mockPetugas({ role }) : mockTiket())),
+        rpc,
+      });
+      const { PUT } = await import('./route');
+      return { PUT, rpc };
+    };
+    const ctx = { params: Promise.resolve({ tiketId: 't1' }) };
+
+    it('petugas ditolak 403 tanpa memanggil RPC', async () => {
+      const { PUT, rpc } = await setup('petugas');
+      const res = await PUT(buildRequest('PUT', { perubahan: { nama_usaha: 'X' }, alasan: 'salah ketik' }), ctx);
+      expect(res.status).toBe(403);
+      expect(rpc).not.toHaveBeenCalled();
+    });
+
+    it('FO memanggil koreksi_pelayanan dengan alasan', async () => {
+      const { PUT, rpc } = await setup('front_office');
+      const res = await PUT(buildRequest('PUT', { perubahan: { nama_usaha: 'X' }, alasan: 'salah ketik' }), ctx);
+      expect(res.status).toBe(200);
+      expect(rpc).toHaveBeenCalledWith('koreksi_pelayanan', {
+        p_tiket_id: 't1', p_form_type: 'oss', p_perubahan: { nama_usaha: 'X' }, p_alasan: 'salah ketik',
+      });
+    });
+
+    it('alasan hilang -> 422; ALASAN_WAJIB dari DB -> 422', async () => {
+      const { PUT } = await setup('admin', vi.fn().mockResolvedValue({ data: null, error: { message: 'ALASAN_WAJIB: alasan koreksi wajib diisi' } }));
+      expect((await PUT(buildRequest('PUT', { perubahan: { a: 'b' } }), ctx)).status).toBe(422);
+      expect((await PUT(buildRequest('PUT', { perubahan: { a: 'b' }, alasan: 'x' }), ctx)).status).toBe(422);
+    });
+  });
 });

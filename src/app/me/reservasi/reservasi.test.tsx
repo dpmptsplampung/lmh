@@ -61,7 +61,7 @@ describe('reservation payload', () => {
       auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'auth-1' } } }) },
       from: vi.fn((table: string) => {
         if (table === 'pengunjung') return pengunjung;
-        if (table === 'layanan') return layanan;
+        if (table === 'v_layanan_publik') return layanan;
         if (table === 'visit') return visit;
         if (table === 'consent_log') return consentLog;
         return {};

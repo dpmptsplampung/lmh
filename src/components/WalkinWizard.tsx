@@ -11,6 +11,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { isLayananTutupError, PESAN_LAYANAN_TUTUP } from '@/lib/offline/tutup';
 
 interface LayananItem {
   id: string;
@@ -137,9 +138,12 @@ export default function WalkinWizard({
       setSuccess(true);
       onSuccess?.();
     } catch (e) {
-      const msg = e instanceof Error && e.message.includes('tidak beroperasi')
-        ? 'Layanan tidak beroperasi hari ini (libur/di luar jadwal).'
-        : 'Gagal menyimpan kunjungan walk-in. Silakan coba lagi.';
+      const raw = (e as { message?: string } | null)?.message ?? '';
+      const msg = isLayananTutupError(e)
+        ? PESAN_LAYANAN_TUTUP
+        : raw.includes('tidak beroperasi')
+          ? 'Layanan tidak beroperasi hari ini (libur/di luar jadwal).'
+          : 'Gagal menyimpan kunjungan walk-in. Silakan coba lagi.';
       setError(msg);
     } finally {
       submittingRef.current = false;

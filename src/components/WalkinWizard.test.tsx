@@ -44,6 +44,20 @@ describe('WalkinWizard langkah 2 (layanan + keperluan)', () => {
   });
   afterEach(cleanup);
 
+  it.each([
+    ['details LAYANAN_TUTUP', { message: 'x', details: 'LAYANAN_TUTUP' }],
+    ['teks tutup pukul 16.00 WIB', { message: 'Layanan hari ini sudah tutup pukul 16.00 WIB.' }],
+  ])('layanan tutup (%s) menampilkan pesan ramah', async (_n, err) => {
+    insertMock.mockResolvedValueOnce({ error: err });
+    await openToStep2();
+    fireEvent.click(screen.getByRole('button', { name: /Helpdesk OSS/i }));
+    fireEvent.change(screen.getByLabelText(/Keperluan/i), { target: { value: 'Urus NIB' } });
+    fireEvent.click(simpan());
+    expect(
+      await screen.findByText('Layanan tutup pukul 16.00 WIB, buka kembali pada jam kerja berikutnya.'),
+    ).toBeInTheDocument();
+  });
+
   it('klik layanan hanya memilih: tidak submit dan tidak pindah langkah', async () => {
     await openToStep2();
     fireEvent.click(screen.getByRole('button', { name: /Helpdesk OSS/i }));

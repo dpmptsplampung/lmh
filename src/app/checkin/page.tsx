@@ -16,6 +16,7 @@ import QRCodeDisplay from '@/components/QRCode';
 import { APP_NAME } from '@/lib/constants';
 import { enqueueAction } from '@/lib/offline/queue';
 import { replayQueue } from '@/lib/offline/replay';
+import { isLayananTutupError, PESAN_LAYANAN_TUTUP, pesanCheckinDitolak } from '@/lib/offline/tutup';
 import styles from './checkin.module.css';
 
 interface FormData {
@@ -36,10 +37,11 @@ export default function CheckinPage() {
     keperluan: '',
     layanan_id: '',
   });
-  const [layananOptions, setLayananOptions] = useState<{ id: string; nama: string }[]>([]);
+  const [layananOptions, setLayananOptions] = useState<{ id: string; nama: string; status_tampilan?: string; punya_antrean?: boolean }[]>([]);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [loadingLayanan, setLoadingLayanan] = useState(true);
   // I8: PDP consent — required before submit
   const [consentGiven, setConsentGiven] = useState(false);
@@ -100,13 +102,13 @@ export default function CheckinPage() {
       try {
         const supabase = createClient();
         const { data, error: fetchError } = await supabase
-          .from('layanan')
-          .select('id, nama')
+          .from('v_layanan_publik')
+          .select('id, nama, status_tampilan, punya_antrean')
           .neq('tipe', 'modul_publik')
           .order('nama');
 
         if (fetchError) throw fetchError;
-        setLayananOptions(data || []);
+        setLayananOptions((data || []).filter((l) => l.punya_antrean !== false));
       } catch {
         setLayananOptions([]);
       } finally {
@@ -213,7 +215,14 @@ export default function CheckinPage() {
       }
       setSuccess(true);
     } catch (err) {
-      setError('Gagal menyimpan data. Silakan coba lagi.');
+      const raw = (err as { message?: string } | null)?.message ?? '';
+      setError(
+        isLayananTutupError(err)
+          ? PESAN_LAYANAN_TUTUP
+          : raw.includes('tidak beroperasi')
+            ? 'Layanan tidak beroperasi hari ini (libur/di luar jadwal).'
+            : 'Gagal menyimpan data. Silakan coba lagi.',
+      );
       console.error('Check-in error:', err);
     } finally {
       setLoading(false);
@@ -223,9 +232,14 @@ export default function CheckinPage() {
   // I9: replay queued actions when connection is restored.
   useEffect(() => {
     const handleOnline = () => {
-      replayQueue().catch(() => {
-        // non-fatal — will retry on next online event
-      });
+      replayQueue()
+        .then((r) => {
+          // Check-in offline yang ditolak (layanan tutup) tidak boleh hilang diam-diam.
+          if (r.ditolak) setNotice(pesanCheckinDitolak(r.ditolak));
+        })
+        .catch(() => {
+          // non-fatal — will retry on next online event
+        });
     };
     window.addEventListener('online', handleOnline);
     return () => window.removeEventListener('online', handleOnline);
@@ -257,6 +271,11 @@ export default function CheckinPage() {
 
         {/* Body */}
         <div className={styles.checkinBody}>
+          {notice && (
+            <div className="form-error" role="status" style={{ marginBottom: 'var(--space-4)' }}>
+              {notice}
+            </div>
+          )}
           {authState === 'loading' ? (
             <div
               className="form-hint"
@@ -362,8 +381,8 @@ export default function CheckinPage() {
                   >
                     <option value="">— Pilih layanan —</option>
                     {layananOptions.map((l) => (
-                      <option key={l.id} value={l.id}>
-                        {l.nama}
+                      <option key={l.id} value={l.id} disabled={l.status_tampilan === 'coming_soon'}>
+                        {l.nama}{l.status_tampilan === 'coming_soon' ? ' (Segera hadir)' : ''}
                       </option>
                     ))}
                   </select>

@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { z } from 'zod';
+import { audit } from '@/lib/akun/server';
 
 const bodySchema = z
   .object({
@@ -46,7 +47,7 @@ export async function POST(request: NextRequest) {
 
   const { data: petugas } = await supabase
     .from('petugas')
-    .select('role, aktif')
+    .select('id, role, aktif')
     .eq('auth_user_id', user.id)
     .maybeSingle();
 
@@ -175,6 +176,11 @@ export async function POST(request: NextRequest) {
           : 'Gagal menyimpan data petugas.';
     return NextResponse.json({ error: msg }, { status: 500 });
   }
+
+  // Upsert lewat service role (tanpa auth.uid): catat di audit_log secara eksplisit (entitas_id = auth user id).
+  await audit(adminClient, { id: petugas.id as string, role: 'admin' }, 'akun_undang', userId, {
+    role, layanan_id: layanan_id ?? null, auth_user_id: userId,
+  });
 
   const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({
     email,

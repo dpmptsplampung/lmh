@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Loader2, AlertTriangle, ShieldAlert, Clock } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
+import RoleNote from '@/components/admin/RoleNote';
 
 // CMP-02/CMP-03/CMP-06: dashboard pengaduan untuk Admin & FO.
 // Jalur integritas hanya tampil untuk Admin (I-15); penanda warna mendekati batas SLA.
@@ -97,6 +98,10 @@ export default function AdminPengaduanPage() {
   }, [load]);
 
   const totalPages = Math.max(1, Math.ceil(total / 50));
+  // Jalur integritas = Admin saja; Petugas hanya lihat (tanpa identitas pelapor, tanpa aksi).
+  // Role belum terbukti -> perlakukan sebagai paling terbatas (tolak dulu).
+  const isAdmin = userRole === 'admin';
+  const isPetugas = userRole === 'petugas';
 
   const ubahStatus = async (id: string, status: string) => {
     const res = await fetch('/api/admin/pengaduan', {
@@ -115,6 +120,11 @@ export default function AdminPengaduanPage() {
   return (
     <div style={{ padding: 'var(--space-6)' }}>
       <PageHeader title="Kanal Pengaduan" />
+      {isPetugas && (
+        <RoleNote>
+          Anda hanya dapat melihat pengaduan layanan Anda. Hubungi Admin/Front Office untuk tindak lanjut.
+        </RoleNote>
+      )}
       <div style={{ display: 'flex', gap: 'var(--space-2)', margin: 'var(--space-4) 0' }}>
         <button
           type="button"
@@ -123,7 +133,7 @@ export default function AdminPengaduanPage() {
         >
           Pengaduan Layanan
         </button>
-        {userRole && (
+        {isAdmin && (
           <button
             type="button"
             className={`btn ${tab === 'integritas' ? 'btn--primary' : 'btn--secondary'}`}
@@ -185,7 +195,7 @@ export default function AdminPengaduanPage() {
                 {r.anonim && <span>(anonim)</span>}
               </div>
               <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-                {(userRole === 'admin' || (r.jalur === 'layanan' && userRole !== 'petugas')) && (
+                {(isAdmin || (r.jalur === 'layanan' && userRole === 'front_office')) && (
                   <>
                     {r.status === 'baru' && (
                       <button type="button" className="btn btn--sm btn--secondary" onClick={() => ubahStatus(r.id, 'diverifikasi')}>Verifikasi</button>

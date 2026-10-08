@@ -21,7 +21,7 @@ vi.mock('@/lib/supabase/client', () => {
     b.then = (r: (v: unknown) => unknown) =>
       Promise.resolve({
         data:
-          table === 'layanan'
+          table === 'v_layanan_publik'
             ? [
                 { id: 'l1', nama: 'Bank Lampung', chatbot_aktif: true },
                 { id: 'l2', nama: 'Helpdesk OSS', chatbot_aktif: true },

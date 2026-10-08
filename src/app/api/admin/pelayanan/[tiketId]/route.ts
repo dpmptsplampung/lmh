@@ -208,7 +208,7 @@ export async function PATCH(
         .eq('tiket_id', tiketId)
         .maybeSingle();
 
-      if (existing?.is_locked && staff.role !== 'admin') {
+      if (existing?.is_locked) {
         return NextResponse.json({ error: 'Data pelayanan sudah terkunci dan tidak dapat diubah' }, { status: 403 });
       }
 
@@ -249,7 +249,7 @@ export async function PATCH(
         .eq('tiket_id', tiketId)
         .maybeSingle();
 
-      if (existing?.is_locked && staff.role !== 'admin') {
+      if (existing?.is_locked) {
         return NextResponse.json({ error: 'Data pelayanan sudah terkunci dan tidak dapat diubah' }, { status: 403 });
       }
 
@@ -403,6 +403,75 @@ export async function POST(
     });
   } catch (err) {
     console.error('[POST /api/admin/pelayanan/finalize]', err);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+  }
+}
+
+// Koreksi data pelayanan yang sudah terkunci (Admin/FO). Alasan wajib; nilai lama -> baru masuk audit_log
+// lewat RPC koreksi_pelayanan (migrasi 202610090001). Petugas tidak berwenang (403).
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ tiketId: string }> }
+) {
+  try {
+    const { tiketId } = await params;
+    const supabase = await createClient();
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const { data: staff } = await supabase
+      .from('petugas')
+      .select('id, role, layanan_id, aktif')
+      .eq('auth_user_id', user.id)
+      .maybeSingle();
+    if (!staff || staff.aktif === false || (staff.role !== 'admin' && staff.role !== 'front_office')) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const { data: tiket } = await supabase
+      .from('tiket_antrean')
+      .select('id, layanan:layanan_id(nama)')
+      .eq('id', tiketId)
+      .maybeSingle();
+    if (!tiket) return NextResponse.json({ error: 'Tiket tidak ditemukan' }, { status: 404 });
+
+    const layananData = Array.isArray(tiket.layanan) ? tiket.layanan[0] : tiket.layanan;
+    const formType = determineFormType(layananData?.nama || '');
+    if (!formType) return NextResponse.json({ error: 'Layanan tidak valid' }, { status: 400 });
+
+    let body: { perubahan?: unknown; alasan?: unknown };
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+    }
+    if (typeof body.alasan !== 'string' || !body.perubahan || typeof body.perubahan !== 'object') {
+      return NextResponse.json({ error: 'perubahan dan alasan wajib diisi' }, { status: 422 });
+    }
+
+    const { data, error } = await supabase.rpc('koreksi_pelayanan', {
+      p_tiket_id: tiketId,
+      p_form_type: formType,
+      p_perubahan: body.perubahan,
+      p_alasan: body.alasan,
+    });
+    if (error) {
+      const msg = error.message || '';
+      if (msg.includes('FORBIDDEN')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      if (msg.includes('NOT_FOUND')) return NextResponse.json({ error: 'Data pelayanan tidak ditemukan' }, { status: 404 });
+      if (msg.includes('BELUM_TERKUNCI')) {
+        return NextResponse.json({ error: 'Data masih draf; ubah lewat simpan draf' }, { status: 409 });
+      }
+      if (/ALASAN_WAJIB|TIDAK_ADA_PERUBAHAN|FIELD_TIDAK_VALID|INVALID_FORM/.test(msg)) {
+        return NextResponse.json({ error: msg.replace(/^[A-Z_]+:\s*/, '') }, { status: 422 });
+      }
+      console.error('[PUT koreksi_pelayanan]', msg);
+      return NextResponse.json({ error: 'Gagal menyimpan koreksi' }, { status: 400 });
+    }
+    return NextResponse.json({ ok: true, perubahan: data?.perubahan ?? {} });
+  } catch (err) {
+    console.error('[PUT /api/admin/pelayanan]', err);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }

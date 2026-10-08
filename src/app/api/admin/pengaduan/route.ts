@@ -28,8 +28,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
+  // Petugas membaca lewat view v_pengaduan_petugas (tanpa kontak/lampiran/sesi chat; RLS tabel menolaknya).
   let query = supabase
-    .from('pengaduan')
+    .from(me.role === 'petugas' ? 'v_pengaduan_petugas' : 'pengaduan')
     .select('id, nomor_tiket, jalur, layanan_id, status, batas_verifikasi, batas_penanganan, anonim, created_at, isi', { count: 'exact' })
     .order('created_at', { ascending: false });
 
@@ -76,6 +77,10 @@ export async function PATCH(request: NextRequest) {
   const supabase = await createClient();
   const me = await getRole(supabase);
   if (!me) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  // Tindak lanjut = Admin/FO. Petugas hanya melihat (sebelumnya RLS menolak diam-diam -> "sukses palsu").
+  if (me.role !== 'admin' && me.role !== 'front_office') {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   let body: { id?: string; status?: string; catatan?: string };
   try {
@@ -96,15 +101,17 @@ export async function PATCH(request: NextRequest) {
   if (row.jalur === 'integritas' && me.role !== 'admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
-  if (me.role === 'petugas' && row.layanan_id !== me.layanan_id) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
 
-  const { error: updErr } = await supabase
+  const { data: updated, error: updErr } = await supabase
     .from('pengaduan')
     .update({ status, updated_at: new Date().toISOString() })
-    .eq('id', id);
+    .eq('id', id)
+    .select('id');
   if (updErr) return NextResponse.json({ error: 'Gagal memperbarui status' }, { status: 500 });
+  // RLS menolak UPDATE = 0 baris tanpa galat: jangan melapor sukses.
+  if (!updated || updated.length === 0) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   await supabase.from('pengaduan_riwayat').insert({
     pengaduan_id: id,

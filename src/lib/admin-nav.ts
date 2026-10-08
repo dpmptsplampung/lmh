@@ -11,12 +11,12 @@ export interface AdminNavEntry {
     | 'dashboard' | 'kunjungan' | 'scan' | 'antrian' | 'absensi' | 'chat'
     | 'faq' | 'umkm' | 'gallery' | 'leads' | 'skm' | 'aiLog' | 'governance'
     | 'petugas' | 'jadwal' | 'settings' | 'landing' | 'public' | 'pengaduan' | 'layar'
-    | 'rekap' | 'dokumen';
+    | 'rekap' | 'dokumen' | 'profil' | 'kelolaLayanan' | 'bukuTamu' | 'riwayat' | 'ai';
   roles: AdminRole[];
 }
 
 export const ADMIN_NAV: AdminNavEntry[] = [
-  { label: 'Dashboard', href: '/admin', iconKey: 'dashboard', roles: ['admin'] },
+  { label: 'Dashboard', href: '/admin', iconKey: 'dashboard', roles: ['admin', 'front_office'] },
   { label: 'Kunjungan', href: '/admin/kunjungan', iconKey: 'kunjungan', roles: ['admin', 'front_office'] },
   { label: 'Scan QR', href: '/admin/scan', iconKey: 'scan', roles: ['admin', 'front_office'] },
   { label: 'Antrian', href: '/admin/antrian', iconKey: 'antrian', roles: ['admin', 'petugas', 'front_office'] },
@@ -33,10 +33,15 @@ export const ADMIN_NAV: AdminNavEntry[] = [
   { label: 'Kelola Petugas', href: '/admin/petugas', iconKey: 'petugas', roles: ['admin'] },
   { label: 'Jadwal Layanan', href: '/admin/settings/jadwal', iconKey: 'jadwal', roles: ['admin', 'petugas', 'front_office'] },
   { label: 'Pengaturan', href: '/admin/settings', iconKey: 'settings', roles: ['admin'] },
+  { label: 'Pengaturan AI', href: '/admin/settings/ai', iconKey: 'ai', roles: ['admin'] },
   { label: 'Kelola Layar', href: '/admin/layar', iconKey: 'layar', roles: ['admin'] },
   { label: 'Rekap Harian', href: '/admin/rekap', iconKey: 'rekap', roles: ['admin', 'petugas', 'front_office'] },
   { label: 'Dokumen Peraturan', href: '/admin/dokumen', iconKey: 'dokumen', roles: ['admin'] },
   { label: 'Konten Landing', href: '/admin/settings/landing', iconKey: 'landing', roles: ['admin'] },
+  { label: 'Kelola Layanan', href: '/admin/layanan', iconKey: 'kelolaLayanan', roles: ['admin', 'front_office'] },
+  { label: 'Buku Tamu', href: '/admin/buku-tamu', iconKey: 'bukuTamu', roles: ['admin', 'front_office'] },
+  { label: 'Riwayat Perubahan', href: '/admin/riwayat', iconKey: 'riwayat', roles: ['admin'] },
+  { label: 'Profil Saya', href: '/admin/profil', iconKey: 'profil', roles: ['admin', 'petugas', 'front_office'] },
   { label: 'Tampilan Publik', href: '/', iconKey: 'public', roles: ['admin', 'petugas', 'front_office'] },
 ];
 

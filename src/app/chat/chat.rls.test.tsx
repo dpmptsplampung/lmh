@@ -251,7 +251,7 @@ const buildMockSupabase = (opts: {
       reject?: (e: unknown) => unknown,
     ) => {
       let result: { data: unknown; error: unknown } = { data: null, error: null };
-      if (table === 'layanan') {
+      if (table === 'v_layanan_publik') {
         result = { data: opts.layanan, error: null };
       } else if (table === 'faq_knowledge_base') {
         result = { data: [], error: null };

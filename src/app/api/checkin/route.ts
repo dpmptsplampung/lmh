@@ -111,6 +111,13 @@ export async function POST(request: NextRequest) {
         );
       }
     }
+    // Jam tutup (migrasi 202610090001): pesan ramah, 409 agar replay offline membuangnya.
+    if ((insertError as { details?: string }).details === 'LAYANAN_TUTUP') {
+      return NextResponse.json(
+        { error: insertError.message, code: 'LAYANAN_TUTUP' },
+        { status: 409 },
+      );
+    }
     console.error('[checkin] gagal menyimpan visit', insertError);
     return NextResponse.json(
       { error: 'Gagal menyimpan. Silakan coba lagi.' },

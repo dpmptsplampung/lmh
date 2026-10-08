@@ -6,9 +6,11 @@ import { getPending, markSynced, removeSynced, type QueuedAction } from './queue
 export interface ReplayResult {
   synced: number;
   failed: number;
+  /** Check-in offline ditolak karena layanan sudah tutup (dibuang dari antrean). Ada hanya bila > 0. */
+  ditolak?: number;
 }
 
-async function replayOne(action: QueuedAction): Promise<boolean> {
+async function replayOne(action: QueuedAction): Promise<boolean | 'ditolak'> {
   try {
     let res: Response;
     if (action.type === 'checkin') {
@@ -32,6 +34,10 @@ async function replayOne(action: QueuedAction): Promise<boolean> {
     } else {
       return false;
     }
+    if (res.status === 409 && action.type === 'checkin') {
+      const body = await res.json().catch(() => null);
+      if (body?.code === 'LAYANAN_TUTUP') return 'ditolak'; // jangan diulang besok pagi
+    }
     return res.ok;
   } catch {
     return false;
@@ -42,10 +48,14 @@ export async function replayQueue(ownerUserId?: string | null): Promise<ReplayRe
   const pending = await getPending(ownerUserId);
   let synced = 0;
   let failed = 0;
+  let ditolak = 0;
 
   for (const action of pending) {
     const ok = await replayOne(action);
-    if (ok) {
+    if (ok === 'ditolak') {
+      await markSynced(action.id);
+      ditolak += 1;
+    } else if (ok) {
       await markSynced(action.id);
       synced += 1;
     } else {
@@ -54,5 +64,5 @@ export async function replayQueue(ownerUserId?: string | null): Promise<ReplayRe
   }
 
   await removeSynced();
-  return { synced, failed };
+  return ditolak > 0 ? { synced, failed, ditolak } : { synced, failed };
 }

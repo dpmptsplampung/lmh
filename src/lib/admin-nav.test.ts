@@ -51,10 +51,11 @@ describe('canAccessAdminPath', () => {
     expect(canAccessAdminPath('front_office', '/admin/skm')).toBe(true);
     expect(canAccessAdminPath('front_office', '/admin/pengaduan')).toBe(true);
     expect(canAccessAdminPath('front_office', '/admin/settings/jadwal')).toBe(true);
+    // Keputusan CEO: FO punya dashboard seperti Admin.
+    expect(canAccessAdminPath('front_office', '/admin')).toBe(true);
   });
 
   it('front_office TIDAK dapat mengakses halaman admin-only', () => {
-    expect(canAccessAdminPath('front_office', '/admin')).toBe(false);
     expect(canAccessAdminPath('front_office', '/admin/petugas')).toBe(false);
     expect(canAccessAdminPath('front_office', '/admin/petugas/invite')).toBe(false);
     expect(canAccessAdminPath('front_office', '/admin/settings')).toBe(false);

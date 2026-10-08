@@ -5,6 +5,7 @@
 
 import { todayWIB } from '@/lib/time';
 import { logServerEvent } from '@/lib/observability/logger';
+import { makeGuardedFetch } from '@/lib/settings/ssrf';
 
 function failCause(e: unknown): string {
   return (e instanceof Error ? e.message : String(e)).slice(0, 200);
@@ -15,6 +16,12 @@ export interface ProviderSpec {
   baseURL: string;
   apiKeyEnv: string;
   model: string;
+  // Hanya untuk penyedia dari konsol Admin (DB): kunci sudah didekripsi, panggilan lewat penjaga SSRF.
+  apiKey?: string;
+  guarded?: boolean;
+  dailyLimit?: number;
+  temperature?: number;
+  timeoutMs?: number;
 }
 
 export interface ProviderState {
@@ -72,6 +79,21 @@ export function parseChatProviderSpec(spec: string | undefined): ProviderSpec[] 
     });
 }
 
+/** URL chat completions untuk sebuah penyedia (dipakai panggilan nyata & pengujian/curl). */
+export const chatCompletionsUrl = (spec: Pick<ProviderSpec, 'baseURL'>): string =>
+  `${spec.baseURL.replace(/\/+$/, '')}/chat/completions`;
+
+export function buildChatBody(spec: Pick<ProviderSpec, 'model' | 'temperature'>, system: string, prompt: string) {
+  return {
+    model: spec.model,
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user', content: prompt },
+    ],
+    temperature: spec.temperature ?? 0.4,
+  };
+}
+
 export function getState(states: Map<string, ProviderState>, name: string): ProviderState {
   let st = states.get(name);
   if (!st) {
@@ -118,6 +140,9 @@ export interface GenerateDeps {
   now?: () => number;
   fetcher?: typeof fetch;
   spec?: string;
+  // Daftar siap pakai (dari konsol Admin); bila ada, menggantikan parsing env `spec`.
+  specs?: ProviderSpec[];
+  guardedFetcher?: typeof fetch;
   dailyLimit?: number;
 }
 
@@ -131,20 +156,13 @@ async function callOpenAICompatible(
   spec: ProviderSpec,
   opts: { system: string; prompt: string },
 ): Promise<string> {
-  const apiKey = spec.apiKeyEnv ? process.env[spec.apiKeyEnv] : undefined;
+  const apiKey = spec.apiKey ?? (spec.apiKeyEnv ? process.env[spec.apiKeyEnv] : undefined);
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
-  const res = await fetcher(`${spec.baseURL}/chat/completions`, {
+  const res = await fetcher(chatCompletionsUrl(spec), {
     method: 'POST',
     headers,
-    body: JSON.stringify({
-      model: spec.model,
-      messages: [
-        { role: 'system', content: opts.system },
-        { role: 'user', content: opts.prompt },
-      ],
-      temperature: 0.4,
-    }),
+    body: JSON.stringify(buildChatBody(spec, opts.system, opts.prompt)),
   });
   if (!res.ok) throw new Error(`llm ${spec.name} status ${res.status}`);
   const data = (await res.json()) as {
@@ -184,13 +202,17 @@ export async function generateWithFallback(
     }
   }
 
-  for (const spec of parseChatProviderSpec(deps.spec ?? process.env.LLM_CHAT_PROVIDERS)) {
-    const apiKey = spec.apiKeyEnv ? process.env[spec.apiKeyEnv] : 'ollama-lokal';
+  for (const spec of deps.specs ?? parseChatProviderSpec(deps.spec ?? process.env.LLM_CHAT_PROVIDERS)) {
+    // Penyedia dari DB (guarded) boleh tanpa kunci (gateway terbuka); jalur env tetap seperti semula.
+    const apiKey = spec.guarded ? 'db' : spec.apiKeyEnv ? process.env[spec.apiKeyEnv] : 'ollama-lokal';
     if (!apiKey) continue;
     const st = getState(states, spec.name);
-    if (!canAttempt(st, now(), dailyLimit)) continue;
+    if (!canAttempt(st, now(), spec.dailyLimit ?? dailyLimit)) continue;
+    const spesFetcher = spec.guarded
+      ? (deps.guardedFetcher ?? makeGuardedFetch({ timeoutMs: spec.timeoutMs }))
+      : fetcher;
     try {
-      const text = await callOpenAICompatible(fetcher, spec, input);
+      const text = await callOpenAICompatible(spesFetcher, spec, input);
       recordSuccess(st);
       return { text, provider: spec.name };
     } catch (e) {

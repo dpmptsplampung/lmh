@@ -25,6 +25,7 @@ Do not copy the marked replacement values from `.env.example` into staging or pr
 | `GEMINI_EMBEDDING_MODEL` | Optional/defaults may apply | Optional | Required | Required | No |
 | `LLM_CHAT_PROVIDERS` | Optional | Optional | Optional | Optional | No |
 | `LLM_DAILY_LIMIT` | Optional (default 200 per provider per day, WIB) | Optional | Optional | Optional | No |
+| `SETTINGS_ENCRYPTION_KEY` | Optional | Optional | Optional (disarankan) | Optional (disarankan) | No |
 | `GROQ_API_KEY` / `OPENROUTER_API_KEY` / `MISTRAL_API_KEY` | Optional | Optional | Optional | Optional | No |
 | `LMH_DEV_RETURN_LINK` | May be `set` only for deliberate local debugging | Unset | Must not be `set` | Must not be `set` | No |
 
@@ -34,6 +35,8 @@ Do not copy the marked replacement values from `.env.example` into staging or pr
 - Circuit breaker (3 failures -> 10 minute cooldown) and daily quota are in-memory per serverless instance; the SDK primary (`primary:gemini`) and the spec entry `gemini` keep separate state.
 - If no provider key is set, startup logs a warning (`env.no_ai_provider`); the bot then answers from FAQ full-text match or escalates to staff.
 - `BOT_FTS_THRESHOLD` (default 0.15) overrides the deterministic FAQ match threshold.
+- Konsol Admin (migrasi `202610090003`): rantai LLM bisa diatur dari layar (penyedia + gateway kustom, kunci API terenkripsi). Bila ada versi aktif di DB, ia menggantikan jalur env di atas; bila DB gagal/kosong, env tetap dipakai (cache 60 dtk). `GEMINI_API_KEY` tetap diperlukan untuk embedding (FAQ/Dokumen), walau model chat diganti.
+- `SETTINGS_ENCRYPTION_KEY`: kunci induk AES-256-GCM, 32 byte acak dalam base64 (buat: `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`). Simpan HANYA di env server (Vercel), jangan di DB/repo. Tanpa ini, menyimpan kunci API dari layar ditolak dengan pesan jelas; sistem tetap jalan dengan env. Mengganti nilainya membuat rahasia lama tak terbaca (masukkan ulang kunci).
 
 ## Vercel Setup
 

@@ -59,6 +59,11 @@ export const FORWARD_MIGRATION_FILES = [
   '202610070001_chat_fix_guard_ringkas.sql',
   '202610080001_rbac_tahap0_keamanan.sql',
   '202610080002_rbac_tahap0_layanan_admin_only.sql',
+  '202610090001_rbac_tahap1.sql',
+  '202610090002_akun_username.sql',
+  '202610090003_konsol_pengaturan.sql',
+  '202610090004_kelola_layanan_audit.sql',
+  '202610090005_perbaikan_review.sql',
 ] as const;
 
 export function listMigrationFiles(): string[] {

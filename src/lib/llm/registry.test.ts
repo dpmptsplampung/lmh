@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { todayWIB } from '@/lib/time';
 import {
   parseChatProviderSpec,
@@ -126,5 +126,42 @@ describe('generateWithFallback', () => {
       { spec: 'openrouter:x', fetcher: (() => { throw new Error('tidak boleh'); }) as unknown as typeof fetch },
     );
     expect(result).toBeNull();
+  });
+});
+
+
+describe('penyedia dari konsol Admin (specs DB)', () => {
+  const mk = (over: Partial<import('./registry').ProviderSpec> = {}) => ({
+    name: 'GW', baseURL: 'https://gw.example.com/v1/', apiKeyEnv: '', apiKey: 'kunci-db', model: 'm1', guarded: true, ...over,
+  });
+  const ok = (text = 'halo') => new Response(JSON.stringify({ choices: [{ message: { content: text } }] }), { status: 200 });
+
+  it('memakai base URL kustom + kunci DB lewat fetcher terjaga, bukan fetcher env', async () => {
+    const guarded = vi.fn(async () => ok('dari-gateway'));
+    const plain = vi.fn(async () => ok('salah'));
+    const r = await generateWithFallback(null, { system: 's', prompt: 'p' }, {
+      specs: [mk()], guardedFetcher: guarded as never, fetcher: plain as never, states: new Map(),
+    });
+    expect(r).toEqual({ text: 'dari-gateway', provider: 'GW' });
+    expect(plain).not.toHaveBeenCalled();
+    const [url, init] = guarded.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('https://gw.example.com/v1/chat/completions');
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer kunci-db');
+  });
+  it('gateway tanpa kunci tetap dicoba; gagal -> beralih ke entri berikutnya; kuota per entri', async () => {
+    const guarded = vi.fn(async (u: unknown) => (String(u).includes('gw1') ? new Response('x', { status: 500 }) : ok('dari-2')));
+    const states = new Map();
+    const specs = [mk({ name: 'A', baseURL: 'https://gw1.example.com/v1', apiKey: undefined, dailyLimit: 1 }), mk({ name: 'B', baseURL: 'https://gw2.example.com/v1' })];
+    const r1 = await generateWithFallback(null, { system: 's', prompt: 'p' }, { specs, guardedFetcher: guarded as never, states });
+    expect(r1?.provider).toBe('B');
+    const [, init] = guarded.mock.calls[0] as unknown as [string, RequestInit];
+    expect((init.headers as Record<string, string>).Authorization).toBeUndefined();
+  });
+  it('tanpa specs: jalur env lama tidak berubah', async () => {
+    const f = vi.fn(async () => ok('env'));
+    process.env.GROQ_API_KEY = 'k';
+    const r = await generateWithFallback(null, { system: 's', prompt: 'p' }, { spec: 'groq:m', fetcher: f as never, states: new Map() });
+    delete process.env.GROQ_API_KEY;
+    expect(r?.provider).toBe('groq');
   });
 });

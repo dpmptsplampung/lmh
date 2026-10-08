@@ -7,7 +7,10 @@ vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(),
 }));
 
+vi.mock('@/lib/akun/server', () => ({ getServiceClient: vi.fn() }));
+
 import { createClient } from '@/lib/supabase/server';
+import { getServiceClient } from '@/lib/akun/server';
 
 function buildMock(opts: {
   role: string;
@@ -65,7 +68,13 @@ function buildMock(opts: {
 }
 
 describe('GET /api/admin/rekap/export', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // audit_log ditulis lewat service role (pengguna tidak punya INSERT langsung).
+    (getServiceClient as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      from: () => ({ insert: vi.fn().mockResolvedValue({ error: null }) }),
+    });
+  });
 
   it('returns 401 when not authenticated', async () => {
     (createClient as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
@@ -102,10 +111,9 @@ describe('GET /api/admin/rekap/export', () => {
     const auditError = { message: 'RLS denied' };
     const auditInsert = vi.fn().mockResolvedValue({ error: auditError });
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    const defaultFrom = mock.from.getMockImplementation()!;
-    mock.from.mockImplementation((table: string) =>
-      table === 'audit_log' ? { insert: auditInsert } : defaultFrom(table),
-    );
+    (getServiceClient as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      from: (table: string) => (table === 'audit_log' ? { insert: auditInsert } : undefined),
+    });
     (createClient as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(mock);
 
     const res = await GET(new NextRequest('http://localhost/api/admin/rekap/export'));

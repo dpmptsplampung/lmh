@@ -31,6 +31,7 @@ import {
   Legend,
 } from 'recharts';
 import PageHeader from '@/components/layout/PageHeader';
+import CalendarBanner from '@/components/admin/CalendarBanner';
 import WalkinWizard from '@/components/WalkinWizard';
 import { createClient } from '@/lib/supabase/client';
 import { useRealtimeRefetch } from '@/lib/hooks/useRealtimeRefetch';
@@ -62,23 +63,19 @@ interface LayananBreakdown {
 export default function AdminDashboard() {
   const { toast } = useToast();
 
-  // Role-based redirect: FO → kunjungan, petugas → antrian
-  // Admin stays on this dashboard.
+  // Dashboard untuk Admin dan Front Office. Petugas → antrian.
+  // Tombol Tambah Petugas / Tata Kelola Data / Log AI hanya untuk Admin;
+  // sebelum role terbukti admin, tombol itu tidak ditampilkan ("tolak dulu").
+  const [isAdmin, setIsAdmin] = useState(false);
   useEffect(() => {
     const supabase = createClient();
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) return;
-      const jwtRole = user.app_metadata?.role as string | undefined;
-      if (jwtRole === 'front_office') { window.location.replace('/admin/kunjungan'); return; }
-      if (jwtRole === 'petugas') { window.location.replace('/admin/antrian'); return; }
-      // If role not in JWT yet, fall back to DB
-      if (!jwtRole) {
-        supabase.from('petugas').select('role').eq('auth_user_id', user.id).maybeSingle()
-          .then(({ data }) => {
-            if (data?.role === 'front_office') window.location.replace('/admin/kunjungan');
-            else if (data?.role === 'petugas') window.location.replace('/admin/antrian');
-          });
-      }
+      supabase.from('petugas').select('role').eq('auth_user_id', user.id).maybeSingle()
+        .then(({ data }) => {
+          if (data?.role === 'petugas') window.location.replace('/admin/antrian');
+          else setIsAdmin(data?.role === 'admin');
+        });
     });
   }, []);
 
@@ -254,25 +251,32 @@ export default function AdminDashboard() {
       />
 
       <div className={styles.dashboard} style={{ padding: 'var(--space-8)' }}>
+        <CalendarBanner />
 
         <div className={styles.walkinTriggerContainer}>
           <WalkinWizard onSuccess={loadData} triggerClassName={styles.walkinTriggerBtn} />
-          <Link href="/admin/petugas/invite" className="btn btn--secondary">
-            <UserPlus size={20} />
-            Tambah Petugas
-          </Link>
-          <Link href="/admin/data-governance" className="btn btn--secondary">
-            <ShieldCheck size={20} />
-            Tata Kelola Data (DPO)
-          </Link>
+          {isAdmin && (
+            <Link href="/admin/petugas/invite" className="btn btn--secondary">
+              <UserPlus size={20} />
+              Tambah Petugas
+            </Link>
+          )}
+          {isAdmin && (
+            <Link href="/admin/data-governance" className="btn btn--secondary">
+              <ShieldCheck size={20} />
+              Tata Kelola Data (DPO)
+            </Link>
+          )}
           <Link href="/admin/skm" className="btn btn--secondary">
             <ClipboardList size={20} />
             Dashboard SKM
           </Link>
-          <Link href="/admin/chat/ai-log" className="btn btn--secondary">
-            <Bot size={20} />
-            Log Asisten AI
-          </Link>
+          {isAdmin && (
+            <Link href="/admin/chat/ai-log" className="btn btn--secondary">
+              <Bot size={20} />
+              Log Asisten AI
+            </Link>
+          )}
         </div>
 
         {loading ? (

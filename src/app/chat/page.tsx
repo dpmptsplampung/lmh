@@ -30,6 +30,8 @@ interface Layanan {
   id: string;
   nama: string;
   chatbot_aktif: boolean;
+  status_tampilan?: string;
+  punya_chat?: boolean;
 }
 
 type Message = ChatMsg;
@@ -84,6 +86,10 @@ export default function PublicChatPage() {
 
   // Chat Thread States
   const [messages, setMessages] = useState<Message[]>([]);
+  // Layanan tutup otomatis 16.00 WIB: hanya catatan teks, tanpa logika baru. Dihitung sekali saat halaman dibuka.
+  const [lewatJamTutup] = useState(
+    () => Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jakarta', hour: '2-digit', hourCycle: 'h23' }).format(new Date())) >= 16,
+  );
   const [sesiStatus, setSesiStatus] = useState<'bot' | 'eskalasi' | 'aktif' | 'selesai'>('bot');
   const [faqs, setFaqs] = useState<FAQ[]>([]);
   const [isBotTyping, setIsBotTyping] = useState(false);
@@ -242,13 +248,13 @@ export default function PublicChatPage() {
       try {
         const supabase = createClient();
         const { data, error } = await supabase
-          .from('layanan')
-          .select('id, nama, chatbot_aktif')
+          .from('v_layanan_publik')
+          .select('id, nama, chatbot_aktif, status_tampilan, punya_chat')
           .neq('tipe', 'modul_publik')
           .order('nama');
 
         if (error) throw error;
-        setLayananList(data || []);
+        setLayananList((data || []).filter((l) => l.punya_chat !== false));
       } catch {
         setLayananList(
           LAYANAN_LIST.map((nama, i) => ({
@@ -711,8 +717,8 @@ export default function PublicChatPage() {
                 >
                   <option value="">— Pilih layanan tujuan —</option>
                   {layananList.map((layanan) => (
-                    <option key={layanan.id} value={layanan.id}>
-                      {layanan.nama}
+                    <option key={layanan.id} value={layanan.id} disabled={layanan.status_tampilan === 'coming_soon'}>
+                      {layanan.nama}{layanan.status_tampilan === 'coming_soon' ? ' (Segera hadir)' : ''}
                     </option>
                   ))}
                 </select>
@@ -798,6 +804,12 @@ export default function PublicChatPage() {
                 </>
               )}
             </div>
+
+            {lewatJamTutup && (
+              <p role="note" style={{ margin: 0, padding: 'var(--space-2) var(--space-4)', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
+                Layanan sudah tutup pukul 16.00 WIB. Bot tetap dapat menjawab; petugas melayani lagi pada jam kerja berikutnya.
+              </p>
+            )}
 
             {/* Offline Banner */}
             {!isOnline && (

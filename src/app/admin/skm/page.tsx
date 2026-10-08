@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import { createClient } from '@/lib/supabase/client';
+import RoleNote from '@/components/admin/RoleNote';
 import IkmPanel from '@/components/IkmPanel';
 import type { IkmRow } from '@/lib/ikm';
 import styles from './skm.module.css';
@@ -42,6 +43,27 @@ export default function SkmAdminPage() {
   const [rows, setRows] = useState<IkmRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [petugasLayanan, setPetugasLayanan] = useState<string | null>(null); // nama layanan bila role petugas
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        const { data: p } = await supabase
+          .from('petugas')
+          .select('role, layanan:layanan_id(nama)')
+          .eq('auth_user_id', user.id)
+          .maybeSingle();
+        if (p?.role !== 'petugas') return;
+        const l = p.layanan as { nama: string } | { nama: string }[] | null;
+        setPetugasLayanan((Array.isArray(l) ? l[0]?.nama : l?.nama) ?? 'Anda');
+      } catch {
+        /* catatan role bersifat informasi; abaikan bila gagal */
+      }
+    })();
+  }, []);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -117,6 +139,9 @@ export default function SkmAdminPage() {
       />
 
       <div className={styles.skmContainer}>
+        {petugasLayanan && (
+          <RoleNote>Data ini hanya untuk layanan {petugasLayanan}. Setiap ekspor tercatat.</RoleNote>
+        )}
         <div className={styles.skmHeader}>
           <div>
             <h2 className={styles.skmTitle}>IKM per Layanan</h2>

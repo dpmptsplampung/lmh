@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
     if (error) gagal.push(`${tgl}: ${error.message}`);
   }
 
-  await supabase.from('audit_log').insert({
+  await admin.from('audit_log').insert({
     actor_id: user.id,
     actor_role: me.role,
     aksi: 'rollup_rekap',
