@@ -46,8 +46,8 @@ export default function AkunBaruForm({
       setLocalError('Petugas wajib memiliki layanan.');
       return;
     }
-    if (sandi && (sandi.length < 10 || sandi.length > 72)) {
-      setLocalError('Sandi sementara 10 sampai 72 karakter, atau kosongkan agar dibuatkan otomatis.');
+    if (sandi && (sandi.length < 8 || sandi.length > 72)) {
+      setLocalError('Sandi sementara 8 sampai 72 karakter, atau kosongkan agar dibuatkan otomatis.');
       return;
     }
     onSubmit({

@@ -25,7 +25,7 @@ const createSchema = z
     layanan_id: z.uuid().nullable().optional(),
     no_hp: z.string().trim().max(30).nullable().optional(),
     email_notifikasi: z.email().max(254).nullable().optional(),
-    sandi_sementara: z.string().min(10).max(72).optional(),
+    sandi_sementara: z.string().min(8).max(72).optional(),
   })
   .strict();
 

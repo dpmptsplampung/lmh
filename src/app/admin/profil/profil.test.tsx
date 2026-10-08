@@ -66,7 +66,7 @@ describe('profil staf', () => {
     fireEvent.change(screen.getByLabelText(/^Kata sandi baru/), { target: { value: 'pendek' } });
     fireEvent.change(screen.getByLabelText(/Ulangi kata sandi baru/), { target: { value: 'pendek' } });
     fireEvent.submit(screen.getByRole('button', { name: /Ganti Kata Sandi/ }).closest('form')!);
-    expect(await screen.findByText('Kata sandi baru 10 sampai 72 karakter.')).toBeTruthy();
+    expect(await screen.findByText('Kata sandi baru 8 sampai 72 karakter.')).toBeTruthy();
     expect(fetchMock.mock.calls.some((c) => c[0] === '/api/me/sandi')).toBe(false);
   });
 

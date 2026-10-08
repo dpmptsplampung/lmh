@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 const schema = z
   .object({
     sandi_lama: z.string().min(1).max(200),
-    sandi_baru: z.string().min(10).max(72),
+    sandi_baru: z.string().min(8).max(72),
     keluarkan_perangkat_lain: z.boolean().optional(),
   })
   .strict()

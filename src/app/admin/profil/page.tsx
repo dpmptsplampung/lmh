@@ -118,8 +118,8 @@ function ProfilContent() {
   const handleSandi = async (e: React.FormEvent) => {
     e.preventDefault();
     setSandiError('');
-    if (sandiBaru.length < 10 || sandiBaru.length > 72) {
-      setSandiError('Kata sandi baru 10 sampai 72 karakter.');
+    if (sandiBaru.length < 8 || sandiBaru.length > 72) {
+      setSandiError('Kata sandi baru 8 sampai 72 karakter.');
       return;
     }
     if (sandiBaru !== sandiUlang) {
@@ -280,8 +280,8 @@ function ProfilContent() {
           <div className="form-group">
             <label className="form-label form-label--required" htmlFor="sandiBaru">Kata sandi baru</label>
             <input id="sandiBaru" type="password" className="form-input" value={sandiBaru}
-              onChange={(e) => setSandiBaru(e.target.value)} autoComplete="new-password" minLength={10} maxLength={72} />
-            <p className={styles.hint}>10 sampai 72 karakter.</p>
+              onChange={(e) => setSandiBaru(e.target.value)} autoComplete="new-password" minLength={8} maxLength={72} />
+            <p className={styles.hint}>8 sampai 72 karakter.</p>
           </div>
           <div className="form-group">
             <label className="form-label form-label--required" htmlFor="sandiUlang">Ulangi kata sandi baru</label>
