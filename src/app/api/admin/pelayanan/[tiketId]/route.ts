@@ -2,7 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { MutasiError, mutasiInsert, mutasiWajibBaris } from '@/lib/supabase/mutate';
 import { catatMutasiGagal } from '@/app/api/admin/_mutasi';
-import { determineFormType, canAccessPelayananStaff } from '@/lib/pelayanan';
+import {
+  determineFormType,
+  canAccessPelayananStaff,
+  bolehSelesaikanTiket,
+  kodeGalatAntrean,
+  PESAN_GALAT_ANTREAN,
+  type KodeGalatAntrean,
+} from '@/lib/pelayanan';
 import {
   ossPelayananDraftSchema,
   ossPelayananFinalSchema,
@@ -26,6 +33,43 @@ function responsGagalDraf(e: MutasiError, pesanUmum: string) {
     return NextResponse.json({ error: 'Anda tidak berwenang menyimpan draf ini atau data sudah terkunci' }, { status: 403 });
   }
   return NextResponse.json({ error: pesanUmum }, { status: 400 });
+}
+
+// Status HTTP per kode galat RPC antrean (migrasi 202610140002). SESI_TIDAK_SAH = 401 (sesi tidak berlaku lagi,
+// klien harus masuk ulang); pelanggaran kepemilikan/peran = 403; konflik status (kalah balapan) = 409.
+const STATUS_GALAT_ANTREAN: Record<KodeGalatAntrean, number> = {
+  SESI_TIDAK_SAH: 401,
+  BUKAN_PEMILIK: 403,
+  FORBIDDEN: 403,
+  LOCKED: 403,
+  NOT_FOUND: 404,
+  SUDAH_DIAMBIL: 409,
+  INVALID_STATUS: 409,
+  DIVERGENSI: 409,
+  TRANSISI_LEWAT_RPC: 409,
+  ALASAN_WAJIB: 422,
+  INVALID_FORM: 422,
+};
+
+function responsGalatAntrean(kode: KodeGalatAntrean, pesan?: string) {
+  return NextResponse.json({ error: pesan ?? PESAN_GALAT_ANTREAN[kode], kode }, { status: STATUS_GALAT_ANTREAN[kode] });
+}
+
+// Draf hanya boleh ditulis pemilik tiket yang sedang 'dilayani' (keputusan CEO 7.5; RLS pemilik_tiket menegakkan
+// hal yang sama di DB). Admin yang perlu mengisi draf tiket orang lain harus "Ambil alih" dulu.
+function tolakDrafBukanPemilik(
+  staff: { id: string; role: string | null },
+  tiket: { status?: string | null; dilayani_oleh?: string | null },
+) {
+  const status = tiket.status ?? '';
+  if (bolehSelesaikanTiket(staff, { status, dilayani_oleh: tiket.dilayani_oleh })) return null;
+  if (status !== 'dilayani') {
+    return responsGalatAntrean(
+      'INVALID_STATUS',
+      'Draf hanya dapat disimpan saat tiket sedang dilayani. Mulai layanan terlebih dahulu.',
+    );
+  }
+  return responsGalatAntrean('BUKAN_PEMILIK');
 }
 
 export async function GET(
@@ -56,8 +100,9 @@ export async function GET(
     const { data: tiket, error: tiketErr } = await supabase
       .from('tiket_antrean')
       .select(`
-        id, legacy_visit_id, nomor_display, status, layanan_id,
+        id, legacy_visit_id, nomor_display, status, layanan_id, dilayani_oleh,
         layanan:layanan_id(id, nama),
+        pelayan:dilayani_oleh(nama),
         kunjungan:kunjungan_id(id, nama, kontak_hp, pengunjung_id)
       `)
       .eq('id', tiketId)
@@ -74,6 +119,7 @@ export async function GET(
 
     const layananData = Array.isArray(tiket.layanan) ? tiket.layanan[0] : tiket.layanan;
     const kunjunganData = Array.isArray(tiket.kunjungan) ? tiket.kunjungan[0] : tiket.kunjungan;
+    const pelayanData = Array.isArray(tiket.pelayan) ? tiket.pelayan[0] : tiket.pelayan;
     const layananNama = layananData?.nama || '';
     const formType = determineFormType(layananNama);
 
@@ -157,6 +203,9 @@ export async function GET(
       email: email,
       keperluan_awal: keperluan,
       status_tiket: tiket.status,
+      dilayani_oleh: tiket.dilayani_oleh ?? null,
+      dilayani_oleh_nama: pelayanData?.nama ?? null,
+      boleh_ubah: !isLocked && bolehSelesaikanTiket(staff, { status: tiket.status, dilayani_oleh: tiket.dilayani_oleh }),
       is_locked: isLocked,
       status_draft: statusDraft,
       data_oss: dataOss,
@@ -197,7 +246,7 @@ export async function PATCH(
     // 2. Ambil Tiket
     const { data: tiket } = await supabase
       .from('tiket_antrean')
-      .select('id, kunjungan_id, layanan_id, layanan:layanan_id(nama)')
+      .select('id, kunjungan_id, layanan_id, status, dilayani_oleh, layanan:layanan_id(nama)')
       .eq('id', tiketId)
       .maybeSingle();
 
@@ -215,6 +264,9 @@ export async function PATCH(
     if (!formType) {
       return NextResponse.json({ error: 'Layanan tidak valid' }, { status: 400 });
     }
+
+    const tolak = tolakDrafBukanPemilik(staff, tiket);
+    if (tolak) return tolak;
 
     const body = await request.json();
 
@@ -398,9 +450,9 @@ export async function POST(
       finalData = parsed.data;
     }
 
-    // Finalize atomik via RPC (migrasi 202608310001): upsert data + lock +
-    // selesaikan visit/tiket dalam SATU transaksi DB. Timestamp dari DB now().
-    const { data: rpcData, error: rpcErr } = await supabase.rpc('finalize_pelayanan', {
+    // Selesaikan atomik via RPC layanan_selesai (migrasi 202610140002): hanya pemilik tiket (dilayani_oleh =
+    // pemanggil) dengan sesi sah; upsert data + kunci + selesaikan tiket/visit dalam SATU transaksi DB.
+    const { data: rpcData, error: rpcErr } = await supabase.rpc('layanan_selesai', {
       p_tiket_id: tiketId,
       p_form_type: formType,
       p_payload: finalData,
@@ -408,22 +460,15 @@ export async function POST(
 
     if (rpcErr) {
       const msg = rpcErr.message || '';
-      console.error('[POST finalize_pelayanan]', msg);
-      if (msg.includes('LOCKED')) {
-        return NextResponse.json(
-          { error: 'Data pelayanan sudah terkunci dan tidak dapat diubah' },
-          { status: 403 }
-        );
+      const kode = kodeGalatAntrean(msg);
+      if (kode === 'INVALID_STATUS') {
+        return responsGalatAntrean(kode, 'Tiket tidak sedang dilayani sehingga tidak dapat diselesaikan');
       }
-      if (msg.includes('INVALID_STATUS')) {
-        return NextResponse.json(
-          { error: 'Tiket belum dalam status dilayani sehingga tidak dapat diselesaikan' },
-          { status: 409 }
-        );
+      if (kode) {
+        if (kode === 'DIVERGENSI') console.error('[POST layanan_selesai]', msg);
+        return responsGalatAntrean(kode);
       }
-      if (msg.includes('FORBIDDEN')) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-      }
+      console.error('[POST layanan_selesai]', msg);
       return NextResponse.json({ error: 'Gagal menyelesaikan pelayanan' }, { status: 400 });
     }
 

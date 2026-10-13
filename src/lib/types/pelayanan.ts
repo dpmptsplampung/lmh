@@ -156,6 +156,15 @@ export interface PelayananInitialData {
   keperluan_awal: string | null;
   // Status Pelayanan
   status_tiket: string;
+  /** petugas.id yang memulai layanan (pemilik tiket); null bila belum dimulai / tidak tercatat. */
+  dilayani_oleh: string | null;
+  /** Nama pemilik bila terbaca oleh pemanggil (RLS petugas: petugas hanya membaca barisnya sendiri). */
+  dilayani_oleh_nama: string | null;
+  /**
+   * true hanya bila pemanggil = pemilik tiket berstatus 'dilayani' dan data belum terkunci:
+   * hanya saat itu draf boleh disimpan dan layanan boleh diselesaikan. Selain itu wizard baca-saja.
+   */
+  boleh_ubah: boolean;
   is_locked: boolean;
   status_draft: 'draft' | 'selesai' | 'belum_diisi';
   // Data Form Eksisting (bila sudah ada draft / final)

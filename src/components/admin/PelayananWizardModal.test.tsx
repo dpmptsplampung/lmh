@@ -43,6 +43,9 @@ describe('PelayananWizardModal component', () => {
         email: 'budi@example.com',
         keperluan_awal: 'Konsultasi OSS',
         status_tiket: 'dilayani',
+        dilayani_oleh: 'p1',
+        dilayani_oleh_nama: null,
+        boleh_ubah: true,
         is_locked: false,
         status_draft: 'belum_diisi',
       }),
@@ -89,6 +92,9 @@ describe('PelayananWizardModal component', () => {
         email: null,
         keperluan_awal: null,
         status_tiket: 'dilayani',
+        dilayani_oleh: 'p1',
+        dilayani_oleh_nama: null,
+        boleh_ubah: true,
         is_locked: false,
         status_draft: 'belum_diisi',
         data_perizinan: {
@@ -147,6 +153,9 @@ describe('PelayananWizardModal component', () => {
         email: null,
         keperluan_awal: null,
         status_tiket: 'dilayani',
+        dilayani_oleh: 'p1',
+        dilayani_oleh_nama: null,
+        boleh_ubah: true,
         is_locked: false,
         status_draft: 'belum_diisi',
       }),
@@ -170,5 +179,98 @@ describe('PelayananWizardModal component', () => {
     // Tunggu melewati jendela debounce: tidak boleh ada PATCH terpicu
     await new Promise((resolve) => setTimeout(resolve, 1300));
     expect(mockFetch).toHaveBeenCalledTimes(1); // hanya GET awal, tanpa PATCH
+  });
+
+  // Migrasi 202610140002: hanya pemilik tiket yang boleh menulis draf / menyelesaikan.
+  describe('kepemilikan tiket', () => {
+    const dataOss = (over: Record<string, unknown> = {}) => ({
+      tiket_id: 't-301',
+      legacy_visit_id: 'v-301',
+      nomor_display: 'A-003',
+      layanan_id: 'l-oss',
+      layanan_nama: 'Helpdesk OSS',
+      form_type: 'oss',
+      nama_pemohon: 'Rina',
+      alamat_pemohon: null,
+      no_hp: null,
+      email: null,
+      keperluan_awal: null,
+      status_tiket: 'dilayani',
+      dilayani_oleh: 'p-lain',
+      dilayani_oleh_nama: 'Petugas Dua',
+      boleh_ubah: false,
+      is_locked: false,
+      status_draft: 'draft',
+      data_oss: {
+        nama_usaha: 'Toko Rina', tindak_lanjut: 'Selesai di Loket (Tuntas)', uraian_solusi: 'ok',
+      },
+      ...over,
+    });
+
+    it('bukan pemilik: baca-saja (input nonaktif, tanpa Simpan/Selesaikan, tanpa PATCH) dan menyebut pemilik', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, json: async () => dataOss() });
+      render(<PelayananWizardModal isOpen={true} tiketId="t-301" onClose={vi.fn()} />);
+
+      const input = await screen.findByDisplayValue('Rina');
+      expect(input).toBeDisabled();
+      expect(screen.getByText(/Baca saja/i)).toBeInTheDocument();
+      expect(screen.getByRole('status')).toHaveTextContent(/sedang dilayani Petugas Dua/i);
+      expect(screen.queryByRole('button', { name: /^Simpan$/i })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: /3\. Tindakan & Solusi/i }));
+      expect(screen.queryByRole('button', { name: /Selesaikan Antrian/i })).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: /^Tutup$/i }));
+      await new Promise((r) => setTimeout(r, 50));
+      expect(mockFetch.mock.calls.filter((c) => (c[1] as RequestInit | undefined)?.method === 'PATCH')).toHaveLength(0);
+    });
+
+    it('tiket belum dimulai (menunggu): baca-saja dengan pesan mulai layanan dulu', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => dataOss({ status_tiket: 'menunggu', dilayani_oleh: null, dilayani_oleh_nama: null }),
+      });
+      render(<PelayananWizardModal isOpen={true} tiketId="t-301" onClose={vi.fn()} />);
+      expect(await screen.findByDisplayValue('Rina')).toBeDisabled();
+      expect(screen.getByRole('status')).toHaveTextContent(/setelah layanan dimulai/i);
+    });
+
+    it('pemilik: Selesaikan ditolak 403 (BUKAN_PEMILIK, mis. diambil alih Admin) -> toast pesan, formulir terkunci, daftar dimuat ulang', async () => {
+      const onDataBasi = vi.fn();
+      const onSuccess = vi.fn();
+      mockFetch.mockResolvedValueOnce({ ok: true, json: async () => dataOss({ dilayani_oleh: 'p1', boleh_ubah: true }) });
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        json: async () => ({ error: 'Tiket ini sedang dilayani petugas lain.', kode: 'BUKAN_PEMILIK' }),
+      });
+      render(
+        <PelayananWizardModal isOpen={true} tiketId="t-301" onClose={vi.fn()} onSuccess={onSuccess} onDataBasi={onDataBasi} />,
+      );
+      expect(await screen.findByDisplayValue('Rina')).not.toBeDisabled();
+      fireEvent.click(screen.getByRole('button', { name: /3\. Tindakan & Solusi/i }));
+      fireEvent.click(screen.getByRole('button', { name: /Selesaikan Antrian/i }));
+
+      await waitFor(() => expect(toastMock).toHaveBeenCalledWith('Tiket ini sedang dilayani petugas lain.', 'error'));
+      expect(onDataBasi).toHaveBeenCalled();
+      expect(onSuccess).not.toHaveBeenCalled();
+      expect(screen.queryByRole('button', { name: /Selesaikan Antrian/i })).not.toBeInTheDocument();
+      expect(screen.getByText(/Baca saja/i)).toBeInTheDocument();
+    });
+
+    it('pemilik: Selesaikan 409 (status berubah) juga ditangani tanpa toast sukses', async () => {
+      const onDataBasi = vi.fn();
+      mockFetch.mockResolvedValueOnce({ ok: true, json: async () => dataOss({ dilayani_oleh: 'p1', boleh_ubah: true }) });
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 409,
+        json: async () => ({ error: 'Tiket tidak sedang dilayani sehingga tidak dapat diselesaikan', kode: 'INVALID_STATUS' }),
+      });
+      render(<PelayananWizardModal isOpen={true} tiketId="t-301" onClose={vi.fn()} onDataBasi={onDataBasi} />);
+      await screen.findByDisplayValue('Rina');
+      fireEvent.click(screen.getByRole('button', { name: /3\. Tindakan & Solusi/i }));
+      fireEvent.click(screen.getByRole('button', { name: /Selesaikan Antrian/i }));
+      await waitFor(() => expect(onDataBasi).toHaveBeenCalled());
+      expect(toastMock).not.toHaveBeenCalledWith(expect.stringContaining('Pelayanan selesai'), 'success');
+    });
   });
 });

@@ -34,13 +34,18 @@ interface PelayananWizardModalProps {
   tiketId: string | null;
   onClose: () => void;
   onSuccess?: () => void;
+  /** Server menolak karena kepemilikan/status tiket berubah (403/409): daftar antrean sebaiknya dimuat ulang. */
+  onDataBasi?: () => void | Promise<void>;
 }
 
+// Kepemilikan tiket (migrasi 202610140002): hanya pemilik tiket yang sedang 'dilayani' (initialData.boleh_ubah)
+// yang boleh menyimpan draf dan menyelesaikan. Selain itu wizard BACA-SAJA (tanpa autosave, tanpa tombol simpan).
 export default function PelayananWizardModal({
   isOpen,
   tiketId,
   onClose,
   onSuccess,
+  onDataBasi,
 }: PelayananWizardModalProps) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
@@ -77,7 +82,12 @@ export default function PelayananWizardModal({
   const [catatanPetugas, setCatatanPetugas] = useState('');
   const [lokasiUsahaPerizinan, setLokasiUsahaPerizinan] = useState('');
 
+  // Server menolak tulis (bukan pemilik / status berubah) setelah wizard dibuka -> kunci formulir.
+  const [ditolakServer, setDitolakServer] = useState(false);
+
   const isLocked = initialData?.is_locked ?? false;
+  const bacaSaja = isLocked || ditolakServer || !(initialData?.boleh_ubah ?? false);
+  const bukanPemilik = !isLocked && !!initialData && initialData.status_tiket === 'dilayani' && !initialData.boleh_ubah;
   const formType: FormPelayananType | null = initialData?.form_type ?? null;
   const autosaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -98,6 +108,7 @@ export default function PelayananWizardModal({
       try {
         setLoading(true);
         setValidationErrors({});
+        setDitolakServer(false);
         const res = await fetch(`/api/admin/pelayanan/${id}`);
         if (!res.ok) {
           const err = await res.json();
@@ -183,9 +194,24 @@ export default function PelayananWizardModal({
     };
   }, [isOpen, tiketId, loadData]);
 
+  // Penolakan kepemilikan/status dari server (403 BUKAN_PEMILIK/FORBIDDEN, 409 SUDAH_DIAMBIL/INVALID_STATUS,
+  // 401 SESI_TIDAK_SAH): tampilkan pesan, kunci formulir, minta daftar dimuat ulang. true = sudah ditangani.
+  const tanganiPenolakan = useCallback(
+    (status: number, pesan: unknown): boolean => {
+      if (status !== 401 && status !== 403 && status !== 409) return false;
+      toast(typeof pesan === 'string' && pesan ? pesan : 'Perubahan ditolak server. Muat ulang daftar antrean.', 'error');
+      if (status !== 401) {
+        setDitolakServer(true);
+        void onDataBasi?.();
+      }
+      return true;
+    },
+    [toast, onDataBasi],
+  );
+
   // 2. Autosave Function (Debounced)
   const saveDraftNow = useCallback(async () => {
-    if (!tiketId || isLocked || !formType) return;
+    if (!tiketId || bacaSaja || !formType) return;
     try {
       setSavingDraft(true);
       const payload =
@@ -231,6 +257,9 @@ export default function PelayananWizardModal({
         setLastSavedTime(
           d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
         );
+      } else {
+        const err = await res.json().catch(() => ({}));
+        tanganiPenolakan(res.status, (err as { error?: unknown }).error);
       }
     } catch {
       // Autosave fail silently or log
@@ -239,7 +268,8 @@ export default function PelayananWizardModal({
     }
   }, [
     tiketId,
-    isLocked,
+    bacaSaja,
+    tanganiPenolakan,
     formType,
     namaPemohon,
     alamatPemohon,
@@ -264,16 +294,16 @@ export default function PelayananWizardModal({
   ]);
 
   const triggerAutosave = useCallback(() => {
-    if (isLocked || loading) return;
+    if (bacaSaja || loading) return;
     if (autosaveTimeoutRef.current) clearTimeout(autosaveTimeoutRef.current);
     autosaveTimeoutRef.current = setTimeout(() => {
       saveDraftNow();
     }, 1000);
-  }, [isLocked, loading, saveDraftNow]);
+  }, [bacaSaja, loading, saveDraftNow]);
 
   // 3. Finalize / Selesaikan Pelayanan
   const handleFinalize = async () => {
-    if (!tiketId || !formType) return;
+    if (!tiketId || !formType || bacaSaja || finalizing) return;
     setValidationErrors({});
     const errors: Record<string, string> = {};
 
@@ -339,6 +369,7 @@ export default function PelayananWizardModal({
 
       const result = await res.json();
       if (!res.ok) {
+        if (tanganiPenolakan(res.status, result.error)) return;
         throw new Error(result.error || 'Gagal menyelesaikan pelayanan');
       }
 
@@ -412,6 +443,10 @@ export default function PelayananWizardModal({
                 <span className="badge badge--aktif" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                   <Lock size={12} /> Terkunci (Selesai)
                 </span>
+              ) : bacaSaja ? (
+                <span className="badge badge--nonaktif" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <Lock size={12} /> Baca saja
+                </span>
               ) : (
                 <span className="badge badge--draft">Sedang Dilayani</span>
               )}
@@ -424,9 +459,19 @@ export default function PelayananWizardModal({
               }}
             >
               Nomor Tiket: <strong style={{ color: 'var(--color-primary-700, #0369a1)' }}>{initialData?.nomor_display}</strong>
-              {lastSavedTime && !isLocked && ` · Draft tersimpan ${lastSavedTime}`}
+              {lastSavedTime && !bacaSaja && ` · Draft tersimpan ${lastSavedTime}`}
               {savingDraft && ' · Menyimpan draft…'}
             </p>
+            {!loading && initialData && bacaSaja && !isLocked && (
+              <p
+                role="status"
+                style={{ fontSize: 'var(--text-xs, 0.75rem)', color: 'var(--color-warning-600, #d97706)', margin: '4px 0 0 0' }}
+              >
+                {bukanPemilik || ditolakServer
+                  ? `Tiket ini sedang dilayani ${initialData.dilayani_oleh_nama ?? 'petugas lain'}. Hanya petugas yang memulai yang dapat mengubah dan menyelesaikan data ini.`
+                  : 'Formulir hanya dapat diisi setelah layanan dimulai, oleh petugas yang memulainya.'}
+              </p>
+            )}
           </div>
 
           <button
@@ -511,7 +556,7 @@ export default function PelayananWizardModal({
                       type="text"
                       className="form-input"
                       value={namaPemohon}
-                      disabled={isLocked}
+                      disabled={bacaSaja}
                       onChange={(e) => {
                         setNamaPemohon(e.target.value);
                         triggerAutosave();
@@ -531,7 +576,7 @@ export default function PelayananWizardModal({
                       type="text"
                       className="form-input"
                       value={alamatPemohon}
-                      disabled={isLocked}
+                      disabled={bacaSaja}
                       onChange={(e) => {
                         setAlamatPemohon(e.target.value);
                         triggerAutosave();
@@ -550,7 +595,7 @@ export default function PelayananWizardModal({
                         type="tel"
                         className="form-input"
                         value={noHp}
-                        disabled={isLocked}
+                        disabled={bacaSaja}
                         onChange={(e) => {
                           setNoHp(e.target.value);
                           triggerAutosave();
@@ -568,7 +613,7 @@ export default function PelayananWizardModal({
                         type="email"
                         className="form-input"
                         value={email}
-                        disabled={isLocked}
+                        disabled={bacaSaja}
                         onChange={(e) => {
                           setEmail(e.target.value);
                           triggerAutosave();
@@ -584,7 +629,7 @@ export default function PelayananWizardModal({
                       className="form-textarea"
                       rows={2}
                       value={keperluanAwal}
-                      disabled={isLocked}
+                      disabled={bacaSaja}
                       onChange={(e) => {
                         setKeperluanAwal(e.target.value);
                         triggerAutosave();
@@ -604,7 +649,7 @@ export default function PelayananWizardModal({
                       type="text"
                       className="form-input"
                       value={namaUsaha}
-                      disabled={isLocked}
+                      disabled={bacaSaja}
                       onChange={(e) => {
                         setNamaUsaha(e.target.value);
                         triggerAutosave();
@@ -624,7 +669,7 @@ export default function PelayananWizardModal({
                       <select
                         className="form-select"
                         value={tipePelakuUsaha}
-                        disabled={isLocked}
+                        disabled={bacaSaja}
                         onChange={(e) => {
                           setTipePelakuUsaha(e.target.value);
                           triggerAutosave();
@@ -644,7 +689,7 @@ export default function PelayananWizardModal({
                       <select
                         className="form-select"
                         value={statusPenanamanModal}
-                        disabled={isLocked}
+                        disabled={bacaSaja}
                         onChange={(e) => {
                           setStatusPenanamanModal(e.target.value);
                           triggerAutosave();
@@ -666,7 +711,7 @@ export default function PelayananWizardModal({
                       type="text"
                       className="form-input"
                       value={lokasiUsaha}
-                      disabled={isLocked}
+                      disabled={bacaSaja}
                       onChange={(e) => {
                         setLokasiUsaha(e.target.value);
                         triggerAutosave();
@@ -681,7 +726,7 @@ export default function PelayananWizardModal({
                       <select
                         className="form-select"
                         value={skalaUsaha}
-                        disabled={isLocked}
+                        disabled={bacaSaja}
                         onChange={(e) => {
                           setSkalaUsaha(e.target.value);
                           triggerAutosave();
@@ -702,7 +747,7 @@ export default function PelayananWizardModal({
                         type="text"
                         className="form-input"
                         value={sektorUsahaKbli}
-                        disabled={isLocked}
+                        disabled={bacaSaja}
                         onChange={(e) => {
                           setSektorUsahaKbli(e.target.value);
                           triggerAutosave();
@@ -722,7 +767,7 @@ export default function PelayananWizardModal({
                       type="text"
                       className="form-input"
                       value={namaPerusahaan}
-                      disabled={isLocked}
+                      disabled={bacaSaja}
                       onChange={(e) => {
                         setNamaPerusahaan(e.target.value);
                         triggerAutosave();
@@ -743,7 +788,7 @@ export default function PelayananWizardModal({
                       list="list-opd-teknis"
                       className="form-input"
                       value={opdTeknis}
-                      disabled={isLocked}
+                      disabled={bacaSaja}
                       onChange={(e) => {
                         setOpdTeknis(e.target.value);
                         triggerAutosave();
@@ -768,7 +813,7 @@ export default function PelayananWizardModal({
                       className="form-textarea"
                       rows={3}
                       value={uraianPermohonan}
-                      disabled={isLocked}
+                      disabled={bacaSaja}
                       onChange={(e) => {
                         setUraianPermohonan(e.target.value);
                         triggerAutosave();
@@ -788,7 +833,7 @@ export default function PelayananWizardModal({
                       type="text"
                       className="form-input"
                       value={lokasiUsahaPerizinan}
-                      disabled={isLocked}
+                      disabled={bacaSaja}
                       onChange={(e) => {
                         setLokasiUsahaPerizinan(e.target.value);
                         triggerAutosave();
@@ -809,7 +854,7 @@ export default function PelayananWizardModal({
                       list="list-tindakan-oss"
                       className="form-input"
                       value={tindakLanjutOss}
-                      disabled={isLocked}
+                      disabled={bacaSaja}
                       onChange={(e) => {
                         setTindakLanjutOss(e.target.value);
                         triggerAutosave();
@@ -834,7 +879,7 @@ export default function PelayananWizardModal({
                       className="form-textarea"
                       rows={4}
                       value={uraianSolusi}
-                      disabled={isLocked}
+                      disabled={bacaSaja}
                       onChange={(e) => {
                         setUraianSolusi(e.target.value);
                         triggerAutosave();
@@ -854,7 +899,7 @@ export default function PelayananWizardModal({
                       className="form-textarea"
                       rows={2}
                       value={catatanInternal}
-                      disabled={isLocked}
+                      disabled={bacaSaja}
                       onChange={(e) => {
                         setCatatanInternal(e.target.value);
                         triggerAutosave();
@@ -874,7 +919,7 @@ export default function PelayananWizardModal({
                       list="list-tindakan-perizinan"
                       className="form-input"
                       value={tindakLanjutPerizinan}
-                      disabled={isLocked}
+                      disabled={bacaSaja}
                       onChange={(e) => {
                         setTindakLanjutPerizinan(e.target.value);
                         triggerAutosave();
@@ -899,7 +944,7 @@ export default function PelayananWizardModal({
                       className="form-textarea"
                       rows={4}
                       value={catatanPetugas}
-                      disabled={isLocked}
+                      disabled={bacaSaja}
                       onChange={(e) => {
                         setCatatanPetugas(e.target.value);
                         triggerAutosave();
@@ -943,13 +988,13 @@ export default function PelayananWizardModal({
                   onClose();
                 }}
               >
-                {isLocked ? 'Tutup' : 'Tutup (Draf tersimpan)'}
+                {bacaSaja ? 'Tutup' : 'Tutup (Draf tersimpan)'}
               </button>
             )}
           </div>
 
           <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center' }}>
-            {!isLocked && (
+            {!bacaSaja && (
               <button
                 type="button"
                 className="btn btn--secondary btn--sm"
@@ -970,11 +1015,12 @@ export default function PelayananWizardModal({
                 Selanjutnya <ChevronRight size={16} />
               </button>
             ) : (
-              !isLocked && (
+              !bacaSaja && (
                 <button
                   type="button"
                   className="btn btn--primary btn--sm"
                   disabled={finalizing}
+                  aria-busy={finalizing}
                   onClick={handleFinalize}
                   title="Kunci data & selesaikan antrian. Tidak dapat diubah kembali."
                   style={{

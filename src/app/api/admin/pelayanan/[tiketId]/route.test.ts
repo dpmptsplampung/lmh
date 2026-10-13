@@ -42,6 +42,9 @@ const mockTiket = (overrides: Record<string, unknown> = {}) => ({
       legacy_visit_id: 'v1',
       kunjungan_id: 'k1',
       layanan_id: 'l1',
+      // Pemilik = mockPetugas() (id 'p1') yang sedang melayani (migrasi 202610140002).
+      status: 'dilayani',
+      dilayani_oleh: 'p1',
       layanan: { nama: 'Helpdesk OSS' },
       ...overrides,
     },
@@ -89,7 +92,7 @@ describe('API Route /api/admin/pelayanan/[tiketId]', () => {
     expect(res.status).toBe(403);
   });
 
-  it('finalizes OSS via atomic RPC and allows saving optional fields (tipe_pelaku_usaha, status_penanaman_modal, lokasi_usaha)', async () => {
+  it('finalizes OSS via atomic RPC layanan_selesai and allows saving optional fields (tipe_pelaku_usaha, status_penanaman_modal, lokasi_usaha)', async () => {
     const serverMod = await import('@/lib/supabase/server');
     const createClient = serverMod.createClient as unknown as ReturnType<typeof vi.fn>;
 
@@ -133,7 +136,7 @@ describe('API Route /api/admin/pelayanan/[tiketId]', () => {
     expect(data.is_locked).toBe(true);
     expect(rpcFinalize).toHaveBeenCalledTimes(1);
     expect(rpcFinalize).toHaveBeenCalledWith(
-      'finalize_pelayanan',
+      'layanan_selesai',
       expect.objectContaining({
         p_tiket_id: 't1',
         p_form_type: 'oss',
@@ -203,7 +206,7 @@ describe('API Route /api/admin/pelayanan/[tiketId]', () => {
             select: vi.fn().mockReturnValue({
               eq: vi.fn().mockReturnValue({
                 maybeSingle: vi.fn().mockResolvedValue({
-                  data: { tiket_id: 't1', is_locked: false }, // draft eksisting milik petugas lain
+                  data: { tiket_id: 't1', is_locked: false }, // draft eksisting milik petugas lain (admin = pemilik tiket)
                 }),
               }),
             }),
@@ -256,7 +259,7 @@ describe('API Route /api/admin/pelayanan/[tiketId]', () => {
       opd_teknis: 'DPMPTSP', uraian_permohonan: 'Izin usaha', tindak_lanjut: 'Diproses',
     }), { params: Promise.resolve({ tiketId: 't1' }) });
     expect(res.status).toBe(200);
-    expect(rpcFinalize).toHaveBeenCalledWith('finalize_pelayanan', expect.objectContaining({
+    expect(rpcFinalize).toHaveBeenCalledWith('layanan_selesai', expect.objectContaining({
       p_form_type: 'perizinan',
       p_payload: expect.objectContaining({ lokasi_usaha: 'Lampung Selatan' }),
     }));
@@ -364,6 +367,152 @@ describe('API Route /api/admin/pelayanan/[tiketId]', () => {
       expect(res.status).toBe(400);
       expect((await res.json()).error).toBe('Gagal menyimpan draft OSS');
       expect(p.log).toHaveBeenCalledWith('error', expect.objectContaining({ operation: 'admin.pelayanan.draf_oss', asalCode: '23503' }));
+    });
+  });
+
+  // Migrasi 202610140002: hanya pemilik tiket (dilayani_oleh) yang boleh menyelesaikan / menyimpan draf.
+  describe('Kepemilikan tiket (A3)', () => {
+    const ctx = { params: Promise.resolve({ tiketId: 't1' }) };
+    const bodyFinal = {
+      nama_pemohon: 'Budi Santoso',
+      nama_usaha: 'Toko Berkah Jaya',
+      tindak_lanjut: 'Selesai di Loket (Tuntas)',
+      uraian_solusi: 'Konsultasi tuntas.',
+    };
+    const chain = (data: unknown) => ({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({ data }),
+    });
+
+    const pasangPost = async (pesanDb: string) => {
+      const serverMod = await import('@/lib/supabase/server');
+      const rpc = vi.fn().mockResolvedValue({ data: null, error: { message: pesanDb, code: '42501' } });
+      (serverMod.createClient as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+        auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'u-petugas' } }, error: null }) },
+        from: vi.fn((table: string) => {
+          if (table === 'petugas') return mockPetugas();
+          if (table === 'tiket_antrean') return mockTiket();
+          return {};
+        }),
+        rpc,
+      });
+      return { POST: (await import('./route')).POST, rpc };
+    };
+
+    it.each([
+      ['BUKAN_PEMILIK: tiket ini sedang dilayani petugas lain', 403, 'BUKAN_PEMILIK'],
+      ['SUDAH_DIAMBIL: tiket sudah ditangani petugas lain', 409, 'SUDAH_DIAMBIL'],
+      ['INVALID_STATUS: tiket tidak dalam status dilayani (status=selesai)', 409, 'INVALID_STATUS'],
+      ['SESI_TIDAK_SAH: sesi Anda tidak berlaku lagi; silakan masuk kembali', 401, 'SESI_TIDAK_SAH'],
+      ['FORBIDDEN: Front Office tidak menyelesaikan tiket layanan', 403, 'FORBIDDEN'],
+      ['NOT_FOUND: tiket tidak ditemukan', 404, 'NOT_FOUND'],
+      ['DIVERGENSI: visit x tidak berstatus dilayani; tidak ada perubahan disimpan', 409, 'DIVERGENSI'],
+      ['LOCKED: data pelayanan sudah terkunci dan tidak dapat diubah', 403, 'LOCKED'],
+    ])('POST: galat RPC "%s" -> %i (kode %s), pesan DB tidak bocor', async (pesanDb, status, kode) => {
+      const { POST, rpc } = await pasangPost(pesanDb);
+      const res = await POST(buildRequest('POST', bodyFinal), ctx);
+      expect(res.status).toBe(status);
+      const json = await res.json();
+      expect(json.kode).toBe(kode);
+      expect(json.error).not.toContain(`${kode}:`);
+      expect(json.error).not.toContain(pesanDb);
+      expect(rpc).toHaveBeenCalledWith('layanan_selesai', expect.objectContaining({ p_tiket_id: 't1', p_form_type: 'oss' }));
+    });
+
+    const pasangPatch = async (tiket: Record<string, unknown>, petugas: Record<string, unknown> = {}) => {
+      const serverMod = await import('@/lib/supabase/server');
+      const update = updateChain();
+      const insert = vi.fn().mockResolvedValue({ data: null, error: null });
+      (serverMod.createClient as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+        auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'u' } }, error: null }) },
+        from: vi.fn((table: string) => {
+          if (table === 'petugas') return mockPetugas(petugas);
+          if (table === 'tiket_antrean') return mockTiket(tiket);
+          if (table === 'pelayanan_oss') {
+            return { ...chain({ tiket_id: 't1', is_locked: false }), update, insert };
+          }
+          return {};
+        }),
+      });
+      return { PATCH: (await import('./route')).PATCH, update, insert };
+    };
+
+    it('PATCH draf oleh BUKAN pemilik (tiket dilayani petugas lain) -> 403 BUKAN_PEMILIK, tanpa tulis', async () => {
+      const { PATCH, update, insert } = await pasangPatch({ dilayani_oleh: 'p-lain' });
+      const res = await PATCH(buildRequest('PATCH', { nama_pemohon: 'X' }), ctx);
+      expect(res.status).toBe(403);
+      expect((await res.json()).kode).toBe('BUKAN_PEMILIK');
+      expect(update).not.toHaveBeenCalled();
+      expect(insert).not.toHaveBeenCalled();
+    });
+
+    it('PATCH draf oleh Admin yang bukan pemilik juga ditolak (harus ambil alih dulu)', async () => {
+      const { PATCH, update } = await pasangPatch({ dilayani_oleh: 'p-lain' }, { role: 'admin', layanan_id: null });
+      const res = await PATCH(buildRequest('PATCH', { nama_pemohon: 'X' }), ctx);
+      expect(res.status).toBe(403);
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it('PATCH draf oleh Front Office ditolak (FO tidak melayani tiket layanan)', async () => {
+      const { PATCH, update } = await pasangPatch({ dilayani_oleh: 'p1' }, { role: 'front_office', layanan_id: null });
+      const res = await PATCH(buildRequest('PATCH', { nama_pemohon: 'X' }), ctx);
+      expect(res.status).toBe(403);
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it("PATCH draf saat tiket masih 'menunggu' (sebelum Mulai Layanan) -> 409, tanpa tulis", async () => {
+      const { PATCH, update, insert } = await pasangPatch({ status: 'menunggu', dilayani_oleh: null });
+      const res = await PATCH(buildRequest('PATCH', { nama_pemohon: 'X' }), ctx);
+      expect(res.status).toBe(409);
+      const json = await res.json();
+      expect(json.kode).toBe('INVALID_STATUS');
+      expect(json.error).toMatch(/Mulai layanan/i);
+      expect(update).not.toHaveBeenCalled();
+      expect(insert).not.toHaveBeenCalled();
+    });
+
+    it('PATCH draf oleh pemilik tetap tersimpan (200)', async () => {
+      const { PATCH, update } = await pasangPatch({});
+      const res = await PATCH(buildRequest('PATCH', { nama_pemohon: 'X' }), ctx);
+      expect(res.status).toBe(200);
+      expect(update).toHaveBeenCalledTimes(1);
+    });
+
+    const pasangGet = async (tiket: Record<string, unknown>, oss: unknown = null) => {
+      const serverMod = await import('@/lib/supabase/server');
+      (serverMod.createClient as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+        auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'u' } }, error: null }) },
+        from: vi.fn((table: string) => {
+          if (table === 'petugas') return mockPetugas();
+          if (table === 'tiket_antrean') {
+            return mockTiket({ nomor_display: 'A-001', kunjungan: { id: 'k1', nama: 'Budi', kontak_hp: null, pengunjung_id: null }, ...tiket });
+          }
+          if (table === 'visit') return chain({ asal_instansi: null, keperluan: null });
+          if (table === 'pelayanan_oss') return chain(oss);
+          return {};
+        }),
+      });
+      return (await import('./route')).GET;
+    };
+
+    it('GET: pemilik -> boleh_ubah true; memuat dilayani_oleh dan nama pemilik', async () => {
+      const GET = await pasangGet({ pelayan: { nama: 'Petugas Satu' } });
+      const res = await GET(buildRequest('GET'), ctx);
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json).toMatchObject({ boleh_ubah: true, dilayani_oleh: 'p1', dilayani_oleh_nama: 'Petugas Satu', status_tiket: 'dilayani' });
+    });
+
+    it('GET: bukan pemilik / tiket menunggu / data terkunci -> boleh_ubah false (wizard baca-saja)', async () => {
+      let GET = await pasangGet({ dilayani_oleh: 'p-lain', pelayan: null });
+      expect((await (await GET(buildRequest('GET'), ctx)).json()).boleh_ubah).toBe(false);
+      vi.resetModules();
+      GET = await pasangGet({ status: 'menunggu', dilayani_oleh: null });
+      expect((await (await GET(buildRequest('GET'), ctx)).json()).boleh_ubah).toBe(false);
+      vi.resetModules();
+      GET = await pasangGet({}, { tiket_id: 't1', is_locked: true, status_draft: 'selesai' });
+      expect((await (await GET(buildRequest('GET'), ctx)).json()).boleh_ubah).toBe(false);
     });
   });
 
