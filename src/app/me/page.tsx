@@ -72,6 +72,8 @@ export default function MeDashboard() {
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!authUser) {
         setLoading(false);
+        // Navigasi keras disengaja: reload penuh memastikan state klien bersih saat sesi hilang.
+        // eslint-disable-next-line @next/next/no-location-assign-relative-destination
         window.location.href = '/login?redirect=/me';
         return;
       }
@@ -146,6 +148,8 @@ export default function MeDashboard() {
   const handleLogout = async () => {
     const supabase = createClient();
     await supabase.auth.signOut();
+    // Navigasi keras disengaja setelah keluar: reload penuh membersihkan seluruh state klien.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.href = '/login';
   };
 

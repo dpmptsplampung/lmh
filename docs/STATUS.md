@@ -2,6 +2,8 @@
 
 Lampung Maju Hub — Sistem Pelayanan Digital DPMPTSP Provinsi Lampung.
 
+> **Catatan 2026-10-13: dokumen ini tertinggal dari 30 Juli 2026.** Tabel WP dan daftar "Migrations applied: 24 file" di bawah belum mencakup migrasi Agustus–Oktober 2026 (`202608…` s.d. `202610…`, termasuk RBAC Tahap 0/1). Fakta yang sudah diverifikasi read-only pada 2026-10-13: ledger migrasi produksi (`supabase_migrations.schema_migrations`) berisi 13 entri dan berhenti di `202607280005`, sedangkan repo memuat 57 file; dari 44 file yang tidak tercatat, 39 terbukti terpasang di produksi, 1 (`202609020001`) tidak terpasang, dan 4 tidak dapat ditentukan. Sumber terbaru: `docs/analysis/DB-CHANGES.md` (bagian "Inventaris ledger 2026-10-13"), `docs/analysis/LEDGER-VERIFIKASI-2026-10-13.md`, `docs/MIGRATIONS.md`, `docs/DECISION_LOG.md`, `docs/RUNBOOK_RBAC_TAHAP0.md`, `docs/audit/AUDIT-2026-10-12-TRACKER.md`, `docs/superpowers/{specs,plans}`, dan `.superpowers/sdd/progress.md`.
+
 ---
 
 ## Status Implementasi

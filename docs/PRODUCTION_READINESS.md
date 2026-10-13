@@ -14,7 +14,7 @@
 | **Code gates 0–5** | Complete (security, baseline DB, app hardening, a11y/UX, CI, smoke, ops docs) |
 | **P0/P1 hardening 2026-07-25** | Chat messages auth+ownership, checkin `pengunjung_id`, inquiry no service-role UPDATE, AI draft layanan scope, cron 2/5 min, error sanitization |
 | **Migrations** | **5 baseline** + **3 forward** (`20260720`, `20260721`, `20260724`) + `seed.sql` |
-| **CI** | `.github/workflows/ci.yml`: Node 22, lint, typecheck, test:coverage, build, audit high+ |
+| **CI** | `.github/workflows/ci.yml`: Node 22, lint, typecheck, test:coverage, build, `npm audit --audit-level=critical` (**hanya critical**, bukan high+ — lihat bagian 3b). Gerbang high+ ada **lokal**: `npm run verify:baseline` (termasuk `audit:check`) + hook pre-push, bukan di CI GitHub |
 | **Production go-live** | **Code-ready.** Staging deploy, Dashboard config, secrets, legal sign-off still required |
 
 **Honest bottom line:** Application code is production-oriented. Go-live still needs environment wiring, migration apply on a real project, and human acceptance — not more feature code.
@@ -40,7 +40,7 @@ Historical feature work (SKM, antrean, AI RAG, UMKM, PWA, etc.) remains in the a
 
 | Item | Location |
 |---|---|
-| CI Node 22 + lint/typecheck/test/build + optional audit | `.github/workflows/ci.yml` |
+| CI Node 22 + lint/typecheck/test/build + audit (critical saja) | `.github/workflows/ci.yml` |
 | Coverage (`v8`, soft 40% thresholds) | `vitest.config.ts`, `npm run test:coverage` |
 | Supabase CLI skeleton | `supabase/config.toml` |
 | Smoke script (`/api/health/live`) | `scripts/smoke.mjs`, `npm run smoke` |
@@ -49,6 +49,25 @@ Historical feature work (SKM, antrean, AI RAG, UMKM, PWA, etc.) remains in the a
 | Deploy runbook (5 baselines, no 020–038 loop) | `docs/DEPLOY_RUNBOOK.md` |
 
 **Playwright E2E:** not added (Gate 4 residual — prefer docs over a half-broken harness). See `docs/TESTING.md`.
+
+---
+
+## 3b. Status dependensi & audit (diperbarui 13 Okt 2026)
+
+Faktual per pemeriksaan lokal tanggal ini; bukan jaminan keamanan.
+
+| Paket | Sebelum | Sekarang | Catatan |
+|---|---|---|---|
+| `next` | `^16.2.12` (terpasang 16.2.12, lockfile 16.3.6) | `^16.3.8` (terkunci 16.3.8) | 16.3.8 memuat perbaikan advisory HIGH SSRF Image Optimization (GHSA-cjq9-62q9-8jv4) dan beberapa MEDIUM cache poisoning ISR/SSG |
+| `sharp` | `^0.35.3` (lockfile 0.35.4) | `^0.35.5` (terkunci 0.35.5) | memperbaiki GHSA-wq5f-xc86-pv6w |
+| `eslint-config-next` | `^16.2.12` | `^16.3.8` | rule baru `no-location-assign-relative-destination` aktif (4 navigasi keras disengaja diberi `eslint-disable` beralasan) |
+
+- **Gerbang audit CI hanya `critical`** (`npm audit --audit-level=critical`); `.github/workflows/ci.yml` tidak diubah. Klaim lama "audit high+" untuk CI tidak benar. Gerbang yang memblok **high+** kini ada **lokal**: `npm run audit:check` (`scripts/check-audit.mjs`) bagian dari `npm run verify:baseline` dan hook pre-push `.githooks/pre-push`. Advisory high+ yang belum punya perbaikan layak hanya boleh lolos lewat `audit-allow.json` (alasan + tenggat; lewat tenggat = gagal). `npm run deps:check` memastikan `next`/`sharp`/`eslint-config-next` terpasang sama dengan `package-lock.json`. Detail: `docs/TESTING.md`.
+- `npm audit` terkini (diverifikasi ulang 13 Okt 2026): 11 paket rentan (0 critical, 5 high, 6 moderate); `next` dan `sharp` **tidak lagi** muncul. Hanya produksi (`--omit=dev`): 2 (0 high, 2 moderate):
+  - high `brace-expansion` dan `source-map-js` yang tercatat pada pemeriksaan sebelumnya **tidak lagi** dilaporkan.
+  - moderate `uuid` via `exceljs`: satu-satunya "perbaikan" yang ditawarkan npm adalah menurunkan `exceljs` ke 3.4.0 (breaking, tidak dipakai).
+  - dev-only: rantai `braces` → `micromatch` → `fast-glob` → `@next/eslint-plugin-next` → `eslint-config-next` (5 paket high, satu advisory akar `GHSA-vfj7-8cjw-p6xm`; `braces` 3.0.3 masih rilis terbaru dan satu-satunya saran npm menurunkan `eslint-config-next` ke 14.x yang tidak layak) — dikecualikan di `audit-allow.json` sampai 2027-01-13 — dan `vitest`/`@vitest/mocker`/`@vitest/ui`/`@vitest/coverage-v8` (4 moderate).
+- **npm 12 memblokir install-script**: `canvas` (binary native untuk render PDF→PNG) tidak terbangun setelah `npm ci` kecuali disetujui lewat `allowScripts` di `package.json` (`npm install-scripts approve canvas`), lalu `npm rebuild canvas`. Perilaku di CI/Vercel (Node 22, npm bawaan) belum diverifikasi di sini.
 
 ---
 
@@ -111,3 +130,4 @@ Detail: `docs/DEPLOY_RUNBOOK.md`.
 - Do **not** document migration apply as pasting `020`–`038`.
 - Do **not** treat demo seed as production data.
 - Do **not** skip Resend domain verification for magic-link auth email.
+- Do **not** claim CI menggagalkan build pada advisory "high+": gerbang CI saat ini hanya `critical`. Pemblokiran high+ hanya ada lokal (`npm run verify:baseline` / hook pre-push).

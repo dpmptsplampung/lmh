@@ -23,7 +23,7 @@
 | Panggil ulang nomor | ✓ | ✓ | `S` | ✗ | ✗ |
 | Buku tamu | ✓ | ✓ | ✗ | ✗ | ✗ |
 | Balas live chat | ✓ | ✓ (takeover semua) | `S` | ✗ | ✗ |
-| Kelola FAQ | ✓ | ✗ | `S` | ✗ | ✗ |
+| Kelola FAQ | ✓ (semua layanan + FAQ umum) | ✓ **hanya FAQ umum** (`layanan_id` NULL; M-202610130001, belum diterapkan) | `S` (FAQ layanannya; FAQ umum tidak terjangkau) | ✗ | ✗ |
 | Unggah dokumen peraturan | ✓ | ✗ | `S` | ✗ | ✗ |
 | Ubah aturan penjaga bot | **✗ (CMS-04)** | ✗ | ✗ | ✗ | ✗ |
 | Review listing UMKM | ✓ | ✗ | `S` (Matchmaking) | ✗ | ✗ |
@@ -53,7 +53,7 @@
 | Layani antrean | `tiket_antrean` | `tiket_staff_update` | `admin/fo` ATAU `layanan_id = get_my_layanan_id()` |
 | Buku tamu | `buku_tamu` | `buku_tamu_fo_admin_all` | `get_my_role() IN ('admin','front_office')` |
 | Balas live chat | `chat_sesi`, `chat_pesan` | perluas `chat_*` | FO `IN ('admin','front_office')`; petugas `layanan_id = get_my_layanan_id()` |
-| Kelola FAQ | `faq_knowledge_base` | `faq_petugas_all` (ada) + admin | petugas `layanan_id = get_my_layanan_id()`; admin semua |
+| Kelola FAQ | `faq_knowledge_base` | `faq_petugas_all` (ada; dipersempit ke peran petugas, M-202610130002) + `faq_admin_all` (ada) + `faq_fo_umum` (baru, M-202610130001) | petugas `layanan_id = get_my_layanan_id() AND get_my_role() = 'petugas'` (hanya peran petugas; FO ber-`layanan_id` tidak lolos; baris umum `layanan_id` NULL tidak terjangkau: `NULL = x` bukan true); FO `layanan_id IS NULL AND get_my_role() = 'front_office'` (USING dan WITH CHECK); admin semua. Bot (`match_faq_teks`, `match_faq`) mencari FAQ layanan + FAQ umum |
 | Unggah dokumen | `dokumen_peraturan`, `dokumen_potongan` | `dokumen_staff_write`, `potongan_staff_write` | admin ATAU `layanan_id = get_my_layanan_id()` |
 | Review listing UMKM | `listing_umkm` | `listing_staff_*` (perluas) | admin ATAU petugas Matchmaking (`get_my_layanan_id() = id Matchmaking`) |
 | Pengaduan layanan | `pengaduan` | `pengaduan_layanan_read`, `pengaduan_update` | `jalur='layanan'` AND (`admin`/`fo` ATAU `layanan_id=get_my_layanan_id()`) |
@@ -81,7 +81,7 @@
 | `/admin/kunjungan` | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `/admin/buku-tamu` (baru) | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `/admin/chat` | ✓ | ✓ (takeover) | `S` | ✗ | ✗ |
-| `/admin/chat/faq` | ✓ | ✗ | `S` | ✗ | ✗ |
+| `/admin/chat/faq` | ✓ | ✓ (hanya FAQ umum) | `S` | ✗ | ✗ |
 | `/admin/chat/ai-log` | ✓ | ✗ | ✗ | ✗ | ✗ |
 | `/admin/dokumen` (baru) | ✓ | ✗ | `S` | ✗ | ✗ |
 | `/admin/umkm` | ✓ | ✗ | `S` (Matchmaking) | ✗ | ✗ |

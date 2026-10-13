@@ -12,6 +12,12 @@
 ## Format entri
 
 ```
+### [2026-10-13] — Pengisian ledger migrasi produksi (atas izin CEO)
+- Tindakan     : `scripts/fill-migration-ledger.mjs --apply --yes` mencatat 40 migrasi berstatus `terpasang` (202607290001 s.d. 202610130001) ke `supabase_migrations.schema_migrations`; lalu `202610130002_faq_petugas_hanya_petugas` dicatat manual (policy `faq_petugas_all` terbukti memuat cek peran petugas).
+- Hasil        : ledger 13 -> 54 entri (terakhir 202610130002).
+- TIDAK dicatat (5, harus diputuskan manual sebelum `db push`): `202608040001` (catat_pulang_rpc), `202608080001` (chat_realtime_publication), `202608310001` (finalize_pelayanan_rpc) — tidak dapat ditentukan (objek bersama, fungsinya sudah versi lebih baru); `202608310003` (absensi_foto_fo, berkas no-op); `202609020001` (estimasi_hari_libur) — TIDAK ditemukan di produksi (indeks `idx_hari_libur_tanggal`, policy `hari_libur_staff_write`).
+- Catatan      : `supabase db push` tetap JANGAN dipakai sebelum lima migrasi itu diputuskan (terutama `202609020001`, yang akan membuat ulang policy yang sengaja dihapus `202610080002`).
+
 ### [YYYY-MM-DD HH:mm WIB] — <judul perubahan>
 - WP/Migrasi   : <WP-xx / nama file migrasi / "manual">
 - Jenis        : DDL (struktur) / DATA (isi) / KONFIGURASI
@@ -25,6 +31,56 @@
 ---
 
 ## Riwayat (dari yang terbaru)
+
+### [2026-10-13] — FAQ: `faq_petugas_all` hanya untuk peran petugas (M-202610130002) — DITERAPKAN 2026-10-13
+- WP/Migrasi   : lanjutan 202610130001 (hasil review independen) / `supabase/migrations/202610130002_faq_petugas_hanya_petugas.sql` + test kontrak `supabase/migrations/faq_petugas_hanya_petugas.test.ts` + rollback `docs/rollback-faq-petugas-hanya-petugas-202610130002.sql`
+- Jenis        : DDL (policy RLS); tidak ada perubahan data
+- Objek        : policy `faq_petugas_all` pada `public.faq_knowledge_base` (`DROP POLICY IF EXISTS` + `CREATE POLICY`; nama, `FOR ALL`, `TO authenticated` tetap). `USING` dan `WITH CHECK` berubah dari `layanan_id = get_my_layanan_id()` menjadi `layanan_id = get_my_layanan_id() AND get_my_role() = 'petugas'`. Policy lain (`faq_admin_all`, `faq_public_read`, `faq_fo_umum`), fungsi, kolom, dan data TIDAK diubah.
+- Menyentuh data pengunjung? : Tidak
+- Ringkasan    : celah: definisi lama (`202607280003:5-7`) tidak memeriksa peran, dan `get_my_layanan_id()` (`202610080001`) mengembalikan `petugas.layanan_id` untuk petugas aktif berperan APA PUN. Front Office yang baris `petugas`-nya punya `layanan_id` tetap boleh menulis FAQ layanannya, dan bersama `faq_fo_umum` dapat memindahkan baris antara FAQ umum dan FAQ layanan (`UPDATE layanan_id = NULL`: baris lama lolos `faq_petugas_all`, baris baru lolos `faq_fo_umum`). Setelah migrasi: petugas layanan hanya FAQ layanannya, FO hanya FAQ umum (baris `layanan_id IS NULL`), admin semua; tidak ada jalur FO ke baris ber-layanan maupun memindahkan baris. Perilaku petugas biasa tidak berubah.
+- Cara menerapkan : WAJIB `--atomic` (mengubah policy), SETELAH `202610130001_faq_umum.sql`: `node scripts/apply-migration.mjs supabase/migrations/202610130002_faq_petugas_hanya_petugas.sql --atomic --dry-run`, lalu tanpa `--dry-run` setelah konfirmasi CEO. Idempoten. Urutan: `202610130001` -> `202610130002` -> baru deploy kode UI FO. **PERINGATAN:** menu "Kelola FAQ" untuk FO sudah dibuka di `src/lib/admin-nav.ts`; bila kode di-deploy SEBELUM kedua migrasi diterapkan, FO yang menyimpan FAQ umum gagal (INSERT `layanan_id NULL` melanggar `NOT NULL`).
+- Cara mengembalikan : `node scripts/apply-migration.mjs docs/rollback-faq-petugas-hanya-petugas-202610130002.sql --atomic` (`--dry-run` dulu); memulihkan definisi `202607280003` (celah FO ber-layanan terbuka kembali). Bila `202610130001` ikut dikembalikan, jalankan rollback ini lebih dulu.
+- Status       : DITERAPKAN ke produksi 2026-10-13 (`apply-migration.mjs --atomic`, dry-run lalu COMMIT; atas izin CEO di sesi). Diverifikasi read-only: kolom nullable, policy sesuai, fungsi pencarian memuat FAQ umum, 80 baris FAQ utuh. Ledger `schema_migrations` BELUM dicatat (lihat pengisian ledger). Test kontrak statis (termasuk simulasi logis gabungan policy) lulus; perilaku RLS di DB belum diuji terhadap database.
+
+### [2026-10-13] — FAQ umum: `layanan_id` boleh NULL + policy Front Office + pencarian FAQ umum (M-202610130001) — DITERAPKAN 2026-10-13
+- WP/Migrasi   : tugas 1.5 (spec `docs/superpowers/specs/2026-10-12-mutasi-tercek-design.md` §3.3) / `supabase/migrations/202610130001_faq_umum.sql` + test kontrak `supabase/migrations/faq_umum.test.ts` + rollback `docs/rollback-faq-umum-202610130001.sql`
+- Jenis        : DDL (kolom, policy, fungsi); tidak ada perubahan data
+- Objek        :
+  - `public.faq_knowledge_base.layanan_id`: `DROP NOT NULL` (NULL = FAQ umum) + `COMMENT ON COLUMN`
+  - policy baru `faq_fo_umum` (`FOR ALL TO authenticated`; `USING` dan `WITH CHECK` = `layanan_id IS NULL AND get_my_role() = 'front_office'`). `faq_admin_all`, `faq_petugas_all` (`layanan_id = get_my_layanan_id()`, tidak menjangkau baris NULL), dan `faq_public_read` TIDAK diubah
+  - `public.match_faq_teks(uuid, text, integer)`: `CREATE OR REPLACE`; kondisi `f.layanan_id = p_layanan` menjadi `(f.layanan_id = p_layanan OR f.layanan_id IS NULL)`; urutan `skor DESC, (f.layanan_id IS NULL)` (FAQ layanan didahulukan pada skor persis sama). Definisi lama: `202609230002_faq_fts.sql`. Kolom hasil, SECURITY DEFINER, `search_path`, REVOKE/GRANT identik
+  - `public.match_faq(extensions.vector, uuid, integer)` (3072-dim): `CREATE OR REPLACE`; kondisi menjadi `(p_layanan_id IS NULL OR faq.layanan_id = p_layanan_id OR faq.layanan_id IS NULL)`; kunci urut sekunder `(faq.layanan_id IS NULL)`. Definisi lama: `202608080002_faq_embedding_3072.sql`. Kolom hasil, SECURITY DEFINER, `search_path`, REVOKE/GRANT identik
+- Menyentuh data pengunjung? : Tidak (data FAQ tidak diubah; trigger audit `trg_audit_faq` dan `trg_faq_reembed` tidak bergantung pada NOT NULL)
+- Ringkasan    : keputusan CEO: FAQ umum dikelola Front Office dan Admin; petugas layanan hanya FAQ layanannya; Admin semua. FAQ umum ikut dijawab bot di layanan mana pun. Alternatif "layanan semu Umum" ditolak (mencemari daftar layanan publik, antrean, jadwal, rekap).
+- Cara menerapkan : migrasi mengubah policy dan fungsi, jadi WAJIB `--atomic` (lihat komentar `scripts/apply-migration.mjs`): `node scripts/apply-migration.mjs supabase/migrations/202610130001_faq_umum.sql --atomic --dry-run`, lalu tanpa `--dry-run` setelah konfirmasi CEO. Idempoten. Tidak ditulis ke ledger `supabase_migrations.schema_migrations` (skrip tidak menulis ledger).
+- Cara mengembalikan : `node scripts/apply-migration.mjs docs/rollback-faq-umum-202610130001.sql --atomic` (`--dry-run` dulu). Rollback memulihkan kedua fungsi ke definisi lama, menghapus `faq_fo_umum`, lalu `SET NOT NULL`; ia MENOLAK seluruhnya (galat sebelum perubahan apa pun) bila masih ada FAQ umum, agar data umum tidak hilang/berpindah diam-diam.
+- Kode yang bergantung (di luar migrasi): `src/lib/admin-nav.ts` (Kelola FAQ terbuka untuk `front_office`), `src/lib/faq-scope.ts`; halaman publik `src/app/chat/page.tsx` (`fetchFAQs`) kini memakai `.or('layanan_id.eq.<uuid>,layanan_id.is.null')` (FAQ layanan + FAQ umum) dan `src/app/admin/chat/faq/page.tsx` menampilkan/menyaring FAQ umum. **PERINGATAN URUTAN:** menu "Kelola FAQ" untuk FO sudah dibuka di `src/lib/admin-nav.ts`; bila kode di-deploy SEBELUM `202610130001` dan `202610130002` diterapkan, FO yang menyimpan FAQ umum gagal (INSERT `layanan_id NULL` melanggar `NOT NULL`). Terapkan `202610130001` -> `202610130002` -> baru deploy kode UI FO.
+- Status       : DITERAPKAN ke produksi 2026-10-13 (`apply-migration.mjs --atomic`, dry-run lalu COMMIT; atas izin CEO di sesi). Diverifikasi read-only: kolom nullable, policy sesuai, fungsi pencarian memuat FAQ umum, 80 baris FAQ utuh. Ledger `schema_migrations` BELUM dicatat (lihat pengisian ledger). Test kontrak statis lulus; perilaku RLS/RPC di DB belum diuji terhadap database.
+
+### Inventaris ledger 2026-10-13 — migrasi tak tercatat di `supabase_migrations.schema_migrations` (READ-ONLY)
+- WP/Migrasi   : tugas 0.4 / `scripts/verify-migration-ledger.mjs` + `scripts/lib/migration-markers.mjs` (pengisi ledger `scripts/fill-migration-ledger.mjs` sudah ditulis, **BELUM dijalankan dengan `--apply`**)
+- Jenis        : TIDAK ADA PERUBAHAN (read-only: `BEGIN READ ONLY` + hanya SELECT, diakhiri ROLLBACK)
+- Objek        : dibaca `supabase_migrations.schema_migrations` dan katalog `pg_class`, `pg_attribute`, `pg_proc` (termasuk `prosrc`), `pg_policies`, `pg_indexes`, `pg_trigger`, `pg_constraint`, `pg_publication_tables`, `pg_extension`, `cron.job`, `storage.buckets`
+- Menyentuh data pengunjung? : Tidak
+- Ringkasan    :
+  - Ledger produksi berisi **13 entri** (`202607140001` s.d. `202607280005`, nama sama dengan file). Repo memuat **57** file; **44 tidak tercatat** (`202607290001` s.d. `202610090005`) karena `scripts/apply-migration.mjs` tidak menulis ledger.
+  - Hasil per migrasi tak tercatat: **terpasang 39**, sebagian 0, **tidak ditemukan 1**, **tidak dapat ditentukan 4**. Dasar: keberadaan objek yang dibuat tiap migrasi (tabel, kolom, tipe kolom, fungsi + jumlah argumen, indeks, policy, view, trigger, constraint, cron job, publikasi realtime, bucket) dan kecocokan isi fungsi (`pg_proc.prosrc`) dengan badan di migrasi. Dari 85 penanda fungsi yang isinya dibandingkan: 77 identik dengan definisi migrasi itu saja, 1 identik tetapi ada definisi lain berbadan sama, 7 sudah ditimpa versi migrasi yang lebih baru; tidak ada yang berisi versi lebih lama atau tidak cocok dengan definisi mana pun (komentar di dalam badan fungsi diabaikan; mis. `antrean_broadcast` di produksi tidak memuat komentar di badan fungsi yang ada di berkas `202609230003` di repo; selebihnya isinya identik).
+  - `terpasang` (39): `202607290001`–`202607290013`, `202607300014`–`202607300024`, `202608080002`, `202608290001`, `202608310002`, `202609230001`–`202609230003`, `202610010001`, `202610070001`, `202610080001`–`202610080002`, `202610090001`–`202610090005`.
+  - Bukan `terpasang`:
+
+    | Migrasi | Status | Alasan |
+    |---|---|---|
+    | `202608040001_catat_pulang_rpc` | tidak dapat ditentukan | satu-satunya objek (`catat_pulang`, 1 arg) ada, tetapi isinya sudah versi `202610080001` (menimpa); tidak membuktikan migrasi ini |
+    | `202608080001_chat_realtime_publication` | tidak dapat ditentukan | `chat_sesi`/`chat_pesan` ada di publikasi `supabase_realtime`, tetapi `202609230001` menambahkan hal yang sama; tidak dapat dibedakan |
+    | `202608310001_finalize_pelayanan_rpc` | tidak dapat ditentukan | `finalize_pelayanan` (3 arg) ada, tetapi isinya sudah versi `202610010001` (menimpa) |
+    | `202608310003_absensi_foto_fo` | tidak dapat ditentukan | berkas no-op (hanya komentar, tanpa pernyataan SQL); tidak ada yang dapat diperiksa |
+    | `202609020001_estimasi_hari_libur` | **tidak ditemukan** | indeks `idx_hari_libur_tanggal` TIDAK ada (di `hari_libur` hanya `hari_libur_pkey`); policy `hari_libur_staff_write` juga tidak ada (yang ada: `hari_libur_admin_write`, `hari_libur_public_read`), sesuai catatan drift di `docs/RUNBOOK_RBAC_TAHAP0.md`. Migrasi ini **tidak terpasang**. **Peringatan regresi:** bila dijalankan sekarang (mis. `db push`) ia membuat ulang policy `hari_libur_staff_write` yang sengaja di-DROP `202610080002` |
+
+  - Kontrol: 13 migrasi yang sudah tercatat diperiksa dengan metode yang sama; 11 `terpasang` dan 2 `tidak dapat ditentukan` (`202607280002`, `202607280005`: hanya objek bersama), tidak ada yang `tidak ditemukan`. Artinya `tidak dapat ditentukan` tidak berarti belum terpasang, hanya belum terbukti lewat katalog.
+  - Yang TIDAK terverifikasi oleh metode ini: ekspresi policy, definisi view/trigger, dan perubahan data (UPDATE/INSERT, mis. penggantian nama layanan di `202610010001`).
+  - Laporan lengkap per migrasi dan per penanda: [`LEDGER-VERIFIKASI-2026-10-13.md`](LEDGER-VERIFIKASI-2026-10-13.md).
+- Cara mengembalikan : tidak diperlukan (tidak ada perubahan).
+- Status       : SELESAI (read-only). Pencatatan ledger retroaktif BELUM dilakukan; menunggu konfirmasi CEO (lihat `docs/MIGRATIONS.md`, bagian "Ledger migrasi produksi").
 
 ### [2026-07-29 20:11 WIB] — Introspeksi skema READ-ONLY (fase A)
 - WP/Migrasi   : fase A / `scripts/introspect-schema.mjs`

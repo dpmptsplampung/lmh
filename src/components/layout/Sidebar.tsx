@@ -206,6 +206,8 @@ export default function Sidebar() {
   const handleLogout = async () => {
     const supabase = createClient();
     await supabase.auth.signOut();
+    // Navigasi keras disengaja setelah keluar: reload penuh membersihkan seluruh state klien.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.href = '/login';
   };
 
