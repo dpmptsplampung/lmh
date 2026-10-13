@@ -88,8 +88,9 @@ describe('Tiket kepemilikan: berkas, urutan, idempoten', () => {
     expect(FORWARD_MIGRATION_FILES).toContain(BERKAS);
     expect(BERKAS).toMatch(/^\d{12}_[a-z0-9_]+\.sql$/);
     const semua = listMigrationFiles();
-    expect(semua.at(-1)).toBe(BERKAS);
-    expect(semua.at(-2)).toBe('202610140001_sesi_staf.sql');
+    // Migrasi yang lebih baru boleh menyusul (mis. 202610140006); yang dijaga: tepat setelah sesi_staf.
+    expect(semua.indexOf(BERKAS)).toBeGreaterThan(-1);
+    expect(semua[semua.indexOf(BERKAS) - 1]).toBe('202610140001_sesi_staf.sql');
   });
 
   it('penjaga prasyarat di awal: sesi_valid(), staf_saya(), boleh_tiket(uuid), kolom dilayani_oleh dan audit_log.nilai_baru', () => {

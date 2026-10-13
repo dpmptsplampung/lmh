@@ -116,7 +116,8 @@ describe('Sesi staf: atomik, idempoten, hanya menyentuh objek miliknya', () => {
     expect(BERKAS).toMatch(/^\d{12}_[a-z0-9_]+\.sql$/);
     // 202610140002_tiket_kepemilikan (A3) memanggil sesi_valid() dan wajib diterapkan SETELAH berkas ini.
     const lain = listMigrationFiles().filter((n) => n !== BERKAS && n.slice(0, 12) > BERKAS.slice(0, 12));
-    expect(lain).toEqual(['202610140002_tiket_kepemilikan.sql']);
+    // Migrasi yang lebih baru (mis. 202610140006) boleh menyusul; A3 harus tetap yang pertama setelah berkas ini.
+    expect(lain[0]).toBe('202610140002_tiket_kepemilikan.sql');
   });
 
   it('daftar pernyataan: hanya tabel sesi_staf, fungsi sesi_*/daftarkan/ping/akhiri, dan dua baris site_settings', () => {
