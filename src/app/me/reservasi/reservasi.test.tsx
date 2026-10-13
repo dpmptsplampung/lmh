@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/lib/supabase/client', () => ({ createClient: vi.fn() }));
@@ -186,5 +186,84 @@ describe('reservation payload', () => {
 
     await screen.findByText(/maksimal 7 hari ke depan/i);
     expect(insert).not.toHaveBeenCalled();
+  });
+
+  // Audit S1 / keputusan K11: consent_log memblokir pembuatan reservasi bila gagal dicatat
+  // (pola K-2 seperti check-in). supabase-js tidak melempar: kegagalan kembali sebagai { error }.
+  describe('consent PDP memblokir reservasi (S1)', () => {
+    const kirim = () => fireEvent.click(screen.getByRole('button', { name: 'Buat Reservasi' }));
+    const GAGAL_RLS = { error: { message: 'new row violates row-level security policy', code: '42501' } };
+
+    it('consent gagal ({ error }): reservasi TIDAK dibuat, pesan + Coba lagi tampil, bukan sukses', async () => {
+      consentInsert.mockResolvedValue(GAGAL_RLS);
+      render(<ReservasiPage />);
+      await screen.findByText('Rencanakan Kedatangan');
+
+      fillValidForm();
+      kirim();
+
+      const alert = await screen.findByRole('alert');
+      expect(alert.textContent).toContain('Persetujuan belum tercatat, coba lagi');
+      expect(within(alert).getByRole('button', { name: /coba lagi/i })).toBeInTheDocument();
+      expect(consentInsert).toHaveBeenCalledTimes(1);
+      expect(insert).not.toHaveBeenCalled();
+      expect(screen.queryByText(/Reservasi Berhasil/)).toBeNull();
+      // Tombol submit tidak macet di status "Memproses..."
+      expect(screen.getByRole('button', { name: 'Buat Reservasi' })).toBeEnabled();
+    });
+
+    it('consent gagal karena insert menolak (jaringan putus): reservasi TIDAK dibuat', async () => {
+      consentInsert.mockRejectedValue(new TypeError('Failed to fetch'));
+      render(<ReservasiPage />);
+      await screen.findByText('Rencanakan Kedatangan');
+
+      fillValidForm();
+      kirim();
+
+      const alert = await screen.findByRole('alert');
+      expect(alert.textContent).toContain('Persetujuan belum tercatat, coba lagi');
+      expect(insert).not.toHaveBeenCalled();
+      expect(screen.queryByText(/Reservasi Berhasil/)).toBeNull();
+    });
+
+    it('"Coba lagi" mengulang pencatatan consent; bila kali ini berhasil reservasi dibuat (isian form dipertahankan)', async () => {
+      consentInsert
+        .mockResolvedValueOnce(GAGAL_RLS)
+        .mockResolvedValueOnce({ error: null });
+      render(<ReservasiPage />);
+      await screen.findByText('Rencanakan Kedatangan');
+
+      fillValidForm();
+      kirim();
+
+      const alert = await screen.findByRole('alert');
+      expect(insert).not.toHaveBeenCalled();
+
+      fireEvent.click(within(alert).getByRole('button', { name: /coba lagi/i }));
+
+      await waitFor(() => expect(insert).toHaveBeenCalledTimes(1));
+      expect(consentInsert).toHaveBeenCalledTimes(2);
+      expect(insert.mock.calls[0][0]).toMatchObject({
+        asal: 'reservasi',
+        pengunjung_id: 'visitor-1',
+        nama_yang_ditemui: 'Kepala Bidang',
+      });
+      expect(await screen.findByText(/Reservasi Berhasil/)).toBeInTheDocument();
+      expect(screen.queryByText('Persetujuan belum tercatat, coba lagi')).toBeNull();
+    });
+
+    it('consent berhasil: reservasi dibuat dan layar sukses tampil tanpa pesan gagal', async () => {
+      consentInsert.mockResolvedValue({ error: null });
+      render(<ReservasiPage />);
+      await screen.findByText('Rencanakan Kedatangan');
+
+      fillValidForm();
+      kirim();
+
+      expect(await screen.findByText(/Reservasi Berhasil/)).toBeInTheDocument();
+      expect(consentInsert).toHaveBeenCalledTimes(1);
+      expect(insert).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText('Persetujuan belum tercatat, coba lagi')).toBeNull();
+    });
   });
 });

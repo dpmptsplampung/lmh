@@ -15,6 +15,8 @@ import {
   Users,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { mutasiInsert } from '@/lib/supabase/mutate';
+import ErrorRetry from '@/components/ErrorRetry';
 import QRCodeDisplay from '@/components/QRCode';
 import styles from './reservasi.module.css';
 
@@ -47,6 +49,8 @@ export default function ReservasiPage() {
   const [loading, setLoading] = useState(false);
   const [loadingInit, setLoadingInit] = useState(true);
   const [error, setError] = useState('');
+  // S1: pencatatan consent_log gagal -> reservasi tidak dibuat; ditampilkan lewat ErrorRetry (bukan teks biasa).
+  const [consentGagal, setConsentGagal] = useState(false);
   const [success, setSuccess] = useState<{ qr_token: string; tanggal_rencana: string } | null>(null);
   const [consentGiven, setConsentGiven] = useState(false);
   const [queuePos, setQueuePos] = useState<{ posisi: number; total_menunggu: number } | null>(null);
@@ -121,9 +125,11 @@ export default function ReservasiPage() {
     };
   }, [form.layanan_id]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // `e` opsional: tombol "Coba lagi" (ErrorRetry) memanggil ulang tanpa event submit.
+  const handleSubmit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     setError('');
+    setConsentGagal(false);
 
     // Validasi
     if (!form.tujuan) {
@@ -155,18 +161,19 @@ export default function ReservasiPage() {
     // SCH-01/SCH-11: tolak di luar jadwal standby dengan menyebut jadwal terdekat (P3).
     if (form.tujuan === 'loket' && form.layanan_id) {
       const supabase = createClient();
-      const { data: buka } = await supabase.rpc('is_layanan_buka_jadwal', {
+      const { data: buka, error: bukaError } = await supabase.rpc('is_layanan_buka_jadwal', {
         p_layanan_id: form.layanan_id,
         p_tanggal: form.tanggal_rencana,
         p_jam: null,
       });
-      if (buka === false) {
-        const { data: jadwalBerikutnya } = await supabase.rpc('jadwal_berikutnya', {
+      // Error RPC (baca saja) diperlakukan "tidak diketahui" -> tidak menolak; validasi sesungguhnya di DB.
+      if (!bukaError && buka === false) {
+        const { data: jadwalBerikutnya, error: jadwalError } = await supabase.rpc('jadwal_berikutnya', {
           p_layanan_id: form.layanan_id,
           p_dari_tanggal: form.tanggal_rencana,
         });
         const layananNama = layananOptions.find((l) => l.id === form.layanan_id)?.nama ?? 'Layanan ini';
-        const tglTeks = jadwalBerikutnya
+        const tglTeks = !jadwalError && jadwalBerikutnya
           ? new Date(`${jadwalBerikutnya}T00:00:00`).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' })
           : null;
         setError(
@@ -190,14 +197,24 @@ export default function ReservasiPage() {
     try {
       const supabase = createClient();
 
-      // Catat consent PDP sebelum insert visit (konsisten dengan check-in & chat)
+      // Catat consent PDP sebelum insert visit. Hasilnya WAJIB diperiksa (supabase-js tidak
+      // melempar, kegagalan kembali sebagai { error }): gagal -> reservasi TIDAK dilanjutkan
+      // dan pengguna diminta mencoba lagi (audit S1, K11; pola K-2 di check-in).
       if (authUserId && consentGiven) {
-        await supabase.from('consent_log').insert({
-          subjek_ref: authUserId,
-          tujuan: 'reservasi_data',
-          disetujui: true,
-          versi_kebijakan: CONSENT_VERSION,
-        });
+        try {
+          await mutasiInsert(
+            supabase.from('consent_log').insert({
+              subjek_ref: authUserId,
+              tujuan: 'reservasi_data',
+              disetujui: true,
+              versi_kebijakan: CONSENT_VERSION,
+            }),
+          );
+        } catch (consentErr) {
+          console.error('Consent reservasi gagal dicatat:', consentErr);
+          setConsentGagal(true);
+          return; // `finally` di bawah mengembalikan loading = false
+        }
       }
 
       const insertData: Record<string, unknown> = {
@@ -233,10 +250,11 @@ export default function ReservasiPage() {
       // Defensif: rpc mungkin belum tersedia — sembunyikan blok bila gagal.
       if (form.tanggal_rencana === minDate) {
         try {
-          const { data: pos } = await supabase
+          const { data: pos, error: posError } = await supabase
             .rpc('get_queue_position', { p_qr_token: data.qr_token })
             .maybeSingle();
           if (
+            !posError &&
             pos &&
             typeof (pos as { posisi?: unknown }).posisi === 'number' &&
             typeof (pos as { total_menunggu?: unknown }).total_menunggu === 'number'
@@ -498,10 +516,18 @@ export default function ReservasiPage() {
                   />
                 </div>
 
-                {error && (
-                  <div className="form-error" role="alert">
-                    {error}
-                  </div>
+                {consentGagal ? (
+                  <ErrorRetry
+                    judul="Reservasi belum dibuat"
+                    pesan="Persetujuan belum tercatat, coba lagi"
+                    onRetry={() => void handleSubmit()}
+                  />
+                ) : (
+                  error && (
+                    <div className="form-error" role="alert">
+                      {error}
+                    </div>
+                  )
                 )}
 
                 {/* Consent PDP — wajib sebelum submit */}

@@ -1,0 +1,53 @@
+.wadah {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--color-danger-500);
+  border-radius: var(--radius-lg);
+  background: var(--color-danger-50);
+  color: var(--color-danger-700);
+}
+
+.ikon {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--color-danger-600);
+}
+
+.isi {
+  flex: 1;
+  min-width: 0;
+}
+
+.judul {
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-base);
+  font-weight: 600;
+}
+
+.pesan {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.tombol {
+  margin-top: var(--space-3);
+}
+
+.berputar {
+  animation: putar 1s linear infinite;
+}
+
+@keyframes putar {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .berputar {
+    animation: none;
+  }
+}
