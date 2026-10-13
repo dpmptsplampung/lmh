@@ -32,6 +32,16 @@
 
 ## Riwayat (dari yang terbaru)
 
+### [2026-10-14] — Sesi tunggal staf: tabel `sesi_staf` + RPC sesi (M-202610140001) — BELUM DITERAPKAN
+- WP/Migrasi   : Fase 3 Tahap A (K1, tugas A1) / `supabase/migrations/202610140001_sesi_staf.sql` + test kontrak `supabase/migrations/sesi_staf.test.ts` + rollback `docs/rollback-sesi-staf-202610140001.sql`
+- Jenis        : DDL (tabel baru, fungsi baru, dua baris pengaturan); tidak mengubah objek yang ada
+- Objek        : tabel `public.sesi_staf` (RLS aktif tanpa policy; REVOKE dari anon/authenticated); fungsi `sesi_klaim_id`, `sesi_idle_menit`, `sesi_tunggal_aktif` (internal), `sesi_status`, `sesi_valid`, `daftarkan_sesi`, `ping_sesi(boolean)`, `akhiri_sesi`; baris `site_settings` `sesi_idle_menit`=120 dan `sesi_tunggal_aktif`=false (`ON CONFLICT DO NOTHING`)
+- Menyentuh data pengunjung? : Tidak (hanya `user_id` staf dan `session_id`)
+- Ringkasan    : keputusan CEO: satu akun per orang, login baru menimpa sesi lama dan sesi lama tak sah di server; logout otomatis idle 2 jam dan setelah jam tutup. Flag `sesi_tunggal_aktif` = false selama transisi: staf tanpa baris sesi tetap diterima ('transisi'); staf yang sudah punya baris ditegakkan penuh (digantikan/idle). Cutover (flag true) hanya setelah klien A2 ter-deploy dan staf login ulang; bila lebih awal, semua staf ditolak RPC mutasi. Klaim `session_id` JWT belum dibuktikan pada token proyek ini.
+- Cara menerapkan : WAJIB `--atomic`: `node scripts/apply-migration.mjs supabase/migrations/202610140001_sesi_staf.sql --atomic --dry-run`, lalu tanpa `--dry-run` setelah konfirmasi CEO. Idempoten.
+- Cara mengembalikan : `node scripts/apply-migration.mjs docs/rollback-sesi-staf-202610140001.sql --atomic` (`--dry-run` dulu); menolak bila fungsi/policy lain (mis. RPC mutasi A3) masih memanggil `sesi_valid()`.
+- Status       : BELUM DITERAPKAN ke produksi (menunggu konfirmasi CEO).
+
 ### [2026-10-13] — FAQ: `faq_petugas_all` hanya untuk peran petugas (M-202610130002) — DITERAPKAN 2026-10-13
 - WP/Migrasi   : lanjutan 202610130001 (hasil review independen) / `supabase/migrations/202610130002_faq_petugas_hanya_petugas.sql` + test kontrak `supabase/migrations/faq_petugas_hanya_petugas.test.ts` + rollback `docs/rollback-faq-petugas-hanya-petugas-202610130002.sql`
 - Jenis        : DDL (policy RLS); tidak ada perubahan data
