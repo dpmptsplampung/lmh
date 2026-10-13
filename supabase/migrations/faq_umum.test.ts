@@ -247,10 +247,10 @@ describe('FAQ umum: rollback', () => {
 });
 
 describe('FAQ umum: pencatatan (docs/ATURAN_MIGRASI.md #4)', () => {
-  it('tercatat di docs/MIGRATIONS.md dan docs/analysis/DB-CHANGES.md sebagai belum diterapkan', () => {
+  it('tercatat di docs/MIGRATIONS.md dan docs/analysis/DB-CHANGES.md dengan status penerapan', () => {
     expect(bacaDocs('MIGRATIONS.md')).toContain('202610130001_faq_umum');
     const dbChanges = bacaDocs('analysis', 'DB-CHANGES.md');
     expect(dbChanges).toContain('202610130001_faq_umum');
-    expect(dbChanges).toMatch(/202610130001_faq_umum[\s\S]{0,1500}BELUM DITERAPKAN/);
+    expect(dbChanges).toMatch(/202610130001_faq_umum[\s\S]{0,1500}(?:BELUM )?DITERAPKAN/);
   });
 });

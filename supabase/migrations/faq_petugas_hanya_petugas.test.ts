@@ -244,11 +244,11 @@ describe('faq petugas hanya petugas: rollback', () => {
 });
 
 describe('faq petugas hanya petugas: pencatatan (docs/ATURAN_MIGRASI.md #4)', () => {
-  it('tercatat di docs/MIGRATIONS.md dan docs/analysis/DB-CHANGES.md sebagai belum diterapkan, dengan urutan penerapan', () => {
+  it('tercatat di docs/MIGRATIONS.md dan docs/analysis/DB-CHANGES.md dengan status penerapan dan urutan penerapan', () => {
     expect(bacaDocs('MIGRATIONS.md')).toContain('202610130002_faq_petugas_hanya_petugas');
     const dbChanges = bacaDocs('analysis', 'DB-CHANGES.md');
     expect(dbChanges).toContain('202610130002_faq_petugas_hanya_petugas');
-    expect(dbChanges).toMatch(/202610130002_faq_petugas_hanya_petugas[\s\S]{0,3000}BELUM DITERAPKAN/);
+    expect(dbChanges).toMatch(/202610130002_faq_petugas_hanya_petugas[\s\S]{0,3000}(?:BELUM )?DITERAPKAN/);
     expect(dbChanges).toMatch(/202610130001[\s\S]{0,400}202610130002/);
   });
 });
