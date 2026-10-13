@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { logServerEvent } from '@/lib/observability/logger';
+import { apakahPeranStaf, daftarkanSesiStaf, keluarDariSesi } from '@/lib/sesi-staf';
 
 function safeNextPath(next: string | null): string {
   if (next && next.startsWith('/') && !next.startsWith('//')) {
@@ -28,6 +29,26 @@ export async function GET(request: Request) {
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
     if (!error && data.user) {
+      // Sesi tunggal staf (admin/petugas/front_office): daftarkan SEKALI setelah login (tautan undangan, pemulihan
+      // sandi, Google). Pengunjung/mitra non-staf tidak memanggilnya. Gagal = login dibatalkan, bukan diloloskan diam-diam.
+      const { data: peran } = await supabase
+        .from('petugas')
+        .select('role')
+        .eq('auth_user_id', data.user.id)
+        .maybeSingle();
+      if (peran && apakahPeranStaf(peran.role)) {
+        const daftar = await daftarkanSesiStaf(supabase);
+        if (daftar.status === 'gagal') {
+          logServerEvent('error', {
+            operation: 'auth.callback.daftar_sesi_gagal',
+            route: '/auth/callback',
+            kode: daftar.kode,
+          });
+          await keluarDariSesi(supabase, { akhiri: false });
+          return NextResponse.redirect(`${origin}/login?error=sesi`);
+        }
+      }
+
       // Auto-create profil pengunjung jika belum ada
       const { data: existing } = await supabase
         .from('pengunjung')

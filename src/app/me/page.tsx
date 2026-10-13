@@ -27,6 +27,7 @@ import {
   Map,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { keluarDariSesi } from '@/lib/sesi-staf';
 import { getSiteSettings } from '@/lib/site-settings';
 import { waLink } from '@/lib/utils';
 import { WA_NUMBER, WA_DEFAULT_MESSAGE } from '@/lib/constants';
@@ -147,7 +148,8 @@ export default function MeDashboard() {
 
   const handleLogout = async () => {
     const supabase = createClient();
-    await supabase.auth.signOut();
+    // Staf juga bisa keluar dari sini: akhiri sesi tunggal dulu (aman bagi non-staf; kegagalan tidak menghalangi).
+    await keluarDariSesi(supabase);
     // Navigasi keras disengaja setelah keluar: reload penuh membersihkan seluruh state klien.
     // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.href = '/login';

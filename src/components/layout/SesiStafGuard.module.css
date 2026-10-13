@@ -1,0 +1,31 @@
+.banner {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  background: var(--color-danger-100);
+  border-bottom: 2px solid var(--color-danger-500);
+  color: var(--color-danger-700);
+  width: 100%;
+}
+
+.content {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  max-width: var(--max-content-width);
+  margin: 0 auto;
+}
+
+.text {
+  flex: 1;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.hitung {
+  flex-shrink: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}

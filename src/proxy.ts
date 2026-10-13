@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { logServerEvent } from '@/lib/observability/logger';
+import { parseAlasanSesi, urlLoginAlasan } from '@/lib/sesi-staf';
 
 // Rute yang WAJIB login
 const protectedPrefixes = ['/admin', '/me'];
@@ -16,6 +17,48 @@ function getRequestId(request: NextRequest): string {
 function attachRequestId(response: NextResponse, requestId: string): NextResponse {
   response.headers.set('x-request-id', requestId);
   return response;
+}
+
+// Batas waktu pemeriksaan sesi: RPC yang lambat tidak boleh menahan setiap navigasi /admin. Penegakan keras
+// sesi ada di RPC mutasi (sesi_valid()) dan heartbeat klien; proxy hanya lapisan tambahan (gagal-terbuka).
+const BATAS_CEK_SESI_MS = 1500;
+
+type HasilCekSesi = { jenis: 'lanjut' } | { jenis: 'tolak'; url: string };
+
+// Satu panggilan sesi_status() untuk staf yang sudah lolos cek role. Status 'ok'/'transisi'/'bukan_staf' lanjut;
+// 'digantikan'/'idle'/'tidak_terdaftar' dialihkan ke /login?alasan=. Galat jaringan/RPC, timeout, atau status
+// di luar kontrak = lanjut (gagal-terbuka) dan dicatat; halaman tidak boleh jatuh karena pemeriksaan ini.
+async function cekSesiStaf(
+  supabase: ReturnType<typeof createServerClient>,
+  request: NextRequest,
+  requestId: string,
+): Promise<HasilCekSesi> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const hasil = await Promise.race([
+      Promise.resolve(supabase.rpc('sesi_status')),
+      new Promise<never>((_, tolak) => {
+        timer = setTimeout(() => tolak(new Error('sesi_status timeout')), BATAS_CEK_SESI_MS);
+      }),
+    ]);
+    if (hasil.error) throw hasil.error;
+    const status = hasil.data;
+    if (status === 'ok' || status === 'transisi' || status === 'bukan_staf') return { jenis: 'lanjut' };
+    const alasan = parseAlasanSesi(typeof status === 'string' ? status : null);
+    if (alasan) return { jenis: 'tolak', url: urlLoginAlasan(alasan) };
+    throw new Error('sesi_status mengembalikan nilai di luar kontrak');
+  } catch (error) {
+    logServerEvent('warn', {
+      requestId,
+      route: request.nextUrl.pathname,
+      method: request.method,
+      operation: 'proxy.sesi_status_gagal',
+      error: { type: error instanceof Error ? error.name : 'UnknownError' },
+    });
+    return { jenis: 'lanjut' };
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 function failureResponse(request: NextRequest, requestId: string, error: unknown): NextResponse {
@@ -113,6 +156,12 @@ export async function proxy(request: NextRequest) {
     // Jika user tidak terdaftar sebagai petugas/admin, alihkan ke dashboard pengunjung (/me)
       if (role !== 'admin' && role !== 'petugas' && role !== 'front_office') {
         return attachRequestId(NextResponse.redirect(new URL('/me', request.url)), requestId);
+      }
+
+      // Sesi tunggal staf (A2): sesi yang digantikan login lain / idle dialihkan ke login dengan alasan.
+      const sesi = await cekSesiStaf(supabase, request, requestId);
+      if (sesi.jenis === 'tolak') {
+        return attachRequestId(NextResponse.redirect(new URL(sesi.url, request.url)), requestId);
       }
 
       // Akun dengan sandi sementara (reset Admin) wajib ganti sandi dulu. Hanya mengarahkan ke

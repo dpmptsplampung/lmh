@@ -39,6 +39,7 @@ import {
 import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
+import { keluarDariSesi } from '@/lib/sesi-staf';
 import { makeThrottle } from '@/app/chat/merge';
 import { ADMIN_NAV, type AdminNavEntry } from '@/lib/admin-nav';
 import styles from './Sidebar.module.css';
@@ -205,7 +206,8 @@ export default function Sidebar() {
 
   const handleLogout = async () => {
     const supabase = createClient();
-    await supabase.auth.signOut();
+    // akhiri_sesi dulu (kegagalannya tidak menghalangi signOut), lalu keluar dari sesi ini saja.
+    await keluarDariSesi(supabase);
     // Navigasi keras disengaja setelah keluar: reload penuh membersihkan seluruh state klien.
     // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.href = '/login';
