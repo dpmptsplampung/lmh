@@ -54,6 +54,7 @@ Persetujuan eksplisit diperlukan sebelum pengolahan data pribadi. Implementasi:
 |---------------|-------|----------|
 | Form check-in `/checkin` | `consent_log` | `checkin_data` |
 | Mulai sesi chat `/chat` | `consent_log` | `chat_followup` |
+| Simpan profil pengunjung (kotak centang pernyataan kebenaran data; K12) | `consent_log` | `pernyataan_kebenaran` — versi teks di `src/lib/pernyataan-kebenaran.ts` (`versi_kebijakan`); `subjek_ref` = `auth.uid()`; gagal mencatat = profil tidak disimpan. Setelah profil lengkap, Nama Lengkap terkunci di database; perubahan hanya oleh Front Office/admin lewat `ubah_nama_pengunjung` dengan `audit_log` |
 | Kontak UMKM (checkbox consent saat admin submit listing) | `consent_log` | `umkm_contact_public` — **Diimplementasikan 2026-07-20** (checkbox consent saat admin submit listing + baris `consent_log` tujuan `umkm_contact_public`) |
 
 - Consent dicatat di tabel `consent_log` dengan kolom `disetujui` (boolean), `versi_kebijakan` (saat ini `1.0`), dan `created_at`.

@@ -3,18 +3,28 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { KATEGORI_PENGUNJUNG } from '@/lib/constants';
-import { AlertCircle, CheckCircle2, HelpCircle, Loader2, Sparkles } from 'lucide-react';
+import { MutasiError, mutasiInsert, pesanMutasi } from '@/lib/supabase/mutate';
+import {
+  PERNYATAAN_KEBENARAN_JENIS,
+  PERNYATAAN_KEBENARAN_TEKS,
+  PERNYATAAN_KEBENARAN_VERSI,
+} from '@/lib/pernyataan-kebenaran';
+import { isPhoneValid, profilLengkap, profilPengunjungSchema, validasiProfil } from '@/lib/profil-pengunjung';
+import { AlertCircle, CheckCircle2, HelpCircle, Loader2, Lock, Sparkles } from 'lucide-react';
 import styles from './profile-gate.module.css';
 
 interface ProfileCompletenessGateProps {
   children: React.ReactNode;
 }
 
-export function isPhoneValid(phone: string): boolean {
-  const cleaned = phone.replace(/[\s-]/g, '');
-  // Must start with 08, 628, or +628, followed by 7 to 12 digits (min 10 digits total)
-  return /^(?:\+?62|62|0)8[1-9]\d{7,12}$/.test(cleaned);
-}
+// Dipertahankan agar impor lama (`import { isPhoneValid } from '.../ProfileCompletenessGate'`) tetap berlaku.
+export { isPhoneValid };
+
+const PESAN_CONSENT_GAGAL =
+  'Pernyataan kebenaran data gagal dicatat, sehingga profil Anda belum disimpan. Silakan coba lagi.';
+const PESAN_NAMA_TERKUNCI =
+  'Nama Lengkap sudah terkunci dan tidak dapat diubah sendiri. Untuk mengubah nama, hubungi Front Office.';
+const PESAN_CENTANG = 'Centang pernyataan kebenaran data terlebih dahulu.';
 
 export default function ProfileCompletenessGate({ children }: ProfileCompletenessGateProps) {
   const [loading, setLoading] = useState(true);
@@ -27,10 +37,16 @@ export default function ProfileCompletenessGate({ children }: ProfileCompletenes
   const [formNoHp, setFormNoHp] = useState('');
   const [formAsal, setFormAsal] = useState('');
   const [formKategori, setFormKategori] = useState('');
+  const [formEmail, setFormEmail] = useState('');
+  // K12: tombol Simpan baru aktif setelah pernyataan kebenaran dicentang.
+  const [formSetuju, setFormSetuju] = useState(false);
+  // K12 (keputusan CEO G.3 Opsi A): Nama Lengkap terkunci setelah profil lengkap tersimpan (ditegakkan trigger DB).
+  const [namaTerkunci, setNamaTerkunci] = useState(false);
 
   // Touched & modal states
   const [namaTouched, setNamaTouched] = useState(false);
   const [noHpTouched, setNoHpTouched] = useState(false);
+  const [emailTouched, setEmailTouched] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -39,7 +55,7 @@ export default function ProfileCompletenessGate({ children }: ProfileCompletenes
     async function checkProfile() {
       try {
         const supabase = createClient();
-        
+
         // 1. Dapatkan user session
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) {
@@ -54,11 +70,14 @@ export default function ProfileCompletenessGate({ children }: ProfileCompletenes
         // 2. Tarik data profil pengunjung
         const { data: profile, error: profileErr } = await supabase
           .from('pengunjung')
-          .select('nama, asal_instansi, kategori, no_hp')
+          .select('nama, email, asal_instansi, kategori, no_hp')
           .eq('auth_user_id', user.id)
           .maybeSingle();
 
         if (profileErr) throw profileErr;
+
+        // Email awal: yang tersimpan, atau email akun login (Google) bila profil belum memilikinya.
+        setFormEmail(profile?.email || user.email || '');
 
         if (profile) {
           setFormNama(profile.nama || '');
@@ -66,18 +85,13 @@ export default function ProfileCompletenessGate({ children }: ProfileCompletenes
           setFormAsal(profile.asal_instansi || '');
           setFormKategori(profile.kategori || '');
 
-          // Periksa kelengkapan termasuk nomor HP valid
-          if (
-            profile.nama?.trim() && 
-            profile.asal_instansi?.trim() && 
-            profile.kategori?.trim() &&
-            profile.no_hp?.trim() &&
-            isPhoneValid(profile.no_hp)
-          ) {
-            setComplete(true);
-          } else {
-            setComplete(false);
-          }
+          // Semua field wajib benar-benar terisi (nama, HP valid, asal, kategori, email): satu aturan di profil-pengunjung.ts
+          const lengkap = profilLengkap(profile);
+          setComplete(lengkap);
+          // Profil lengkap = nama terkunci di database (trg_jaga_nama_pengunjung). Pada jalur gerbang ini hampir
+          // selalu false (gerbang tampil hanya bila profil belum lengkap); tetap dipasang agar form tidak
+          // menawarkan penyuntingan yang pasti ditolak database.
+          setNamaTerkunci(lengkap);
         } else {
           setComplete(false);
         }
@@ -92,32 +106,33 @@ export default function ProfileCompletenessGate({ children }: ProfileCompletenes
     checkProfile();
   }, []);
 
-  const isNamaValid = formNama.trim().length >= 3;
+  const isNamaValid = profilPengunjungSchema.shape.nama.safeParse(formNama).success;
   const isHpValid = isPhoneValid(formNoHp);
+  const isEmailValid = profilPengunjungSchema.shape.email.safeParse(formEmail).success;
+
+  const masukanForm = () => ({
+    nama: formNama,
+    no_hp: formNoHp,
+    asal_instansi: formAsal,
+    kategori: formKategori,
+    email: formEmail,
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setNamaTouched(true);
     setNoHpTouched(true);
+    setEmailTouched(true);
 
-    if (!isNamaValid) {
-      setError('Peringatan: Nama Lengkap wajib diisi dengan benar (minimal 3 karakter).');
+    // Tombol dinonaktifkan tanpa pernyataan, tetapi submit lewat Enter harus tetap ditolak.
+    if (!formSetuju) {
+      setError(PESAN_CENTANG);
       return;
     }
-    if (!formNoHp.trim()) {
-      setError('Nomor HP / WhatsApp wajib diisi.');
-      return;
-    }
-    if (!isHpValid) {
-      setError('Nomor HP tidak valid. Harus diawali 08 / 628 / +628 dan minimal 10 digit.');
-      return;
-    }
-    if (!formAsal.trim()) {
-      setError('Asal / Instansi wajib diisi.');
-      return;
-    }
-    if (!formKategori) {
-      setError('Kategori Pengunjung wajib dipilih.');
+
+    const hasil = validasiProfil(masukanForm());
+    if (!hasil.ok) {
+      setError(hasil.pesan);
       return;
     }
 
@@ -129,30 +144,57 @@ export default function ProfileCompletenessGate({ children }: ProfileCompletenes
   const handleConfirmSave = async () => {
     if (!userId) return;
 
+    const hasil = validasiProfil(masukanForm());
+    if (!formSetuju || !hasil.ok) {
+      setShowConfirmModal(false);
+      setError(!formSetuju ? PESAN_CENTANG : hasil.ok ? '' : hasil.pesan);
+      return;
+    }
+
     setSaving(true);
     setError('');
 
+    const supabase = createClient();
+
+    // 1. Catat pernyataan kebenaran DULU. Hasilnya wajib diperiksa: gagal = profil TIDAK disimpan (K12; menutup
+    //    temuan "consent PDP tidak konsisten"). subjek_ref = auth.uid() (dibolehkan policy consent_log_insert_own).
     try {
-      const supabase = createClient();
+      await mutasiInsert(
+        supabase.from('consent_log').insert({
+          subjek_ref: userId,
+          tujuan: PERNYATAAN_KEBENARAN_JENIS,
+          disetujui: true,
+          versi_kebijakan: PERNYATAAN_KEBENARAN_VERSI,
+        }),
+      );
+    } catch (err) {
+      console.error('Gagal mencatat pernyataan kebenaran', err);
+      setError(err instanceof MutasiError && err.kode === 'jaringan' ? pesanMutasi(err) : PESAN_CONSENT_GAGAL);
+      setShowConfirmModal(false);
+      setSaving(false);
+      return;
+    }
 
-      // Upsert/Update data kelengkapan profil pengunjung
-      const { error: updateErr } = await supabase
-        .from('pengunjung')
-        .upsert({
+    // 2. Simpan profil (upsert); hasil diperiksa lewat helper mutasi.
+    try {
+      await mutasiInsert(
+        supabase.from('pengunjung').upsert({
           auth_user_id: userId,
-          nama: formNama.trim(),
-          no_hp: formNoHp.trim(),
-          asal_instansi: formAsal.trim(),
-          kategori: formKategori,
-        }, { onConflict: 'auth_user_id' });
-
-      if (updateErr) throw updateErr;
+          nama: hasil.data.nama,
+          no_hp: hasil.data.no_hp,
+          asal_instansi: hasil.data.asal_instansi,
+          kategori: hasil.data.kategori,
+          email: hasil.data.email,
+        }, { onConflict: 'auth_user_id' }),
+      );
 
       setShowConfirmModal(false);
       setComplete(true);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Gagal menyimpan data profil.';
-      setError(msg);
+      console.error('Gagal menyimpan profil pengunjung', err);
+      const asal = err instanceof MutasiError ? err.asal : undefined;
+      const pesanDb = typeof asal === 'object' && asal !== null ? String((asal as { message?: unknown }).message ?? '') : '';
+      setError(pesanDb.includes('NAMA_TERKUNCI') ? PESAN_NAMA_TERKUNCI : pesanMutasi(err, 'Gagal menyimpan data profil.'));
       setShowConfirmModal(false);
     } finally {
       setSaving(false);
@@ -196,24 +238,25 @@ export default function ProfileCompletenessGate({ children }: ProfileCompletenes
             <h2 className={styles.title}>Lengkapi Profil Anda</h2>
             <p className={styles.subtitle}>
               Sebelum mengakses layanan dan Dashboard Lampung Maju Hub, mohon lengkapi data buku tamu Anda terlebih dahulu.
+              Seluruh isian wajib diisi dengan benar.
             </p>
           </div>
 
           {error && (
-            <div className={styles.error}>
+            <div className={styles.error} role="alert">
               <AlertCircle size={16} />
               <span>{error}</span>
             </div>
           )}
 
-          <form className={styles.form} onSubmit={handleSubmit}>
+          <form className={styles.form} onSubmit={handleSubmit} noValidate>
             {/* 1. Nama Lengkap with Warnings */}
             <div className={styles.formGroup}>
               <label className={styles.label} htmlFor="nama">Nama Lengkap *</label>
               <input
                 id="nama"
                 type="text"
-                className={`${styles.input} ${namaTouched && !isNamaValid ? styles.inputError : ''}`}
+                className={`${styles.input} ${namaTerkunci ? styles.inputLocked : ''} ${namaTouched && !isNamaValid ? styles.inputError : ''}`}
                 placeholder="Masukkan nama lengkap Anda sesuai KTP/Identitas..."
                 value={formNama}
                 onChange={(e) => {
@@ -221,9 +264,23 @@ export default function ProfileCompletenessGate({ children }: ProfileCompletenes
                   if (!namaTouched) setNamaTouched(true);
                 }}
                 onBlur={() => setNamaTouched(true)}
+                readOnly={namaTerkunci}
+                aria-readonly={namaTerkunci}
+                aria-describedby="nama-catatan"
                 required
               />
-              {namaTouched && !isNamaValid && (
+              {namaTerkunci ? (
+                <div id="nama-catatan" className={styles.lockNote}>
+                  <Lock size={12} style={{ display: 'inline', verticalAlign: '-1px', marginRight: 4 }} />
+                  Nama Lengkap terkunci. Untuk mengubah nama, hubungi Front Office.
+                </div>
+              ) : (
+                <div id="nama-catatan" className={styles.lockNote}>
+                  Isi sesuai identitas Anda. Setelah profil tersimpan, Nama Lengkap terkunci dan tidak dapat diubah
+                  sendiri; untuk mengubahnya hubungi Front Office.
+                </div>
+              )}
+              {namaTouched && !isNamaValid && !namaTerkunci && (
                 <div className={styles.fieldWarning}>
                   <AlertCircle size={14} />
                   <span>Peringatan: Mohon isi nama lengkap Anda (minimal 3 karakter).</span>
@@ -276,7 +333,31 @@ export default function ProfileCompletenessGate({ children }: ProfileCompletenes
               )}
             </div>
 
-            {/* 3. Asal / Instansi */}
+            {/* 3. Email */}
+            <div className={styles.formGroup}>
+              <label className={styles.label} htmlFor="email">Email *</label>
+              <input
+                id="email"
+                type="email"
+                className={`${styles.input} ${emailTouched && !isEmailValid ? styles.inputError : ''}`}
+                placeholder="Contoh: nama@email.com"
+                value={formEmail}
+                onChange={(e) => {
+                  setFormEmail(e.target.value);
+                  if (!emailTouched) setEmailTouched(true);
+                }}
+                onBlur={() => setEmailTouched(true)}
+                required
+              />
+              {emailTouched && !isEmailValid && (
+                <div className={styles.fieldWarning}>
+                  <AlertCircle size={14} />
+                  <span>Email wajib diisi dengan format yang benar.</span>
+                </div>
+              )}
+            </div>
+
+            {/* 4. Asal / Instansi */}
             <div className={styles.formGroup}>
               <label className={styles.label} htmlFor="asal">Asal / Instansi *</label>
               <input
@@ -290,7 +371,7 @@ export default function ProfileCompletenessGate({ children }: ProfileCompletenes
               />
             </div>
 
-            {/* 4. Kategori Pengunjung */}
+            {/* 5. Kategori Pengunjung */}
             <div className={styles.formGroup}>
               <label className={styles.label} htmlFor="kategori">Kategori Pengunjung *</label>
               <select
@@ -307,7 +388,18 @@ export default function ProfileCompletenessGate({ children }: ProfileCompletenes
               </select>
             </div>
 
-            <button type="submit" className={styles.submitBtn} disabled={saving}>
+            {/* 6. Pernyataan kebenaran data (K12): Simpan baru aktif setelah dicentang */}
+            <label className={styles.consentRow} htmlFor="pernyataan-kebenaran">
+              <input
+                id="pernyataan-kebenaran"
+                type="checkbox"
+                checked={formSetuju}
+                onChange={(e) => setFormSetuju(e.target.checked)}
+              />
+              <span className={styles.consentText}>{PERNYATAAN_KEBENARAN_TEKS}</span>
+            </label>
+
+            <button type="submit" className={styles.submitBtn} disabled={saving || !formSetuju}>
               Simpan & Lanjutkan
             </button>
           </form>
@@ -325,7 +417,8 @@ export default function ProfileCompletenessGate({ children }: ProfileCompletenes
                 </div>
                 <h3 id="confirm-modal-title" className={styles.modalTitle}>Konfirmasi Data Anda</h3>
                 <p className={styles.modalSubtitle}>
-                  Apakah data yang Anda masukkan di bawah ini sudah benar dan sesuai?
+                  Apakah data yang Anda masukkan di bawah ini sudah benar dan sesuai? Nama Lengkap tidak dapat diubah
+                  sendiri setelah disimpan.
                 </p>
               </div>
 
@@ -337,6 +430,10 @@ export default function ProfileCompletenessGate({ children }: ProfileCompletenes
                 <div className={styles.summaryRow}>
                   <span className={styles.summaryLabel}>Nomor HP / WhatsApp</span>
                   <span className={styles.summaryValue}>{formNoHp}</span>
+                </div>
+                <div className={styles.summaryRow}>
+                  <span className={styles.summaryLabel}>Email</span>
+                  <span className={styles.summaryValue}>{formEmail}</span>
                 </div>
                 <div className={styles.summaryRow}>
                   <span className={styles.summaryLabel}>Asal / Instansi</span>

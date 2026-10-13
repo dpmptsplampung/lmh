@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, waitFor, cleanup, act } from '@testing-library/react';
 
 vi.mock('@/lib/supabase/client', () => ({
   createClient: vi.fn(),
@@ -95,5 +95,38 @@ describe('Layar Antrian (public display)', () => {
     await waitFor(() => expect(mock.channel).toHaveBeenCalled());
     unmount();
     expect(mock.removeChannel).toHaveBeenCalled();
+  });
+
+  it('gangguan setelah data tampil: data terakhir dipertahankan, status menghubungkan ulang, lalu pulih (T4)', async () => {
+    vi.useFakeTimers();
+    try {
+      const order = vi
+        .fn()
+        .mockResolvedValueOnce({ data: [row({ antre_count: 3, dilayani_count: 1, estimasi_tunggu_total_menit: 45 })], error: null })
+        .mockResolvedValueOnce({ data: null, error: new Error('fetch failed') })
+        .mockResolvedValue({ data: [row({ antre_count: 7, dilayani_count: 1, estimasi_tunggu_total_menit: 60 })], error: null });
+      const channelApi = { on: vi.fn().mockReturnThis(), subscribe: vi.fn().mockReturnThis() };
+      (createClient as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+        from: vi.fn(() => ({ select: vi.fn(() => ({ order })) })),
+        channel: vi.fn(() => channelApi),
+        removeChannel: vi.fn().mockResolvedValue('ok'),
+      });
+
+      await act(async () => { render(<LayarAntrianPage />); });
+      expect(screen.getByText('Helpdesk OSS')).toBeInTheDocument();
+      expect(screen.getByText(/±45 menit/)).toBeInTheDocument();
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(15_000); }); // polling gagal
+      expect(screen.getByText('Helpdesk OSS')).toBeInTheDocument();
+      expect(screen.getByText(/±45 menit/)).toBeInTheDocument();
+      expect(screen.getByText(/Menghubungkan ulang… menampilkan data terakhir/)).toBeInTheDocument();
+      expect(screen.queryByText(/Gagal memuat data antrean/)).not.toBeInTheDocument();
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(1000); }); // backoff 1 dtk → pulih
+      expect(screen.getByText(/±60 menit/)).toBeInTheDocument();
+      expect(screen.queryByText(/menampilkan data terakhir/)).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
