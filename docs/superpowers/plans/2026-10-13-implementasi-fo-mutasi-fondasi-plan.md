@@ -42,13 +42,13 @@ Fase 4  Penutupan: dokumen, STATUS, runbook rollout, pelacak
 
 Paralelisme yang aman: 0.1 ∥ 0.3 ∥ 0.4 (berkas berbeda). Fase 1.1 (helper) bisa mulai bersamaan dengan Fase 0 setelah 0.1 selesai. Fase 2 menunggu helper 1.1. Tahap A bisa mulai setelah Gerbang G butir 1–2 dan Fase 1.1; Tahap B menunggu seluruh Gerbang G.
 
-**Gerbang Keputusan G** (dari spec FO §11; harus dijawab CEO sebelum Tahap A/B):
-1. WP-24/`visit`: hentikan tulis `visit` di Tahap B (usul) atau tunda.
-2. Batas idle sesi & jam logout otomatis (usul: jam tutup 16:00 dari pengaturan; idle 2 jam, dapat diubah admin).
-3. Kolom identitas yang dikunci setelah pendaftaran online (usul: nama + NIK).
-4. Topik penanganan per layanan petugas (masukan tiap layanan).
-5. Field Pendataan Pelayanan yang selama ini opsional — apakah semuanya wajib.
-6. Jadwal cutover (di luar jam layanan, antrean kosong).
+**Gerbang Keputusan G — SEMUA DIJAWAB CEO 2026-10-13** (dari spec FO §11):
+1. WP-24/`visit`: **DIPUTUSKAN CEO 2026-10-13 = Opsi A**: hentikan tulis `visit` di Tahap B bersamaan dengan alur FO, nonaktifkan `trg_visit_dual_write` (data lama tetap sebagai arsip, ada rollback), cutover di luar jam layanan.
+2. Batas sesi: **DIPUTUSKAN CEO 2026-10-13**: logout otomatis setelah jam tutup layanan (16:00 WIB, dibaca dari pengaturan layanan, bukan hardcode) dan idle 2 jam (dapat diubah admin).
+3. Kolom identitas yang dikunci: **DIPUTUSKAN CEO 2026-10-13 = Opsi A**: hanya **Nama Lengkap** (profil pengunjung tidak punya kolom NIK; tidak menambah data baru). HP, instansi, kategori, email tetap dapat diubah pengunjung. Perubahan nama lewat FO/admin + `audit_log`.
+4. Topik penanganan per layanan petugas: **DIPUTUSKAN CEO 2026-10-13 = Opsi A**: draf awal dibuat dari daftar layanan produksi (5-8 topik/layanan), dikoreksi CEO; disimpan di tabel `topik_penanganan` yang dapat diubah admin tanpa deploy.
+5. Field Pendataan Pelayanan: **DIPUTUSKAN CEO 2026-10-13 = Opsi A**: SEMUA field wajib; field usaha (tipe pelaku, status modal, skala, KBLI, lokasi) punya pilihan eksplisit "Belum ada / Tidak berlaku" yang harus dipilih sadar (tidak boleh kosong; direkap sebagai "belum punya usaha"). Catatan internal/petugas wajib terisi (boleh "-"). Divalidasi di DB (`INVALID_PAYLOAD`) dan UI.
+6. Jadwal cutover: **DIPUTUSKAN CEO 2026-10-13**: hanya setelah jam tutup (setelah 16:00 WIB) dan hanya bila antrean kosong; hari: **Jumat sore atau akhir pekan** (ada waktu perbaikan sebelum petugas masuk Senin). Didahului skrip pemeriksaan otomatis (transaksi di-rollback) yang hijau; petugas diberi tahu perubahan cara kerja sebelum hari H.
 
 ---
 
