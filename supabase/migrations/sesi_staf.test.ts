@@ -526,7 +526,7 @@ describe('Sesi staf: pencatatan (docs/ATURAN_MIGRASI.md #4)', () => {
     expect(migrations).toMatch(/202610140001_sesi_staf[\s\S]{0,3000}sesi_tunggal_aktif[\s\S]{0,200}false/);
     const dbChanges = bacaDocs('analysis', 'DB-CHANGES.md');
     expect(dbChanges).toContain('202610140001_sesi_staf');
-    expect(dbChanges).toMatch(/202610140001_sesi_staf[\s\S]{0,4000}BELUM DITERAPKAN/);
+    expect(dbChanges).toMatch(/202610140001_sesi_staf[\s\S]{0,4000}DITERAPKAN/);
     expect(dbChanges).toMatch(/202610140001_sesi_staf[\s\S]{0,4000}sesi_tunggal_aktif/);
   });
 });
