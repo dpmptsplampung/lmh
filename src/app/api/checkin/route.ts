@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { MutasiError, mutasiInsert } from '@/lib/supabase/mutate';
 import { z } from 'zod';
+import { catatMutasi } from '@/lib/observability/catat-mutasi';
+
+const ROUTE = '/api/checkin';
 
 // I9: Route handler for checkin — used by both online form submit and
 // offline replay. Centralizes the visit INSERT + consent log so the
@@ -59,14 +63,17 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
     resolvedPengunjungId = pengunjungRow?.id ?? null;
 
-    const { error: consentError } = await supabase.from('consent_log').insert({
-      subjek_ref: user.id,
-      tujuan: 'checkin_data',
-      disetujui: true,
-      versi_kebijakan: versi_kebijakan ?? '1.0',
-    });
-
-    if (consentError) {
+    try {
+      await mutasiInsert(
+        supabase.from('consent_log').insert({
+          subjek_ref: user.id,
+          tujuan: 'checkin_data',
+          disetujui: true,
+          versi_kebijakan: versi_kebijakan ?? '1.0',
+        }),
+      );
+    } catch (e) {
+      catatMutasi('error', 'checkin.consent_insert', ROUTE, e);
       return NextResponse.json(
         { error: 'Gagal mencatat consent', code: 'CONSENT_FAILED' },
         { status: 500 },
@@ -74,31 +81,36 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const { error: insertError, data: insertData } = await supabase
-    .from('visit')
-    .insert({
-      asal: 'walk_in',
-      nama: nama.trim(),
-      keperluan: keperluan?.trim() || null,
-      layanan_id,
-      tujuan: 'loket',
-      status: 'menunggu',
-      waktu_masuk: new Date().toISOString(),
-      ...(parsed.data.client_request_id
-        ? { client_request_id: parsed.data.client_request_id }
-        : {}),
-      // Bind to authenticated profile when present so SKM/notif/history attach.
-      ...(resolvedPengunjungId ? { pengunjung_id: resolvedPengunjungId } : {}),
-    })
-    .select('id')
-    .maybeSingle();
-
-  if (insertError) {
+  // Tabel legacy `visit` (dual-write ke kunjungan/tiket_antrean lewat trigger; WP-24 masih diblokir): hanya dibungkus.
+  let insertRows: { id: string }[];
+  try {
+    insertRows = await mutasiInsert<{ id: string }>(
+      supabase
+        .from('visit')
+        .insert({
+          asal: 'walk_in',
+          nama: nama.trim(),
+          keperluan: keperluan?.trim() || null,
+          layanan_id,
+          tujuan: 'loket',
+          status: 'menunggu',
+          waktu_masuk: new Date().toISOString(),
+          ...(parsed.data.client_request_id
+            ? { client_request_id: parsed.data.client_request_id }
+            : {}),
+          // Bind to authenticated profile when present so SKM/notif/history attach.
+          ...(resolvedPengunjungId ? { pengunjung_id: resolvedPengunjungId } : {}),
+        })
+        .select('id')
+        .maybeSingle(),
+    );
+  } catch (e) {
+    // Error asli server (kode/details) dibawa MutasiError.asal; jangan dibocorkan ke klien kecuali pesan trigger ramah.
+    const asal = (e instanceof MutasiError ? e.asal : undefined) as
+      | { code?: string; details?: string; message?: string }
+      | undefined;
     // Duplikat idempotensi: kembalikan kunjungan yang sudah ada (200).
-    if (
-      (insertError as { code?: string }).code === '23505' &&
-      parsed.data.client_request_id
-    ) {
+    if (asal?.code === '23505' && parsed.data.client_request_id) {
       const { data: existing } = await supabase
         .from('visit')
         .select('id')
@@ -112,13 +124,24 @@ export async function POST(request: NextRequest) {
       }
     }
     // Jam tutup (migrasi 202610090001): pesan ramah, 409 agar replay offline membuangnya.
-    if ((insertError as { details?: string }).details === 'LAYANAN_TUTUP') {
+    if (asal?.details === 'LAYANAN_TUTUP') {
       return NextResponse.json(
-        { error: insertError.message, code: 'LAYANAN_TUTUP' },
+        { error: asal.message, code: 'LAYANAN_TUTUP' },
         { status: 409 },
       );
     }
-    console.error('[checkin] gagal menyimpan visit', insertError);
+    catatMutasi('error', 'checkin.visit_insert', ROUTE, e);
+    return NextResponse.json(
+      { error: 'Gagal menyimpan. Silakan coba lagi.' },
+      { status: 500 },
+    );
+  }
+
+  // INSERT ... RETURNING tanpa baris = tidak ada yang tertulis (mis. trigger membatalkan baris): jangan lapor 201 tanpa id,
+  // replay offline memperlakukan res.ok sebagai tersinkron dan membuang antreannya.
+  const insertData = insertRows[0];
+  if (!insertData) {
+    catatMutasi('error', 'checkin.visit_insert', ROUTE, new MutasiError('tidak_ada_baris'));
     return NextResponse.json(
       { error: 'Gagal menyimpan. Silakan coba lagi.' },
       { status: 500 },
@@ -126,7 +149,7 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json(
-    { id: insertData?.id, message: 'Check-in berhasil' },
+    { id: insertData.id, message: 'Check-in berhasil' },
     { status: 201 },
   );
 }

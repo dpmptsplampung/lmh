@@ -9,6 +9,9 @@ vi.mock('@supabase/supabase-js', () => ({
   createClient: vi.fn(),
 }));
 
+// Jalur gagal mencatat lewat logger; dimock agar tidak memicu fetch ke sink error_log dan agar bisa diperiksa.
+vi.mock('@/lib/observability/logger', () => ({ logServerEvent: vi.fn() }));
+
 const geminiState = {
   apiKeySet: true,
   embedThrow: false,
@@ -65,9 +68,11 @@ const mockServerClient = async ({ user, role, aktif = true }: MockServerOpts) =>
 };
 
 interface MockServiceOpts {
-  pendingFaqs?: Array<{ id: string; pertanyaan: string; jawaban: string }>;
+  pendingFaqs?: Array<{ id: string; pertanyaan: string; jawaban: string; layanan_id?: string | null }>;
   fetchError?: { message: string } | null;
   updateError?: { message: string } | null;
+  /** Baris yang dikembalikan UPDATE ... .select('id'); [] = 0 baris terdampak (mis. FAQ sudah dihapus). */
+  updateRows?: Array<{ id: string }>;
   remainingCount?: number;
 }
 
@@ -80,10 +85,14 @@ const mockServiceClient = async (opts: MockServiceOpts = {}) => {
   >;
 
   const pendingFaqs = opts.pendingFaqs ?? [];
+  // UPDATE kini berakhir .select('id') agar baris terdampak terlihat (mutasiWajibBaris).
   const updateChain = {
-    eq: vi.fn().mockResolvedValue({
-      error: opts.updateError ?? null,
-    }),
+    eq: vi.fn(() => ({
+      select: vi.fn().mockResolvedValue({
+        data: opts.updateError ? null : (opts.updateRows ?? [{ id: 'ok' }]),
+        error: opts.updateError ?? null,
+      }),
+    })),
   };
 
   const mock = {
@@ -235,6 +244,82 @@ describe('POST /api/admin/faq/embed — backfill', () => {
     expect(json.remaining).toBe(0);
     // update should have been called for each FAQ
     expect(serviceMock.from).toHaveBeenCalledWith('faq_knowledge_base');
+  });
+
+  // FAQ umum (layanan_id NULL; migrasi 202610130001) harus ikut di-embed: query pending tidak boleh
+  // memakai JOIN/embed ke `layanan` atau filter layanan_id yang membuang baris NULL.
+  it('meng-embed FAQ umum (layanan_id NULL) dan query pending tidak menyaring/men-join layanan', async () => {
+    await mockServerClient({ user: { id: 'u-1' }, role: 'admin' });
+    const serviceMock = await mockServiceClient({
+      pendingFaqs: [
+        { id: 'umum-1', pertanyaan: 'Jam buka kantor?', jawaban: 'Senin-Jumat 08.00-16.00 WIB', layanan_id: null },
+      ],
+      remainingCount: 0,
+    });
+    const { POST } = await import('./route');
+    const res = await POST();
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.embedded).toBe(1);
+    expect(json.failed).toBe(0);
+
+    type HasilFrom = {
+      value: { select?: { mock: { calls: unknown[][] } }; update?: { mock: { calls: unknown[][] } } };
+    };
+    const faqTables = (serviceMock.from.mock.results as unknown as HasilFrom[])
+      .map((r) => r.value)
+      .filter((v) => v.select);
+    const kolom = faqTables.flatMap((v) => v.select!.mock.calls.map((c) => c[0]));
+    expect(kolom).toContain('id, pertanyaan, jawaban');
+    for (const k of kolom) {
+      if (typeof k === 'string') expect(k).not.toMatch(/layanan/i);
+    }
+    // UPDATE embedding memakai id baris (bukan filter layanan_id).
+    const updateCalls = faqTables.flatMap((v) => v.update?.mock.calls ?? []);
+    expect(updateCalls).toHaveLength(1);
+    expect(Object.keys(updateCalls[0][0] as object).sort()).toEqual(['embedding', 'embedding_updated_at', 'perlu_embed_ulang']);
+  });
+
+  // Audit T2d (No 54): 0 baris terdampak / error UPDATE tidak boleh dihitung "embedded", dan harus tercatat.
+  it('UPDATE yang menyentuh 0 baris dihitung failed (bukan embedded) dan dicatat', async () => {
+    await mockServerClient({ user: { id: 'u-1' }, role: 'admin' });
+    await mockServiceClient({
+      pendingFaqs: [{ id: 'f-1', pertanyaan: 'Q1', jawaban: 'A1' }],
+      updateRows: [],
+      remainingCount: 0,
+    });
+    const logger = await import('@/lib/observability/logger');
+    vi.mocked(logger.logServerEvent).mockClear();
+    const { POST } = await import('./route');
+    const res = await POST();
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.embedded).toBe(0);
+    expect(json.failed).toBe(1);
+    expect(logger.logServerEvent).toHaveBeenCalledWith(
+      'warn', // 0 baris = id basi, bukan kegagalan infrastruktur
+      expect.objectContaining({ operation: 'admin.faq.embed.update', kode: 'tidak_ada_baris', jumlahGagal: 1 }),
+    );
+  });
+
+  it('error UPDATE dihitung failed dan dicatat sekali per proses (bukan per baris)', async () => {
+    await mockServerClient({ user: { id: 'u-1' }, role: 'admin' });
+    await mockServiceClient({
+      pendingFaqs: [
+        { id: 'f-1', pertanyaan: 'Q1', jawaban: 'A1' },
+        { id: 'f-2', pertanyaan: 'Q2', jawaban: 'A2' },
+      ],
+      updateError: { message: 'connection reset' },
+      remainingCount: 2,
+    });
+    const logger = await import('@/lib/observability/logger');
+    vi.mocked(logger.logServerEvent).mockClear();
+    const { POST } = await import('./route');
+    const json = await (await POST()).json();
+    expect(json.embedded).toBe(0);
+    expect(json.failed).toBe(2);
+    expect(logger.logServerEvent).toHaveBeenCalledTimes(1);
+    expect(logger.logServerEvent).toHaveBeenCalledWith('error', expect.objectContaining({ jumlahGagal: 2 }));
   });
 
   it('returns 500 when GEMINI_API_KEY is unset', async () => {

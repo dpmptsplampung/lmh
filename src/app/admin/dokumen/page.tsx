@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { FileText, Plus, Trash2, RefreshCw, BookOpen, CheckCircle2, Clock, AlertCircle } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import { createClient } from '@/lib/supabase/client';
+import { mutasiInsert, mutasiWajibBaris, pesanMutasi } from '@/lib/supabase/mutate';
 import { useToast } from '@/components/Toast';
 
 interface DokumenRow {
@@ -67,22 +68,23 @@ export default function AdminDokumenPage() {
     }
     try {
       const supabase = createClient();
-      const { error } = await supabase.from('dokumen_peraturan').insert({
-        judul: form.judul.trim(),
-        nomor: form.nomor.trim() || null,
-        jenis: form.jenis,
-        status: form.status,
-        sumber_url: form.sumber_url.trim() || null,
-        teks_utama: form.teks_utama.trim(),
-        layanan_id: form.layanan_id || null,
-      });
-      if (error) throw error;
+      await mutasiInsert(
+        supabase.from('dokumen_peraturan').insert({
+          judul: form.judul.trim(),
+          nomor: form.nomor.trim() || null,
+          jenis: form.jenis,
+          status: form.status,
+          sumber_url: form.sumber_url.trim() || null,
+          teks_utama: form.teks_utama.trim(),
+          layanan_id: form.layanan_id || null,
+        }),
+      );
       toast('Dokumen disimpan', 'success');
       setShowForm(false);
       setForm({ judul: '', nomor: '', jenis: 'peraturan', status: 'berlaku', sumber_url: '', teks_utama: '', layanan_id: '' });
       await loadDocs();
     } catch (e: unknown) {
-      toast(e instanceof Error ? e.message : 'Gagal menyimpan', 'error');
+      toast(pesanMutasi(e, 'Gagal menyimpan'), 'error');
     }
   };
 
@@ -108,8 +110,17 @@ export default function AdminDokumenPage() {
   const handleCabut = async (docId: string) => {
     if (!confirm('Tandai dokumen ini sebagai dicabut? Bot tidak akan mengutipnya lagi.')) return;
     const supabase = createClient();
-    await supabase.from('dokumen_peraturan').update({ status: 'dicabut' }).eq('id', docId);
-    toast('Dokumen ditandai dicabut', 'success');
+    try {
+      // Audit T2c: tanpa pemeriksaan, jaringan putus / RLS menolak (0 baris) tetap berujung toast sukses
+      // dan bot RAG terus mengutip dokumen yang dikira sudah dicabut.
+      await mutasiWajibBaris(
+        supabase.from('dokumen_peraturan').update({ status: 'dicabut' }).eq('id', docId).select('id'),
+      );
+      toast('Dokumen ditandai dicabut', 'success');
+    } catch (e) {
+      toast(pesanMutasi(e, 'Gagal mencabut dokumen'), 'error');
+    }
+    // Dimuat ulang di jalur sukses DAN gagal agar tampilan selalu sama dengan keadaan server.
     await loadDocs();
   };
 

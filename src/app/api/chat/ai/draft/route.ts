@@ -101,12 +101,13 @@ export async function POST(request: NextRequest) {
       const embedRes = await embedModel.embedContent(redactPii(lastVisitorMsg));
       if (embedRes.embedding.values?.length) {
         const vectorLiteral = `[${embedRes.embedding.values.join(',')}]`;
-        const { data: faqMatches } = await adminClient.rpc('match_faq', {
+        const { data: faqMatches, error: faqError } = await adminClient.rpc('match_faq', {
           query_embedding: vectorLiteral,
           p_layanan_id: sesiRow.layanan_id,
           match_count: 3,
         });
-        matches = (faqMatches || []) as FaqMatch[];
+        // Error RPC (baca saja) -> tanpa kecocokan FAQ, sama seperti fallback di catch.
+        matches = faqError ? [] : ((faqMatches || []) as FaqMatch[]);
       }
     } catch {
       /* fallback to empty matches */

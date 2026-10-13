@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const serverState = {
@@ -395,5 +395,54 @@ describe('/api/chat/messages API Route', () => {
       sesi: { id: SESI, status: 'aktif', pengunjung_id: PENGUNJUNG, layanan_id: LAYANAN, ditangani_oleh: 'pt-2' },
     });
     expect((await post()).status).toBe(201);
+  });
+
+  // Audit T2d (No 94): INSERT pesan dibungkus mutasiInsert; kontrak (500 'Failed to insert message', 23505 idempoten)
+  // tetap, kegagalan kini tercatat dengan kode tanpa pesan teknis (sebelumnya console.error objek error mentah).
+  describe('kegagalan INSERT tercatat (audit T2d)', () => {
+    let errSpy: ReturnType<typeof vi.spyOn>;
+    beforeEach(() => {
+      vi.stubGlobal('fetch', vi.fn(async () => new Response('{}')));
+      errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    });
+    afterEach(() => {
+      errSpy.mockRestore();
+      vi.unstubAllGlobals();
+    });
+    const log = () =>
+      errSpy.mock.calls
+        .map((c: unknown[]) => { try { return JSON.parse(String(c[0])) as Record<string, unknown>; } catch { return null; } })
+        .find((e: Record<string, unknown> | null) => e?.operation === 'chat.messages.insert');
+
+    it('INSERT error: 500 pesan baku, dicatat dengan kode, tanpa pesan database', async () => {
+      mockAdmin({
+        actor: { kind: 'pengunjung', id: PENGUNJUNG },
+        insertResult: { data: null, error: { code: '08006', message: 'connection reset secret-xyz' } },
+      });
+      const { POST } = await import('./route');
+      const res = await POST(
+        buildRequest('http://localhost/api/chat/messages', { method: 'POST', body: { sesi_id: SESI, isi: 'Halo' } }),
+      );
+      expect(res.status).toBe(500);
+      expect(await res.json()).toEqual({ error: 'Failed to insert message' });
+      expect(log()).toMatchObject({ kode: 'database', asalCode: '08006' });
+      expect(JSON.stringify(log())).not.toContain('secret-xyz');
+    });
+
+    it('23505 tanpa baris lama yang bisa dibaca: tetap 500 (bukan sukses palsu)', async () => {
+      mockAdmin({
+        actor: { kind: 'pengunjung', id: PENGUNJUNG },
+        insertResult: { data: null, error: { code: '23505', message: 'duplicate key' } },
+        existing: null,
+      });
+      const { POST } = await import('./route');
+      const res = await POST(
+        buildRequest('http://localhost/api/chat/messages', {
+          method: 'POST',
+          body: { sesi_id: SESI, isi: 'Halo', client_uuid: '7ef5bde1-42ab-4c7d-9ef1-1a2b3c4d5e6f' },
+        }),
+      );
+      expect(res.status).toBe(500);
+    });
   });
 });

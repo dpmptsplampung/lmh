@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { MutasiError, mutasiInsert, mutasiWajibBaris } from '@/lib/supabase/mutate';
+import { catatMutasiGagal } from '@/app/api/admin/_mutasi';
 import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
@@ -102,24 +104,41 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const { data: updated, error: updErr } = await supabase
-    .from('pengaduan')
-    .update({ status, updated_at: new Date().toISOString() })
-    .eq('id', id)
-    .select('id');
-  if (updErr) return NextResponse.json({ error: 'Gagal memperbarui status' }, { status: 500 });
-  // RLS menolak UPDATE = 0 baris tanpa galat: jangan melapor sukses.
-  if (!updated || updated.length === 0) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  try {
+    // RLS menolak UPDATE = 0 baris tanpa galat: jangan melapor sukses (kontrak lama: 403).
+    await mutasiWajibBaris(
+      supabase
+        .from('pengaduan')
+        .update({ status, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .select('id'),
+    );
+  } catch (e) {
+    if (!(e instanceof MutasiError)) throw e;
+    catatMutasiGagal('/api/admin/pengaduan', 'admin.pengaduan.ubah_status', e, { pengaduanId: id });
+    if (e.kode === 'tidak_ada_baris' || e.kode === 'ditolak') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    return NextResponse.json({ error: 'Gagal memperbarui status' }, { status: 500 });
   }
 
-  await supabase.from('pengaduan_riwayat').insert({
-    pengaduan_id: id,
-    status_lama: row.status,
-    status_baru: status,
-    catatan: catatan ?? null,
-    diubah_oleh: me.id,
-  });
+  // Status SUDAH berubah; riwayat gagal ditulis tidak membatalkannya (tidak ada transaksi lintas-klien di sini),
+  // tetapi tidak boleh hilang diam-diam: dicatat dan dikabarkan lewat `peringatan` (klien lama hanya membaca res.ok).
+  try {
+    await mutasiInsert(
+      supabase.from('pengaduan_riwayat').insert({
+        pengaduan_id: id,
+        status_lama: row.status,
+        status_baru: status,
+        catatan: catatan ?? null,
+        diubah_oleh: me.id,
+      }),
+    );
+  } catch (e) {
+    if (!(e instanceof MutasiError)) throw e;
+    catatMutasiGagal('/api/admin/pengaduan', 'admin.pengaduan.riwayat', e, { pengaduanId: id });
+    return NextResponse.json({ ok: true, peringatan: 'Status diperbarui, tetapi riwayat perubahan gagal dicatat.' });
+  }
 
   return NextResponse.json({ ok: true });
 }

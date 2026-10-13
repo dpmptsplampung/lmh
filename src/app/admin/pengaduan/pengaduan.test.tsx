@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 // RBAC Tahap 1: Petugas hanya lihat; tab integritas Admin saja; FO menindaklanjuti jalur layanan.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 
-const h = vi.hoisted(() => ({ role: 'petugas' as string }));
+const h = vi.hoisted(() => ({ role: 'petugas' as string, toast: vi.fn() }));
 
+vi.mock('@/components/Toast', () => ({ useToast: () => ({ toast: h.toast }) }));
 vi.mock('@/components/layout/PageHeader', () => ({ default: () => null }));
 vi.mock('@/lib/supabase/client', () => ({
   createClient: () => ({
@@ -27,6 +28,7 @@ const row = (jalur: 'layanan' | 'integritas') => ({
 
 describe('admin pengaduan: akses per role', () => {
   beforeEach(() => {
+    h.toast.mockClear();
     vi.stubGlobal('fetch', vi.fn(() =>
       Promise.resolve({ ok: true, json: () => Promise.resolve({ rows: [row('layanan')], total: 1 }) })));
   });
@@ -54,5 +56,32 @@ describe('admin pengaduan: akses per role', () => {
     render(<AdminPengaduanPage />);
     expect(await screen.findByRole('button', { name: /Integritas/ })).toBeTruthy();
     expect(await screen.findByRole('button', { name: 'Verifikasi' })).toBeTruthy();
+  });
+
+  // Status SUDAH berubah tetapi riwayat gagal dicatat: server membalas ok + `peringatan` (jejak audit hilang).
+  it('ubah status dengan peringatan server: toast peringatan ditampilkan (bukan diam-diam)', async () => {
+    h.role = 'front_office';
+    const PERINGATAN = 'Status diperbarui, tetapi riwayat perubahan gagal dicatat.';
+    vi.stubGlobal('fetch', vi.fn((_url: string, init?: RequestInit) =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve(init?.method === 'PATCH' ? { ok: true, peringatan: PERINGATAN } : { rows: [row('layanan')], total: 1 }),
+      })));
+    render(<AdminPengaduanPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Verifikasi' }));
+    await waitFor(() => expect(h.toast).toHaveBeenCalledWith(PERINGATAN, 'warning'));
+  });
+
+  it('ubah status tanpa peringatan: tidak ada toast warning', async () => {
+    h.role = 'front_office';
+    vi.stubGlobal('fetch', vi.fn((_url: string, init?: RequestInit) =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve(init?.method === 'PATCH' ? { ok: true } : { rows: [row('layanan')], total: 1 }),
+      })));
+    render(<AdminPengaduanPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Verifikasi' }));
+    await waitFor(() => expect((fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.some((c) => c[1]?.method === 'PATCH')).toBe(true));
+    expect(h.toast).not.toHaveBeenCalled();
   });
 });

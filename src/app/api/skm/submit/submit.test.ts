@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn() }));
 
@@ -29,7 +29,7 @@ function request(body: unknown): NextRequest {
   }) as NextRequest;
 }
 
-function mockRpc(data: string | null, error: { message: string } | null = null) {
+function mockRpc(data: string | null, error: { message: string; code?: string } | null = null) {
   const rpc = vi.fn().mockResolvedValue({ data, error });
   (createClient as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ rpc });
   return rpc;
@@ -88,5 +88,37 @@ describe('POST /api/skm/submit token-only RPC boundary', () => {
     const res = await POST(request(validBody));
     expect(res.status).toBe(500);
     expect(await res.text()).not.toContain('sensitive database error');
+  });
+
+  // Audit T2d (No 111): kegagalan RPC kini tercatat dengan kode (sebelumnya 500 tanpa jejak sama sekali).
+  describe('kegagalan RPC tercatat', () => {
+    let errSpy: ReturnType<typeof vi.spyOn>;
+    beforeEach(() => {
+      vi.stubGlobal('fetch', vi.fn(async () => new Response('{}')));
+      errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    });
+    afterEach(() => {
+      errSpy.mockRestore();
+      vi.unstubAllGlobals();
+    });
+    const log = () =>
+      errSpy.mock.calls
+        .map((c: unknown[]) => { try { return JSON.parse(String(c[0])) as Record<string, unknown>; } catch { return null; } })
+        .find((e: Record<string, unknown> | null) => e?.operation === 'skm.submit');
+
+    it('RPC error: 500 dan dicatat dengan kode tanpa pesan teknis', async () => {
+      mockRpc(null, { message: 'sensitive database error', code: '08006' });
+      const { POST } = await import('./route');
+      expect((await POST(request(validBody))).status).toBe(500);
+      expect(log()).toMatchObject({ kode: 'database', asalCode: '08006' });
+      expect(JSON.stringify(log())).not.toContain('sensitive');
+    });
+
+    it('RPC sukses tetapi bukan string status: 500 dan dicatat tidak_ada_baris', async () => {
+      mockRpc(null, null);
+      const { POST } = await import('./route');
+      expect((await POST(request(validBody))).status).toBe(500);
+      expect(log()).toMatchObject({ kode: 'tidak_ada_baris' });
+    });
   });
 });

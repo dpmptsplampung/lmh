@@ -4,6 +4,8 @@ import { Resend } from 'resend';
 import webpush from 'web-push';
 import crypto from 'node:crypto';
 import { bodyToEmailHtml } from '@/lib/email-html';
+import { MutasiError, mutasiInsert } from '@/lib/supabase/mutate';
+import { catatMutasi } from '@/lib/observability/catat-mutasi';
 
 // Dead-letter threshold — must stay in sync with claim_notifikasi in
 // supabase/migrations/202607200001_p0_security_governance.sql
@@ -11,6 +13,8 @@ const MAX_RETRY_COUNT = 5;
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
+
+const ROUTE = '/api/notif/retry';
 
 interface FailedRow {
   id: string;
@@ -104,19 +108,35 @@ async function sendPush(
   return { ok: false, error: lastError || 'all push attempts failed' };
 }
 
+// Menandai satu notifikasi selesai. complete_notifikasi mengembalikan boolean (true = baris terpasang) DAN bisa
+// mengembalikan { error }; keduanya harus dicek: baris yang gagal ditandai tertinggal 'processing' selamanya
+// (claim_notifikasi hanya mengambil pending/failed, dan tak ada job yang mengembalikan 'processing' yang basi),
+// sehingga notifikasinya tidak akan dicoba/dilaporkan lagi. Gagal TIDAK menghentikan batch (surat sudah terkirim,
+// mengulang mengirim = duplikat); dicatat dan dihitung (`complete_failed`) agar terlihat di log/respons cron.
 async function completeNotifikasi(
   adminClient: NonNullable<ReturnType<typeof getServiceClient>>,
   id: string,
   claimToken: string,
   status: 'sent' | 'failed' | 'skipped',
   error?: string,
-): Promise<void> {
-  await adminClient.rpc('complete_notifikasi', {
-    p_id: id,
-    p_claim_token: claimToken,
-    p_status: status,
-    p_error: error ?? null,
-  });
+): Promise<boolean> {
+  try {
+    const [terpasang] = await mutasiInsert<boolean>(
+      adminClient.rpc('complete_notifikasi', {
+        p_id: id,
+        p_claim_token: claimToken,
+        p_status: status,
+        p_error: error ?? null,
+      }),
+    );
+    if (terpasang === true) return true;
+    // false/kosong: claim_token tak cocok atau status bukan 'processing' (sudah diselesaikan pihak lain / klaim basi).
+    catatMutasi('error', 'notif.retry.complete', ROUTE, new MutasiError('tidak_ada_baris'), { notifId: id, status });
+    return false;
+  } catch (e) {
+    catatMutasi('error', 'notif.retry.complete', ROUTE, e, { notifId: id, status });
+    return false;
+  }
 }
 
 async function processFailed(request: NextRequest) {
@@ -156,6 +176,14 @@ async function processFailed(request: NextRequest) {
   let deadLettered = 0;
 
   const resend = getResend();
+  let completeFailed = 0;
+  const complete = async (
+    row: { id: string; claim_token: string },
+    status: 'sent' | 'failed' | 'skipped',
+    error?: string,
+  ) => {
+    if (!(await completeNotifikasi(adminClient, row.id, row.claim_token, status, error))) completeFailed++;
+  };
 
   for (const row of rows) {
     // Dead-letter: claim_notifikasi no longer returns these rows, but guard
@@ -166,41 +194,45 @@ async function processFailed(request: NextRequest) {
     }
     if (row.kanal === 'email') {
       if (!row.tujuan_email) {
-        await completeNotifikasi(adminClient, row.id, row.claim_token, 'skipped', 'no tujuan_email');
+        await complete(row, 'skipped', 'no tujuan_email');
         continue;
       }
       if (!resend) {
-        await completeNotifikasi(adminClient, row.id, row.claim_token, 'failed', 'RESEND_API_KEY not configured');
+        await complete(row, 'failed', 'RESEND_API_KEY not configured');
         failedAgain++;
         continue;
       }
       const result = await sendEmail(resend, row);
       if (result.ok) {
-        await completeNotifikasi(adminClient, row.id, row.claim_token, 'sent');
+        await complete(row, 'sent');
         sent++;
       } else {
-        await completeNotifikasi(adminClient, row.id, row.claim_token, 'failed', result.error);
+        await complete(row, 'failed', result.error);
         failedAgain++;
       }
     } else if (row.kanal === 'web_push') {
       if (!row.tujuan_user_id) {
-        await completeNotifikasi(adminClient, row.id, row.claim_token, 'skipped', 'no tujuan_user_id');
+        await complete(row, 'skipped', 'no tujuan_user_id');
         continue;
       }
       const result = await sendPush(adminClient, row);
       if (result.ok && !result.skipped) {
-        await completeNotifikasi(adminClient, row.id, row.claim_token, 'sent');
+        await complete(row, 'sent');
         sent++;
       } else if (result.skipped) {
-        await completeNotifikasi(adminClient, row.id, row.claim_token, 'skipped', 'no subscriptions');
+        await complete(row, 'skipped', 'no subscriptions');
       } else {
-        await completeNotifikasi(adminClient, row.id, row.claim_token, 'failed', result.error);
+        await complete(row, 'failed', result.error);
         failedAgain++;
       }
     }
   }
 
-  return NextResponse.json({ sent, failed: failedAgain, dead_lettered: deadLettered, retried: rows.length });
+  // complete_failed hanya muncul bila > 0 (bentuk respons normal tidak berubah).
+  return NextResponse.json({
+    sent, failed: failedAgain, dead_lettered: deadLettered, retried: rows.length,
+    ...(completeFailed > 0 ? { complete_failed: completeFailed } : {}),
+  });
 }
 
 export async function POST(request: NextRequest) {

@@ -5,6 +5,7 @@ import type { NextRequest } from 'next/server';
 
 vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn() }));
 vi.mock('@supabase/supabase-js', () => ({ createClient: vi.fn() }));
+vi.mock('@/lib/observability/logger', () => ({ logServerEvent: vi.fn() }));
 
 const ID = '660e8400-e29b-41d4-a716-446655440001';
 type Calls = Record<string, Array<[string, unknown[]]>>;
@@ -125,6 +126,32 @@ describe('layanan', () => {
     vi.resetModules();
     await setup({ tables: { layanan: { data: null, error: { code: '23505', message: 'dup' } } } });
     expect((await (await import('./layanan/[id]/route')).PATCH(req('PATCH', { nama: 'Zz' }), ctx)).status).toBe(409);
+  });
+
+  // Audit T2d (No 55-56): UPDATE layanan wajib baris; 0 baris/galat tidak boleh jadi sukses.
+  it('PATCH: UPDATE 0 baris (array kosong) = 404; galat database = 500 dan tercatat', async () => {
+    await setup({ tables: { layanan: { data: [] } } });
+    expect((await (await import('./layanan/[id]/route')).PATCH(req('PATCH', { nomor_loket: '3' }), ctx)).status).toBe(404);
+    vi.resetModules();
+    await setup({ tables: { layanan: { data: null, error: { code: '57014', message: 'timeout' } } } });
+    const logger = await import('@/lib/observability/logger');
+    vi.mocked(logger.logServerEvent).mockClear();
+    const res = await (await import('./layanan/[id]/route')).PATCH(req('PATCH', { nomor_loket: '3' }), ctx);
+    expect(res.status).toBe(500);
+    expect(JSON.stringify(await res.json())).not.toContain('timeout');
+    expect(logger.logServerEvent).toHaveBeenCalledWith('error', expect.objectContaining({ operation: 'admin.layanan.ubah', asalCode: '57014' }));
+  });
+
+  it('bot: UPDATE 0 baris = 404; galat database = 500 dan tercatat (bukan sukses palsu)', async () => {
+    await setup({ tables: { layanan: { data: [] } } });
+    expect((await (await import('./layanan/[id]/bot/route')).PATCH(req('PATCH', { aktif: true }), ctx)).status).toBe(404);
+    vi.resetModules();
+    await setup({ tables: { layanan: { data: null, error: { code: '08006', message: 'connection failure' } } } });
+    const logger = await import('@/lib/observability/logger');
+    vi.mocked(logger.logServerEvent).mockClear();
+    const res = await (await import('./layanan/[id]/bot/route')).PATCH(req('PATCH', { aktif: true }), ctx);
+    expect(res.status).toBe(500);
+    expect(logger.logServerEvent).toHaveBeenCalledWith('error', expect.objectContaining({ operation: 'admin.layanan.bot', asalCode: '08006' }));
   });
 
   it('PATCH: rename yang mengubah jenis form pendataan ditolak 422; rename aman lolos', async () => {
@@ -278,7 +305,8 @@ describe('POST /api/me/sandi-selesai', () => {
     await setup({ updatedAt: new Date(Date.now() - 3_600_000).toISOString() });
     expect((await (await import('../me/sandi-selesai/route')).POST()).status).toBe(409);
     vi.resetModules();
-    const s = await setup({ amr: 'otp' });
+    // UPDATE flag kini berakhir .select('id') dan 0 baris = gagal (mutasiWajibBaris): mock harus mengembalikan 1 baris.
+    const s = await setup({ amr: 'otp', svcTables: { petugas: { data: [{ id: 'p-actor' }] } } });
     const res = await (await import('../me/sandi-selesai/route')).POST();
     expect(res.status).toBe(200);
     expect(callOf(s.svcCalls, 'petugas', 'update')?.[0]).toEqual({ wajib_ganti_sandi: false });

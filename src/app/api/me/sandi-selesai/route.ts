@@ -1,4 +1,6 @@
 import { audit, getServiceClient, json, requireStaf } from '@/lib/akun/server';
+import { mutasiWajibBaris } from '@/lib/supabase/mutate';
+import { catatMutasi } from '@/lib/observability/catat-mutasi';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,9 +31,13 @@ export async function POST() {
 
   const service = getServiceClient();
   if (!service) return json({ error: 'Server misconfigured' }, 500);
-  const { error } = await service.from('petugas').update({ wajib_ganti_sandi: false }).eq('id', me.id);
-  if (error) {
-    console.error('[me/sandi-selesai] gagal', error.message);
+  try {
+    // 0 baris = gagal juga (id berasal dari requireStaf, jadi barisnya pasti ada): flag tidak bersih, bukan sukses.
+    await mutasiWajibBaris(
+      service.from('petugas').update({ wajib_ganti_sandi: false }).eq('id', me.id).select('id'),
+    );
+  } catch (e) {
+    catatMutasi('error', 'me.sandi_selesai.flag', '/api/me/sandi-selesai', e);
     return json({ error: 'Gagal memperbarui status' }, 500);
   }
   await audit(service, { id: me.id, role: me.role }, 'akun_ganti_sandi_pemulihan', me.id, {});

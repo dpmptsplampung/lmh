@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import { createClient } from '@/lib/supabase/client';
+import { mutasiWajibBaris, pesanMutasi } from '@/lib/supabase/mutate';
 import { useToast } from '@/components/Toast';
 import styles from './landing.module.css';
 
@@ -127,20 +128,36 @@ export default function LandingContentEditorPage() {
 
     try {
       const supabase = createClient();
-      const updates = sectionItems.map((item) =>
-        supabase
-          .from('landing_content')
-          .update({
-            item_value: item.item_value,
-            is_active: item.is_active,
-            item_order: item.item_order,
-          })
-          .eq('id', item.id)
+      // Satu UPDATE per item, paralel. .select('id') + mutasiWajibBaris: RLS yang menolak UPDATE = 0 baris
+      // tanpa error. allSettled (bukan all): semua item tetap dicoba dan kegagalan sebagian dilaporkan jujur.
+      const hasil = await Promise.allSettled(
+        sectionItems.map((item) =>
+          mutasiWajibBaris(
+            supabase
+              .from('landing_content')
+              .update({
+                item_value: item.item_value,
+                is_active: item.is_active,
+                item_order: item.item_order,
+              })
+              .eq('id', item.id)
+              .select('id'),
+          ),
+        ),
       );
-
-      const results = await Promise.all(updates);
-      const hasError = results.some((r) => r.error);
-      if (hasError) throw new Error('Update failed');
+      const gagal = hasil.filter((h): h is PromiseRejectedResult => h.status === 'rejected');
+      if (gagal.length > 0) {
+        // Isian di layar SENGAJA tidak dimuat ulang: memuat ulang akan membuang ketikan pengguna yang belum
+        // tersimpan (juga di bagian lain). Menyimpan ulang aman karena tiap UPDATE idempoten.
+        const pesan = pesanMutasi(gagal[0].reason);
+        toast(
+          gagal.length === sectionItems.length
+            ? `Gagal menyimpan konten. ${pesan}`
+            : `Sebagian konten gagal disimpan (${gagal.length} dari ${sectionItems.length} item). ${pesan} Simpan ulang untuk mencoba lagi.`,
+          'error',
+        );
+        return;
+      }
 
       toast(`Konten "${SECTION_LABELS[section] || section}" berhasil disimpan!`, 'success');
     } catch {

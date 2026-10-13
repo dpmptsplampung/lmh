@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('resend', () => ({
   Resend: vi.fn(),
@@ -54,6 +54,9 @@ interface ClaimedRow {
 const mockServiceClient = async (opts: {
   claimed?: ClaimedRow[];
   subscriptions?: { endpoint: string; keys: { p256dh: string; auth: string } }[];
+  // Mutasi (audit T2d): hasil complete_notifikasi. false = claim_token tak cocok / status bukan 'processing'.
+  completeError?: { message: string; code?: string } | null;
+  completeResult?: boolean;
 } = {}) => {
   process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://supabase.local';
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-key';
@@ -87,7 +90,8 @@ const mockServiceClient = async (opts: {
         return { data: claimedRows, error: null };
       }
       if (fn === 'complete_notifikasi') {
-        return { data: true, error: null };
+        if (opts.completeError) return { data: null, error: opts.completeError };
+        return { data: opts.completeResult ?? true, error: null };
       }
       return { data: null, error: { message: `unknown ${fn}` } };
     }),
@@ -187,5 +191,74 @@ describe('GET /api/notif/retry — Vercel Cron', () => {
       'claim_notifikasi',
       expect.objectContaining({ p_status: 'failed' }),
     );
+  });
+});
+
+// Audit T2d (No 106): complete_notifikasi mengembalikan boolean DAN bisa mengembalikan { error }. Hasil yang dibuang
+// membuat baris tertinggal 'processing' selamanya (claim_notifikasi hanya mengambil pending/failed) tanpa jejak.
+describe('POST /api/notif/retry — hasil complete_notifikasi dicek (audit T2d)', () => {
+  let errSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200 })));
+    errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    errSpy.mockRestore();
+    vi.unstubAllGlobals();
+  });
+
+  const entri = () =>
+    errSpy.mock.calls
+      .map((c: unknown[]) => {
+        try { return JSON.parse(String(c[0])) as Record<string, unknown>; } catch { return null; }
+      })
+      .filter((x: Record<string, unknown> | null): x is Record<string, unknown> => x !== null);
+
+  const mockResendOk = async () => {
+    const resendMod = await import('resend');
+    const Resend = resendMod.Resend as unknown as ReturnType<typeof vi.fn>;
+    const sendMock = vi.fn().mockResolvedValue({ data: { id: 'm' }, error: null });
+    function ResendCtor(this: { emails: { send: typeof sendMock } }) {
+      this.emails = { send: sendMock };
+    }
+    Resend.mockImplementation(ResendCtor as unknown as () => unknown);
+  };
+
+  it('complete_notifikasi error: dicatat (kode + id baris), dihitung complete_failed, respons tetap 200', async () => {
+    await mockServiceClient({
+      claimed: [sampleFailedEmail],
+      completeError: { message: 'connection reset secret-xyz', code: '08006' },
+    });
+    await mockResendOk();
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest('Bearer cron-secret'));
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json).toMatchObject({ sent: 1, retried: 1, complete_failed: 1 });
+    const log = entri().find((e: Record<string, unknown>) => e.operation === 'notif.retry.complete');
+    expect(log).toMatchObject({ kode: 'database', asalCode: '08006', notifId: 'f1', status: 'sent' });
+    expect(JSON.stringify(log)).not.toContain('secret-xyz');
+  });
+
+  it('complete_notifikasi mengembalikan false (baris tidak terpasang): dicatat dan dihitung complete_failed', async () => {
+    await mockServiceClient({ claimed: [sampleFailedEmail], completeResult: false });
+    await mockResendOk();
+    const { POST } = await import('./route');
+    const json = await (await POST(buildRequest('Bearer cron-secret'))).json();
+
+    expect(json.complete_failed).toBe(1);
+    expect(entri().find((e: Record<string, unknown>) => e.operation === 'notif.retry.complete')).toMatchObject({ kode: 'tidak_ada_baris', notifId: 'f1' });
+  });
+
+  it('semua complete berhasil: bentuk respons tidak berubah (tanpa field complete_failed)', async () => {
+    await mockServiceClient({ claimed: [sampleFailedEmail] });
+    await mockResendOk();
+    const { POST } = await import('./route');
+    const json = await (await POST(buildRequest('Bearer cron-secret'))).json();
+
+    expect(json).toEqual({ sent: 1, failed: 0, dead_lettered: 0, retried: 1 });
   });
 });

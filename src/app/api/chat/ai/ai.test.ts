@@ -124,6 +124,13 @@ interface MockServiceOpts {
   dokError?: { message: string } | null;
   jamTutup?: string | null;
   libur?: string[];
+  // Mutasi (audit T2d): kegagalan simpan balasan bot, update eskalasi, dan pencatatan rate limit
+  pesanInsertError?: { message: string; code?: string } | null;
+  sesiUpdateRows?: unknown[];
+  sesiUpdateError?: { message: string; code?: string } | null;
+  // Status chat_sesi pada pembacaan ke-3 (setelah update eskalasi 0 baris = petugas keburu mengambil alih)
+  sesiStatusSetelahRace?: string;
+  rateInsertError?: { message: string; code?: string } | null;
 }
 
 const CALLER_PENGUNJUNG_ID = 'pengunjung-1';
@@ -152,11 +159,20 @@ const mockServiceClient = async (opts: MockServiceOpts = {}) => {
   };
   const chatPesanChain = {
     select: vi.fn().mockReturnThis(),
-    single: vi.fn().mockResolvedValue({ data: botMsg, error: null }),
+    single: vi.fn().mockResolvedValue(
+      opts.pesanInsertError
+        ? { data: null, error: opts.pesanInsertError }
+        : { data: botMsg, error: null },
+    ),
   };
+  // Route mengakhiri UPDATE eskalasi dengan .select('id') agar baris terdampak terlihat (T2d): 0 baris tanpa
+  // error = petugas keburu mengambil alih (kondisi status='bot' tidak terpenuhi lagi).
   const sesiUpdateChain = {
     eq: vi.fn().mockReturnThis(),
-    neq: vi.fn().mockResolvedValue({ error: null }),
+    select: vi.fn().mockResolvedValue({
+      data: opts.sesiUpdateError ? null : (opts.sesiUpdateRows ?? [{ id: 'sesi-1' }]),
+      error: opts.sesiUpdateError ?? null,
+    }),
   };
 
   // Rate-limit count chain: .from('anon_rate_limit').select('*',{count,head}).eq(...).eq(...).gte(...)
@@ -168,7 +184,7 @@ const mockServiceClient = async (opts: MockServiceOpts = {}) => {
     }),
   };
   // Rate-limit insert chain
-  const rateInsertChain = { error: null };
+  const rateInsertChain = { error: opts.rateInsertError ?? null };
 
   // pengunjung lookup: .from('pengunjung').select('id').eq(...).maybeSingle()
   const pengunjungChain = {
@@ -180,11 +196,17 @@ const mockServiceClient = async (opts: MockServiceOpts = {}) => {
   };
 
   // sesi lookup: .from('chat_sesi').select('pengunjung_id').eq(...).maybeSingle()
+  let sesiReads = 0;
   const sesiChain = {
     eq: vi.fn().mockReturnThis(),
-    maybeSingle: vi.fn().mockResolvedValue({
-      data: opts.sesiMissing ? null : { pengunjung_id: opts.sesiPengunjungId ?? CALLER_PENGUNJUNG_ID, status: opts.sesiStatus ?? 'bot' },
-      error: opts.sesiError ?? null,
+    maybeSingle: vi.fn().mockImplementation(async () => {
+      sesiReads++;
+      // Bacaan ke-3 = setelah UPDATE eskalasi 0 baris (hanya bila test memintanya via sesiStatusSetelahRace).
+      const status = sesiReads >= 3 && opts.sesiStatusSetelahRace ? opts.sesiStatusSetelahRace : (opts.sesiStatus ?? 'bot');
+      return {
+        data: opts.sesiMissing ? null : { pengunjung_id: opts.sesiPengunjungId ?? CALLER_PENGUNJUNG_ID, status },
+        error: opts.sesiError ?? null,
+      };
     }),
   };
 
@@ -392,11 +414,19 @@ describe('POST /api/chat/ai — rate limiting', () => {
     expect(json.error).toMatch(/terlalu banyak|coba lagi/i);
   });
 
-  it('returns 429 when rate-limit query errors (fail-closed)', async () => {
-    await mockServiceClient({ rateError: { message: 'connection refused' } });
+  it('returns 503 (BUKAN 429) when rate-limit query errors: fail-closed tetapi bukan salah pengguna, tercatat', async () => {
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await mockServiceClient({ rateError: { message: 'connection refused secret-xyz' } });
     const { POST } = await import('./route');
     const res = await POST(buildRequest(validBody));
-    expect(res.status).toBe(429);
+    expect(res.status).toBe(503);
+    expect(JSON.stringify(await res.json())).not.toContain('secret-xyz');
+    const log = errSpy.mock.calls
+      .map((c) => { try { return JSON.parse(String(c[0])) as Record<string, unknown>; } catch { return null; } })
+      .find((e) => e?.operation === 'chat.ai.rate_limit_read');
+    expect(log).toBeTruthy();
+    expect(JSON.stringify(log)).not.toContain('secret-xyz');
+    errSpy.mockRestore();
   });
 
   it('allows request when rate limit count is below max (count=9)', async () => {
@@ -574,6 +604,60 @@ describe('POST /api/chat/ai — RAG flow', () => {
     expect(json.jawaban).toBe('Jawaban dari AI [1]');
     expect(json.sumber).toHaveLength(2);
     expect(json.sumber[0]).toEqual({ id: 'f-1', pertanyaan: 'Syarat NIB' });
+  });
+
+  // FAQ umum (faq_knowledge_base.layanan_id NULL; migrasi 202610130001): pencarian FAQ umum dilakukan di DB oleh
+  // match_faq_teks/match_faq untuk layanan yang dipilih pengunjung. Kode bot tidak boleh menolak atau menyaring
+  // baris ber-layanan_id NULL, dan harus terus meneruskan layanan_id pengunjung ke kedua RPC.
+  it('FAQ umum (layanan_id NULL) lewat embedding: dipakai sebagai konteks dan sumber, tanpa eskalasi', async () => {
+    const mock = await mockServiceClient({
+      rpcData: [
+        {
+          id: 'umum-1',
+          layanan_id: null,
+          pertanyaan: 'Jam buka kantor?',
+          jawaban: 'Senin-Jumat 08.00-16.00 WIB',
+          similarity: 0.88,
+        },
+        {
+          id: 'f-2',
+          layanan_id: validBody.layanan_id,
+          pertanyaan: 'Syarat NIB',
+          jawaban: 'KTP + NPWP',
+          similarity: 0.8,
+        },
+      ],
+    });
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest({ ...validBody, pertanyaan: 'Jam buka kantor berapa?' }));
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.eskalasi).toBe(false);
+    expect(json.sumber.map((s: { id: string }) => s.id)).toEqual(['umum-1', 'f-2']);
+    expect(mock.rpc).toHaveBeenCalledWith(
+      'match_faq',
+      expect.objectContaining({ p_layanan_id: validBody.layanan_id }),
+    );
+  });
+
+  it('FAQ umum lewat FTS (match_faq_teks): dijawab langsung dari FAQ umum (fts_exact), layanan pengunjung diteruskan ke RPC', async () => {
+    const mock = await mockServiceClient({
+      rpcData: [
+        { id: 'umum-1', pertanyaan: 'Jam buka kantor?', jawaban: 'Senin-Jumat 08.00-16.00 WIB', skor: 0.9 },
+      ],
+    });
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest({ ...validBody, pertanyaan: 'Jam buka kantor berapa?' }));
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.eskalasi).toBe(false);
+    expect(json.reason).toBe('fts_exact');
+    expect(json.jawaban).toBe('Senin-Jumat 08.00-16.00 WIB');
+    expect(json.sumber).toEqual([{ id: 'umum-1', pertanyaan: 'Jam buka kantor?' }]);
+    expect(mock.rpc).toHaveBeenCalledWith(
+      'match_faq_teks',
+      expect.objectContaining({ p_layanan: validBody.layanan_id }),
+    );
   });
 
   it('escalates (reason ai_error) when Gemini generateContent throws', async () => {
@@ -879,5 +963,129 @@ describe('POST /api/chat/ai — konsol: bot hidup/mati, lingkup, dokumen, jam la
     const { json } = await ask({ rpcData: [] });
     expect(json.eskalasi).toBe(false);
     expect(json.jawaban).toContain('Senin, 10 Agustus 2026');
+  });
+});
+
+// Audit T2d: mutasi route ini harus dicek. supabase-js tidak melempar; kegagalan = { error }, dan UPDATE yang
+// kondisinya tak terpenuhi = 0 baris tanpa error. Klien chat HANYA menampilkan balasan bot lewat `pesan` (baris yang
+// tersimpan), jadi balasan yang gagal tersimpan tak boleh dilaporkan sebagai 200 biasa.
+describe('POST /api/chat/ai — mutasi tercek (audit T2d)', () => {
+  const FAQ_COCOK = [
+    { id: 'f-1', layanan_id: validBody.layanan_id, pertanyaan: 'Syarat NIB', jawaban: 'KTP + NPWP', similarity: 0.92 },
+  ];
+  const PERTANYAAN_ESKALASI = 'Berapa nomor HP kepala dinas?'; // rpcData [] -> eskalasi no_match
+
+  let errSpy: ReturnType<typeof vi.spyOn>;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.resetModules();
+    resetGeminiState();
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://supabase.local';
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-key';
+    process.env.GEMINI_API_KEY = 'test-key';
+    serverState.callerId = CALLER_AUTH_ID;
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-05T10:00:00+07:00')); // Rabu: eskalasi selektif aktif
+    errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    errSpy.mockRestore();
+    warnSpy.mockRestore();
+  });
+
+  // Entri log terstruktur (logServerEvent menulis satu baris JSON per panggilan).
+  const entriLog = (spy: { mock: { calls: unknown[][] } }) =>
+    spy.mock.calls
+      .map((c) => {
+        try { return JSON.parse(String(c[0])) as Record<string, unknown>; } catch { return null; }
+      })
+      .filter((x): x is Record<string, unknown> => x !== null);
+
+  it('balasan bot gagal tersimpan (tanpa eskalasi): 500, BUKAN 200 dengan pesan null; dicatat dengan kode (bukan pesan teknis)', async () => {
+    await mockServiceClient({
+      rpcData: FAQ_COCOK,
+      pesanInsertError: { message: 'connection reset: secret-detail-xyz', code: '08006' },
+    });
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest(validBody));
+
+    expect(res.status).toBe(500);
+    const json = await res.json();
+    expect(json.error).toBeTruthy();
+    expect(json.pesan).toBeUndefined();
+
+    const log = entriLog(errSpy).find((e) => e.operation === 'chat.ai.save_bot');
+    expect(log).toMatchObject({ route: '/api/chat/ai', kode: 'database', asalCode: '08006' });
+    expect(JSON.stringify(log)).not.toContain('secret-detail-xyz');
+  });
+
+  it('balasan bot gagal tersimpan TETAPI eskalasi berhasil: 200 status eskalasi, pesan null (petugas tetap menerima sesi)', async () => {
+    const mock = await mockServiceClient({
+      rpcData: [],
+      pesanInsertError: { message: 'x', code: '08006' },
+    });
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest({ ...validBody, pertanyaan: PERTANYAAN_ESKALASI }));
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json).toMatchObject({ eskalasi: true, status: 'eskalasi', pesan: null });
+    // UPDATE eskalasi tetap dicoba walau pesan gagal disimpan
+    expect(mock.from.mock.calls.some((c: unknown[]) => c[0] === 'chat_sesi')).toBe(true);
+  });
+
+  it('UPDATE eskalasi 0 baris (petugas keburu mengambil alih): status yang dilaporkan = status sebenarnya (aktif), bukan eskalasi', async () => {
+    await mockServiceClient({ rpcData: [], sesiUpdateRows: [], sesiStatusSetelahRace: 'aktif' });
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest({ ...validBody, pertanyaan: PERTANYAAN_ESKALASI }));
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.status).toBe('aktif');
+    expect(json.status).not.toBe('eskalasi');
+  });
+
+  it('UPDATE eskalasi 0 baris karena sesi sudah dieskalasi permintaan lain: status eskalasi tetap benar', async () => {
+    await mockServiceClient({ rpcData: [], sesiUpdateRows: [], sesiStatusSetelahRace: 'eskalasi' });
+    const { POST } = await import('./route');
+    const json = await (await POST(buildRequest({ ...validBody, pertanyaan: PERTANYAAN_ESKALASI }))).json();
+    expect(json.status).toBe('eskalasi');
+  });
+
+  it('UPDATE eskalasi error: status tidak diklaim eskalasi (tetap bot) dan dicatat dengan kode', async () => {
+    await mockServiceClient({ rpcData: [], sesiUpdateError: { message: 'deadlock detected', code: '40P01' } });
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest({ ...validBody, pertanyaan: PERTANYAAN_ESKALASI }));
+
+    expect(res.status).toBe(200);
+    expect((await res.json()).status).toBe('bot');
+    const log = entriLog(errSpy).find((e) => e.operation === 'chat.ai.escalate_status');
+    expect(log).toMatchObject({ kode: 'database', asalCode: '40P01' });
+    expect(JSON.stringify(log)).not.toContain('deadlock');
+  });
+
+  it('pencatatan rate limit gagal: fail-closed dengan 503 (bukan 429), sama seperti kegagalan membaca hitungan', async () => {
+    await mockServiceClient({ rpcData: FAQ_COCOK, rateInsertError: { message: 'x', code: '08006' } });
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest(validBody));
+
+    expect(res.status).toBe(503);
+    const log = entriLog(errSpy).find((e) => e.operation === 'chat.ai.rate_limit_insert');
+    expect(log).toMatchObject({ kode: 'database', asalCode: '08006' });
+  });
+
+  it('audit chat_ai_log gagal: best-effort, jawaban tetap terkirim tetapi kegagalan tercatat (peringatan)', async () => {
+    await mockServiceClient({ rpcData: FAQ_COCOK, insertError: { message: 'row-level security', code: '42501' } });
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest(validBody));
+
+    expect(res.status).toBe(200);
+    expect((await res.json()).jawaban).toBe('Jawaban dari AI [1]');
+    const log = entriLog(warnSpy).find((e) => e.operation === 'chat.ai.audit_log');
+    expect(log).toMatchObject({ kode: 'ditolak', asalCode: '42501' });
   });
 });

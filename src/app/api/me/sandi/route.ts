@@ -2,6 +2,8 @@ import type { NextRequest } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { ambilJatah, audit, getServiceClient, json, requireStaf } from '@/lib/akun/server';
+import { mutasiWajibBaris } from '@/lib/supabase/mutate';
+import { catatMutasi } from '@/lib/observability/catat-mutasi';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,10 +45,32 @@ export async function POST(request: NextRequest) {
     console.error('[me/sandi] updateUserById gagal', error.message);
     return json({ error: 'Gagal mengubah sandi (mungkin terlalu lemah)' }, 400);
   }
-  await service.from('petugas').update({ wajib_ganti_sandi: false }).eq('id', me.id);
+  // Sandi SUDAH berubah di titik ini. Bila flag wajib_ganti_sandi gagal dibersihkan (error ATAU 0 baris), jangan lapor
+  // sukses: pengguna tetap dipaksa ganti sandi tanpa penjelasan. Langkah berikutnya (keluarkan perangkat, audit) tetap
+  // dijalankan karena sandinya memang sudah berganti; hasilnya dilaporkan jujur di akhir.
+  let flagBersih = true;
+  try {
+    await mutasiWajibBaris(
+      service.from('petugas').update({ wajib_ganti_sandi: false }).eq('id', me.id).select('id'),
+    );
+  } catch (e) {
+    flagBersih = false;
+    catatMutasi('error', 'me.sandi.flag', '/api/me/sandi', e);
+  }
   if (parsed.data.keluarkan_perangkat_lain) await supabase.auth.signOut({ scope: 'others' });
   await audit(service, { id: me.id, role: me.role }, 'akun_ganti_sandi_sendiri', me.id, {
     perangkat_lain_dikeluarkan: !!parsed.data.keluarkan_perangkat_lain,
+    ...(flagBersih ? {} : { wajib_ganti_sandi_dibersihkan: false }),
   });
+  if (!flagBersih) {
+    // `kode` untuk UI: sandi baru SUDAH berlaku (pengguna masih login), hanya penanda wajib-ganti yang belum bersih.
+    return json(
+      {
+        error: 'Sandi sudah berubah dan sandi baru Anda sudah berlaku, tetapi status wajib-ganti belum bersih. Muat ulang halaman; bila masih diminta mengganti sandi, hubungi Admin.',
+        kode: 'SANDI_BERUBAH_FLAG_GAGAL',
+      },
+      500,
+    );
+  }
   return json({ ok: true });
 }

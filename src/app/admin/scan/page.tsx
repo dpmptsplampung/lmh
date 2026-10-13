@@ -18,6 +18,8 @@ import {
 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import { createClient } from '@/lib/supabase/client';
+import { mutasiWajibBaris, pesanMutasi } from '@/lib/supabase/mutate';
+import { perluMuatUlang } from '@/components/admin/mutasi-ui';
 import { useToast } from '@/components/Toast';
 import { todayWIB } from '@/lib/time';
 import styles from './scan.module.css';
@@ -199,19 +201,26 @@ export default function AdminScanPage() {
       }
     }
 
-    const { error } = await supabase
-      .from('visit')
-      .update(updateData)
-      .eq('id', result.id);
-
-    setProcessing(false);
-
-    if (error) {
-      console.error('Update error:', error);
-      toast('Gagal memproses: ' + error.message, 'error');
+    try {
+      // .select('id') + mutasiWajibBaris: RLS yang menolak UPDATE = 0 baris tanpa error -> tanpa ini
+      // layar menampilkan "Berhasil Diproses" padahal check-in/tolak tidak tersimpan.
+      await mutasiWajibBaris(
+        supabase
+          .from('visit')
+          .update(updateData)
+          .eq('id', result.id)
+          .select('id'),
+      );
+    } catch (e) {
+      console.error('Update error:', e);
+      setProcessing(false);
+      toast(`Gagal memproses. ${pesanMutasi(e)}`, 'error');
+      // Ditolak/0 baris: status reservasi di layar kemungkinan basi -> baca ulang dari server.
+      if (perluMuatUlang(e)) await lookupToken(result.qr_token);
       return;
     }
 
+    setProcessing(false);
     setScanState('processed');
   };
 

@@ -3,7 +3,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 
 vi.mock('@/components/layout/PageHeader', () => ({ default: ({ children }: { children?: React.ReactNode }) => <>{children}</> }));
-vi.mock('@/components/Toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
+const toastMock = vi.hoisted(() => vi.fn());
+vi.mock('@/components/Toast', () => ({ useToast: () => ({ toast: toastMock }) }));
 vi.mock('next/link', () => ({ default: ({ children }: { children: React.ReactNode }) => <a>{children}</a> }));
 vi.mock('@/lib/supabase/client', () => ({
   createClient: () => ({ from: () => ({ select: () => ({ order: () => Promise.resolve({ data: [{ id: 'l1', nama: 'OSS' }] }) }) }) }),
@@ -24,6 +25,7 @@ const DAFTAR = [
 
 let fetchMock: ReturnType<typeof vi.fn>;
 beforeEach(() => {
+  toastMock.mockClear();
   fetchMock = vi.fn((url: string, init?: RequestInit) => {
     const ok = (b: unknown) => Promise.resolve({ ok: true, json: () => Promise.resolve(b) });
     if (url === '/api/admin/petugas' && init?.method === 'POST') return ok({ ok: true, id: 'n1', username: 'helpdesk-baru', sandi_sementara: 'Baru-7qT4mZ', wajib_ganti_sandi: true });
@@ -101,5 +103,48 @@ describe('kelola akun', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Buat akun' }));
     expect(await screen.findByText('Petugas wajib memiliki layanan.')).toBeTruthy();
     expect(fetchMock.mock.calls.some((c) => c[1]?.method === 'POST')).toBe(false);
+  });
+
+  // Server membalas ok + `peringatan` bila perubahan SUDAH tersimpan tetapi langkah lanjutan (sesi/blokir/notifikasi) gagal.
+  // Tanpa menampilkannya, Admin mengira akun yang dinonaktifkan benar-benar terkunci.
+  describe('peringatan dari server', () => {
+    const PERINGATAN = 'Akun nonaktif, tetapi blokir/sesi Auth gagal; role sudah dicabut.';
+    const balas = (urlCocok: (u: string, i?: RequestInit) => boolean, body: unknown) => {
+      const asli = fetchMock.getMockImplementation() as (u: string, i?: RequestInit) => Promise<unknown>;
+      fetchMock.mockImplementation((url: string, init?: RequestInit) =>
+        urlCocok(url, init) ? Promise.resolve({ ok: true, json: () => Promise.resolve(body) }) : asli(url, init));
+    };
+
+    it('nonaktifkan: toast sukses DAN toast peringatan (warning) ditampilkan', async () => {
+      balas((u) => u === '/api/admin/petugas/status', { ok: true, peringatan: PERINGATAN });
+      render(<AdminPetugasPage />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Nonaktifkan Helpdesk OSS' }));
+      fireEvent.change(screen.getByLabelText(/Alasan/), { target: { value: 'pindah tugas' } });
+      const dialog = screen.getByRole('dialog');
+      fireEvent.click(Array.from(dialog.querySelectorAll('button')).find((b) => b.textContent?.trim() === 'Nonaktifkan')!);
+      await waitFor(() => expect(toastMock).toHaveBeenCalledWith(PERINGATAN, 'warning'));
+      expect(toastMock).toHaveBeenCalledWith(expect.stringMatching(/dinonaktifkan/), 'success');
+    });
+
+    it('nonaktifkan tanpa peringatan: tidak ada toast warning', async () => {
+      render(<AdminPetugasPage />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Nonaktifkan Helpdesk OSS' }));
+      fireEvent.change(screen.getByLabelText(/Alasan/), { target: { value: 'pindah tugas' } });
+      const dialog = screen.getByRole('dialog');
+      fireEvent.click(Array.from(dialog.querySelectorAll('button')).find((b) => b.textContent?.trim() === 'Nonaktifkan')!);
+      await waitFor(() => expect(toastMock).toHaveBeenCalledWith(expect.stringMatching(/dinonaktifkan/), 'success'));
+      expect(toastMock.mock.calls.some((c) => c[1] === 'warning')).toBe(false);
+    });
+
+    it('ubah akun (PATCH) dengan sesiGagal: toast peringatan ditampilkan bersama toast sukses', async () => {
+      const SESI = 'Perubahan tersimpan, tetapi sesi lama akun ini gagal diakhiri. Minta pengguna keluar, atau atur ulang sandinya.';
+      balas((u, i) => u.startsWith('/api/admin/petugas/u2') && i?.method === 'PATCH', { ok: true, peringatan: SESI });
+      render(<AdminPetugasPage />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Ubah Helpdesk OSS' }));
+      fireEvent.change(await screen.findByLabelText(/^Nama$/), { target: { value: 'Helpdesk OSS Baru' } });
+      fireEvent.click(screen.getByRole('button', { name: /Simpan/ }));
+      await waitFor(() => expect(toastMock).toHaveBeenCalledWith(SESI, 'warning'));
+      expect(toastMock).toHaveBeenCalledWith('Akun diperbarui.', 'success');
+    });
   });
 });

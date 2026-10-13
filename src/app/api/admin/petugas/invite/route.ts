@@ -15,6 +15,12 @@ const bodySchema = z
   .refine((v) => v.role === 'admin' || v.role === 'front_office' || !!v.layanan_id, {
     message: 'layanan_id wajib untuk role petugas',
     path: ['layanan_id'],
+  })
+  // FAQ umum (keputusan CEO): Front Office/Admin bekerja lintas layanan, jadi layanan_id HARUS kosong
+  // (layanan_id terisi pada FO membuka FAQ khusus layanan itu). Ditolak, bukan diabaikan diam-diam.
+  .refine((v) => v.role === 'petugas' || !v.layanan_id, {
+    message: 'layanan_id harus kosong untuk role Front Office/Admin',
+    path: ['layanan_id'],
   });
 
 function getServiceClient() {

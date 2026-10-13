@@ -6,10 +6,15 @@ import { render, screen, waitFor, fireEvent, cleanup } from '@testing-library/re
 const h = vi.hoisted(() => ({
   toast: vi.fn(),
   writes: vi.fn(),
+  liburReads: vi.fn(),
+  deleteSelected: vi.fn(), // dipanggil dengan true/false: apakah .select dipanggil sebelum delete di-await
   state: {
     role: 'petugas' as string,
     upsertError: null as { message: string } | null,
-    deleteResult: { data: [{ id: 'x1' }] as { id: string }[], error: null as { message: string } | null },
+    deleteResult: {
+      data: [{ id: 'x1' }] as { id: string }[] | null,
+      error: null as { message: string; code?: string } | null,
+    },
   },
 }));
 
@@ -18,15 +23,26 @@ vi.mock('@/components/layout/PageHeader', () => ({ default: () => null }));
 vi.mock('@/lib/supabase/client', () => {
   const builder = (table: string) => {
     let op: 'select' | 'delete' = 'select';
+    // Seperti supabase-js: DELETE tanpa .select() TIDAK mengembalikan baris (data null) sehingga
+    // mutasiWajibBaris melempar tidak_ada_baris. Baris hasil baru tersedia setelah .select dipanggil.
+    let selected = false;
     const result = () => {
       if (table === 'layanan') return { data: [{ id: 'l1', nama: 'Helpdesk OSS', is_ptsp: true }], error: null };
-      if (table === 'layanan_libur' && op === 'delete') return h.state.deleteResult;
-      if (table === 'layanan_libur')
+      if (table === 'layanan_libur' && op === 'delete') {
+        h.deleteSelected(selected);
+        return selected ? h.state.deleteResult : { ...h.state.deleteResult, data: null };
+      }
+      if (table === 'layanan_libur') {
+        h.liburReads();
         return { data: [{ id: 'x1', layanan_id: 'l1', tanggal: '2026-12-25', keterangan: 'Natal' }], error: null };
+      }
       return { data: [], error: null };
     };
     const b: Record<string, unknown> = {};
-    b.select = () => b;
+    b.select = () => {
+      selected = true;
+      return b;
+    };
     b.eq = () => b;
     b.order = () => b;
     b.upsert = (values: unknown) => {
@@ -67,6 +83,8 @@ describe('admin jadwal: hanya Admin yang boleh mengubah', () => {
   beforeEach(() => {
     h.toast.mockClear();
     h.writes.mockClear();
+    h.liburReads.mockClear();
+    h.deleteSelected.mockClear();
     h.state.role = 'petugas';
     h.state.upsertError = null;
     h.state.deleteResult = { data: [{ id: 'x1' }], error: null };
@@ -113,12 +131,52 @@ describe('admin jadwal: hanya Admin yang boleh mengubah', () => {
     expect(h.toast).not.toHaveBeenCalledWith(expect.anything(), 'success');
   });
 
-  it('admin: hapus libur 0 baris (ditolak RLS diam-diam) -> galat jujur', async () => {
+  it('admin: hapus libur 0 baris (ditolak RLS diam-diam) -> galat jujur + daftar dimuat ulang', async () => {
     h.state.role = 'admin';
     h.state.deleteResult = { data: [], error: null };
     render(<AdminJadwalPage />);
     fireEvent.click(await screen.findByRole('button', { name: /Hapus tanggal libur/ }));
-    await waitFor(() => expect(h.toast).toHaveBeenCalledWith('Gagal menghapus tanggal libur.', 'error'));
+    await waitFor(() =>
+      expect(h.toast).toHaveBeenCalledWith(expect.stringContaining('Gagal menghapus tanggal libur.'), 'error'),
+    );
+    expect(h.toast).toHaveBeenCalledWith(expect.stringContaining('tidak berwenang'), 'error');
     expect(h.toast).not.toHaveBeenCalledWith(expect.anything(), 'success');
+    // tampilan basi (baris mungkin sudah tak ada) -> libur dimuat ulang: 1x awal + 1x setelah gagal
+    await waitFor(() => expect(h.liburReads).toHaveBeenCalledTimes(2));
+  });
+
+  it('admin: hapus libur gagal jaringan -> galat jujur tanpa muat ulang', async () => {
+    h.state.role = 'admin';
+    h.state.deleteResult = { data: null, error: { message: 'TypeError: Failed to fetch', code: '' } };
+    render(<AdminJadwalPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /Hapus tanggal libur/ }));
+    await waitFor(() =>
+      expect(h.toast).toHaveBeenCalledWith(expect.stringContaining('Koneksi bermasalah'), 'error'),
+    );
+    expect(h.toast).not.toHaveBeenCalledWith(expect.anything(), 'success');
+    expect(h.liburReads).toHaveBeenCalledTimes(1);
+  });
+
+  it('admin: hapus libur berhasil (baris terbukti) -> toast sukses + daftar dimuat ulang', async () => {
+    h.state.role = 'admin';
+    render(<AdminJadwalPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /Hapus tanggal libur/ }));
+    await waitFor(() => expect(h.toast).toHaveBeenCalledWith('Tanggal libur dihapus.', 'success'));
+    await waitFor(() => expect(h.liburReads).toHaveBeenCalledTimes(2));
+  });
+
+  it('admin: delete libur menyertakan .select (tanpa itu mutasiWajibBaris selalu melempar); mock setia pada supabase-js', async () => {
+    h.state.role = 'admin';
+    render(<AdminJadwalPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /Hapus tanggal libur/ }));
+    await waitFor(() => expect(h.toast).toHaveBeenCalledWith('Tanggal libur dihapus.', 'success'));
+    expect(h.deleteSelected).toHaveBeenCalledWith(true);
+    expect(h.deleteSelected).not.toHaveBeenCalledWith(false);
+
+    // Bukti kontrak mock: delete tanpa .select -> tak ada baris -> kode yang lupa .select pasti gagal.
+    const { createClient } = await import('@/lib/supabase/client');
+    const { mutasiWajibBaris } = await import('@/lib/supabase/mutate');
+    const tanpaSelect = createClient().from('layanan_libur').delete().eq('id', 'x1');
+    await expect(mutasiWajibBaris(tanpaSelect as never)).rejects.toMatchObject({ kode: 'tidak_ada_baris' });
   });
 });

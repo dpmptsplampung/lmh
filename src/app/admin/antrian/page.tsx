@@ -32,6 +32,8 @@ import PelayananWizardModal from '@/components/admin/PelayananWizardModal';
 import KoreksiPelayananModal from '@/components/admin/KoreksiPelayananModal';
 import { isLayananPendataan } from '@/lib/pelayanan';
 import { createClient } from '@/lib/supabase/client';
+import { mutasiInsert, mutasiWajibBaris, pesanMutasi } from '@/lib/supabase/mutate';
+import { perluMuatUlang } from '@/components/admin/mutasi-ui';
 import { toCsv } from '@/lib/csv';
 import { useToast } from '@/components/Toast';
 import { useRealtimeRefetch } from '@/lib/hooks/useRealtimeRefetch';
@@ -193,16 +195,18 @@ export default function AntrianPage() {
   const handlePanggil = async (tiketId: string, nomorDisplay: string) => {
     try {
       const supabase = createClient();
-      const { error } = await supabase.rpc('panggil_tiket', { p_tiket_id: tiketId });
-      if (error) {
-        console.error('Gagal memanggil tiket:', error);
-        toast(`Gagal memanggil ${nomorDisplay}`, 'error');
-      } else {
-        toast(`Memanggil ${nomorDisplay}…`, 'success');
+      // panggil_tiket mengembalikan nomor_display, atau NULL TANPA error bila tiket bukan 'menunggu'
+      // (sudah dilayani/batal/dst.) -> tak ada event ke layar TV. NULL (array kosong) = tidak dipanggil.
+      const dipanggil = await mutasiInsert(supabase.rpc('panggil_tiket', { p_tiket_id: tiketId }));
+      if (dipanggil.length === 0) {
+        toast(`${nomorDisplay} tidak dipanggil: tiket sudah tidak berstatus menunggu. Daftar dimuat ulang.`, 'error');
+        await fetchData();
+        return;
       }
+      toast(`Memanggil ${nomorDisplay}…`, 'success');
     } catch (e) {
-      console.error(e);
-      toast('Gagal memanggil tiket', 'error');
+      console.error('Gagal memanggil tiket:', e);
+      toast(`Gagal memanggil ${nomorDisplay}. ${pesanMutasi(e)}`, 'error');
     }
   };
 
@@ -210,28 +214,28 @@ export default function AntrianPage() {
   const handleMulaiLayanan = async (legacyVisitId: string, tiketId: string, layananNama: string) => {
     try {
       const supabase = createClient();
-      const { error } = await supabase
-        .from('visit')
-        .update({ status: 'dilayani', waktu_mulai_layan: new Date().toISOString() })
-        .eq('id', legacyVisitId);
-      if (error) {
-        console.error('Gagal memulai layanan:', error);
-        toast('Gagal memulai layanan', 'error');
+      // .select('id') + mutasiWajibBaris: RLS yang menolak UPDATE = 0 baris tanpa error (sukses palsu).
+      await mutasiWajibBaris(
+        supabase
+          .from('visit')
+          .update({ status: 'dilayani', waktu_mulai_layan: new Date().toISOString() })
+          .eq('id', legacyVisitId)
+          .select('id'),
+      );
+      toast('Layanan dimulai', 'success');
+      await fetchData();
+      // Buka wizard pendataan untuk layanan yang didukung (Helpdesk OSS /
+      // Layanan Perizinan DPMPTSP). Layanan lain (mis. P4 / investasi)
+      // tidak punya form pendataan — tampilkan selesai saja.
+      if (isLayananPendataan(layananNama)) {
+        setActiveWizardTiketId(tiketId);
       } else {
-        toast('Layanan dimulai', 'success');
-        await fetchData();
-        // Buka wizard pendataan untuk layanan yang didukung (Helpdesk OSS /
-        // Layanan Perizinan DPMPTSP). Layanan lain (mis. P4 / investasi)
-        // tidak punya form pendataan — tampilkan selesai saja.
-        if (isLayananPendataan(layananNama)) {
-          setActiveWizardTiketId(tiketId);
-        } else {
-          toast('Layanan ini tidak memiliki form pendataan', 'info');
-        }
+        toast('Layanan ini tidak memiliki form pendataan', 'info');
       }
     } catch (e) {
-      console.error(e);
-      toast('Gagal memulai layanan', 'error');
+      console.error('Gagal memulai layanan:', e);
+      toast(`Gagal memulai layanan. ${pesanMutasi(e)}`, 'error');
+      if (perluMuatUlang(e)) await fetchData();
     }
   };
 
@@ -242,20 +246,19 @@ export default function AntrianPage() {
     }
     try {
       const supabase = createClient();
-      const { error } = await supabase
-        .from('visit')
-        .update({ status: 'selesai', waktu_selesai: new Date().toISOString() })
-        .eq('id', legacyVisitId);
-      if (error) {
-        console.error('Gagal menyelesaikan antrian:', error);
-        toast('Gagal menyelesaikan antrian', 'error');
-      } else {
-        toast('Kunjungan berhasil diselesaikan', 'success');
-        await fetchData();
-      }
+      await mutasiWajibBaris(
+        supabase
+          .from('visit')
+          .update({ status: 'selesai', waktu_selesai: new Date().toISOString() })
+          .eq('id', legacyVisitId)
+          .select('id'),
+      );
+      toast('Kunjungan berhasil diselesaikan', 'success');
+      await fetchData();
     } catch (e) {
-      console.error(e);
-      toast('Gagal menyelesaikan antrian', 'error');
+      console.error('Gagal menyelesaikan antrian:', e);
+      toast(`Gagal menyelesaikan antrian. ${pesanMutasi(e)}`, 'error');
+      if (perluMuatUlang(e)) await fetchData();
     }
   };
 

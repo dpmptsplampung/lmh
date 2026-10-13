@@ -1,6 +1,8 @@
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { audit, generateTempPassword, json, requireAdmin } from '@/lib/akun/server';
+import { MutasiError, mutasiInsert, mutasiWajibBaris } from '@/lib/supabase/mutate';
+import { catatMutasiGagal } from '@/app/api/admin/_mutasi';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,8 +27,35 @@ export async function POST(_request: NextRequest, { params }: Ctx) {
     console.error('[admin/petugas reset-password] gagal', error.message);
     return json({ error: 'Gagal mengatur ulang sandi' }, 502);
   }
-  await service.from('petugas').update({ wajib_ganti_sandi: true }).eq('id', id);
-  await service.rpc('akun_akhiri_sesi', { p_auth_user_id: target.auth_user_id });
-  await audit(service, actor, 'akun_reset_sandi', id, { wajib_ganti_sandi: true, sesi_diakhiri: true });
+
+  // Sandi SUDAH berganti. Reset sandi adalah operasi pencabutan kredensial, jadi gagal-tutup: bila penanda
+  // wajib-ganti atau pengakhiran sesi gagal, sandi sementara TIDAK dikembalikan (kalau tidak, Admin tahu sandi
+  // yang tidak dipaksa diganti / sesi lama tetap hidup). Admin mengulang reset; audit mencatat hasil sebenarnya.
+  let penandaOk = true;
+  try {
+    // 0 baris = akun hilang sejak dibaca: penanda tidak tersimpan.
+    await mutasiWajibBaris(service.from('petugas').update({ wajib_ganti_sandi: true }).eq('id', id).select('id'));
+  } catch (e) {
+    if (!(e instanceof MutasiError)) throw e;
+    penandaOk = false;
+    catatMutasiGagal('/api/admin/petugas/[id]/reset-password', 'admin.petugas.reset_sandi.penanda', e, { petugasId: id });
+  }
+
+  // Tetap dicoba walau penanda gagal: sesi lama harus tetap diakhiri.
+  let sesiOk = true;
+  try {
+    await mutasiInsert(service.rpc('akun_akhiri_sesi', { p_auth_user_id: target.auth_user_id }));
+  } catch (e) {
+    if (!(e instanceof MutasiError)) throw e;
+    sesiOk = false;
+    catatMutasiGagal('/api/admin/petugas/[id]/reset-password', 'admin.petugas.reset_sandi.akhiri_sesi', e, { petugasId: id });
+  }
+
+  await audit(service, actor, 'akun_reset_sandi', id, { wajib_ganti_sandi: penandaOk, sesi_diakhiri: sesiOk });
+
+  if (!penandaOk || !sesiOk) {
+    const gagal = !penandaOk ? 'penanda wajib ganti sandi gagal disimpan' : 'sesi lama gagal diakhiri';
+    return json({ error: `Sandi diatur ulang, tetapi ${gagal}. Sandi sementara tidak ditampilkan; ulangi reset sandi.` }, 500);
+  }
   return json({ ok: true, sandi_sementara: sandi, wajib_ganti_sandi: true });
 }

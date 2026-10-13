@@ -5,6 +5,16 @@ import type { NextRequest } from 'next/server';
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(),
 }));
+vi.mock('@/lib/observability/logger', () => ({ logServerEvent: vi.fn() }));
+
+// UPDATE draf kini berakhir .select('tiket_id') agar baris terdampak terlihat (mutasiWajibBaris);
+// helper ini membuat rantai `.update().eq().select()` dengan hasil yang bisa diatur.
+const updateChain = (hasil: { data?: unknown; error?: { code?: string; message: string } | null } = {}) =>
+  vi.fn().mockReturnValue({
+    eq: vi.fn().mockReturnValue({
+      select: vi.fn().mockResolvedValue({ data: [{ tiket_id: 't1' }], error: null, ...hasil }),
+    }),
+  });
 
 const buildRequest = (method: string, body?: unknown): NextRequest => {
   const req = new Request('http://localhost/api/admin/pelayanan/t1', {
@@ -178,9 +188,7 @@ describe('API Route /api/admin/pelayanan/[tiketId]', () => {
     const serverMod = await import('@/lib/supabase/server');
     const createClient = serverMod.createClient as unknown as ReturnType<typeof vi.fn>;
 
-    const updateOss = vi.fn().mockReturnValue({
-      eq: vi.fn().mockResolvedValue({ error: null }),
-    });
+    const updateOss = updateChain();
     const insertOss = vi.fn().mockResolvedValue({ error: null });
 
     createClient.mockResolvedValue({
@@ -257,7 +265,7 @@ describe('API Route /api/admin/pelayanan/[tiketId]', () => {
   it('persists lokasi_usaha in a perizinan draft PATCH payload', async () => {
     const serverMod = await import('@/lib/supabase/server');
     const createClient = serverMod.createClient as unknown as ReturnType<typeof vi.fn>;
-    const updatePerizinan = vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) });
+    const updatePerizinan = updateChain();
     createClient.mockResolvedValue({
       auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'u-petugas' } }, error: null }) },
       from: vi.fn((table: string) => {
@@ -274,6 +282,89 @@ describe('API Route /api/admin/pelayanan/[tiketId]', () => {
     const res = await PATCH(buildRequest('PATCH', { nama_pemohon: 'Siti', lokasi_usaha: 'Lampung Selatan' }), { params: Promise.resolve({ tiketId: 't1' }) });
     expect(res.status).toBe(200);
     expect(updatePerizinan).toHaveBeenCalledWith(expect.objectContaining({ lokasi_usaha: 'Lampung Selatan' }));
+  });
+
+  // Audit T2d (No 59-62): draf yang tidak benar-benar tersimpan tidak boleh dilaporkan "tersimpan".
+  describe('PATCH draf: hasil mutasi dicek', () => {
+    const ctx = { params: Promise.resolve({ tiketId: 't1' }) };
+    const pasang = async (opts: {
+      tiketNama?: string;
+      tabel: 'pelayanan_oss' | 'pelayanan_perizinan';
+      existing: { tiket_id: string; is_locked: boolean } | null;
+      update?: ReturnType<typeof vi.fn>;
+      insert?: ReturnType<typeof vi.fn>;
+    }) => {
+      const serverMod = await import('@/lib/supabase/server');
+      (serverMod.createClient as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+        auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'u-petugas' } }, error: null }) },
+        from: vi.fn((table: string) => {
+          if (table === 'petugas') return mockPetugas();
+          if (table === 'tiket_antrean') return mockTiket(opts.tiketNama ? { layanan: { nama: opts.tiketNama } } : {});
+          if (table === opts.tabel) {
+            return {
+              select: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ maybeSingle: vi.fn().mockResolvedValue({ data: opts.existing }) }) }),
+              update: opts.update ?? updateChain(),
+              insert: opts.insert ?? vi.fn().mockResolvedValue({ data: null, error: null }),
+            };
+          }
+          return {};
+        }),
+      });
+      const logger = await import('@/lib/observability/logger');
+      vi.mocked(logger.logServerEvent).mockClear();
+      return { PATCH: (await import('./route')).PATCH, log: vi.mocked(logger.logServerEvent) };
+    };
+    const body = { nama_pemohon: 'Budi', nama_usaha: 'Toko' };
+
+    it('OSS: UPDATE 0 baris (terkunci/ditolak RLS) = 409, bukan "Draft OSS tersimpan"', async () => {
+      const { PATCH, log } = await pasang({ tabel: 'pelayanan_oss', existing: { tiket_id: 't1', is_locked: false }, update: updateChain({ data: [] }) });
+      const res = await PATCH(buildRequest('PATCH', body), ctx);
+      expect(res.status).toBe(409);
+      const json = await res.json();
+      expect(json.ok).toBeUndefined();
+      expect(json.error).toMatch(/draf/i);
+      expect(log).toHaveBeenCalledWith('warn', expect.objectContaining({ operation: 'admin.pelayanan.draf_oss', kode: 'tidak_ada_baris' }));
+    });
+
+    it('Perizinan: UPDATE 0 baris = 409', async () => {
+      const { PATCH } = await pasang({
+        tabel: 'pelayanan_perizinan', tiketNama: 'Non OSS (SiCantik Lampung)',
+        existing: { tiket_id: 't1', is_locked: false }, update: updateChain({ data: [] }),
+      });
+      const res = await PATCH(buildRequest('PATCH', { nama_pemohon: 'Siti' }), ctx);
+      expect(res.status).toBe(409);
+      expect((await res.json()).ok).toBeUndefined();
+    });
+
+    it('OSS: error UPDATE = 400 "Gagal menyimpan draft OSS" (kontrak lama), ditolak DB = 403, tanpa bocor pesan DB', async () => {
+      let p = await pasang({ tabel: 'pelayanan_oss', existing: { tiket_id: 't1', is_locked: false }, update: updateChain({ data: null, error: { code: '23514', message: 'check constraint rahasia' } }) });
+      let res = await p.PATCH(buildRequest('PATCH', body), ctx);
+      expect(res.status).toBe(400);
+      let json = await res.json();
+      expect(json.error).toBe('Gagal menyimpan draft OSS');
+
+      vi.resetModules();
+      p = await pasang({ tabel: 'pelayanan_oss', existing: { tiket_id: 't1', is_locked: false }, update: updateChain({ data: null, error: { code: '42501', message: 'LOCKED: terkunci rahasia' } }) });
+      res = await p.PATCH(buildRequest('PATCH', body), ctx);
+      expect(res.status).toBe(403);
+      json = await res.json();
+      expect(JSON.stringify(json)).not.toContain('rahasia');
+    });
+
+    it('baris baru: INSERT dengan petugas_id penyimpan pertama; error INSERT = 400 (kontrak lama)', async () => {
+      const insert = vi.fn().mockResolvedValue({ data: null, error: null });
+      let p = await pasang({ tabel: 'pelayanan_oss', existing: null, insert });
+      let res = await p.PATCH(buildRequest('PATCH', body), ctx);
+      expect(res.status).toBe(200);
+      expect(insert).toHaveBeenCalledWith(expect.objectContaining({ tiket_id: 't1', kunjungan_id: 'k1', petugas_id: 'p1' }));
+
+      vi.resetModules();
+      p = await pasang({ tabel: 'pelayanan_oss', existing: null, insert: vi.fn().mockResolvedValue({ data: null, error: { code: '23503', message: 'fk' } }) });
+      res = await p.PATCH(buildRequest('PATCH', body), ctx);
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toBe('Gagal menyimpan draft OSS');
+      expect(p.log).toHaveBeenCalledWith('error', expect.objectContaining({ operation: 'admin.pelayanan.draf_oss', asalCode: '23503' }));
+    });
   });
 
   describe('PUT koreksi data terkunci', () => {

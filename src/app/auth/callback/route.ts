@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { logServerEvent } from '@/lib/observability/logger';
 
 function safeNextPath(next: string | null): string {
   if (next && next.startsWith('/') && !next.startsWith('//')) {
@@ -36,13 +37,21 @@ export async function GET(request: Request) {
 
       if (!existing) {
         const metadata = data.user.user_metadata;
-        await supabase.from('pengunjung').insert({
+        const { error: insertError } = await supabase.from('pengunjung').insert({
           auth_user_id: data.user.id,
           nama: metadata?.full_name || metadata?.name || 'Pengunjung',
           email: data.user.email,
           foto_url: metadata?.avatar_url || metadata?.picture || null,
           provider: 'google',
         });
+        // Login tetap lanjut (halaman chat punya fallback pembuatan profil), tetapi kegagalan dicatat.
+        if (insertError) {
+          logServerEvent('error', {
+            operation: 'auth.callback.profil_pengunjung_gagal',
+            route: '/auth/callback',
+            error: insertError,
+          });
+        }
       }
 
       return NextResponse.redirect(`${origin}${next}`);

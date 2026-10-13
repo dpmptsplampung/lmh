@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const serverState = { callerId: 'auth-staff-1' as string | null };
@@ -36,11 +36,17 @@ interface MakeClientOpts {
   ditangani?: string | null;
   raceLost?: boolean;
   updateVals?: unknown[];
+  // Kondisi bersyarat UPDATE (.eq/.is/.filter) yang dicatat mock: [metode, kolom, nilai]
+  conds?: unknown[][];
+  // Mutasi (audit T2d)
+  updateError?: { message: string; code?: string };
+  auditError?: { message: string; code?: string };
+  pesanError?: { message: string; code?: string };
 }
 
 function makeClient(opts: MakeClientOpts) {
-  const auditInsert = vi.fn(async () => ({ error: null }));
-  const chatPesanInsert = vi.fn(async () => ({ error: null }));
+  const auditInsert = vi.fn(async () => ({ error: opts.auditError ?? null }));
+  const chatPesanInsert = vi.fn(async () => ({ error: opts.pesanError ?? null }));
   const client = {
     auditInsert,
     chatPesanInsert,
@@ -79,9 +85,14 @@ function makeClient(opts: MakeClientOpts) {
           update: (vals: unknown) => {
             opts.updateVals?.push(vals);
             const b: Record<string, unknown> = {};
-            b.eq = () => b;
-            b.is = () => b;
-            b.select = async () => ({ data: opts.raceLost ? [] : [{ id: SESI }], error: null });
+            b.eq = (col: string, val: unknown) => { opts.conds?.push(['eq', col, val]); return b; };
+            b.is = (col: string, val: unknown) => { opts.conds?.push(['is', col, val]); return b; };
+            // .filter(kolom, operator, nilai): operator 'eq'/'is' sama dengan .eq()/.is() (PostgREST: op.nilai)
+            b.filter = (col: string, op: string, val: unknown) => { opts.conds?.push([op, col, val]); return b; };
+            b.select = async () =>
+              opts.updateError
+                ? { data: null, error: opts.updateError }
+                : { data: opts.raceLost ? [] : [{ id: SESI }], error: null };
             return b;
           },
         };
@@ -199,5 +210,94 @@ describe('POST /api/chat/sesi', () => {
       const res = await POST(buildReq({ sesi_id: SESI, aksi }));
       expect(res.status).toBe(409);
     }
+  });
+
+  // Audit T2d: pesan sistem + audit adalah mutasi SESUDAH status berubah; kegagalannya tak boleh membatalkan aksi
+  // (status sudah tersimpan) tetapi harus tercatat dengan kode, bukan ditelan/diabaikan.
+  describe('mutasi tercek (audit T2d)', () => {
+    // UPDATE bersyarat harus tetap menjaga pemegang sesi (cegah menimpa pemegang lain) walau kini berupa satu rantai
+    // yang dibungkus mutasiWajibBaris: pemegang ada -> ditangani_oleh = pemegang; tak ada -> IS NULL.
+    it('UPDATE bersyarat: kondisi ditangani_oleh = pemegang bila ada, IS NULL bila tidak', async () => {
+      const conds: unknown[][] = [];
+      mockAdmin.mockReturnValue(makeClient({
+        actor: { kind: 'staff', role: 'admin', layananId: null, id: 'st-1' }, role: 'admin',
+        sesiStatus: 'aktif', ditangani: 'st-2', conds,
+      }));
+      const { POST } = await import('./route');
+      expect((await POST(buildReq({ sesi_id: SESI, aksi: 'takeover' }))).status).toBe(200);
+      const holderCond = conds.find((c) => c[1] === 'ditangani_oleh');
+      expect(holderCond?.[0]).toBe('eq');
+      expect(holderCond?.[2]).toBe('st-2');
+
+      vi.resetModules();
+      const conds2: unknown[][] = [];
+      mockAdmin.mockReturnValue(makeClient({
+        actor: { kind: 'staff', role: 'admin', layananId: null, id: 'st-1' }, role: 'admin',
+        sesiStatus: 'eskalasi', ditangani: null, conds: conds2,
+      }));
+      const { POST: POST2 } = await import('./route');
+      expect((await POST2(buildReq({ sesi_id: SESI, aksi: 'takeover' }))).status).toBe(200);
+      const nullCond = conds2.find((c) => c[1] === 'ditangani_oleh');
+      expect(nullCond?.[0]).toBe('is');
+      expect(nullCond?.[2]).toBeNull();
+    });
+
+    let errSpy: ReturnType<typeof vi.spyOn>;
+    let warnSpy: ReturnType<typeof vi.spyOn>;
+    beforeEach(() => {
+      errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    });
+    afterEach(() => {
+      errSpy.mockRestore();
+      warnSpy.mockRestore();
+    });
+    const entri = (...spies: { mock: { calls: unknown[][] } }[]) =>
+      spies
+        .flatMap((sp) => sp.mock.calls)
+        .map((c) => {
+          try { return JSON.parse(String(c[0])) as Record<string, unknown>; } catch { return null; }
+        })
+        .filter((x): x is Record<string, unknown> => x !== null);
+
+    const admin = { actor: { kind: 'staff', role: 'admin', layananId: null, id: 'st-1' }, role: 'admin' };
+
+    it('UPDATE sesi error -> 500 tanpa pesan sistem/audit; dicatat dengan kode (bukan pesan teknis)', async () => {
+      const client = makeClient({ ...admin, updateError: { message: 'deadlock detected secret-xyz', code: '40P01' } });
+      mockAdmin.mockReturnValue(client);
+      const { POST } = await import('./route');
+      const res = await POST(buildReq({ sesi_id: SESI, aksi: 'takeover' }));
+
+      expect(res.status).toBe(500);
+      expect(client.chatPesanInsert).not.toHaveBeenCalled();
+      expect(client.auditInsert).not.toHaveBeenCalled();
+      const log = entri(errSpy).find((e) => e.operation === 'chat.sesi.update');
+      expect(log).toMatchObject({ kode: 'database', asalCode: '40P01' });
+      expect(JSON.stringify(log)).not.toContain('secret-xyz');
+    });
+
+    it('audit_log gagal: aksi tetap 200 (status sudah berubah) tetapi kegagalan tercatat', async () => {
+      const client = makeClient({ ...admin, auditError: { message: 'x', code: '42501' } });
+      mockAdmin.mockReturnValue(client);
+      const { POST } = await import('./route');
+      const res = await POST(buildReq({ sesi_id: SESI, aksi: 'takeover' }));
+
+      expect(res.status).toBe(200);
+      expect((await res.json()).status).toBe('aktif');
+      const log = entri(errSpy, warnSpy).find((e) => e.operation === 'chat.sesi.audit_log');
+      expect(log).toMatchObject({ kode: 'ditolak', asalCode: '42501' });
+    });
+
+    it('pesan sistem gagal: aksi tetap 200 tetapi kegagalan tercatat dan audit tetap ditulis', async () => {
+      const client = makeClient({ ...admin, pesanError: { message: 'x', code: '08006' } });
+      mockAdmin.mockReturnValue(client);
+      const { POST } = await import('./route');
+      const res = await POST(buildReq({ sesi_id: SESI, aksi: 'takeover' }));
+
+      expect(res.status).toBe(200);
+      expect(client.auditInsert).toHaveBeenCalled();
+      const log = entri(errSpy, warnSpy).find((e) => e.operation === 'chat.sesi.pesan_sistem');
+      expect(log).toMatchObject({ kode: 'database', asalCode: '08006' });
+    });
   });
 });

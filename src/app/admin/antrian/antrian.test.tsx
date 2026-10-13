@@ -2,12 +2,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react';
 
+const toastMock = vi.hoisted(() => vi.fn());
+
 vi.mock('@/lib/supabase/client', () => ({
   createClient: vi.fn(),
 }));
 
 vi.mock('@/components/Toast', () => ({
-  useToast: () => ({ toast: vi.fn() }),
+  useToast: () => ({ toast: toastMock }),
 }));
 
 vi.mock('@/components/layout/PageHeader', () => ({
@@ -56,10 +58,16 @@ type AntrianRow = {
     { nama: string; asal: string; waktu_masuk: string | null }[];
 };
 
+type DbError = { message: string; code?: string };
+
 function buildMock(opts: {
   rows?: AntrianRow[];
   role?: string;
   layananId?: string | null;
+  // Hasil UPDATE visit (setelah .select('id')): baris terdampak / error PostgREST.
+  visitResult?: { data: { id: string }[] | null; error: DbError | null };
+  // Hasil RPC panggil_tiket: data = nomor_display, atau null bila tiket bukan 'menunggu'.
+  panggilResult?: { data: string | null; error: DbError | null };
 } = {}) {
   const rows = opts.rows ?? [];
   const role = opts.role ?? 'admin';
@@ -107,7 +115,11 @@ function buildMock(opts: {
 
   // visit table: used for status updates (handleMulaiLayanan / handleSelesaikan)
   const visitInsert = vi.fn().mockResolvedValue({ error: null });
-  const visitEq = vi.fn().mockResolvedValue({ error: null });
+  // UPDATE visit kini berakhir .select('id') agar baris terdampak terlihat (mutasiWajibBaris).
+  const visitSelect = vi
+    .fn()
+    .mockResolvedValue(opts.visitResult ?? { data: [{ id: 'v-1' }], error: null });
+  const visitEq = vi.fn().mockReturnValue({ select: visitSelect });
   const visitUpdate = vi.fn().mockReturnValue({ eq: visitEq });
 
   const mock = {
@@ -123,11 +135,12 @@ function buildMock(opts: {
       if (table === 'layanan') return { select: layananSelect };
       return {};
     }),
-    rpc: vi.fn().mockResolvedValue({ error: null }),
+    rpc: vi.fn().mockResolvedValue(opts.panggilResult ?? { data: 'A-001', error: null }),
     _update: update,
     _updateEq: updateEq,
     _visitUpdate: visitUpdate,
     _visitEq: visitEq,
+    _visitSelect: visitSelect,
   };
 
   (createClient as unknown as ReturnType<typeof vi.fn>).mockReturnValue(mock);
@@ -151,6 +164,7 @@ const baseRow = (over: Partial<AntrianRow> = {}): AntrianRow => ({
 describe('Admin antrian operational lifecycle', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    toastMock.mockClear();
   });
 
   afterEach(() => {
@@ -341,5 +355,122 @@ describe('Admin antrian operational lifecycle', () => {
       await screen.findByText('Budi');
       expect(screen.queryByRole('button', { name: /Koreksi Data/i })).not.toBeInTheDocument();
     });
+  });
+});
+
+describe('Admin antrian: mutasi dicek (tidak ada sukses palsu)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    toastMock.mockClear();
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  const pesanDipanggil = (n: string) => expect.stringContaining(`Memanggil ${n}`);
+
+  it('Mulai Layanan: 0 baris terdampak (RLS menolak diam-diam) -> toast gagal, wizard TIDAK terbuka, tanpa toast sukses', async () => {
+    buildMock({ rows: [baseRow({ status: 'menunggu' })], visitResult: { data: [], error: null } });
+    render(<AntrianPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /mulai layanan/i }));
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(expect.stringContaining('Gagal memulai layanan'), 'error'),
+    );
+    expect(toastMock).not.toHaveBeenCalledWith('Layanan dimulai', 'success');
+    expect(screen.getByTestId('pelayanan-wizard')).toHaveTextContent('PendataanClosed');
+  });
+
+  it('Mulai Layanan: error dari DB -> toast gagal, bukan sukses', async () => {
+    buildMock({
+      rows: [baseRow({ status: 'menunggu' })],
+      visitResult: { data: null, error: { message: 'boom', code: 'XX000' } },
+    });
+    render(<AntrianPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /mulai layanan/i }));
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(expect.stringContaining('Gagal memulai layanan'), 'error'),
+    );
+    expect(toastMock).not.toHaveBeenCalledWith('Layanan dimulai', 'success');
+  });
+
+  it('Mulai Layanan: ditolak/0 baris -> daftar dimuat ulang (tampilan kemungkinan basi)', async () => {
+    const mock = buildMock({ rows: [baseRow({ status: 'menunggu' })], visitResult: { data: [], error: null } });
+    render(<AntrianPage />);
+    await screen.findByRole('button', { name: /mulai layanan/i });
+    const sebelum = mock.from.mock.calls.filter(([t]) => t === 'tiket_antrean').length;
+    fireEvent.click(screen.getByRole('button', { name: /mulai layanan/i }));
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(expect.stringContaining('Gagal memulai layanan'), 'error'),
+    );
+    await waitFor(() =>
+      expect(mock.from.mock.calls.filter(([t]) => t === 'tiket_antrean').length).toBeGreaterThan(sebelum),
+    );
+    expect(toastMock).not.toHaveBeenCalledWith('Layanan dimulai', 'success');
+  });
+
+  it('Mulai Layanan: berhasil (baris terbukti) -> toast sukses', async () => {
+    buildMock({ rows: [baseRow({ status: 'menunggu' })] });
+    render(<AntrianPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /mulai layanan/i }));
+    await waitFor(() => expect(toastMock).toHaveBeenCalledWith('Layanan dimulai', 'success'));
+  });
+
+  it('Selesai: 0 baris terdampak -> toast gagal, tanpa toast sukses', async () => {
+    buildMock({
+      rows: [baseRow({ status: 'dilayani', layanan: { nama: 'BPJS Kesehatan' } })],
+      visitResult: { data: [], error: null },
+    });
+    render(<AntrianPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /selesai/i }));
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(expect.stringContaining('Gagal menyelesaikan antrian'), 'error'),
+    );
+    expect(toastMock).not.toHaveBeenCalledWith('Kunjungan berhasil diselesaikan', 'success');
+  });
+
+  it('Selesai: berhasil -> toast sukses', async () => {
+    buildMock({ rows: [baseRow({ status: 'dilayani', layanan: { nama: 'BPJS Kesehatan' } })] });
+    render(<AntrianPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /selesai/i }));
+    await waitFor(() => expect(toastMock).toHaveBeenCalledWith('Kunjungan berhasil diselesaikan', 'success'));
+  });
+
+  it('Panggil: tiket bukan "menunggu" (RPC mengembalikan NULL tanpa error) -> BUKAN "Memanggil ...", toast gagal', async () => {
+    const mock = buildMock({
+      rows: [baseRow({ status: 'menunggu' })],
+      panggilResult: { data: null, error: null },
+    });
+    render(<AntrianPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /^panggil$/i }));
+
+    await waitFor(() => expect(mock.rpc).toHaveBeenCalledWith('panggil_tiket', { p_tiket_id: 't-1' }));
+    await waitFor(() => expect(toastMock).toHaveBeenCalledWith(expect.stringContaining('A-001'), 'error'));
+    expect(toastMock).not.toHaveBeenCalledWith(pesanDipanggil('A-001'), 'success');
+  });
+
+  it('Panggil: RPC error (42501, bukan layanan Anda) -> toast gagal, bukan sukses', async () => {
+    buildMock({
+      rows: [baseRow({ status: 'menunggu' })],
+      panggilResult: { data: null, error: { message: 'tiket bukan milik layanan Anda', code: '42501' } },
+    });
+    render(<AntrianPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /^panggil$/i }));
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(expect.stringContaining('Gagal memanggil A-001'), 'error'),
+    );
+    expect(toastMock).not.toHaveBeenCalledWith(pesanDipanggil('A-001'), 'success');
+  });
+
+  it('Panggil: berhasil (RPC mengembalikan nomor) -> toast "Memanggil ..."', async () => {
+    buildMock({ rows: [baseRow({ status: 'menunggu' })] });
+    render(<AntrianPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /^panggil$/i }));
+    await waitFor(() => expect(toastMock).toHaveBeenCalledWith(pesanDipanggil('A-001'), 'success'));
   });
 });

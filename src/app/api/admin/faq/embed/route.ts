@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { getGenerativeClient, getEmbeddingModel } from '@/lib/gemini';
+import { MutasiError, mutasiWajibBaris } from '@/lib/supabase/mutate';
+import { catatMutasiGagal } from '@/app/api/admin/_mutasi';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -86,6 +88,9 @@ export async function POST(request?: Request) {
   // 5. Embed + UPDATE each row, lalu tandai selesai (BOT-11).
   let embedded = 0;
   let failed = 0;
+  // Kegagalan UPDATE dicatat SEKALI per proses (maks. 50 baris; hindari banjir error_log saat DB bermasalah).
+  let gagalUpdate = 0;
+  let contohGagal: MutasiError | null = null;
   for (const row of rows) {
     try {
       const input = `${row.pertanyaan}\n${row.jawaban}`;
@@ -97,15 +102,23 @@ export async function POST(request?: Request) {
       }
       // pgvector accepts a text representation like '[0.1,0.2,...]'.
       const vectorLiteral = `[${vector.join(',')}]`;
-      const { error: updateErr } = await adminClient
-        .from('faq_knowledge_base')
-        .update({
-          embedding: vectorLiteral,
-          perlu_embed_ulang: false,
-          embedding_updated_at: new Date().toISOString(),
-        })
-        .eq('id', row.id);
-      if (updateErr) {
+      try {
+        // 0 baris (FAQ dihapus sejak dipilih) = bukan "embedded": hitung sebagai gagal.
+        await mutasiWajibBaris(
+          adminClient
+            .from('faq_knowledge_base')
+            .update({
+              embedding: vectorLiteral,
+              perlu_embed_ulang: false,
+              embedding_updated_at: new Date().toISOString(),
+            })
+            .eq('id', row.id)
+            .select('id'),
+        );
+      } catch (e) {
+        if (!(e instanceof MutasiError)) throw e;
+        gagalUpdate++;
+        contohGagal ??= e;
         failed++;
         continue;
       }
@@ -113,6 +126,9 @@ export async function POST(request?: Request) {
     } catch {
       failed++;
     }
+  }
+  if (contohGagal) {
+    catatMutasiGagal('/api/admin/faq/embed', 'admin.faq.embed.update', contohGagal, { jumlahGagal: gagalUpdate });
   }
 
   // 6. Count remaining (for progress UI): yang masih perlu diproses.

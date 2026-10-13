@@ -28,7 +28,7 @@ export async function loadSecrets(service: SupabaseClient, ids: string[], hosts?
     try {
       out.set(r.id, decryptSecret(r));
     } catch {
-      logServerEvent('warn', { operation: 'settings.decrypt_failed', secretId: r.id });
+      logServerEvent('warn', { operation: 'settings.decrypt_failed', rahasiaId: r.id });
     }
   }
   return out;
@@ -54,7 +54,7 @@ async function muat(service: SupabaseClient): Promise<ProviderSpec[] | null> {
     if (e.rahasia_id) {
       const terikat = hosts.get(e.rahasia_id);
       if (terikat && terikat !== hostEntri(e)) {
-        logServerEvent('warn', { operation: 'settings.secret_host_mismatch', secretId: e.rahasia_id });
+        logServerEvent('warn', { operation: 'settings.secret_host_mismatch', rahasiaId: e.rahasia_id });
         continue; // kunci tidak dikirim ke host selain yang terikat
       }
       key = secrets.get(e.rahasia_id);

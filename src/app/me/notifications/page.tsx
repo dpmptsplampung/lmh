@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Bell, ArrowLeft, BellOff, Check, Mail } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { MutasiError, mutasiBolehKosong, mutasiInsert } from '@/lib/supabase/mutate';
 import styles from './notifications.module.css';
 
 interface NotifRow {
@@ -38,6 +39,8 @@ export default function NotificationsPage() {
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!authUser) {
         setLoading(false);
+        // Navigasi keras disengaja: reload penuh memastikan state klien bersih saat sesi hilang.
+        // eslint-disable-next-line @next/next/no-location-assign-relative-destination
         window.location.href = '/login?redirect=/me/notifications';
         return;
       }
@@ -88,7 +91,6 @@ export default function NotificationsPage() {
         const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
         if (!publicKey) {
           setMessage('VAPID key belum dikonfigurasi.');
-          setBusy(false);
           return;
         }
         const sub = await reg.pushManager.subscribe({
@@ -96,38 +98,90 @@ export default function NotificationsPage() {
           applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource,
         });
         const parsed = sub.toJSON();
-        // Upsert on endpoint so re-subscribing the same browser (e.g. after
-        // clearing site data) doesn't throw 23505 from the UNIQUE(endpoint)
-        // constraint. Re-inserts simply refresh user_id + keys.
-        await supabase.from('push_subscriptions').upsert(
-          {
-            user_id: user.id,
-            endpoint: parsed.endpoint,
-            keys: parsed.keys,
-          },
-          { onConflict: 'endpoint' },
-        );
+        try {
+          // Upsert pada endpoint. Perilaku sebenarnya (RLS `push_subscriptions`, migrasi 202607140004):
+          // hanya ada policy SELECT/INSERT/DELETE, TIDAK ada UPDATE. Endpoint baru -> INSERT biasa, berhasil.
+          // Endpoint yang SUDAH ada (mis. langganan browser ini masih tersimpan padahal toggle tampak mati)
+          // -> jalur ON CONFLICT DO UPDATE ditolak RLS (42501), bukan menyegarkan user_id/keys.
+          // Kegagalan itu ditangani di catch: langganan browser dibatalkan sehingga "coba lagi"
+          // membuat langganan (endpoint) BARU yang lolos sebagai INSERT. Baris lama yang yatim
+          // tidak berbahaya: dipangkas job notifikasi saat endpoint-nya 410.
+          // supabase-js tidak melempar: mutasiInsert melempar bila server menolak (audit T2b),
+          // sehingga toggle tidak pernah menyala untuk langganan yang tidak tersimpan.
+          await mutasiInsert(
+            supabase.from('push_subscriptions').upsert(
+              {
+                user_id: user.id,
+                endpoint: parsed.endpoint,
+                keys: parsed.keys,
+              },
+              { onConflict: 'endpoint' },
+            ),
+          );
+        } catch (e) {
+          console.error('[push] gagal menyimpan langganan ke server', e);
+          // Server tidak menyimpan -> langganan browser jadi yatim (tak pernah menerima kiriman).
+          // Batalkan agar keadaan browser sama dengan toggle (mati) dan percobaan berikutnya bersih.
+          try {
+            await sub.unsubscribe();
+          } catch (errUnsub) {
+            console.error('[push] gagal membatalkan langganan browser setelah penyimpanan gagal', errUnsub);
+          }
+          setPushEnabled(false);
+          setMessage(
+            e instanceof MutasiError && e.kode === 'ditolak'
+              ? 'Gagal mengaktifkan notifikasi: langganan lama perangkat ini ditolak server. Silakan coba lagi untuk membuat langganan baru.'
+              : 'Gagal mengaktifkan notifikasi, coba lagi',
+          );
+          return;
+        }
         setPushEnabled(true);
         setMessage('Notifikasi push diaktifkan.');
       } else {
         const reg = await navigator.serviceWorker.ready;
         const sub = await reg.pushManager.getSubscription();
-        const endpoint = sub?.endpoint;
-        if (sub) await sub.unsubscribe();
-        if (endpoint) {
-          await supabase
-            .from('push_subscriptions')
-            .delete()
-            .eq('user_id', user.id)
-            .eq('endpoint', endpoint);
+        if (!sub) {
+          // Browser/perangkat ini tidak punya langganan, jadi baris yang membuat toggle aktif milik perangkat
+          // lain (RLS hanya mengizinkan hapus per endpoint kita sendiri; kita tak tahu endpoint perangkat lain).
+          // Jangan mengklaim dinonaktifkan: langganan di perangkat itu tetap menerima kiriman, dan toggle
+          // harus tetap mencerminkan kenyataan (aktif).
+          setMessage('Langganan notifikasi aktif ada di perangkat lain. Nonaktifkan dari perangkat itu.');
+          return;
+        }
+        const endpoint = sub.endpoint;
+        // Hapus di server LEBIH DULU: bila gagal, tidak ada yang berubah (browser masih berlangganan,
+        // baris server masih ada) sehingga toggle tetap "aktif" = keadaan sesungguhnya dan bisa dicoba lagi.
+        // mutasiBolehKosong (hanya cek error), bukan mutasiWajibBaris: penghapusan idempoten -- 0 baris berarti
+        // baris sudah tak ada (mis. dipangkas job notifikasi saat endpoint 410), yaitu tujuan yang sama.
+        try {
+          await mutasiBolehKosong(
+            supabase
+              .from('push_subscriptions')
+              .delete()
+              .eq('user_id', user.id)
+              .eq('endpoint', endpoint),
+          );
+        } catch (e) {
+          console.error('[push] gagal menghapus langganan di server', e);
+          setMessage('Gagal menonaktifkan notifikasi, coba lagi');
+          return;
+        }
+        // Server sudah tak mengirim ke endpoint ini, jadi gagal melepas langganan browser tidak
+        // mengubah status efektif (nonaktif); cukup dicatat.
+        try {
+          await sub.unsubscribe();
+        } catch (errUnsub) {
+          console.error('[push] gagal membatalkan langganan browser', errUnsub);
         }
         setPushEnabled(false);
         setMessage('Notifikasi push dinonaktifkan.');
       }
-    } catch {
+    } catch (e) {
+      console.error('[push] gagal mengubah pengaturan', e);
       setMessage('Gagal mengubah pengaturan push.');
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   };
 
   const formatDate = (iso: string) => {

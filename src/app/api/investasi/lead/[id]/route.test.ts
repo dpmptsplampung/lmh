@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(),
@@ -38,6 +38,8 @@ interface MockServerOpts {
   lead?: { id: string } | null;
   updateError?: { message: string; code?: string } | null;
   updateData?: { id: string; status: string } | null;
+  // UPDATE tanpa error tetapi 0 baris (RLS menolak diam-diam): maybeSingle() mengembalikan data null.
+  updateNoRow?: boolean;
 }
 
 const mockServerClient = async (opts: MockServerOpts = {}) => {
@@ -57,7 +59,7 @@ const mockServerClient = async (opts: MockServerOpts = {}) => {
     update: vi.fn().mockReturnValue({
       eq: vi.fn().mockReturnValue({
         select: vi.fn().mockReturnValue({
-          maybeSingle: vi.fn().mockResolvedValue({ data: updateData, error: updateErr }),
+          maybeSingle: vi.fn().mockResolvedValue({ data: opts.updateNoRow ? null : updateData, error: updateErr }),
         }),
       }),
     }),
@@ -194,5 +196,47 @@ describe('PATCH /api/investasi/lead/[id] — lead existence & update', () => {
     const { PATCH } = await import('./route');
     const res = await PATCH(buildRequest(VALID_ID, { status: 'dihubungi' }), buildContext(VALID_ID));
     expect(res.status).toBe(500);
+  });
+});
+
+// Audit T2d (No 98): UPDATE dibungkus mutasiWajibBaris; kontrak respons (500 'Gagal memperbarui lead') tetap, tetapi
+// kegagalannya kini tercatat dengan kode (error vs 0 baris) tanpa pesan teknis.
+describe('PATCH /api/investasi/lead/[id] — kegagalan UPDATE tercatat (audit T2d)', () => {
+  let errSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    vi.resetModules();
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}')));
+    errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    errSpy.mockRestore();
+    vi.unstubAllGlobals();
+  });
+  const log = () =>
+    errSpy.mock.calls
+      .map((c: unknown[]) => { try { return JSON.parse(String(c[0])) as Record<string, unknown>; } catch { return null; } })
+      .find((e: Record<string, unknown> | null) => e?.operation === 'investasi_lead.update_status');
+
+  it('0 baris tanpa error: 500 dan dicatat tidak_ada_baris', async () => {
+    await mockServerClient({ user: { id: 'u-1' }, role: 'admin', lead: { id: VALID_ID }, updateNoRow: true });
+    const { PATCH } = await import('./route');
+    const res = await PATCH(buildRequest(VALID_ID, { status: 'dihubungi' }), buildContext(VALID_ID));
+
+    expect(res.status).toBe(500);
+    expect((await res.json()).error).toBe('Gagal memperbarui lead');
+    expect(log()).toMatchObject({ kode: 'tidak_ada_baris', leadId: VALID_ID });
+  });
+
+  it('error RLS (42501): 500 dan dicatat ditolak tanpa pesan teknis', async () => {
+    await mockServerClient({
+      user: { id: 'u-1' }, role: 'admin', lead: { id: VALID_ID },
+      updateError: { message: 'new row violates row-level security policy secret-xyz', code: '42501' },
+    });
+    const { PATCH } = await import('./route');
+    const res = await PATCH(buildRequest(VALID_ID, { status: 'dihubungi' }), buildContext(VALID_ID));
+
+    expect(res.status).toBe(500);
+    expect(log()).toMatchObject({ kode: 'ditolak', asalCode: '42501' });
+    expect(JSON.stringify(log())).not.toContain('secret-xyz');
   });
 });

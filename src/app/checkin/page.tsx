@@ -200,10 +200,11 @@ export default function CheckinPage() {
       setQueuePos(null);
       // Defensif: fungsi rpc mungkin belum tersedia — sembunyikan blok posisi bila gagal.
       try {
-        const { data: pos } = await supabase
+        const { data: pos, error: posError } = await supabase
           .rpc('get_queue_position', { p_qr_token: qrToken })
           .maybeSingle();
         if (
+          !posError &&
           pos &&
           typeof (pos as { posisi?: unknown }).posisi === 'number' &&
           typeof (pos as { total_menunggu?: unknown }).total_menunggu === 'number'

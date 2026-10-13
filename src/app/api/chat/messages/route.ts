@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { createClient as createServerClient } from '@/lib/supabase/server';
+import { MutasiError, mutasiInsert } from '@/lib/supabase/mutate';
+import { catatMutasi } from '@/lib/observability/catat-mutasi';
 
 export const dynamic = 'force-dynamic';
 
@@ -204,26 +206,25 @@ export async function POST(request: NextRequest) {
   // Force role — never trust client-supplied pengirim (impersonation vector).
   const pengirim = actor.kind === 'staff' ? 'petugas' : 'pengunjung';
 
-  type InsertError = { code?: string; message: string } | null;
-  let data: Record<string, unknown> | null;
-  let error: InsertError;
+  let data: Record<string, unknown> | undefined;
   try {
-    const inserted = await adminClient
-      .from('chat_pesan')
-      .insert({
-        sesi_id: parsed.data.sesi_id,
-        pengirim,
-        isi: parsed.data.isi.trim(),
-        client_uuid: parsed.data.client_uuid ?? null,
-      })
-      .select('id, pengirim, isi, created_at, client_uuid')
-      .single();
-    data = inserted.data as Record<string, unknown> | null;
-    error = inserted.error as InsertError;
-
+    [data] = await mutasiInsert<Record<string, unknown>>(
+      adminClient
+        .from('chat_pesan')
+        .insert({
+          sesi_id: parsed.data.sesi_id,
+          pengirim,
+          isi: parsed.data.isi.trim(),
+          client_uuid: parsed.data.client_uuid ?? null,
+        })
+        .select('id, pengirim, isi, created_at, client_uuid')
+        .single(),
+    );
+  } catch (e) {
     // Idempotensi: retry/klik ganda dengan client_uuid sama dikembalikan
     // sebagai 200 (bukan baris kedua) berkat indeks unik di migrasi 202609230001.
-    if (error && (error as { code?: string }).code === '23505' && parsed.data.client_uuid) {
+    const kodeDb = e instanceof MutasiError ? (e.asal as { code?: string } | undefined)?.code : undefined;
+    if (kodeDb === '23505' && parsed.data.client_uuid) {
       const existing = await adminClient
         .from('chat_pesan')
         .select('id, pengirim, isi, created_at, client_uuid')
@@ -234,13 +235,12 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ message: existing.data, duplicate: true }, { status: 200 });
       }
     }
-  } catch (e) {
-    console.error('[api/chat/messages POST] unexpected:', e);
+    catatMutasi('error', 'chat.messages.insert', '/api/chat/messages', e);
     return NextResponse.json({ error: 'Failed to insert message' }, { status: 500 });
   }
 
-  if (error) {
-    console.error('[api/chat/messages POST] error:', error);
+  if (!data) {
+    catatMutasi('error', 'chat.messages.insert', '/api/chat/messages', new MutasiError('tidak_ada_baris'));
     return NextResponse.json({ error: 'Failed to insert message' }, { status: 500 });
   }
 

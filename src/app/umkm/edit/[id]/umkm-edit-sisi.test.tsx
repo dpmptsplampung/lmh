@@ -14,7 +14,12 @@ import UmkmEditPage from './page';
 import { createClient } from '@/lib/supabase/client';
 
 function buildMock() {
-  const updateEq = vi.fn().mockResolvedValue({ error: null });
+  // update().eq().select('id') -> baris terdampak (mutasiWajibBaris menolak 0 baris).
+  const updateSelect = vi.fn().mockResolvedValue({
+    data: [{ id: '550e8400-e29b-41d4-a716-446655440000' }],
+    error: null,
+  });
+  const updateEq = vi.fn().mockReturnValue({ select: updateSelect });
   const update = vi.fn().mockReturnValue({ eq: updateEq });
   const maybeSingle = vi.fn().mockResolvedValue({
     data: {

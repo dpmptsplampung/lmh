@@ -4,7 +4,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, cleanup } from '@testing-library/react';
 import { ADMIN_NAV } from '@/lib/admin-nav';
 
-vi.mock('@/components/Toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
+const toastMock = vi.hoisted(() => vi.fn());
+vi.mock('@/components/Toast', () => ({ useToast: () => ({ toast: toastMock }) }));
 vi.mock('@/components/layout/PageHeader', () => ({ default: () => null }));
 
 import PengaturanAiPage from './page';
@@ -37,6 +38,7 @@ function baseState(over: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => {
+  toastMock.mockClear();
   calls = [];
   getBody = baseState();
   vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
@@ -84,6 +86,32 @@ describe('Pengaturan AI', () => {
     expect(hasil.textContent).toContain('Bearer ••••9876');
     expect(screen.getByRole('button', { name: /Salin curl/ })).toBeTruthy();
     expect(calls.some((c) => c.url.endsWith('/llm/test') && (c.body as { sumber: string }).sumber === 'draf')).toBe(true);
+  });
+
+  // Hasil uji tidak tersimpan di server (draf berubah / DB bermasalah) -> aktivasi akan ditolak BELUM_DIUJI. UI tidak boleh
+  // menandai penyedia "lulus uji" secara lokal seolah tersimpan.
+  it('Uji dengan tersimpan:false: peringatan server ditampilkan, hasil uji lokal TIDAK diperbarui (Aktifkan tetap terkunci)', async () => {
+    const PERINGATAN = 'Hasil uji tidak tersimpan (draf berubah atau database bermasalah); jalankan uji lagi sebelum mengaktifkan.';
+    const asli = (fetch as unknown as ReturnType<typeof vi.fn>).getMockImplementation() as (u: string, i?: RequestInit) => Promise<unknown>;
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) =>
+      url.endsWith('/llm/test')
+        ? jsonRes({ ok: true, http_status: 200, latensi_ms: 321, cuplikan: 'Halo', error: null, tokens: null, curl: 'curl x', tersimpan: false, peringatan: PERINGATAN })
+        : asli(url, init)));
+    render(<PengaturanAiPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /Uji Groq/ }));
+    await screen.findByTestId(`uji-${EID}`); // detail uji tetap tampil
+    expect(toastMock).toHaveBeenCalledWith(PERINGATAN, 'warning');
+    const aktifkan = screen.getByRole('button', { name: /^Aktifkan v3/ }) as HTMLButtonElement;
+    expect(aktifkan.disabled).toBe(true); // tidak dianggap lulus uji
+    expect(screen.queryByLabelText(/Aktifkan tanpa uji/)).toBeTruthy(); // masih butuh jalur tanpa-uji
+  });
+
+  it('Uji tersimpan normal: hasil uji lokal diperbarui dan tidak ada toast peringatan', async () => {
+    render(<PengaturanAiPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /Uji Groq/ }));
+    await screen.findByTestId(`uji-${EID}`);
+    await waitFor(() => expect(screen.queryByLabelText(/Aktifkan tanpa uji/)).toBeNull()); // lulus uji -> tak perlu alasan
+    expect(toastMock.mock.calls.some((c) => c[1] === 'warning')).toBe(false);
   });
 
   it('Aktifkan: terkunci sebelum lulus uji; tanpa uji wajib centang + alasan; setelah uji lulus bebas', async () => {

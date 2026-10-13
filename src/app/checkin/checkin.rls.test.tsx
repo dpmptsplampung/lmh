@@ -424,8 +424,13 @@ describe('K3 checkin page: auth gate', () => {
     fireEvent.change(screen.getByLabelText(/layanan tujuan/i), { target: { value: 'lay-1' } });
     fireEvent.click(screen.getByLabelText(/saya setuju data saya diproses/i));
     fireEvent.click(screen.getByRole('button', { name: /kirim check-in/i }));
+    // Batas 8 dtk (bukan default 1 dtk): test ini gagal acak di bawah beban suite penuh (audit S15).
     expect(
-      await screen.findByText('Layanan tutup pukul 16.00 WIB, buka kembali pada jam kerja berikutnya.'),
+      await screen.findByText(
+        'Layanan tutup pukul 16.00 WIB, buka kembali pada jam kerja berikutnya.',
+        {},
+        { timeout: 8000 },
+      ),
     ).toBeInTheDocument();
   }, 10000);
 

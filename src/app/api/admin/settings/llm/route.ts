@@ -2,6 +2,8 @@
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { json, requireAdmin } from '@/lib/akun/server';
+import { MutasiError, mutasiWajibBaris } from '@/lib/supabase/mutate';
+import { catatMutasiGagal } from '@/app/api/admin/_mutasi';
 import { parseChatProviderSpec } from '@/lib/llm/registry';
 import { isEncryptionConfigured } from '@/lib/settings/crypto';
 import { LLM_KUNCI, LLM_PRESETS, hostEntri, rantaiSchema, sanitizeEntries } from '@/lib/settings/llm-schema';
@@ -110,7 +112,29 @@ export async function PUT(request: NextRequest) {
     }
     if (hostBentrok.length > 0) return json({ error: 'Kunci tidak cocok dengan host', details: hostBentrok }, 400);
     for (const [rid, h] of pakai) {
-      if (!terikat.get(rid) && h) await service.from('rahasia_pengaturan').update({ host: h }).eq('id', rid).is('host', null);
+      if (terikat.get(rid) || !h) continue;
+      // Pengikatan host = kontrol keamanan (kunci hanya boleh dikirim ke host ini): kegagalan TIDAK boleh diabaikan,
+      // dan draf tidak disimpan. 0 baris = host sudah diikat permintaan lain sejak dibaca (filter `host IS NULL`).
+      // Pengikatan yang sudah berhasil untuk kunci lain tetap berlaku (idempoten, sesuai maksud pengikatan).
+      try {
+        await mutasiWajibBaris(
+          service.from('rahasia_pengaturan').update({ host: h }).eq('id', rid).is('host', null).select('id'),
+        );
+      } catch (e) {
+        if (!(e instanceof MutasiError)) throw e;
+        if (e.kode === 'tidak_ada_baris') {
+          // Balapan: dua permintaan bersamaan mengikat host yang sama -> yang kalah dapat 0 baris. Baca ulang host
+          // terikat; bila SAMA dengan yang dituju, tujuan pengikatan tercapai (lanjut). Beda = 409 sungguhan.
+          const { data: baru, error: errBaca } = await service
+            .from('rahasia_pengaturan').select('host').eq('id', rid).maybeSingle();
+          if (!errBaca && (baru as { host?: string | null } | null)?.host === h) continue;
+        }
+        catatMutasiGagal('/api/admin/settings/llm', 'admin.settings.llm.ikat_host', e, { rahasiaId: rid });
+        if (e.kode === 'tidak_ada_baris') {
+          return json({ error: 'Host kunci berubah oleh permintaan lain; muat ulang lalu simpan lagi', kode: 'HOST_KUNCI_BERUBAH' }, 409);
+        }
+        return json({ error: 'Gagal mengikat kunci ke host; draf tidak disimpan' }, 500);
+      }
     }
   }
 

@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('@supabase/supabase-js', () => ({
   createClient: vi.fn(),
@@ -36,7 +36,7 @@ interface MockServiceOpts {
   generateLinkData?: { properties?: { action_link?: string } } | null;
   createUserData?: { user?: { id: string } | null } | null;
   createUserError?: { message: string } | null;
-  logError?: unknown | null;
+  logError?: { message: string; code?: string } | null;
 }
 
 const mockResend = async (opts: { error?: { message: string } | null } = {}) => {
@@ -365,15 +365,59 @@ describe('POST /api/umkm/request-edit-link — rate limiting', () => {
     expect(serviceMock.auth.admin.generateLink).toHaveBeenCalledTimes(1);
   });
 
-  it('returns 429 when rate-limit query errors (fail-closed)', async () => {
+  it('returns 503 (BUKAN 429) when rate-limit query errors: fail-closed tetapi kegagalan server, bukan salah pengguna', async () => {
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const serviceMock = await mockServiceClient({
       ownerRows: [{ id: 'owner-row-1' }],
       rateError: { message: 'connection refused' },
     });
     const { POST } = await import('./route');
     const res = await POST(buildRequest({ listing_id: VALID_LISTING_ID, email: 'owner@umkm.id' }));
-    expect(res.status).toBe(429);
+    expect(res.status).toBe(503);
+    expect(JSON.stringify(await res.json())).not.toContain('connection refused');
     // Check failed → no insert logged
     expect(serviceMock.__logInsert).not.toHaveBeenCalled();
+    const log = errSpy.mock.calls
+      .map((c: unknown[]) => { try { return JSON.parse(String(c[0])) as Record<string, unknown>; } catch { return null; } })
+      .find((e: Record<string, unknown> | null) => e?.operation === 'umkm.request_edit_link.rate_limit_read');
+    expect(log).toBeTruthy();
+    expect(JSON.stringify(log)).not.toContain('connection refused');
+    errSpy.mockRestore();
+  });
+});
+
+// Audit T2d (No 114): pencatatan jatah rate limit tak boleh diabaikan. Bila insert gagal, pembatas tidak menghitung
+// (spam email bisa lolos diam-diam); route ini sudah fail-closed untuk pembacaan hitungan, jadi pencatatan sama.
+describe('POST /api/umkm/request-edit-link — pencatatan rate limit dicek (audit T2d)', () => {
+  let errSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    vi.resetModules();
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}')));
+    errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    errSpy.mockRestore();
+    vi.unstubAllGlobals();
+  });
+
+  it('insert jatah gagal: fail-closed 503 (bukan 429), tanpa mencari pemilik/mengirim email; dicatat dengan kode', async () => {
+    const serviceMock = await mockServiceClient({
+      ownerRows: [{ id: 'owner-row-1' }],
+      logError: { message: 'connection reset secret-xyz', code: '08006' },
+    });
+    const { sendMock } = await mockResend();
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest({ listing_id: VALID_LISTING_ID, email: 'owner@umkm.id' }));
+
+    expect(res.status).toBe(503);
+    expect((await res.json()).error).toMatch(/coba lagi/i);
+    expect(serviceMock.auth.admin.generateLink).not.toHaveBeenCalled();
+    expect(sendMock).not.toHaveBeenCalled();
+
+    const log = errSpy.mock.calls
+      .map((c: unknown[]) => { try { return JSON.parse(String(c[0])) as Record<string, unknown>; } catch { return null; } })
+      .find((e: Record<string, unknown> | null) => e?.operation === 'umkm.request_edit_link.rate_limit_insert');
+    expect(log).toMatchObject({ kode: 'database', asalCode: '08006' });
+    expect(JSON.stringify(log)).not.toContain('secret-xyz');
   });
 });

@@ -11,13 +11,13 @@ import { NextRequest } from 'next/server';
 const req = (url: string, body?: unknown) =>
   new NextRequest(url, { method: body ? 'POST' : 'GET', headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
 
-async function setup(o: { petugas?: unknown; count?: number; verif?: unknown } = {}) {
+async function setup(o: { petugas?: unknown; count?: number; verif?: unknown; verifError?: { message: string; code?: string } } = {}) {
   process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://supabase.local';
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'svc';
   process.env.NEXT_PUBLIC_PUBLIC_URL = 'http://app.local';
   process.env.RESEND_API_KEY = 're_test';
   const generateLink = vi.fn().mockResolvedValue({ data: { properties: { action_link: 'http://supabase.local/verify?x=1' } }, error: null });
-  const rpc = vi.fn().mockResolvedValue({ data: o.verif ?? null, error: null });
+  const rpc = vi.fn().mockResolvedValue({ data: o.verif ?? null, error: o.verifError ?? null });
   const sb = await import('@supabase/supabase-js');
   (sb.createClient as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
     rpc,
@@ -83,5 +83,35 @@ describe('GET /api/auth/verifikasi-email', () => {
     const { GET } = await import('./verifikasi-email/route');
     expect((await GET(req(`http://x/api/auth/verifikasi-email?token=${'b'.repeat(43)}`))).headers.get('location')).toContain('gagal');
     expect((await GET(req('http://x/api/auth/verifikasi-email'))).headers.get('location')).toContain('gagal');
+  });
+  // Audit T2d (No 87): data null mencakup token salah (normal) DAN error RPC (infrastruktur). Keduanya = 'gagal' bagi
+  // pengguna, tetapi error RPC harus tercatat agar tidak tampak sebagai "token salah" biasa.
+  it('RPC error (bukan token salah): redirect gagal DAN kegagalan dicatat dengan kode tanpa pesan teknis', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}')));
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      await setup({ verifError: { message: 'connection reset secret-xyz', code: '08006' } });
+      const res = await (await import('./verifikasi-email/route')).GET(req(`http://x/api/auth/verifikasi-email?token=${'c'.repeat(43)}`));
+      expect(res.headers.get('location')).toContain('email_verif=gagal');
+      const log = errSpy.mock.calls
+        .map((c) => { try { return JSON.parse(String(c[0])) as Record<string, unknown>; } catch { return null; } })
+        .find((e) => e?.operation === 'auth.verifikasi_email.rpc');
+      expect(log).toMatchObject({ kode: 'database', asalCode: '08006' });
+      expect(JSON.stringify(log)).not.toContain('secret-xyz');
+    } finally {
+      errSpy.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+  it('token salah (data null tanpa error): gagal TANPA mencatat error infrastruktur', async () => {
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      await setup({ verif: null });
+      const res = await (await import('./verifikasi-email/route')).GET(req(`http://x/api/auth/verifikasi-email?token=${'d'.repeat(43)}`));
+      expect(res.headers.get('location')).toContain('email_verif=gagal');
+      expect(errSpy).not.toHaveBeenCalled();
+    } finally {
+      errSpy.mockRestore();
+    }
   });
 });

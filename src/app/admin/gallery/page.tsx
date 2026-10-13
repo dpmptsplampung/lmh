@@ -18,6 +18,8 @@ import {
 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import { createClient } from '@/lib/supabase/client';
+import { mutasiWajibBaris, pesanMutasi } from '@/lib/supabase/mutate';
+import { perluMuatUlang } from '@/components/admin/mutasi-ui';
 import { useToast } from '@/components/Toast';
 
 interface GalleryDoc {
@@ -104,15 +106,19 @@ export default function AdminGalleryPage() {
     const newStatus = currentStatus === 'aktif' ? 'nonaktif' : 'aktif';
     try {
       const supabase = createClient();
-      const { error } = await supabase
-        .from('investment_documents')
-        .update({ status: newStatus, updated_at: new Date().toISOString() })
-        .eq('id', id);
-      if (error) throw error;
+      // .select('id') + mutasiWajibBaris: RLS yang menolak UPDATE = 0 baris tanpa error (sukses palsu).
+      await mutasiWajibBaris(
+        supabase
+          .from('investment_documents')
+          .update({ status: newStatus, updated_at: new Date().toISOString() })
+          .eq('id', id)
+          .select('id'),
+      );
       setDocs(prev => prev.map(d => d.id === id ? { ...d, status: newStatus as 'aktif' | 'nonaktif' } : d));
       toast(`Status berhasil diubah menjadi ${newStatus}.`, 'success');
-    } catch {
-      toast('Gagal mengubah status dokumen.', 'error');
+    } catch (e) {
+      toast(`Gagal mengubah status dokumen. ${pesanMutasi(e)}`, 'error');
+      if (perluMuatUlang(e)) await loadData();
     }
   };
 
@@ -144,37 +150,61 @@ export default function AdminGalleryPage() {
     setForm(prev => ({ ...prev, file_path: file.name }));
   };
 
+  // Tukar urutan_tampil dua dokumen = DUA UPDATE terpisah (klien tak punya transaksi). Bila langkah 2
+  // gagal setelah langkah 1 berhasil, langkah 1 dibatalkan (best-effort) supaya tidak ada dua dokumen
+  // berurutan sama. Daftar dimuat ulang dari server bila ada langkah yang sempat berhasil atau ditolak,
+  // agar layar tidak basi (gangguan jaringan murni di langkah 1 tidak mengubah apa pun -> cukup toast).
+  const tukarUrutan = async (doc: GalleryDoc, tetangga: GalleryDoc) => {
+    const urutanDoc = doc.urutan_tampil;
+    const urutanTetangga = tetangga.urutan_tampil;
+    let langkah1Berhasil = false;
+    let pembatalanGagal = false;
+    try {
+      const supabase = createClient();
+      const setUrutan = (id: string, urutan: number) =>
+        mutasiWajibBaris(
+          supabase
+            .from('investment_documents')
+            .update({ urutan_tampil: urutan, updated_at: new Date().toISOString() })
+            .eq('id', id)
+            .select('id'),
+        );
+
+      await setUrutan(tetangga.id, urutanDoc); // langkah 1
+      langkah1Berhasil = true;
+      try {
+        await setUrutan(doc.id, urutanTetangga); // langkah 2
+      } catch (e2) {
+        try {
+          await setUrutan(tetangga.id, urutanTetangga); // batalkan langkah 1
+        } catch {
+          pembatalanGagal = true;
+        }
+        throw e2;
+      }
+
+      setDocs(prev => prev.map(d => {
+        if (d.id === tetangga.id) return { ...d, urutan_tampil: urutanDoc };
+        if (d.id === doc.id) return { ...d, urutan_tampil: urutanTetangga };
+        return d;
+      }));
+    } catch (e) {
+      toast(
+        pembatalanGagal
+          ? `Gagal mengubah urutan dokumen dan pembatalan juga gagal, urutan mungkin tidak konsisten — periksa daftar. ${pesanMutasi(e)}`
+          : `Gagal mengubah urutan dokumen. ${pesanMutasi(e)}`,
+        'error',
+      );
+      if (langkah1Berhasil || perluMuatUlang(e)) await loadData();
+    }
+  };
+
   const handleMoveUp = async (doc: GalleryDoc) => {
     const sorted = [...docs].sort((a, b) => a.urutan_tampil - b.urutan_tampil);
     const index = sorted.findIndex(d => d.id === doc.id);
     if (index <= 0) return;
 
-    const prevDoc = sorted[index - 1];
-    const prevOrder = prevDoc.urutan_tampil;
-    const currOrder = doc.urutan_tampil;
-
-    try {
-      const supabase = createClient();
-      const { error: err1 } = await supabase
-        .from('investment_documents')
-        .update({ urutan_tampil: currOrder, updated_at: new Date().toISOString() })
-        .eq('id', prevDoc.id);
-      if (err1) throw err1;
-
-      const { error: err2 } = await supabase
-        .from('investment_documents')
-        .update({ urutan_tampil: prevOrder, updated_at: new Date().toISOString() })
-        .eq('id', doc.id);
-      if (err2) throw err2;
-
-      setDocs(prev => prev.map(d => {
-        if (d.id === prevDoc.id) return { ...d, urutan_tampil: currOrder };
-        if (d.id === doc.id) return { ...d, urutan_tampil: prevOrder };
-        return d;
-      }));
-    } catch {
-      toast('Gagal mengubah urutan dokumen.', 'error');
-    }
+    await tukarUrutan(doc, sorted[index - 1]);
   };
 
   const handleMoveDown = async (doc: GalleryDoc) => {
@@ -182,32 +212,7 @@ export default function AdminGalleryPage() {
     const index = sorted.findIndex(d => d.id === doc.id);
     if (index < 0 || index >= sorted.length - 1) return;
 
-    const nextDoc = sorted[index + 1];
-    const nextOrder = nextDoc.urutan_tampil;
-    const currOrder = doc.urutan_tampil;
-
-    try {
-      const supabase = createClient();
-      const { error: err1 } = await supabase
-        .from('investment_documents')
-        .update({ urutan_tampil: currOrder, updated_at: new Date().toISOString() })
-        .eq('id', nextDoc.id);
-      if (err1) throw err1;
-
-      const { error: err2 } = await supabase
-        .from('investment_documents')
-        .update({ urutan_tampil: nextOrder, updated_at: new Date().toISOString() })
-        .eq('id', doc.id);
-      if (err2) throw err2;
-
-      setDocs(prev => prev.map(d => {
-        if (d.id === nextDoc.id) return { ...d, urutan_tampil: currOrder };
-        if (d.id === doc.id) return { ...d, urutan_tampil: nextOrder };
-        return d;
-      }));
-    } catch {
-      toast('Gagal mengubah urutan dokumen.', 'error');
-    }
+    await tukarUrutan(doc, sorted[index + 1]);
   };
 
   const handleViewDoc = async (doc: GalleryDoc) => {
@@ -296,20 +301,25 @@ export default function AdminGalleryPage() {
           status: form.status,
           updated_at: new Date().toISOString(),
         };
-        const { error } = await supabase
-          .from('investment_documents')
-          .update(payload)
-          .eq('id', editingId);
-        if (error) throw error;
+        await mutasiWajibBaris(
+          supabase
+            .from('investment_documents')
+            .update(payload)
+            .eq('id', editingId)
+            .select('id'),
+        );
       }
       setShowForm(false);
       setPdfFile(null);
       toast('Dokumen berhasil disimpan.', 'success');
       loadData();
     } catch (err) {
+      // MutasiError.message = pesan Indonesia siap tampil; jalur upload (fetch) melempar Error biasa.
       const message = err instanceof Error ? err.message : 'Gagal menyimpan dokumen.';
       setFormError(message);
       toast(message, 'error');
+      // Modal sengaja dibiarkan terbuka (isian tidak hilang); daftar di belakangnya dimuat ulang bila basi.
+      if (perluMuatUlang(err)) void loadData();
     } finally {
       setSaving(false);
       setUploadingFile(false);

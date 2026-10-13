@@ -188,8 +188,14 @@ export default function PengaturanAiPage() {
         setUjiDetail((p) => ({ ...p, [e.id]: { ok: false, http_status: null, latensi_ms: null, cuplikan: null, error: pesan, curl: '' } }));
         return;
       }
-      const d = r.data as UjiDetail;
+      const d = r.data as UjiDetail & { tersimpan?: boolean; peringatan?: string };
       setUjiDetail((p) => ({ ...p, [e.id]: d }));
+      if (d.tersimpan === false) {
+        // Server melaporkan hasil uji TIDAK tersimpan (draf berubah / DB bermasalah): aktivasi akan ditolak BELUM_DIUJI,
+        // jadi jangan tandai lulus secara lokal. Detail uji tetap tampil; Admin diminta mengulang.
+        toast(d.peringatan || 'Hasil uji tidak tersimpan; jalankan uji lagi sebelum mengaktifkan.', 'warning');
+        return;
+      }
       setHasilUji((p) => ({ ...p, [e.id]: { ok: d.ok, http_status: d.http_status, latensi_ms: d.latensi_ms, at: new Date().toISOString() } }));
     } catch {
       setUjiDetail((p) => ({ ...p, [e.id]: { ok: false, http_status: null, latensi_ms: null, cuplikan: null, error: 'Tidak dapat menghubungi server.', curl: '' } }));

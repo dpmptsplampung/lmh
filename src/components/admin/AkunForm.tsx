@@ -89,7 +89,8 @@ export default function AkunForm({
     if (noHp.trim() !== (akun.no_hp ?? '')) patch.no_hp = noHp.trim() || null;
     if (email.trim()) patch.email_notifikasi = email.trim();
     if (!isSelf && role !== akun.role) patch.role = role;
-    if ((layananId || null) !== akun.layanan_id) patch.layanan_id = layananId || null;
+    // Hanya petugas punya layanan; untuk FO/admin server mengosongkannya sendiri (dan menolak bila dikirim).
+    if (role === 'petugas' && (layananId || null) !== akun.layanan_id) patch.layanan_id = layananId || null;
     if (Object.keys(patch).length === 0) {
       setLocalError('Tidak ada perubahan.');
       return;

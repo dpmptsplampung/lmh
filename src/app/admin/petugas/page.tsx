@@ -34,6 +34,13 @@ async function api(url: string, method: string, body?: unknown) {
   return json;
 }
 
+// Server membalas ok + `peringatan` bila perubahan SUDAH tersimpan tetapi langkah lanjutan gagal (mis. sesi/blokir Auth
+// tak berhasil diakhiri). Itu bukan sukses penuh: tampilkan jelas sebagai peringatan, bukan hanya toast sukses.
+function peringatanServer(json: unknown): string | null {
+  const p = (json as { peringatan?: unknown } | null)?.peringatan;
+  return typeof p === 'string' && p.trim() ? p : null;
+}
+
 export default function AdminPetugasPage() {
   const { toast } = useToast();
   const [rows, setRows] = useState<AkunRow[]>([]);
@@ -90,8 +97,10 @@ export default function AdminPetugasPage() {
 
   const simpanEdit = (akun: AkunRow, patch: Record<string, string | null>) =>
     jalankan(async () => {
-      await api(`/api/admin/petugas/${akun.id}`, 'PATCH', patch);
+      const json = await api(`/api/admin/petugas/${akun.id}`, 'PATCH', patch);
       toast('Akun diperbarui.', 'success');
+      const peringatan = peringatanServer(json);
+      if (peringatan) toast(peringatan, 'warning');
       tutup();
       await load();
     });
@@ -113,11 +122,13 @@ export default function AdminPetugasPage() {
   const ubahStatus = (akun: AkunRow) =>
     jalankan(async () => {
       if (akun.aktif && !alasan.trim()) throw new Error('Alasan wajib diisi.');
-      await api('/api/admin/petugas/status', 'POST',
+      const json = await api('/api/admin/petugas/status', 'POST',
         akun.aktif
           ? { aksi: 'nonaktifkan', petugas_id: akun.id, alasan: alasan.trim() }
           : { aksi: 'aktifkan', petugas_id: akun.id });
       toast(akun.aktif ? `Akun ${akun.nama} dinonaktifkan.` : `Akun ${akun.nama} diaktifkan kembali.`, 'success');
+      const peringatan = peringatanServer(json);
+      if (peringatan) toast(peringatan, 'warning');
       tutup();
       await load();
     });

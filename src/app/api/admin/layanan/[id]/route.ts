@@ -1,6 +1,8 @@
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
+import { MutasiError, mutasiWajibBaris } from '@/lib/supabase/mutate';
+import { catatMutasiGagal, kodeDbMutasi } from '@/app/api/admin/_mutasi';
 import { json, requireAdmin } from '@/lib/akun/server';
 import { determineFormType } from '@/lib/pelayanan';
 
@@ -53,13 +55,15 @@ export async function PATCH(request: NextRequest, { params }: Ctx) {
     }
   }
 
-  const { data, error } = await supabase.from('layanan').update(upd).eq('id', id).select('id').maybeSingle();
-  if (error) {
-    const code = (error as { code?: string }).code;
-    if (code === '23505') return json({ error: 'Nama atau prefiks sudah dipakai layanan lain' }, 409);
-    console.error('[admin/layanan PATCH] gagal', error.message);
+  try {
+    await mutasiWajibBaris(supabase.from('layanan').update(upd).eq('id', id).select('id'));
+  } catch (e) {
+    if (!(e instanceof MutasiError)) throw e;
+    // 0 baris (id salah / RLS) = 404 (kontrak lama).
+    if (e.kode === 'tidak_ada_baris') return json({ error: 'Layanan tidak ditemukan' }, 404);
+    if (kodeDbMutasi(e) === '23505') return json({ error: 'Nama atau prefiks sudah dipakai layanan lain' }, 409);
+    catatMutasiGagal('/api/admin/layanan/[id]', 'admin.layanan.ubah', e, { layananId: id });
     return json({ error: 'Gagal menyimpan perubahan' }, 500);
   }
-  if (!data) return json({ error: 'Layanan tidak ditemukan' }, 404);
   return json({ ok: true });
 }

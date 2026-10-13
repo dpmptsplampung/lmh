@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { MutasiError, mutasiInsert, mutasiWajibBaris } from '@/lib/supabase/mutate';
+import { catatMutasiGagal } from '@/app/api/admin/_mutasi';
 import { determineFormType, canAccessPelayananStaff } from '@/lib/pelayanan';
 import {
   ossPelayananDraftSchema,
@@ -10,6 +12,21 @@ import {
 } from '@/lib/types/pelayanan';
 
 export const dynamic = 'force-dynamic';
+
+// Respons gagal simpan draf. Kontrak lama: semua kegagalan simpan = 400 + pesan umum (pesan DB tidak bocor).
+// Tambahan: 0 baris pada UPDATE (terkunci sejak dicek / ditolak RLS) = 409, penolakan database = 403.
+function responsGagalDraf(e: MutasiError, pesanUmum: string) {
+  if (e.kode === 'tidak_ada_baris') {
+    return NextResponse.json(
+      { error: 'Draf tidak tersimpan: data sudah terkunci, sudah tidak ada, atau Anda tidak berwenang mengubahnya' },
+      { status: 409 },
+    );
+  }
+  if (e.kode === 'ditolak') {
+    return NextResponse.json({ error: 'Anda tidak berwenang menyimpan draf ini atau data sudah terkunci' }, { status: 403 });
+  }
+  return NextResponse.json({ error: pesanUmum }, { status: 400 });
+}
 
 export async function GET(
   request: NextRequest,
@@ -227,18 +244,26 @@ export async function PATCH(
       // Baris eksisting → update tanpa mengubah petugas_id (kepemilikan tetap
       // milik petugas asli meski admin ikut menyunting). Baris baru → insert
       // dengan petugas_id = penyimpan pertama.
-      const { error: saveErr } = existing
-        ? await supabase.from('pelayanan_oss').update(baseData).eq('tiket_id', tiketId)
-        : await supabase.from('pelayanan_oss').insert({
-            tiket_id: tiket.id,
-            kunjungan_id: tiket.kunjungan_id,
-            petugas_id: staff.id,
-            ...baseData,
-          });
-
-      if (saveErr) {
-        console.error('[PATCH pelayanan_oss]', saveErr);
-        return NextResponse.json({ error: 'Gagal menyimpan draft OSS' }, { status: 400 });
+      try {
+        if (existing) {
+          // 0 baris (terkunci sejak dicek / ditolak RLS) = draf TIDAK tersimpan -> wajib ada baris terdampak.
+          await mutasiWajibBaris(
+            supabase.from('pelayanan_oss').update(baseData).eq('tiket_id', tiketId).select('tiket_id'),
+          );
+        } else {
+          await mutasiInsert(
+            supabase.from('pelayanan_oss').insert({
+              tiket_id: tiket.id,
+              kunjungan_id: tiket.kunjungan_id,
+              petugas_id: staff.id,
+              ...baseData,
+            }),
+          );
+        }
+      } catch (e) {
+        if (!(e instanceof MutasiError)) throw e;
+        catatMutasiGagal('/api/admin/pelayanan/[tiketId]', 'admin.pelayanan.draf_oss', e, { tiketId });
+        return responsGagalDraf(e, 'Gagal menyimpan draft OSS');
       }
 
       return NextResponse.json({ ok: true, message: 'Draft OSS tersimpan' });
@@ -266,18 +291,25 @@ export async function PATCH(
       };
 
       // Baris eksisting → update tanpa mengubah petugas_id; baru → insert.
-      const { error: saveErr } = existing
-        ? await supabase.from('pelayanan_perizinan').update(baseData).eq('tiket_id', tiketId)
-        : await supabase.from('pelayanan_perizinan').insert({
-            tiket_id: tiket.id,
-            kunjungan_id: tiket.kunjungan_id,
-            petugas_id: staff.id,
-            ...baseData,
-          });
-
-      if (saveErr) {
-        console.error('[PATCH pelayanan_perizinan]', saveErr);
-        return NextResponse.json({ error: 'Gagal menyimpan draft Perizinan' }, { status: 400 });
+      try {
+        if (existing) {
+          await mutasiWajibBaris(
+            supabase.from('pelayanan_perizinan').update(baseData).eq('tiket_id', tiketId).select('tiket_id'),
+          );
+        } else {
+          await mutasiInsert(
+            supabase.from('pelayanan_perizinan').insert({
+              tiket_id: tiket.id,
+              kunjungan_id: tiket.kunjungan_id,
+              petugas_id: staff.id,
+              ...baseData,
+            }),
+          );
+        }
+      } catch (e) {
+        if (!(e instanceof MutasiError)) throw e;
+        catatMutasiGagal('/api/admin/pelayanan/[tiketId]', 'admin.pelayanan.draf_perizinan', e, { tiketId });
+        return responsGagalDraf(e, 'Gagal menyimpan draft Perizinan');
       }
 
       return NextResponse.json({ ok: true, message: 'Draft Perizinan tersimpan' });

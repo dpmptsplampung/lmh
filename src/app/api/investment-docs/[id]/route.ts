@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { mutasiWajibBaris } from '@/lib/supabase/mutate';
+import { logServerEvent } from '@/lib/observability/logger';
+import { catatMutasi } from '@/lib/observability/catat-mutasi';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -42,32 +45,35 @@ export async function DELETE(_request: NextRequest, context: RouteContext) {
     }
   }
 
-  if (paths.length > 0) {
-    const { error: removeError } = await supabase.storage
-      .from('investment-docs')
-      .remove(paths);
-    if (removeError) {
-      // Prefer storage-first cleanup; still attempt DB delete so orphans are not double-orphaned
-      // by leaving the row. Log via response details only if DB also fails.
-    }
+  // Urutan: baris DB DULU, baru file storage. Bila DB gagal, tidak ada yang berubah (dokumen utuh beserta filenya).
+  // Bila storage gagal sesudahnya, yang tersisa file yatim (tak terlihat, bisa dibersihkan) -- jauh lebih aman daripada
+  // baris yatim: dokumen tampil di galeri tanpa file-nya. Kegagalan storage dicatat, tidak menggagalkan respons sukses.
+  try {
+    // Wajib baris: 0 baris (RLS menolak / baris sudah hilang) bukan sukses.
+    await mutasiWajibBaris(
+      supabase.from('investment_documents').delete().eq('id', id).select('id'),
+    );
+  } catch (e) {
+    catatMutasi('error', 'investment_docs.delete', '/api/investment-docs/[id]', e, { docId: id });
+    return NextResponse.json({ error: 'Gagal menghapus dokumen. Coba lagi.' }, { status: 500 });
   }
 
-  const { error: deleteError } = await supabase
-    .from('investment_documents')
-    .delete()
-    .eq('id', id);
-
-  if (deleteError) {
-    return NextResponse.json(
-      {
-        error: 'DB delete failed after storage cleanup',
-        details: String(deleteError),
-        note: paths.length > 0
-          ? 'Storage objects may already have been removed'
-          : undefined,
-      },
-      { status: 500 },
-    );
+  if (paths.length > 0) {
+    try {
+      const { error: removeError } = await supabase.storage.from('investment-docs').remove(paths);
+      if (removeError) {
+        // Pesan error storage tidak dicatat (bisa memuat path/bucket); jumlah file yatim + status cukup untuk tindak lanjut.
+        logServerEvent('warn', {
+          operation: 'investment_docs.delete.storage',
+          route: '/api/investment-docs/[id]',
+          docId: id,
+          nFile: paths.length,
+          statusStorage: (removeError as { status?: number }).status,
+        });
+      }
+    } catch (e) {
+      logServerEvent('warn', { operation: 'investment_docs.delete.storage', route: '/api/investment-docs/[id]', docId: id, nFile: paths.length, error: e });
+    }
   }
 
   return NextResponse.json({ ok: true, id }, { status: 200 });

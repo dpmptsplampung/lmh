@@ -58,7 +58,8 @@ export default function InvitePetugasPage() {
       const res = await fetch('/api/admin/petugas/invite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, nama, layanan_id: layananId || null, role }),
+        // FO/admin tidak punya layanan (keputusan CEO: FO hanya FAQ umum); server menolak layanan_id untuk keduanya.
+        body: JSON.stringify({ email, nama, layanan_id: role === 'petugas' ? layananId || null : null, role }),
       });
       const json = await res.json();
 
@@ -154,7 +155,7 @@ export default function InvitePetugasPage() {
 
             <div className="form-group">
               <label className={`form-label ${role === 'petugas' ? 'form-label--required' : ''}`} htmlFor="inviteLayanan">
-                Layanan {(role === 'admin' || role === 'front_office') && <span style={{ fontWeight: 400, color: 'var(--text-tertiary)' }}>(opsional untuk {role === 'admin' ? 'admin' : 'front office'})</span>}
+                Layanan {(role === 'admin' || role === 'front_office') && <span style={{ fontWeight: 400, color: 'var(--text-tertiary)' }}>(tidak dipakai untuk {role === 'admin' ? 'admin' : 'front office'})</span>}
               </label>
               {loadingLayanan ? (
                 <div className={styles.loadingRow}>

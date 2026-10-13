@@ -1,5 +1,5 @@
 ﻿// @vitest-environment node
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(),
@@ -257,5 +257,64 @@ describe("POST /api/investment-docs/upload — cleanup on failure", () => {
     const json = await res.json();
     expect(json.error).toMatch(/halaman|page|50/i);
     expect(remove).toHaveBeenCalled();
+  });
+});
+
+// Audit T2d (No 102): INSERT dokumen dibungkus mutasiInsert. Kontrak respons gagal (500 'Failed to insert document row')
+// dan pembersihan storage tetap; yang berubah: detail ke klien tak lagi memuat teks error database mentah, dan
+// kegagalan tercatat dengan kode.
+describe("POST /api/investment-docs/upload — kegagalan INSERT dicatat tanpa membocorkan detail DB (audit T2d)", () => {
+  let errSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    vi.resetModules();
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}")));
+    errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+  afterEach(() => {
+    errSpy.mockRestore();
+    vi.unstubAllGlobals();
+  });
+
+  it("INSERT gagal: storage dibersihkan, 500, details aman, dicatat dengan kode", async () => {
+    const remove = vi.fn().mockResolvedValue({ data: null, error: null });
+    await mockSupabase(
+      { user: { id: "u-1" }, role: "admin" },
+      {
+        insertError: { message: 'duplicate key value violates unique constraint "inv_docs_pkey" secret-xyz', code: "23505" },
+        removeSpy: remove,
+      },
+    );
+    await mockPdfConvert(1);
+    const { POST } = await import("./route");
+    const form = new FormData();
+    form.append("pdf", new File([PDF_MAGIC], "ok.pdf", { type: "application/pdf" }));
+    form.append("judul", "Insert Gagal");
+    const res = await POST(buildRequest(form));
+
+    expect(res.status).toBe(500);
+    const json = await res.json();
+    expect(json.error).toBe("Failed to insert document row");
+    expect(JSON.stringify(json)).not.toContain("secret-xyz");
+    expect(JSON.stringify(json)).not.toContain("inv_docs_pkey");
+    expect(remove).toHaveBeenCalled();
+
+    const log = errSpy.mock.calls
+      .map((c: unknown[]) => { try { return JSON.parse(String(c[0])) as Record<string, unknown>; } catch { return null; } })
+      .find((e: Record<string, unknown> | null) => e?.operation === "investment_docs.upload.insert");
+    expect(log).toMatchObject({ kode: "database", asalCode: "23505" });
+    expect(JSON.stringify(log)).not.toContain("secret-xyz");
+  });
+
+  it("INSERT berhasil: 201 dengan id + jumlah_halaman (tidak berubah)", async () => {
+    await mockSupabase({ user: { id: "u-1" }, role: "admin" });
+    await mockPdfConvert(2);
+    const { POST } = await import("./route");
+    const form = new FormData();
+    form.append("pdf", new File([PDF_MAGIC], "ok.pdf", { type: "application/pdf" }));
+    form.append("judul", "Berhasil");
+    const res = await POST(buildRequest(form));
+
+    expect(res.status).toBe(201);
+    expect(await res.json()).toMatchObject({ jumlah_halaman: 2 });
   });
 });

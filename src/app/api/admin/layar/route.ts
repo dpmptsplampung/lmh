@@ -3,6 +3,9 @@
 // POST { aksi: 'cabut', id: string } → deactivates a token
 
 import { createClient } from '@/lib/supabase/server';
+import { MutasiError, mutasiWajibBaris } from '@/lib/supabase/mutate';
+import { catatMutasiGagal, statusMutasi } from '@/app/api/admin/_mutasi';
+import { logServerEvent } from '@/lib/observability/logger';
 import { NextRequest, NextResponse } from 'next/server';
 
 interface BuatBody { aksi: 'buat'; nama: string }
@@ -16,7 +19,11 @@ export async function GET() {
     .select('id, token, nama, aktif, created_at')
     .order('created_at', { ascending: false });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    // Pesan DB tidak dikirim ke klien; hanya kode SQLSTATE yang dicatat.
+    logServerEvent('error', { operation: 'admin.layar.daftar', route: '/api/admin/layar', asalCode: error.code || undefined });
+    return NextResponse.json({ error: 'Gagal memuat daftar layar. Coba lagi.' }, { status: 500 });
+  }
   return NextResponse.json({ data });
 }
 
@@ -48,7 +55,10 @@ export async function POST(req: NextRequest) {
       .insert({ nama: body.nama.trim(), dibuat_oleh: petugas.id })
       .select('id, token, nama, aktif, created_at')
       .single();
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) {
+      logServerEvent('error', { operation: 'admin.layar.buat', route: '/api/admin/layar', asalCode: error.code || undefined });
+      return NextResponse.json({ error: 'Gagal membuat token layar. Coba lagi.' }, { status: 500 });
+    }
     return NextResponse.json({ data }, { status: 201 });
   }
 
@@ -56,11 +66,16 @@ export async function POST(req: NextRequest) {
     if (!body.id) {
       return NextResponse.json({ error: 'ID layar wajib diisi' }, { status: 400 });
     }
-    const { error } = await supabase
-      .from('layar_token')
-      .update({ aktif: false })
-      .eq('id', body.id);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    // Keamanan: 0 baris (id salah / ditolak RLS) berarti token layar TETAP aktif, jadi tidak boleh dilaporkan ok.
+    try {
+      await mutasiWajibBaris(
+        supabase.from('layar_token').update({ aktif: false }).eq('id', body.id).select('id'),
+      );
+    } catch (e) {
+      if (!(e instanceof MutasiError)) throw e;
+      catatMutasiGagal('/api/admin/layar', 'admin.layar.cabut', e, { layarId: body.id });
+      return NextResponse.json({ error: e.pesan }, { status: statusMutasi(e) });
+    }
     return NextResponse.json({ ok: true });
   }
 

@@ -2,10 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { createClient as createServerClient } from '@/lib/supabase/server';
-import { logServerEvent } from '@/lib/observability/logger';
+import { MutasiError, mutasiInsert, mutasiWajibBaris } from '@/lib/supabase/mutate';
+import { catatMutasi } from '@/lib/observability/catat-mutasi';
 import { resolveActor, canAccessSesi } from '../messages/route';
 
 export const dynamic = 'force-dynamic';
+
+const ROUTE = '/api/chat/sesi';
 
 // Aksi staf pada sesi chat (ambil alih / kembalikan ke bot / selesaikan)
 // dilakukan di server: sebelumnya ditulis langsung dari browser sehingga
@@ -117,37 +120,56 @@ export async function POST(request: NextRequest) {
   const ditanganiOleh = aksi === 'takeover' ? myId : null;
   // UPDATE bersyarat pada keadaan yang tadi dibaca: bila sesi berubah di antara
   // baca & tulis (petugas lain / sesi selesai) 0 baris terubah -> 409.
-  let q = adminClient
-    .from('chat_sesi')
-    .update({ status: nextStatus, ditangani_oleh: ditanganiOleh })
-    .eq('id', parsed.data.sesi_id)
-    .eq('status', sesiData.status);
-  q = holder ? q.eq('ditangani_oleh', holder) : q.is('ditangani_oleh', null);
-  const { data: changed, error: updateErr } = await q.select('id');
-  if (updateErr) {
-    logServerEvent('error', { operation: 'chat.sesi.update', route: '/api/chat/sesi', cause: updateErr.message });
+  try {
+    // Klien service-role: 0 baris = kondisi bersyarat tak terpenuhi lagi (sesi berubah), dipetakan ke 409 di bawah.
+    // Satu rantai langsung di dalam helper (aturan lint mutasi): kondisi pemegang lewat .filter(kolom, 'eq' | 'is', nilai)
+    // (= .eq(pemegang) atau .is(null) di PostgREST) agar rantainya tidak perlu dipecah.
+    await mutasiWajibBaris(
+      adminClient
+        .from('chat_sesi')
+        .update({ status: nextStatus, ditangani_oleh: ditanganiOleh })
+        .eq('id', parsed.data.sesi_id)
+        .eq('status', sesiData.status)
+        .filter('ditangani_oleh', holder ? 'eq' : 'is', holder)
+        .select('id'),
+    );
+  } catch (e) {
+    if (e instanceof MutasiError && e.kode === 'tidak_ada_baris') {
+      return NextResponse.json({ error: 'Sesi baru saja berubah, muat ulang dan coba lagi' }, { status: 409 });
+    }
+    catatMutasi('error', 'chat.sesi.update', ROUTE, e);
     return NextResponse.json({ error: 'Gagal mengubah sesi' }, { status: 500 });
   }
-  if (!changed || changed.length === 0) {
-    return NextResponse.json({ error: 'Sesi baru saja berubah, muat ulang dan coba lagi' }, { status: 409 });
+
+  // best-effort: status sesi SUDAH berubah (tidak ada transaksi lintas tabel), jadi kegagalan pesan sistem tidak
+  // membatalkan aksi; dicatat agar terlihat.
+  try {
+    await mutasiInsert(
+      adminClient.from('chat_pesan').insert({
+        sesi_id: parsed.data.sesi_id,
+        pengirim: 'bot',
+        isi: SYSTEM_MESSAGES[parsed.data.aksi],
+      }),
+    );
+  } catch (e) {
+    catatMutasi('error', 'chat.sesi.pesan_sistem', ROUTE, e);
   }
 
-  const { error: pesanErr } = await adminClient.from('chat_pesan').insert({
-    sesi_id: parsed.data.sesi_id,
-    pengirim: 'bot',
-    isi: SYSTEM_MESSAGES[parsed.data.aksi],
-  });
-  if (pesanErr) {
-    console.error('[api/chat/sesi] gagal menulis pesan sistem:', pesanErr);
+  // best-effort: audit ambil alih/selesai tidak membatalkan aksi yang sudah tersimpan (pola sama dengan lib/akun
+  // audit()); kegagalan dicatat sebagai peringatan, bukan ditelan.
+  try {
+    await mutasiInsert(
+      adminClient.from('audit_log').insert({
+        actor_id: user.id,
+        actor_role: actor.role,
+        aksi: `chat_sesi_${parsed.data.aksi}`,
+        entitas: 'chat_sesi',
+        detail: { sesi_id: parsed.data.sesi_id },
+      }),
+    );
+  } catch (e) {
+    catatMutasi('warn', 'chat.sesi.audit_log', ROUTE, e);
   }
-
-  await adminClient.from('audit_log').insert({
-    actor_id: user.id,
-    actor_role: actor.role,
-    aksi: `chat_sesi_${parsed.data.aksi}`,
-    entitas: 'chat_sesi',
-    detail: { sesi_id: parsed.data.sesi_id },
-  });
 
   return NextResponse.json({ ok: true, status: nextStatus });
 }
