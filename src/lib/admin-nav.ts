@@ -22,7 +22,8 @@ export const ADMIN_NAV: AdminNavEntry[] = [
   { label: 'Antrian', href: '/admin/antrian', iconKey: 'antrian', roles: ['admin', 'petugas', 'front_office'] },
   { label: 'Absensi', href: '/admin/absensi', iconKey: 'absensi', roles: ['admin', 'petugas', 'front_office'] },
   { label: 'Live Chat', href: '/admin/chat', iconKey: 'chat', roles: ['admin', 'petugas', 'front_office'] },
-  { label: 'Kelola FAQ', href: '/admin/chat/faq', iconKey: 'faq', roles: ['admin', 'petugas'] },
+  // Front Office hanya mengelola FAQ umum (layanan_id NULL; RLS faq_fo_umum, lihat src/lib/faq-scope.ts).
+  { label: 'Kelola FAQ', href: '/admin/chat/faq', iconKey: 'faq', roles: ['admin', 'petugas', 'front_office'] },
   { label: 'UMKM', href: '/admin/umkm', iconKey: 'umkm', roles: ['admin'] },
   { label: 'Investment Gallery', href: '/admin/gallery', iconKey: 'gallery', roles: ['admin'] },
   { label: 'Lead Investasi', href: '/admin/investasi-leads', iconKey: 'leads', roles: ['admin'] },

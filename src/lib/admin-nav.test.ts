@@ -64,6 +64,19 @@ describe('canAccessAdminPath', () => {
     expect(canAccessAdminPath('front_office', '/admin/gallery')).toBe(false);
     expect(canAccessAdminPath('front_office', '/admin/data-governance')).toBe(false);
     expect(canAccessAdminPath('front_office', '/admin/chat/ai-log')).toBe(false);
-    expect(canAccessAdminPath('front_office', '/admin/chat/faq')).toBe(false);
+  });
+
+  it('front_office dapat mengakses Kelola FAQ (hanya FAQ umum; dibatasi RLS faq_fo_umum), tetangganya tetap tertutup', () => {
+    expect(canAccessAdminPath('front_office', '/admin/chat/faq')).toBe(true);
+    // Entri paling spesifik menang: izin FAQ tidak merembes ke /admin/chat/ai-log (admin-only).
+    expect(canAccessAdminPath('front_office', '/admin/chat/ai-log')).toBe(false);
+    const entri = ADMIN_NAV.find((e) => e.href === '/admin/chat/faq');
+    expect(entri?.roles).toEqual(['admin', 'petugas', 'front_office']);
+  });
+
+  it('peran lain tidak berubah untuk Kelola FAQ: admin dan petugas boleh, peran tak dikenal ditolak', () => {
+    expect(canAccessAdminPath('admin', '/admin/chat/faq')).toBe(true);
+    expect(canAccessAdminPath('petugas', '/admin/chat/faq')).toBe(true);
+    expect(canAccessAdminPath('pengunjung' as never, '/admin/chat/faq')).toBe(false);
   });
 });

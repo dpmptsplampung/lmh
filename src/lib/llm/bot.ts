@@ -154,8 +154,10 @@ export async function jalankanBot(input: {
     if (ftsCandidates.length === 0) {
       return { kind: 'gagal', operation: 'chat.ai.no_context', err: e, faqIds: [], topSim: null, text: FALLBACK_TEXT, reason: 'ai_error' };
     }
+    // match_faq_teks tidak mengembalikan layanan_id dan barisnya bisa FAQ umum (layanan_id NULL, migrasi
+    // 202610130001): jangan mengarang layanan_id = layananId. null = umum/tidak diketahui (tak dipakai pemanggil).
     faqMatches = ftsCandidates.map((c) => ({
-      id: c.id, layanan_id: layananId, pertanyaan: c.pertanyaan, jawaban: c.jawaban, similarity: 0,
+      id: c.id, layanan_id: null, pertanyaan: c.pertanyaan, jawaban: c.jawaban, similarity: 0,
     }));
   }
 
