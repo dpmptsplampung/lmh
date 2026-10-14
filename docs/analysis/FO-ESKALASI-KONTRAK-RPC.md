@@ -93,7 +93,20 @@ Kode galat umum semua RPC staf: `FORBIDDEN` (42501, bukan staf aktif / peran sal
 
 ### 2.1 `fo_mulai_kunjungan(p_nama text, p_asal_instansi text, p_kontak_hp text DEFAULT NULL, p_kategori text DEFAULT NULL, p_email text DEFAULT NULL, p_keperluan text DEFAULT NULL, p_layanan_saran_id uuid DEFAULT NULL, p_pengunjung_id uuid DEFAULT NULL, p_client_request_id uuid DEFAULT NULL) → jsonb`
 Walk-in. Membuat `kunjungan` (`walk_in`, `dilayani`, tanggal hari ini) + `penanganan` tahap 1 (`fo`, `walk_in`, `berjalan`, penangan = pemanggil). **Tidak menerbitkan tiket.**
-- Validasi: nama 3–120; asal/instansi 2–200; HP opsional `^(\+?62|0)[0-9]{8,14}$` (spasi/strip dibuang); kategori opsional ∈ daftar; email opsional berformat; keperluan ≤ 500; layanan saran harus aktif; `p_pengunjung_id` (opsional, bila FO memilih pengunjung terdaftar) harus ada.
+- Validasi **sejak `202610140014_walkin_data_lengkap`** (permintaan CEO 2026-10-14: semua field wajib; klien `src/lib/fo/walkin.ts` memakai aturan yang SAMA). Signature tidak berubah (parameter tetap `DEFAULT NULL`, tetapi NULL/kosong kini ditolak untuk semua field kecuali layanan saran). "trim" = buang spasi/tab/baris baru di awal dan akhir.
+
+  | Field (DETAIL galat) | Normalisasi server (yang disimpan) | Aturan |
+  |---|---|---|
+  | `nama` | spasi beruntun (termasuk tab/baris baru) → satu spasi, lalu trim | 3–100 karakter; `^[[:alpha:]][[:alpha:] .,'’-]*$` (setara JS `/^[\p{L}][\p{L} .,'’-]*$/u`: diawali huruf; hanya huruf, spasi, titik, koma, apostrof `'`/`’`, tanda hubung; tanpa angka); minimal 3 huruf |
+  | `asal_instansi` | trim | 3–120 karakter; minimal 3 karakter selain spasi |
+  | `kontak_hp` | buang semua non-digit; awalan `62` (termasuk dari `+62`) → `0`; disimpan kanonik `08…` | `^08[1-9][0-9]{7,10}$` (10–13 digit). Klien boleh mengirim mentah atau kanonik |
+  | `kategori` | trim | persis salah satu `Umum`, `UMKM`, `Investor`, `Instansi` (peka huruf besar) |
+  | `email` | trim + huruf kecil | ≤ 254 karakter; `^[a-z0-9._%+-]+@[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$` (tepat satu `@`) |
+  | `keperluan` | trim | 10–500 karakter; minimal 10 karakter selain spasi |
+  | `layanan_saran_id` | — | **opsional**: `NULL` = "Belum tahu"; bila diisi wajib layanan aktif (`LAYANAN_TIDAK_VALID`) |
+
+  Galat field = `DATA_TIDAK_VALID: <pesan>` (SQLSTATE `22023`) dengan **`error.details` = nama field** pada tabel di atas (supabase-js: `error.details`). Hanya field PERTAMA yang salah (urutan tabel) yang dilaporkan. `p_pengunjung_id` (opsional, bila FO memilih pengunjung terdaftar) harus ada (`NOT_FOUND`) dan punya kunjungan hari ini (`DATA_TIDAK_VALID` tanpa DETAIL field). Sebelum 0014 (versi 0012): nama 3–120; asal 2–200; HP/kategori/email/keperluan opsional.
+- Idempotensi diperiksa SEBELUM validasi: replay dengan `p_client_request_id` yang sudah tercatat tetap `sudah_ada: true` walau datanya tidak lolos aturan baru. Antrean offline: item baru yang tak lolos → `DATA_TIDAK_VALID` = galat permanen (`galatFoMulaiPermanen`), dibuang dari antrean.
 - Ditolak setelah jam tutup (`layanan_sudah_tutup()`, 16:00 dari pengaturan).
 - Idempoten: `p_client_request_id` yang sama dari staf yang sama → balasan `sudah_ada: true` (kunjungan lama). Dua request serentak dengan id sama: satu menang, satu bisa menerima `23505` → panggil ulang = `sudah_ada`.
 - Balasan: `{ok, sudah_ada:false, kunjungan_id, penanganan_id, qr_token, mulai_at}` atau `{ok, sudah_ada:true, kunjungan_id, penanganan_id, qr_token}`.

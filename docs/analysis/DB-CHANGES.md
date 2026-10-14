@@ -571,3 +571,18 @@
 3. **#11** ambang 24 jam — **disetujui** (tidak diubah, juga untuk chat yang menunggu dari hari kerja terakhir sebelum hari tanpa pelayanan).
 4. **#5** walk-in lama `terjadwal` -> `batal` — **disetujui**.
 5. **#10** `total_hadir` = pengunjung berbeda per layanan per hari — **disetujui**.
+
+```markdown
+### [2026-10-14] — Walk-in FO: semua field wajib + validasi HP/email (M-202610140014_walkin_data_lengkap) — BELUM DITERAPKAN
+- WP/Migrasi   : permintaan CEO 2026-10-14 (pendaftaran walk-in FO lengkap dan tervalidasi) / `supabase/migrations/202610140014_walkin_data_lengkap.sql` + test kontrak `supabase/migrations/walkin_data_lengkap.test.ts` + rollback `docs/rollback-walkin-data-lengkap-202610140014.sql`
+- Jenis        : perilaku RPC (validasi); tanpa tabel/kolom/policy/hak baru; tanpa DML
+- Objek        : `public.fo_mulai_kunjungan(text, text, text, text, text, text, uuid, uuid, uuid)`: normalisasi + validasi (nama 3–100 huruf/.,'’- min 3 huruf; asal 3–120; HP wajib kanonik `08…` `^08[1-9][0-9]{7,10}$`; kategori wajib; email wajib huruf kecil ≤ 254; keperluan wajib 10–500; layanan saran tetap opsional). Galat `DATA_TIDAK_VALID` (22023) + DETAIL nama field. COMMENT penanda `202610140014`. Bagian lain identik versi 0012.
+- Menyentuh data pengunjung? : Tidak mengubah data lama. Kunjungan BARU: HP disimpan kanonik (`+62 812-…` → `0812…`), email huruf kecil, nama dengan spasi dirapatkan.
+- Prasyarat    : 0013 (penanda komentar `boleh_penanganan`), 0012 (`hari_tanpa_layanan`). Urutan: `... -> 0012 -> 0013 -> 0014`.
+- Cara menerapkan : `node scripts/apply-migration.mjs supabase/migrations/202610140014_walkin_data_lengkap.sql --atomic --dry-run`, lalu tanpa `--dry-run` setelah konfirmasi CEO. Idempoten.
+- Cara mengembalikan : `node scripts/apply-migration.mjs docs/rollback-walkin-data-lengkap-202610140014.sql --atomic` (`--dry-run` dulu); memulihkan `fo_mulai_kunjungan` PERSIS versi 0012 dan menghapus komentar. PERTAMA dalam urutan rollback (sebelum 0013/0012). Kunjungan yang tercatat selama 0014 terpasang tidak diubah (bentuknya tetap sah menurut 0012).
+- Klien        : `/admin/fo/daftar` + `src/lib/fo/walkin.ts` (aturan sama; agent UI). Replay offline (`src/lib/offline/replay.ts`) tidak perlu diubah: `DATA_TIDAK_VALID` sudah permanen.
+- Dry-run      : 2026-10-14 ±21:29 WIB produksi (memuat 0013): migrasi dan rollback berhasil dieksekusi lalu di-ROLLBACK.
+- Uji perilaku : `scripts/test-walkin-data.mjs --apply supabase/migrations/202610140014_walkin_data_lengkap.sql` — 2026-10-14 ±21:29 WIB, 96 lolos / 0 gagal (ROLLBACK; snapshot rollback identik; baris sebelum == sesudah).
+- Status       : DITULIS, BELUM DITERAPKAN
+```

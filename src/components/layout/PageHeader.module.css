@@ -46,6 +46,13 @@
     position: sticky;
     top: 0;
     z-index: 90;
+    /* Hampir opak: dengan kaca translucent (0.78) teks halaman yang di-scroll tampak menimpa judul/deskripsi. */
+    background: rgba(255, 255, 255, 0.97);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .headerDescription {
+    overflow-wrap: anywhere;
   }
 
   .headerLeft {
