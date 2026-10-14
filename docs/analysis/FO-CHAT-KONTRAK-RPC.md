@@ -1,6 +1,6 @@
 # Kontrak DB Tahap C: Live Chat sebagai Layanan Online Tercatat (untuk agent UI)
 
-> Tanggal: 2026-10-14 · Branch `feat/audit-fondasi-fo-eskalasi` · Status migrasi: **DITULIS, BELUM DITERAPKAN**.
+> Tanggal: 2026-10-14 · Branch `feat/audit-fondasi-fo-eskalasi` · Status migrasi: **DITERAPKAN ke produksi 2026-10-14 malam** (0009; uji perilaku ROLLBACK 106 lolos).
 > Migrasi: `supabase/migrations/202610140009_chat_online.sql` (setelah 202610140003/0004/0005; tidak bergantung pada 0006–0008, tetapi diuji juga bersama 0006–0008).
 > Rollback: `docs/rollback-chat-online-202610140009.sql`. Test kontrak statis: `supabase/migrations/chat_online.test.ts`.
 > Uji perilaku: `scripts/test-chat-online.mjs` (transaksi selalu di-ROLLBACK). Dijalankan ke DB produksi pada 2026-10-14 06:13–06:15 WIB: `--pre 0002..0005 --apply 0009` = **99 lolos, 0 gagal**; `--pre 0002..0008 --apply 0009` = **99 lolos, 0 gagal**; jumlah baris sebelum = sesudah.

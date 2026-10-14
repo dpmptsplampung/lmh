@@ -40,7 +40,7 @@ Data **tidak** digunakan untuk pemasaran komersial, profiling otomatis, atau dib
   - `nama` → `'[anonim]'`
   - `email` → `NULL`
   - `foto_url` → `NULL`
-- **Cakupan baru (migrasi `202610140008`, DITULIS, BELUM DITERAPKAN):** anonimisasi 730 hari juga mengosongkan PII `kunjungan` (nama → `[anonim]`; HP, email, instansi, nama yang ditemui, keperluan → NULL), `penanganan.catatan` → `[anonim]`, dan arsip `visit` (tabel `visit` menjadi arsip baca saja setelah migrasi `202610140007`). Belum mencakup `pelayanan_oss`/`pelayanan_perizinan`, `buku_tamu`, dan isi chat (pertanyaan terbuka).
+- **Cakupan baru (migrasi `202610140008`, DITERAPKAN ke produksi 2026-10-14 malam):** anonimisasi 730 hari juga mengosongkan PII `kunjungan` (nama → `[anonim]`; HP, email, instansi, nama yang ditemui, keperluan → NULL), `penanganan.catatan` → `[anonim]`, dan arsip `visit` (tabel `visit` menjadi arsip baca saja setelah migrasi `202610140007`). Belum mencakup `pelayanan_oss`/`pelayanan_perizinan`, `buku_tamu`, dan isi chat (pertanyaan terbuka).
 - **Pengecualian:** dokumen Investment Gallery dan listing UMKM bersifat publik (bukan data pribadi per individu) sehingga tidak dianonimisasi otomatis.
 - **Manual trigger:** jika pg_cron belum di-enable, admin dapat menjalankan:
   ```sql

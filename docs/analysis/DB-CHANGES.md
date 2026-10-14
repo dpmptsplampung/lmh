@@ -32,19 +32,30 @@
 
 ## Riwayat (dari yang terbaru)
 
-### [2026-10-14] — Keterbukaan data antar Front Office: semua FO membaca semua `penanganan` (M-202610140013_fo_keterbukaan_data) — BELUM DITERAPKAN
+### [2026-10-14 malam] — Cutover Fase 3: 0002-0009, 0011, 0012, 0013 diterapkan ke produksi + ledger diisi (atas izin CEO)
+- WP/Migrasi   : `202610140002` s.d. `0009`, `0011`, `0012`, `0013` (tanpa 0010: tidak ada berkasnya), entri per migrasi di bawah
+- Jenis        : DDL + DATA (backfill di 0003/0007/0009) + KONFIGURASI (job pg_cron)
+- Tindakan     : tiap berkas `scripts/apply-migration.mjs <file> --atomic --dry-run` lalu `--atomic` (COMMIT) berurutan, sekitar 17:52–17:57 WIB. Lalu `scripts/fill-migration-ledger.mjs --apply --yes`: 12 baris dicatat (0001–0013 tanpa 0010).
+- Verifikasi read-only : fungsi FO/chat/layanan ada; `visit` menjadi arsip (`trg_visit_arsip` aktif, trigger tulis lama nonaktif); prefiks layanan 2 huruf; job `penanganan_tutup_otomatis` dan `chat_tutup_otomatis` terjadwal; flag `sesi_tunggal_aktif` tetap `false`. Ledger: 66 entri (terakhir 202610140013); 5 migrasi lama tetap tidak tercatat (lihat `docs/analysis/LEDGER-VERIFIKASI-2026-10-14.md`).
+- Uji perilaku (ROLLBACK terhadap produksi, lolos): 0002 = 84; 0003-0005 = 150; 0007/0008 = 101; 0009 = 106; 0012 = 61 (`--akhir-hari`); 0013 = 26. 0006 dan 0011 hanya tercakup sebagai prasyarat (`--pre`) dan test statis.
+- Klien        : branch di-merge ke `main` lewat PR #10 (merge commit `cbff52a`); deploy produksi Vercel sukses menurut status GitHub. Pemeriksaan kesehatan dari luar BELUM TERBUKTI (deployment dilindungi Vercel Authentication; domain `lmh.lampungprov.go.id` tidak ter-resolve dari mesin penguji).
+- Belum terbukti : tampilan di browser, konkurensi sejati, kueri rekap FO pada PostgREST sungguhan, `session_id` JWT stabil setelah refresh. Flag `sesi_tunggal_aktif` masih `false`; staf belum login ulang.
+- Cara mengembalikan : urutan rollback terbalik per entri (0013 -> 0012 -> 0011 -> 0009 -> 0008 -> 0007 -> 0006 -> 0005 -> 0004 -> 0003 -> 0002); lihat `docs/RUNBOOK_FO_ESKALASI.md`.
+- Status       : DITERAPKAN
+
+### [2026-10-14] — Keterbukaan data antar Front Office: semua FO membaca semua `penanganan` (M-202610140013_fo_keterbukaan_data) — DITERAPKAN 2026-10-14
 - WP/Migrasi   : keputusan CEO 2026-10-14 ("semua antrian, semua pengunjung, rekap, dll itu terbuka untuk semua FO ... di setiap pengunjung ada nama petugas FO yang melayani") / `supabase/migrations/202610140013_fo_keterbukaan_data.sql` + test kontrak `supabase/migrations/fo_keterbukaan.test.ts` + rollback `docs/rollback-fo-keterbukaan-data-202610140013.sql`
 - Jenis        : DDL (fungsi helper RLS; tanpa tabel/kolom/policy baru)
 - Objek        : `public.boleh_penanganan(uuid, text, uuid, uuid, text)` (dipakai policy `penanganan_staf_select`): cabang `front_office` = `RETURN true`; cabang admin/petugas/default identik versi 0009; hak EXECUTE sama; COMMENT penanda `202610140013`. Rollback 0012 mendapat penjaga baru (menolak selama penanda 0013 ada).
 - Menyentuh data pengunjung? : Tidak mengubah data. Memperluas BACA: FO aktif kini membaca semua tahap penanganan (nama/instansi pengunjung lewat embed `kunjungan` sudah terbaca FO sebelumnya; topik/catatan tahap FO lain dan tahap layanan kini terbaca). Tulis tetap hanya lewat RPC pemilik tahap.
 - Prasyarat    : 0012 (`hari_tanpa_layanan`), 0009, 0003 (penjaga `PRASYARAT`). Urutan: `... -> 0011 -> 0012 -> 0013`.
-- Cara menerapkan : `node scripts/apply-migration.mjs supabase/migrations/202610140013_fo_keterbukaan_data.sql --atomic --dry-run` (produksi 2026-10-14: berhenti di `PRASYARAT: tabel penanganan / boleh_penanganan belum ada`, di-ROLLBACK), lalu tanpa `--dry-run` setelah konfirmasi CEO. Idempoten.
+- Cara menerapkan : `node scripts/apply-migration.mjs supabase/migrations/202610140013_fo_keterbukaan_data.sql --atomic --dry-run` (dry-run siang 2026-10-14, saat 0003 belum terpasang: berhenti di `PRASYARAT: tabel penanganan / boleh_penanganan belum ada`, di-ROLLBACK; malam harinya dry-run lalu COMMIT lolos), lalu tanpa `--dry-run` setelah konfirmasi CEO. Idempoten.
 - Cara mengembalikan : `node scripts/apply-migration.mjs docs/rollback-fo-keterbukaan-data-202610140013.sql --atomic` (`--dry-run` dulu); memulihkan `boleh_penanganan` PERSIS versi 0009 dan menghapus komentar. PERTAMA dalam urutan rollback (sebelum 0012).
 - Klien        : `src/lib/rekap/penanganan.ts` (`tentukanCakupan`: FO = Admin untuk rekap FO & layanan; kolom `fo_nama`), `api/admin/rekap/penanganan(+/export)` (tanpa `terkunci_ke_saya`/`cakupan_eskalasi_fo`/`eskalasi_fo_id`), `RekapPenangananTable` (filter penangan untuk FO, kolom Front Office), Excel (kolom Front Office), `/admin/fo/penanganan` (FO lain + riwayat semua FO), `/admin/fo/kotak-masuk` (FO sebelumnya), `/admin/kunjungan` (kolom Front Office). Aman di-deploy sebelum/sesudah 0013 (tanpa 0013 data FO hanya tidak lengkap).
-- Uji perilaku : `scripts/test-fo-keterbukaan.mjs` (BELUM DIJALANKAN; ditulis pada jam layanan; skrip menolak Senin-Jumat 07:00-16:59 WIB).
-- Status       : DITULIS, BELUM DITERAPKAN
+- Uji perilaku : `scripts/test-fo-keterbukaan.mjs`: dijalankan 2026-10-14 malam terhadap produksi (transaksi di-ROLLBACK), 26 lolos (skrip menolak Senin-Jumat 07:00-16:59 WIB).
+- Status       : DITERAPKAN ke produksi 2026-10-14 (±17:52–17:57 WIB; `apply-migration --atomic`, dry-run lalu COMMIT, atas izin CEO). Verifikasi read-only: fungsi `boleh_penanganan` terpasang. Uji perilaku `scripts/test-fo-keterbukaan.mjs` (ROLLBACK terhadap produksi) = 26 lolos. BELUM TERBUKTI: kueri rekap FO pada PostgREST sungguhan, tampilan di browser.
 
-### [2026-10-14] — Tahap C3: Pendataan Pelayanan semua field wajib (M-202610140011_pendataan_wajib) — BELUM DITERAPKAN
+### [2026-10-14] — Tahap C3: Pendataan Pelayanan semua field wajib (M-202610140011_pendataan_wajib) — DITERAPKAN 2026-10-14
 - WP/Migrasi   : Tahap C3 (keputusan CEO Gerbang G.5) / `supabase/migrations/202610140011_pendataan_wajib.sql` + test kontrak `supabase/migrations/pendataan_wajib.test.ts` + rollback `docs/rollback-pendataan-wajib-202610140011.sql`
 - Jenis        : DDL (CHECK dilonggarkan, fungsi baru) + perilaku RPC (validasi)
 - Objek        :
@@ -55,11 +66,11 @@
 - Ringkasan    : keputusan CEO G.5 — semua field Pendataan wajib. Field usaha yang memang tidak ada diisi eksplisit "Belum ada"/"Tidak berlaku" (UI: tombol isian cepat + opsi "Tidak berlaku" pada pilihan); kolom catatan boleh "-". Draf (autosave/PATCH) tetap longgar; data lama tidak divalidasi ulang dan tidak dikunci; `koreksi_pelayanan` (data terkunci) tidak diubah.
 - Urutan penerapan : SETELAH 202610140007 (penjaga `PRASYARAT` memeriksa `visit_arsip_jaga()`; jalan sebelum 0007 akan ditimpa 0007). Jendela yang sama dengan cutover 0002..0008 atau sesudahnya, bersama deploy klien (PelayananWizardModal + route POST).
 - Dampak klien : klien lama yang mengirim isian bolong mendapat `INVALID_PAYLOAD` (HTTP 422). Rekap/Excel menampilkan nilai mentah `tidak_berlaku` untuk Tipe Pelaku Usaha (label ramah ada di UI admin/rekap dan wizard; `src/lib/rekap/excel.ts` tidak disentuh).
-- Cara menerapkan : `node scripts/apply-migration.mjs supabase/migrations/202610140011_pendataan_wajib.sql --atomic --dry-run` (di produksi saat ini berhenti di penjaga prasyarat karena 0002..0008 belum diterapkan), lalu tanpa `--dry-run` setelah konfirmasi CEO. Idempoten.
+- Cara menerapkan : `node scripts/apply-migration.mjs supabase/migrations/202610140011_pendataan_wajib.sql --atomic --dry-run` (saat siang 2026-10-14 berhenti di penjaga prasyarat karena 0002..0008 belum diterapkan; malam harinya setelah prasyarat terpasang dry-run lalu COMMIT lolos), lalu tanpa `--dry-run` setelah konfirmasi CEO. Idempoten.
 - Cara mengembalikan : `node scripts/apply-migration.mjs docs/rollback-pendataan-wajib-202610140011.sql --atomic` (`--dry-run` dulu). Memulihkan `layanan_selesai` PERSIS versi 0007 dan menghapus helper. CHECK yang dilonggarkan SENGAJA tidak disempitkan (aman bagi kode lama dan baris yang sudah memakai nilai baru).
-- Status       : BELUM DITERAPKAN ke produksi (menunggu konfirmasi CEO).
+- Status       : DITERAPKAN ke produksi 2026-10-14 (±17:52–17:57 WIB; `apply-migration --atomic`, dry-run lalu COMMIT, atas izin CEO). Tanpa uji perilaku khusus: hanya tercakup sebagai prasyarat (`--pre`) uji lain dan test statis (`pendataan_wajib.test.ts`).
 
-### [2026-10-14] — Tahap C: live chat sebagai layanan online tercatat (M-202610140009_chat_online) — BELUM DITERAPKAN
+### [2026-10-14] — Tahap C: live chat sebagai layanan online tercatat (M-202610140009_chat_online) — DITERAPKAN 2026-10-14
 - WP/Migrasi   : Fase 3 Tahap C (C1-DB) / `supabase/migrations/202610140009_chat_online.sql` + test kontrak `supabase/migrations/chat_online.test.ts` + rollback `docs/rollback-chat-online-202610140009.sql` + uji perilaku (transaksi di-ROLLBACK) `scripts/test-chat-online.mjs` + kontrak UI `docs/analysis/FO-CHAT-KONTRAK-RPC.md`
 - Jenis        : DDL (kolom, indeks, fungsi, trigger) + backfill data
 - Objek        : `chat_sesi.kunjungan_id` (FK `kunjungan`, SET NULL) + indeks unik `uq_chat_sesi_kunjungan`, `uq_kunjungan_online_chat_sesi`, indeks `idx_penanganan_chat_sesi`, `idx_penanganan_kotak_masuk_chat`; RPC `chat_ambil(uuid, text)`, `chat_teruskan(uuid, uuid, uuid, text)`, `chat_selesai(uuid, uuid, text)` (authenticated); internal `chat_ubah_sesi`, `chat_pesan_sistem`, `chat_buat_kunjungan` (service_role saja); trigger `trg_chat_sesi_jaga_rpc` (BEFORE INSERT/UPDATE, galat `CHAT_HARUS_RPC`) dan `trg_chat_sesi_eskalasi_kunjungan` (AFTER INSERT/UPDATE OF status); diganti: `guard_chat_sesi_staff_columns` (+ flag `lmh.chat_rpc`), `boleh_penanganan`, `boleh_kunjungan` (+ cabang petugas untuk chat yang sesinya di layanannya). TIDAK mengubah policy RLS mana pun, RPC `fo_*`/`layanan_*`/`admin_*`, job akhir hari.
@@ -70,10 +81,10 @@
 - Cara menerapkan : WAJIB `--atomic`: `node scripts/apply-migration.mjs supabase/migrations/202610140009_chat_online.sql --atomic --dry-run`, lalu tanpa `--dry-run` setelah konfirmasi CEO. Idempoten. Dry-run tunggal hanya bermakna setelah 0003-0005 diterapkan (2026-10-14 06:16 WIB: dry-run tunggal ke produksi gagal di penjaga prasyarat, seperti diharapkan, ROLLBACK).
 - Cara mengembalikan : `node scripts/apply-migration.mjs docs/rollback-chat-online-202610140009.sql --atomic` (`--dry-run` dulu); menghapus objek baru, memulihkan `boleh_penanganan` (0003), `boleh_kunjungan` (202610090001), `guard_chat_sesi_staff_columns` (202610070001) persis (diuji `chat_online.test.ts` dan snapshot katalog di `test-chat-online.mjs`). Data kunjungan/penanganan online dibiarkan (blok hapus opsional dikomentari). Rollback ini sebelum rollback 0005/0004/0003.
 - Bukti uji    : `scripts/test-chat-online.mjs` ke DB produksi, transaksi di-ROLLBACK, 2026-10-14 06:14 WIB (`--pre 0002..0005 --apply 0009`) dan 06:15 WIB (`--pre 0002..0008 --apply 0009`): 99 lolos, 0 gagal masing-masing; jumlah baris + hash status sesi chat sebelum = sesudah. `npx vitest run --pool=vmForks supabase/migrations`: 44 berkas / 621 test lolos.
-- Status       : BELUM DITERAPKAN ke produksi (menunggu konfirmasi CEO).
+- Status       : DITERAPKAN ke produksi 2026-10-14 (±17:52–17:57 WIB; `apply-migration --atomic`, dry-run lalu COMMIT, atas izin CEO). Verifikasi read-only: fungsi chat ada. Uji perilaku `scripts/test-chat-online.mjs` (ROLLBACK terhadap produksi) = 106 lolos. BELUM TERBUKTI: konkurensi sejati, tampilan di browser.
 
-### [2026-10-14] — WP-24: penutupan otomatis tahap tertinggal + retensi PII (M-202610140008_wp24_tutup_otomatis_retensi) — BELUM DITERAPKAN
-- WP/Migrasi   : Tahap B9 / `supabase/migrations/202610140008_wp24_tutup_otomatis_retensi.sql` + test kontrak `supabase/migrations/wp24.test.ts` + rollback `docs/rollback-wp24-tutup-otomatis-retensi-202610140008.sql` + uji perilaku `scripts/test-wp24.mjs` (belum dijalankan; lihat catatan)
+### [2026-10-14] — WP-24: penutupan otomatis tahap tertinggal + retensi PII (M-202610140008_wp24_tutup_otomatis_retensi) — DITERAPKAN 2026-10-14
+- WP/Migrasi   : Tahap B9 / `supabase/migrations/202610140008_wp24_tutup_otomatis_retensi.sql` + test kontrak `supabase/migrations/wp24.test.ts` + rollback `docs/rollback-wp24-tutup-otomatis-retensi-202610140008.sql` + uji perilaku `scripts/test-wp24.mjs` (dijalankan lolos 2026-10-14 malam, ROLLBACK: 101)
 - Jenis        : DDL (CHECK, fungsi, job pg_cron) + perilaku job anonimisasi
 - Objek        : CHECK `penanganan_batal_karena_check` (+ `tidak_ditutup`); fungsi `tutup_penanganan_tertinggal()` (definer, hanya service_role) + job `penanganan_tutup_otomatis` `0 16 * * *` UTC (23:00 WIB); `anonymize_inactive_pengunjung()` diperluas (plpgsql).
 - Menyentuh data pengunjung? : Tidak saat diterapkan. Saat berjalan: job menutup tahap/tiket/kunjungan tertinggal; anonimisasi mengosongkan PII kunjungan/penanganan.catatan/visit > 730 hari.
@@ -81,9 +92,9 @@
 - Urutan penerapan : SETELAH 202610140007, jendela cutover yang sama.
 - Cara menerapkan : `node scripts/apply-migration.mjs supabase/migrations/202610140008_wp24_tutup_otomatis_retensi.sql --atomic --dry-run`, lalu tanpa `--dry-run` setelah konfirmasi CEO. Idempoten.
 - Cara mengembalikan : `node scripts/apply-migration.mjs docs/rollback-wp24-tutup-otomatis-retensi-202610140008.sql --atomic` (`--dry-run` dulu), SEBELUM rollback 0007. Ditolak bila ada tahap `tidak_ditutup` kecuali `lmh.rollback_paksa` (tahap itu menjadi `tidak_terlayani`). Anonimisasi tidak dapat dibalik.
-- Status       : BELUM DITERAPKAN ke produksi (menunggu konfirmasi CEO).
+- Status       : DITERAPKAN ke produksi 2026-10-14 (±17:52–17:57 WIB; `apply-migration --atomic`, dry-run lalu COMMIT, atas izin CEO). Verifikasi read-only: job `penanganan_tutup_otomatis` terjadwal. Uji perilaku `scripts/test-wp24.mjs` (ROLLBACK terhadap produksi, bersama 0007) = 101 lolos.
 
-### [2026-10-14] — WP-24: akhiri dual-write `visit`, pindahkan pembaca (M-202610140007_wp24_akhiri_dual_write) — BELUM DITERAPKAN
+### [2026-10-14] — WP-24: akhiri dual-write `visit`, pindahkan pembaca (M-202610140007_wp24_akhiri_dual_write) — DITERAPKAN 2026-10-14
 - WP/Migrasi   : Tahap B9 (Gerbang G.1 Opsi A) / `supabase/migrations/202610140007_wp24_akhiri_dual_write.sql` + test kontrak `supabase/migrations/wp24.test.ts` + rollback `docs/rollback-wp24-akhiri-dual-write-202610140007.sql` + uji perilaku `scripts/test-wp24.mjs` + runbook `docs/RUNBOOK_FO_ESKALASI.md` (bagian WP-24)
 - Jenis        : DDL (trigger dinonaktifkan/baru, policy, hak tabel, fungsi, kolom, MV/view) + DATA (backfill reservasi lama, `skm_respons.kunjungan_id`)
 - Objek        :
@@ -99,21 +110,21 @@
 - Dampak klien/skrip : semua penulis `visit` di `src/` harus sudah diganti RPC (per 2026-10-14 tidak ada lagi di working tree; tersisa pembaca arsip `api/admin/pelayanan/[tiketId]/route.ts:150`, `admin/scan/page.tsx:163` dan realtime `table: 'visit'` di `admin/page.tsx`, `admin/kunjungan/page.tsx` yang tidak akan menyala lagi). `scripts/test-fo-eskalasi.mjs` seksi 5/8 (asersi `visit` ikut berubah) tidak berlaku lagi untuk DB yang memuat 0007. Muat ulang skema PostgREST.
 - Cara menerapkan : `node scripts/apply-migration.mjs supabase/migrations/202610140007_wp24_akhiri_dual_write.sql --atomic --dry-run`, lalu tanpa `--dry-run` setelah konfirmasi CEO. Idempoten.
 - Cara mengembalikan : `node scripts/apply-migration.mjs docs/rollback-wp24-akhiri-dual-write-202610140007.sql --atomic` (`--dry-run` dulu), SETELAH rollback 0008. Memulihkan 17 fungsi PERSIS dari sumbernya + `fo_sinkron_visit` + `guard_visit_transisi_layanan`, policy/hak `visit`, MV/view, ENABLE 8 trigger; menghapus objek baru dan kolom `skm_respons.kunjungan_id`. Data backfill dibiarkan. Jendela rollback: lihat runbook.
-- Status       : BELUM DITERAPKAN ke produksi (menunggu konfirmasi CEO).
+- Status       : DITERAPKAN ke produksi 2026-10-14 (±17:52–17:57 WIB; `apply-migration --atomic`, dry-run lalu COMMIT, atas izin CEO). Verifikasi read-only: `visit` menjadi arsip (`trg_visit_arsip` aktif; trigger tulis lama nonaktif). Uji perilaku `scripts/test-wp24.mjs` (ROLLBACK terhadap produksi, bersama 0008) = 101 lolos.
 - Catatan pembaca `visit` : Sisa pembaca arsip `visit` di klien sudah dipindahkan: `api/admin/pelayanan/[tiketId]/route.ts` (GET membaca `asal_instansi`, `email`, `keperluan` dari `kunjungan`, lalu profil `pengunjung`), `admin/scan/page.tsx` (rincian reservasi lama dari `kunjungan`; 0007 bagian 2 sudah menyalin/membuat barisnya), realtime `admin/page.tsx` dan `admin/kunjungan/page.tsx` (`tables: ['tiket_antrean', 'penanganan']` lewat opsi baru `tables` di `useRealtimeRefetch`). `kunjungan` TIDAK ada di publikasi `supabase_realtime` (hanya `tiket_antrean`, `penanganan`, `visit`, chat); perubahan yang hanya menyentuh `kunjungan` (mis. job no-show) terjemput polling 30 detik. Penjaga statis `src/test/visit-arsip.test.ts` memastikan tak ada lagi `.from('visit')`/`table: 'visit'`/rpc `*visit*` di `src` (kecuali komentar).
 - Bukti (2026-10-14) :
   - `npx vitest run --pool=vmForks supabase/migrations src/app/skm src/app/api/skm`: 44 berkas, 594 test lolos (termasuk `wp24.test.ts` 54 test dan `manifest.test.ts` setelah regenerasi).
   - `npx tsc --noEmit`: bersih. `npx eslint --max-warnings=0` untuk berkas baru: bersih.
-  - `apply-migration --atomic --dry-run` terhadap produksi (2026-10-14 06:04 WIB): 0007 → `GAGAL, di-ROLLBACK: PRASYARAT: model/RPC FO belum ada`; 0008 → `PRASYARAT: 202610140007 ... belum diterapkan`. Sesuai rancangan (0002..0006 belum di produksi); tidak ada perubahan.
-  - `scripts/test-wp24.mjs` (uji perilaku, selalu ROLLBACK): **BELUM DIJALANKAN** — jam DB saat sesi ini 06:04 WIB Rabu (hari kerja sebelum 16:00; aturan CEO melarang). Jalankan setelah 16:00 WIB atau akhir pekan dengan perintah di runbook langkah 2.2.
+  - `apply-migration --atomic --dry-run` terhadap produksi (2026-10-14 06:04 WIB): 0007 → `GAGAL, di-ROLLBACK: PRASYARAT: model/RPC FO belum ada`; 0008 → `PRASYARAT: 202610140007 ... belum diterapkan`. Sesuai rancangan saat itu (0002..0006 belum di produksi); tidak ada perubahan. Malam harinya (setelah 0002..0006 terpasang) 0007 dan 0008 diterapkan atomik: dry-run lalu COMMIT.
+  - `scripts/test-wp24.mjs` (uji perilaku, selalu ROLLBACK): siang 2026-10-14 tidak dijalankan (jam DB 06:04 WIB, hari kerja sebelum 16:00; aturan CEO melarang). **Dijalankan malam 2026-10-14 terhadap produksi (ROLLBACK): 101 lolos** (0007 dan 0008). Dua bug skrip uji (cast tipe `"char"` di `test-wp24.mjs`; fixture chat di `test-perbaikan-review.mjs`) diperbaiki di commit `d7344e3` sebelum dijalankan ulang.
 - Pertanyaan terbuka :
   1. Email SKM ke `kunjungan.email` yang dicatat FO untuk walk-in tanpa akun: setuju (PDP/consent lisan di FO)?
   2. SKM untuk kunjungan yang selesai di FO tersimpan dengan `layanan_id` NULL → tidak masuk IKM per layanan. Perlu kategori "Front Office" di IKM?
   3. Retensi belum mencakup `pelayanan_oss`/`pelayanan_perizinan`, `buku_tamu`, chat.
   4. Job penutupan otomatis menutup juga tiket lama `dilayani` yang macet (mis. sejak 2026-10-05) pada jalan pertama dan mengirim SKM untuknya.
 
-### [2026-10-14] — Alur FO: penyelarasan RPC A3, job akhir hari/no-show, rekap, posisi antrean (M-202610140005_fo_selaras_antrean) — BELUM DITERAPKAN
-- WP/Migrasi   : Fase 3 Tahap B (B-DB1 bagian 3/3) / `supabase/migrations/202610140005_fo_selaras_antrean.sql` + test kontrak `supabase/migrations/fo_eskalasi.test.ts` + rollback `docs/rollback-fo-selaras-antrean-202610140005.sql` + uji perilaku (transaksi di-ROLLBACK, belum dijalankan) `scripts/test-fo-eskalasi.mjs`
+### [2026-10-14] — Alur FO: penyelarasan RPC A3, job akhir hari/no-show, rekap, posisi antrean (M-202610140005_fo_selaras_antrean) — DITERAPKAN 2026-10-14
+- WP/Migrasi   : Fase 3 Tahap B (B-DB1 bagian 3/3) / `supabase/migrations/202610140005_fo_selaras_antrean.sql` + test kontrak `supabase/migrations/fo_eskalasi.test.ts` + rollback `docs/rollback-fo-selaras-antrean-202610140005.sql` + uji perilaku (transaksi di-ROLLBACK; dijalankan 2026-10-14 malam, gabungan 0003-0005 = 150 lolos) `scripts/test-fo-eskalasi.mjs`
 - Jenis        : DDL (fungsi diganti; `layanan_selesai` berganti signature)
 - Objek        : `layanan_mulai(uuid)` (A3 + tahap penanganan menunggu -> berjalan); `layanan_selesai` DROP `(uuid, text, jsonb)` -> CREATE `(uuid, text, jsonb, uuid, text)` ber-DEFAULT (topik_id, catatan wajib untuk tiket hasil eskalasi; tiket lama tidak berubah); `admin_ambil_alih(uuid, text)` (kunci kunjungan sebelum tiket; tahap lama `batal`/`diambil_alih` + tahap Admin); `get_queue_position(uuid)` (tiket menunggu terbaru); `tandai_tidak_terlayani_akhir_hari()` (+ tiket eskalasi tanpa visit dan kotak masuk FO); `rollup_rekap_harian(date)` (`total_hadir` tanpa `dialihkan`); `tandai_reservasi_no_show()` (+ reservasi `kunjungan` tanpa visit). TIDAK mengubah `sync_visit_dual_write`, `panggil_tiket`, `finalize_pelayanan`, `v_layar_antrian`, `v_antrian_loket`.
 - Menyentuh data pengunjung? : Tidak saat diterapkan (hanya fungsi). Saat berjalan, job harian menulis status kunjungan/tiket/penanganan.
@@ -122,9 +133,9 @@
 - Dampak klien/skrip : `layanan_selesai` 3-argumen dihapus; panggilan dengan argumen bernama (`src/app/admin/antrian/page.tsx`, `api/admin/pelayanan/[tiketId]`) dan `finalize_pelayanan` tetap tersambung ke signature baru, tetapi tiket hasil eskalasi WAJIB mengirim `p_topik_id` + `p_catatan`. Muat ulang skema PostgREST setelah terap. `scripts/test-tiket-kepemilikan.mjs` seksi 8 (rollback A3 + snapshot) tidak berlaku lagi bila dijalankan terhadap DB yang memuat migrasi ini.
 - Cara menerapkan : WAJIB `--atomic`: `node scripts/apply-migration.mjs supabase/migrations/202610140005_fo_selaras_antrean.sql --atomic --dry-run`, lalu tanpa `--dry-run` setelah konfirmasi CEO. Idempoten.
 - Cara mengembalikan : `node scripts/apply-migration.mjs docs/rollback-fo-selaras-antrean-202610140005.sql --atomic` (`--dry-run` dulu); memulihkan 7 fungsi PERSIS dari 202610140002 / 202607300016 / 202607300017 / 202607300020 / 202608310002 (dirakit otomatis dari berkas sumber, diuji `fo_eskalasi.test.ts`). Rollback ini PERTAMA, sebelum 0004 dan 0003.
-- Status       : BELUM DITERAPKAN ke produksi (menunggu konfirmasi CEO).
+- Status       : DITERAPKAN ke produksi 2026-10-14 (±17:52–17:57 WIB; `apply-migration --atomic`, dry-run lalu COMMIT, atas izin CEO). Uji perilaku `scripts/test-fo-eskalasi.mjs` (ROLLBACK terhadap produksi, gabungan 0003-0005) = 150 lolos.
 
-### [2026-10-14] — Alur FO: RPC Front Office, eskalasi, kembalikan, alihkan, reservasi pengunjung (M-202610140004_fo_rpc) — BELUM DITERAPKAN
+### [2026-10-14] — Alur FO: RPC Front Office, eskalasi, kembalikan, alihkan, reservasi pengunjung (M-202610140004_fo_rpc) — DITERAPKAN 2026-10-14
 - WP/Migrasi   : Fase 3 Tahap B (B-DB1 bagian 2/3) / `supabase/migrations/202610140004_fo_rpc.sql` + test kontrak `supabase/migrations/fo_eskalasi.test.ts` + rollback `docs/rollback-fo-rpc-202610140004.sql` + uji perilaku `scripts/test-fo-eskalasi.mjs`
 - Jenis        : DDL (fungsi baru); tidak mengubah objek yang ada
 - Objek        : RPC klien (SECURITY DEFINER, `search_path` terkunci, REVOKE PUBLIC/anon, GRANT authenticated): `fo_mulai_kunjungan(text, text, text, text, text, text, uuid, uuid, uuid)`, `fo_checkin_reservasi(text)`, `fo_tolak_reservasi(text, text)`, `fo_selesai(uuid, uuid, text)`, `fo_eskalasi(uuid, uuid, uuid, text)`, `fo_ambil_dari_kotak_masuk(uuid)`, `layanan_kembalikan(uuid, text, uuid)`, `admin_alihkan(uuid, uuid, text)`, `reservasi_buat(text, date, uuid, text, text, time)`, `reservasi_batalkan(uuid)`; internal (tanpa EXECUTE untuk anon/authenticated): `staf_wajib_sesi(text[])`, `fo_validasi_topik(uuid, uuid)`, `fo_validasi_catatan(text, integer)`, `fo_sinkron_visit(uuid)`, `fo_notifikasi_tiket(uuid, text)`.
@@ -134,9 +145,9 @@
 - Peringatan    : untuk kunjungan baru (tanpa `visit`), SKM lama (`get_skm_context`/`submit_skm_response` via `visit.qr_token`), notifikasi `notify_visit_selesai`, `skm_response_rate`, `mv_estimasi_layanan`, pengingat H-1 (`jumlah_terdaftar`) tidak berjalan sampai WP-24/Tahap E. Admin diizinkan memakai RPC FO (perlu konfirmasi CEO).
 - Cara menerapkan : WAJIB `--atomic`: `node scripts/apply-migration.mjs supabase/migrations/202610140004_fo_rpc.sql --atomic --dry-run`, lalu tanpa `--dry-run` setelah konfirmasi CEO. Idempoten.
 - Cara mengembalikan : `node scripts/apply-migration.mjs docs/rollback-fo-rpc-202610140004.sql --atomic` (`--dry-run` dulu); menghapus 15 fungsi; menolak bila fungsi lain masih memanggilnya (rollback 0005 dulu). Data yang ditulis RPC dibiarkan.
-- Status       : BELUM DITERAPKAN ke produksi (menunggu konfirmasi CEO).
+- Status       : DITERAPKAN ke produksi 2026-10-14 (±17:52–17:57 WIB; `apply-migration --atomic`, dry-run lalu COMMIT, atas izin CEO). Verifikasi read-only: fungsi FO ada. Uji perilaku `scripts/test-fo-eskalasi.mjs` (ROLLBACK terhadap produksi, gabungan 0003-0005) = 150 lolos.
 
-### [2026-10-14] — Alur FO: model data `penanganan`, `topik_penanganan`, prefiks 2 huruf, kolom kunjungan/tiket (M-202610140003_fo_model_data) — BELUM DITERAPKAN
+### [2026-10-14] — Alur FO: model data `penanganan`, `topik_penanganan`, prefiks 2 huruf, kolom kunjungan/tiket (M-202610140003_fo_model_data) — DITERAPKAN 2026-10-14
 - WP/Migrasi   : Fase 3 Tahap B (B-DB1 bagian 1/3) / `supabase/migrations/202610140003_fo_model_data.sql` + test kontrak `supabase/migrations/fo_eskalasi.test.ts` + rollback `docs/rollback-fo-model-data-202610140003.sql` + uji perilaku `scripts/test-fo-eskalasi.mjs`
 - Jenis        : DDL (tabel baru, kolom, constraint, indeks, trigger, policy, fungsi) + DATA (backfill `layanan.prefiks_antrean`; seed `topik_penanganan`)
 - Objek        :
@@ -152,9 +163,9 @@
 - Urutan penerapan : SETELAH 202610140001 dan 202610140002 (penjaga prasyarat menolak bila `layanan_mulai` belum ada). Jendela cutover Tahap B (Gerbang G.6: setelah 16:00 WIB, antrean kosong, Jumat sore/akhir pekan): 0003 -> 0004 -> 0005 -> deploy klien Tahap B. ALTER TABLE mengunci `layanan`/`kunjungan`/`tiket_antrean` sebentar.
 - Cara menerapkan : WAJIB `--atomic`: `node scripts/apply-migration.mjs supabase/migrations/202610140003_fo_model_data.sql --atomic --dry-run`, lalu tanpa `--dry-run` setelah konfirmasi CEO. Idempoten. Uji perilaku (selalu ROLLBACK; menyentuh DB produksi, butuh konfirmasi CEO): `node scripts/test-fo-eskalasi.mjs --apply supabase/migrations/202610140003_fo_model_data.sql --apply supabase/migrations/202610140004_fo_rpc.sql --apply supabase/migrations/202610140005_fo_selaras_antrean.sql [--akhir-hari]` (tambah `--pre` 202610140002 bila A3 belum diterapkan).
 - Cara mengembalikan : `node scripts/apply-migration.mjs docs/rollback-fo-model-data-202610140003.sql --atomic` (`--dry-run` dulu), PALING AKHIR. MENGHAPUS tabel `penanganan`/`topik_penanganan` dan kolom baru; menolak bila fungsi 0004 masih ada, bila `penanganan` berisi baris, ada kunjungan `online`, atau tiket `dikembalikan`/`dialihkan` (kecuali flag sadar `lmh.rollback_paksa`). Memulihkan `terbit_tiket` (202607290013), `kunjungan_staff_update` (202610090001), CHECK lama, indeks parsial lama. Nilai prefiks 2 huruf dibiarkan.
-- Status       : BELUM DITERAPKAN ke produksi (menunggu konfirmasi CEO).
+- Status       : DITERAPKAN ke produksi 2026-10-14 (±17:52–17:57 WIB; `apply-migration --atomic`, dry-run lalu COMMIT, atas izin CEO). Verifikasi read-only: prefiks layanan 2 huruf terpasang. Uji perilaku `scripts/test-fo-eskalasi.mjs` (ROLLBACK terhadap produksi, gabungan 0003-0005) = 150 lolos.
 
-### [2026-10-13] — C2 Pernyataan kebenaran + kunci Nama Lengkap (M-202610140006)
+### [2026-10-13] — C2 Pernyataan kebenaran + kunci Nama Lengkap (M-202610140006) — DITERAPKAN 2026-10-14
 - WP/Migrasi   : Tahap C2 (K12; keputusan CEO Gerbang G.3 Opsi A) / `202610140006_pernyataan_kebenaran.sql` + kode
 - Jenis        : DDL (fungsi + trigger, tanpa kolom/tabel baru) + kode
 - Objek        :
@@ -165,10 +176,10 @@
 - Menyentuh data pengunjung? : Tidak ada UPDATE/backfill. Namun profil yang SUDAH lengkap saat migrasi diterapkan langsung terkunci (nama hanya lewat RPC); pengunjung lama tanpa email dianggap belum lengkap dan diminta email + pernyataan pada kunjungan berikut. `consent_log` tidak diubah (kolom `tujuan`/`versi_kebijakan` dipakai apa adanya)
 - Ringkasan    : K12 — pendaftaran online dengan pernyataan kebenaran data tercatat; Nama Lengkap terkunci di database; jalur resmi perubahan nama oleh FO/admin dengan audit.
 - Cara mengembalikan : `docs/rollback-pernyataan-kebenaran-202610140006.sql` (DROP trigger + 3 fungsi; data tidak disentuh).
-- Status       : BELUM DITERAPKAN (menunggu konfirmasi CEO; terapkan SEBELUM deploy klien C2)
+- Status       : DITERAPKAN ke produksi 2026-10-14 (±17:52–17:57 WIB; `apply-migration --atomic`, dry-run lalu COMMIT, atas izin CEO). Tanpa uji perilaku khusus: hanya tercakup sebagai prasyarat (`--pre`) uji lain dan test statis (`pernyataan_kebenaran.test.ts`). Profil pengunjung yang sudah lengkap kini terkunci namanya.
 
-### [2026-10-14] — Kepemilikan tiket layanan: RPC `layanan_mulai`/`layanan_selesai` + `admin_ambil_alih` (M-202610140002_tiket_kepemilikan) — BELUM DITERAPKAN
-- WP/Migrasi   : Fase 3 Tahap A (T1, tugas A3) / `supabase/migrations/202610140002_tiket_kepemilikan.sql` + test kontrak `supabase/migrations/tiket_kepemilikan.test.ts` + rollback `docs/rollback-tiket-kepemilikan-202610140002.sql` + uji perilaku (transaksi di-ROLLBACK, belum dijalankan) `scripts/test-tiket-kepemilikan.mjs`
+### [2026-10-14] — Kepemilikan tiket layanan: RPC `layanan_mulai`/`layanan_selesai` + `admin_ambil_alih` (M-202610140002_tiket_kepemilikan) — DITERAPKAN 2026-10-14
+- WP/Migrasi   : Fase 3 Tahap A (T1, tugas A3) / `supabase/migrations/202610140002_tiket_kepemilikan.sql` + test kontrak `supabase/migrations/tiket_kepemilikan.test.ts` + rollback `docs/rollback-tiket-kepemilikan-202610140002.sql` + uji perilaku (transaksi di-ROLLBACK; dijalankan 2026-10-14 malam = 84 lolos) `scripts/test-tiket-kepemilikan.mjs`
 - Jenis        : DDL (fungsi baru, fungsi diganti, trigger baru, policy) + DATA (backfill `tiket_antrean.dilayani_oleh` untuk tiket `dilayani` yang NULL)
 - Objek        : fungsi baru `layanan_mulai(uuid)`, `layanan_selesai(uuid, text, jsonb)`, `admin_ambil_alih(uuid, text)`, `pemilik_tiket(uuid)` (helper RLS), `guard_visit_transisi_layanan()` + trigger `trg_guard_visit_transisi_layanan` (BEFORE UPDATE ON `visit`); `finalize_pelayanan` diganti menjadi pembungkus `layanan_selesai` (signature dan grant sama); `DROP POLICY tiket_staff_update` (tanpa pengganti); policy `oss_insert_staff`, `oss_update_staff`, `perizinan_insert_staff`, `perizinan_update_staff` ditambah syarat `pemilik_tiket(tiket_id)`. TIDAK mengubah `sync_visit_dual_write` dan `panggil_tiket`.
 - Menyentuh data pengunjung? : Tidak (backfill hanya kolom `dilayani_oleh` tiket berstatus `dilayani`, berisi id petugas; per potret A0 2026-10-13 ada 2 tiket seperti itu)
@@ -177,7 +188,7 @@
 - Dampak skrip : trigger penjaga juga berlaku untuk koneksi langsung (pemilik DB). Skrip yang meng-UPDATE `visit` langsung ke `dilayani`/`selesai` akan GAGAL `TRANSISI_LEWAT_RPC` sampai disesuaikan (nyalakan `set_config('lmh.antrean_rpc','on',true)` di transaksinya atau panggil RPC dengan klaim JWT): `scripts/selftest-wp21.mjs` (baris lifecycle `dilayani`/`selesai`), `scripts/test-rbac-tahap0.mjs` (alur walk-in -> dilayani -> selesai sebagai petugas), `scripts/test-rbac-tahap1.mjs` (persiapan tiket `dilayani` sebelum `finalize_pelayanan`; juga ekspektasi lama "FO bisa INSERT draf lintas layanan" dan "petugas A bisa INSERT draf" pada tiket `menunggu` kini ditolak RLS). Skrip `verify-*` tidak menulis `visit`. Aktor `system` di audit A0 (3 mulai, 5 selesai) kemungkinan berasal dari skrip seperti ini.
 - Cara menerapkan : WAJIB `--atomic`: `node scripts/apply-migration.mjs supabase/migrations/202610140002_tiket_kepemilikan.sql --atomic --dry-run`, lalu tanpa `--dry-run` setelah konfirmasi CEO. Idempoten. Uji perilaku: `node scripts/test-tiket-kepemilikan.mjs --apply supabase/migrations/202610140001_sesi_staf.sql --apply supabase/migrations/202610140002_tiket_kepemilikan.sql` (selalu ROLLBACK; tetap menyentuh DB produksi, butuh konfirmasi CEO).
 - Cara mengembalikan : `node scripts/apply-migration.mjs docs/rollback-tiket-kepemilikan-202610140002.sql --atomic` (`--dry-run` dulu). Memulihkan `finalize_pelayanan` dari 202610010001, `tiket_staff_update` dari 202607290013 dan keempat policy draf dari 202610090001; menghapus trigger dan fungsi baru. Nilai `dilayani_oleh` yang sudah terisi dan baris audit `admin_ambil_alih` dibiarkan (data). Kembalikan kode klien A3 bersamaan. Rollback `202610140001` hanya sesudah rollback ini.
-- Status       : BELUM DITERAPKAN ke produksi (menunggu konfirmasi CEO; terapkan bersamaan dengan deploy klien A3, lihat urutan di atas). [Dikoreksi 2026-10-14: baris status DITERAPKAN yang sebelumnya tercantum di entri ini adalah hasil verifikasi 202610140001 dan tertukar tempat.]
+- Status       : DITERAPKAN ke produksi 2026-10-14 (±17:52–17:57 WIB; `apply-migration --atomic`, dry-run lalu COMMIT, atas izin CEO). Verifikasi read-only: fungsi layanan ada. Uji perilaku `scripts/test-tiket-kepemilikan.mjs` (ROLLBACK terhadap produksi) = 84 lolos. [Dikoreksi 2026-10-14: baris status DITERAPKAN yang sebelumnya tercantum di entri ini adalah hasil verifikasi 202610140001 dan tertukar tempat.]
 
 ### [2026-10-14] — Sesi tunggal staf: tabel `sesi_staf` + RPC sesi (M-202610140001) — DITERAPKAN 2026-10-13
 - WP/Migrasi   : Fase 3 Tahap A (K1, tugas A1) / `supabase/migrations/202610140001_sesi_staf.sql` + test kontrak `supabase/migrations/sesi_staf.test.ts` + rollback `docs/rollback-sesi-staf-202610140001.sql`
@@ -215,7 +226,7 @@
 - Status       : DITERAPKAN ke produksi 2026-10-13 (`apply-migration.mjs --atomic`, dry-run lalu COMMIT; atas izin CEO di sesi). Diverifikasi read-only: kolom nullable, policy sesuai, fungsi pencarian memuat FAQ umum, 80 baris FAQ utuh. Ledger `schema_migrations` BELUM dicatat (lihat pengisian ledger). Test kontrak statis lulus; perilaku RLS/RPC di DB belum diuji terhadap database.
 
 ### Inventaris ledger 2026-10-13 — migrasi tak tercatat di `supabase_migrations.schema_migrations` (READ-ONLY)
-- WP/Migrasi   : tugas 0.4 / `scripts/verify-migration-ledger.mjs` + `scripts/lib/migration-markers.mjs` (pengisi ledger `scripts/fill-migration-ledger.mjs` sudah ditulis, **BELUM dijalankan dengan `--apply`**)
+- WP/Migrasi   : tugas 0.4 / `scripts/verify-migration-ledger.mjs` + `scripts/lib/migration-markers.mjs` (pengisi ledger `scripts/fill-migration-ledger.mjs`; dijalankan `--apply --yes` 2026-10-13 untuk migrasi lama dan 2026-10-14 malam untuk 0001-0013, lihat entri 2026-10-14 di atas)
 - Jenis        : TIDAK ADA PERUBAHAN (read-only: `BEGIN READ ONLY` + hanya SELECT, diakhiri ROLLBACK)
 - Objek        : dibaca `supabase_migrations.schema_migrations` dan katalog `pg_class`, `pg_attribute`, `pg_proc` (termasuk `prosrc`), `pg_policies`, `pg_indexes`, `pg_trigger`, `pg_constraint`, `pg_publication_tables`, `pg_extension`, `cron.job`, `storage.buckets`
 - Menyentuh data pengunjung? : Tidak
@@ -237,7 +248,7 @@
   - Yang TIDAK terverifikasi oleh metode ini: ekspresi policy, definisi view/trigger, dan perubahan data (UPDATE/INSERT, mis. penggantian nama layanan di `202610010001`).
   - Laporan lengkap per migrasi dan per penanda: [`LEDGER-VERIFIKASI-2026-10-13.md`](LEDGER-VERIFIKASI-2026-10-13.md).
 - Cara mengembalikan : tidak diperlukan (tidak ada perubahan).
-- Status       : SELESAI (read-only). Pencatatan ledger retroaktif BELUM dilakukan; menunggu konfirmasi CEO (lihat `docs/MIGRATIONS.md`, bagian "Ledger migrasi produksi").
+- Status       : SELESAI (read-only). Pencatatan ledger retroaktif kemudian dilakukan (2026-10-13 migrasi lama; 2026-10-14 malam 0001-0013): lihat entri 2026-10-14 di atas dan `LEDGER-VERIFIKASI-2026-10-14.md`.
 
 ### [2026-07-29 20:11 WIB] — Introspeksi skema READ-ONLY (fase A)
 - WP/Migrasi   : fase A / `scripts/introspect-schema.mjs`
@@ -417,7 +428,7 @@
 ---
 
 > Entri WP-21 berikut dicatat sebelum penerapan ke produksi (Phase 4), sesuai aturan pengisian log.
-> Status BELUM DITERAPKAN — akan diubah ke DITERAPKAN setelah eksekusi berhasil di luar jam layanan (08:00–15:30 WIB).
+> Catatan historis: entri WP-21 berikut semula berstatus BELUM DITERAPKAN; status tiap entri di bawah sudah diubah ke DITERAPKAN setelah eksekusi.
 
 ### [2026-07-30 13:17 WIB] — WP-21 M15: Tabel buku_tamu (202607300014_buku_tamu.sql) — OPS-01 Langkah 2a
 - WP/Migrasi   : WP-21 / `202607300014_buku_tamu.sql`
@@ -525,7 +536,7 @@
 - Cara mengembalikan : DROP TABLE/kolom masing-masing (semua aditif). Cron WP-30: `SELECT cron.unschedule('rollup_rekap_harian_malam')`.
 - Status       : DITERAPKAN (17:00 WIB; 11/11 tests pass)
 
-**Status:** DITULIS, BELUM DITERAPKAN. **Rollback:** `docs/rollback-perbaikan-review-202610140012.sql` (salinan PERSIS fungsi sebelumnya, diuji `supabase/migrations/perbaikan_review.test.ts`). **Uji perilaku:** `scripts/test-perbaikan-review.mjs` (BELUM DIJALANKAN: ditulis pada jam layanan; skrip menolak Senin-Jumat 07:00-16:59 WIB).
+**Status:** DITERAPKAN ke produksi 2026-10-14 (±17:52–17:57 WIB; `apply-migration --atomic`, dry-run lalu COMMIT). Verifikasi read-only: job `chat_tutup_otomatis` terjadwal. **Rollback:** `docs/rollback-perbaikan-review-202610140012.sql` (salinan PERSIS fungsi sebelumnya, diuji `supabase/migrations/perbaikan_review.test.ts`). **Uji perilaku:** `scripts/test-perbaikan-review.mjs`: dijalankan 2026-10-14 malam terhadap produksi (ROLLBACK, `--akhir-hari`), 61 lolos (skrip menolak Senin-Jumat 07:00-16:59 WIB).
 
 | # | Temuan | Perubahan | Kode galat |
 |---|---|---|---|

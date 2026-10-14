@@ -1,12 +1,12 @@
 # Runbook rollout alur Front Office → Eskalasi (Tahap A-D, WP-24, chat online, pendataan wajib)
 
-> Status: DRAF LENGKAP, **belum pernah dijalankan** (tidak ada staging; semua migrasi di bawah, kecuali `202610140001`, BELUM diterapkan ke produksi). Bagian yang belum terbukti ditandai **[BELUM TERBUKTI]** dan dirangkum di §10.
+> Status (2026-10-14 malam): **cutover migrasi DIJALANKAN.** `0001`-`0009`, `0011`, `0012`, `0013` (tanpa 0010) sudah DITERAPKAN ke produksi (±17:52-17:57 WIB, `apply-migration --atomic`, dry-run lalu COMMIT) dan diverifikasi read-only; ledger sudah diisi (12 baris); klien di-deploy lewat merge PR #10 (merge commit `cbff52a`, status deploy Vercel sukses menurut GitHub). Isi dokumen di bawah ditulis sebagai prosedur sebelum hari H dan dipertahankan sebagai catatan urutan/rollback. **Sisa langkah ada di §12.** Bagian yang belum terbukti ditandai **[BELUM TERBUKTI]** dan dirangkum di §10.
 > Rujukan: `docs/ATURAN_MIGRASI.md`, `docs/MIGRATIONS.md` (urutan terapan + larangan), `docs/analysis/DB-CHANGES.md`, `docs/analysis/ANTREAN-ARAH-TULIS.md` §6.2, `docs/analysis/FO-ESKALASI-KONTRAK-RPC.md` (§7, §10), `docs/analysis/FO-CHAT-KONTRAK-RPC.md` (§5, §6.1), `docs/DECISION_LOG.md` (Gerbang G.1-G.6), rencana `docs/superpowers/plans/2026-10-13-implementasi-fo-mutasi-fondasi-plan.md`.
 > Semua langkah yang menyentuh DB produksi (apply migrasi, uji perilaku, ledger, flag) butuh **konfirmasi tertulis CEO** per tindakan. Tidak ada langkah di sini yang boleh dijalankan otomatis.
 
 ## 1. Ruang lingkup dan urutan migrasi
 
-`0001` (sesi staf) sudah di produksi. Satu jendela cutover menerapkan, berurutan, masing-masing `--atomic --dry-run` dulu lalu sungguhan:
+`0001` (sesi staf) sudah di produksi. Satu jendela cutover menerapkan (SUDAH DIJALANKAN 2026-10-14 malam), berurutan, masing-masing `--atomic --dry-run` dulu lalu sungguhan:
 
 ```
 0002 tiket_kepemilikan -> 0003 fo_model_data -> 0004 fo_rpc -> 0005 fo_selaras_antrean -> 0006 pernyataan_kebenaran
@@ -16,7 +16,7 @@
 
 `0013` (keterbukaan data antar FO, keputusan CEO 2026-10-14) hanya mengganti `boleh_penanganan` (semua FO membaca semua tahap; baca saja). Klien rekap/nama FO aman di-deploy sebelum/sesudah 0013; tanpa 0013 data FO hanya tidak lengkap. Verifikasi pasca: FO-B melihat penanganan FO-A di Penanganan (seksi "Sedang ditangani Front Office lain") dan Rekap FO, tetapi "Selesaikan" milik FO-A tidak tersedia baginya (RPC menolak `BUKAN_PEMILIK`).
 
-(`202610140010` tidak dipakai. `0012` = perbaikan temuan review atas 0002..0011, wajib SETELAH 0011 dan 0009; rincian `docs/analysis/_fragmen-R12.md` sampai digabung ke `docs/MIGRATIONS.md`/`DB-CHANGES.md`. Klien rilis ini membaca `layanan.form_pendataan` (0012), jadi klien tetap dideploy SETELAH seluruh rantai termasuk 0012.) Nama berkas lengkap `202610140NNN_<nama>.sql` ada di `docs/MIGRATIONS.md`.
+(`202610140010` tidak dipakai. `0012` = perbaikan temuan review atas 0002..0011, wajib SETELAH 0011 dan 0009; rincian ada di `docs/MIGRATIONS.md` dan `docs/analysis/DB-CHANGES.md` (fragmen `_fragmen-R12.md` sudah digabung dan dihapus). Klien rilis ini membaca `layanan.form_pendataan` (0012), jadi klien tetap dideploy SETELAH seluruh rantai termasuk 0012.) Nama berkas lengkap `202610140NNN_<nama>.sql` ada di `docs/MIGRATIONS.md`.
 
 **Larangan:** JANGAN menerapkan ulang 202610140004 atau 202610140005 (juga 0003/0002) setelah 0007 diterapkan: berkas itu menimpa fungsi versi 0007/0011/0012 (layanan_mulai, layanan_selesai, admin_alihkan, fo_mulai_kunjungan, reservasi_buat, get_queue_position, rollup_rekap_harian, job no-show/akhir hari) dengan versi lama yang menulis `visit` dan membuang perbaikan 0012 tanpa galat. Berkas itu tidak punya penjaga sendiri (menambahkannya mengubah hash manifest); larangan ini ditegakkan prosedur. Bila terlanjur, terapkan ulang 0007 -> 0008 -> 0009 -> 0011 -> 0012 berurutan (semuanya idempoten). 0011 hanya setelah 0007. Dry-run tunggal 0004..0011 sebelum prasyaratnya terpasang berhenti di penjaga `PRASYARAT` (benar, bukan galat); pratinjau gabungan memakai skrip uji (§5).
 
@@ -31,6 +31,8 @@
 7. Pertanyaan terbuka CEO yang berdampak pada perilaku sudah dijawab atau diterima apa adanya: Admin bertindak sebagai FO, eskalasi setelah 16:00 ditolak, chat dicatat saat eskalasi, "kembali ke bot" dihapus, dasar/consent walk-in oleh FO (`FO-ESKALASI-KONTRAK-RPC.md` §9, `FO-CHAT-KONTRAK-RPC.md` §7, `DB-CHANGES.md` entri 0007).
 
 ## 3. Urutan cutover malam hari H
+
+> **Catatan pelaksanaan (2026-10-14 malam):** urutan ini dijalankan: migrasi dulu (0002-0013, ±17:52-17:57 WIB), klien segera sesudahnya (merge PR #10 lalu deploy produksi Vercel). Jendela antara 0007 (klien lama gagal menulis `visit`) dan selesainya deploy klien sekitar beberapa menit. Urutan terbukti berjalan; pemeriksaan kesehatan dari luar BELUM TERBUKTI (deployment dilindungi Vercel Authentication; domain `lmh.lampungprov.go.id` tidak ter-resolve dari mesin penguji). Keputusan tercatat di `docs/DECISION_LOG.md`.
 
 Dasar: kontrak FO §7.1 (cutover bersama) dan FO-CHAT §6.1 (setelah 0009 dan sebelum route chat diganti, "Ambil alih"/"Selesaikan" gagal `CHAT_HARUS_RPC`; sesudah 0007 klien lama gagal menulis `visit`). DB dan klien tidak dapat diubah atomik bersamaan, jadi jendela layanan-tutup dimanfaatkan: **migrasi dulu, klien segera sesudahnya**, tanpa jeda panjang. **[BELUM TERBUKTI: tidak ada staging; urutan ini belum pernah dilatih. Klien baru tidak kompatibel dengan DB lama dan sebaliknya.]**
 
@@ -62,15 +64,15 @@ Semua menyentuh DB produksi lewat `DIRECT_URL` dan mengunci tabel antrean ±1-2 
 
 | Skrip | Cakupan | Status |
 |---|---|---|
-| `scripts/test-tiket-kepemilikan.mjs --apply ...0001 --apply ...0002` | 0002 (A3) | **BELUM DIJALANKAN** (seksi 8 tidak berlaku bila DB sudah memuat 0005) |
-| `scripts/test-fo-eskalasi.mjs --pre 0002 --apply 0003 --apply 0004 --apply 0005 [--akhir-hari]` | 0003-0005 | **BELUM DIJALANKAN** (seksi 5/8 yang menegaskan `visit` tidak berlaku untuk DB yang memuat 0007) |
-| `scripts/test-wp24.mjs --pre 0002..0006 --apply 0007 --apply 0008 --akhir-hari` | 0007, 0008 | **BELUM DIJALANKAN** (jam DB 2026-10-14 06:04 WIB terlarang) |
-| `scripts/test-chat-online.mjs --pre 0002..0005 --apply 0009` dan `--pre 0002..0008 --apply 0009` | 0009 | DIJALANKAN 2026-10-14 06:14/06:15 WIB pada versi 0009 SEBELUM perbaikan review (batas spam + backfill 24 jam); 0009 diubah sesudahnya, skrip disesuaikan: **WAJIB diulang** |
-| `scripts/test-perbaikan-review.mjs --pre 0002..0009 --pre 0011 --apply 0012` | 0012 (+ trigger/backfill 0009 yang diubah; seksi 2 Admin pengambil alih wajib form; seksi 9 hari tanpa pelayanan #13) | **BELUM DIJALANKAN** (ditulis 2026-10-14 pada jam layanan; 0012 diubah in-place atas keputusan CEO 2026-10-14) |
-| `scripts/test-fo-keterbukaan.mjs --pre 0002..0009 --pre 0011 --pre 0012 --apply 0013` | 0013 (FO-B membaca milik FO-A, tulis langsung/RPC ditolak; petugas/pengunjung/anon tetap; rollback ke 0009; penjaga rollback 0012) | **BELUM DIJALANKAN** (ditulis 2026-10-14 pada jam layanan) |
-| uji perilaku 0006 dan 0011 | 0006, 0011 | tidak ada skrip perilaku khusus; hanya test kontrak statis (`supabase/migrations/*.test.ts`) **[BELUM TERBUKTI secara perilaku]** |
+| `scripts/test-tiket-kepemilikan.mjs --apply ...0001 --apply ...0002` | 0002 (A3) | **DIJALANKAN 2026-10-14 malam (produksi, ROLLBACK): 84 lolos** (seksi 8 tidak berlaku bila DB sudah memuat 0005) |
+| `scripts/test-fo-eskalasi.mjs --pre 0002 --apply 0003 --apply 0004 --apply 0005 [--akhir-hari]` | 0003-0005 | **DIJALANKAN 2026-10-14 malam (produksi, ROLLBACK): 150 lolos** (gabungan 0003-0005; seksi 5/8 yang menegaskan `visit` tidak berlaku untuk DB yang memuat 0007) |
+| `scripts/test-wp24.mjs --pre 0002..0006 --apply 0007 --apply 0008 --akhir-hari` | 0007, 0008 | **DIJALANKAN 2026-10-14 malam (produksi, ROLLBACK, `--akhir-hari`): 101 lolos** (siang hari jam DB 06:04 WIB terlarang; bug cast `"char"` di skrip diperbaiki, commit `d7344e3`) |
+| `scripts/test-chat-online.mjs --pre 0002..0005 --apply 0009` dan `--pre 0002..0008 --apply 0009` | 0009 | DIJALANKAN 2026-10-14 06:14/06:15 WIB pada versi 0009 SEBELUM perbaikan review (batas spam + backfill 24 jam); 0009 diubah sesudahnya, skrip disesuaikan: **DIULANG 2026-10-14 malam pada versi final (produksi, ROLLBACK): 106 lolos** |
+| `scripts/test-perbaikan-review.mjs --pre 0002..0009 --pre 0011 --apply 0012` | 0012 (+ trigger/backfill 0009 yang diubah; seksi 2 Admin pengambil alih wajib form; seksi 9 hari tanpa pelayanan #13) | **DIJALANKAN 2026-10-14 malam (produksi, ROLLBACK, `--akhir-hari`): 61 lolos** (fixture chat di skrip diperbaiki, commit `d7344e3`; 0012 diubah in-place atas keputusan CEO 2026-10-14 sebelum diterapkan) |
+| `scripts/test-fo-keterbukaan.mjs --pre 0002..0009 --pre 0011 --pre 0012 --apply 0013` | 0013 (FO-B membaca milik FO-A, tulis langsung/RPC ditolak; petugas/pengunjung/anon tetap; rollback ke 0009; penjaga rollback 0012) | **DIJALANKAN 2026-10-14 malam (produksi, ROLLBACK): 26 lolos** |
+| uji perilaku 0006 dan 0011 | 0006, 0011 | tidak ada skrip perilaku khusus; hanya tercakup sebagai prasyarat (`--pre`) skrip lain dan test kontrak statis (`supabase/migrations/*.test.ts`) **[BELUM TERBUKTI secara perilaku khusus]** |
 
-Skrip lama yang menulis `visit`/meng-UPDATE langsung akan gagal pada DB yang memuat 0002/0007 sampai disesuaikan: `scripts/selftest-wp21.mjs`, `scripts/test-rbac-tahap0.mjs`, `scripts/test-rbac-tahap1.mjs` (lihat `DB-CHANGES.md` entri 0002/0005/0007). Konkurensi sejati (dua koneksi) tidak diuji oleh skrip mana pun. Perintah dan flag lengkap: komentar kepala tiap skrip dan §A.2.
+Skrip lama yang menulis `visit`/meng-UPDATE langsung akan gagal pada DB yang memuat 0002/0007 sampai disesuaikan: `scripts/selftest-wp21.mjs`, `scripts/test-rbac-tahap0.mjs`, `scripts/test-rbac-tahap1.mjs` (lihat `DB-CHANGES.md` entri 0002/0005/0007). Konkurensi sejati (dua koneksi) tidak diuji oleh skrip mana pun. Semua hasil di atas = transaksi ROLLBACK terhadap produksi sebelum/sesudah migrasi terapan; tidak menggantikan uji di browser. Perintah dan flag lengkap: komentar kepala tiap skrip dan §A.2.
 
 ## 6. Rollback
 
@@ -82,7 +84,7 @@ Skrip lama yang menulis `visit`/meng-UPDATE langsung akan gagal pada DB yang mem
 
 ## 7. Ledger migrasi (izin CEO)
 
-`scripts/apply-migration.mjs` tidak menulis `supabase_migrations.schema_migrations`; ledger produksi 54 entri (terakhir `202610130002`). Setelah migrasi cutover diterapkan:
+`scripts/apply-migration.mjs` tidak menulis `supabase_migrations.schema_migrations`. **SUDAH DIISI 2026-10-14 malam:** `scripts/fill-migration-ledger.mjs --apply --yes` mencatat 12 baris (0001-0013 tanpa 0010); ledger produksi kini 66 entri (terakhir `202610140013`); verifikasi `docs/analysis/LEDGER-VERIFIKASI-2026-10-14.md` (5 migrasi lama tetap tidak tercatat). Prosedur yang dipakai (sebelumnya 54 entri, terakhir `202610130002`):
 
 1. `node scripts/verify-migration-ledger.mjs` (read-only), lalu `node scripts/fill-migration-ledger.mjs` (dry-run default; menampilkan baris yang akan di-INSERT). Skrip hanya mencatat migrasi berstatus `terpasang`.
 2. Hanya dengan izin CEO: `node scripts/fill-migration-ledger.mjs --apply --yes`. Catat di `DB-CHANGES.md`.
@@ -115,10 +117,10 @@ Migrasi 0001 sudah terapan; flag `sesi_tunggal_aktif` = false (masa transisi: st
 ## 10. Ringkasan yang belum terbukti
 
 - Gerbang penuh (`verify:baseline`) untuk working tree/commit akhir; cadangan DB terbaru.
-- Urutan "migrasi lalu klien" pada jendela nyata; mekanisme promosi tertunda Vercel; perilaku service worker pada rilis.
-- Uji perilaku `test-tiket-kepemilikan`, `test-fo-eskalasi`, `test-wp24` belum pernah dijalankan; 0006 dan 0011 hanya diuji statis; konkurensi sejati tidak diuji.
+- Urutan "migrasi lalu klien" TERBUKTI berjalan pada jendela nyata (2026-10-14 malam), tetapi pemeriksaan kesehatan dari luar belum bisa (Vercel Authentication, domain tidak ter-resolve dari mesin penguji); mekanisme promosi tertunda Vercel tidak dipakai; perilaku service worker pada rilis belum diuji.
+- Uji perilaku sudah lolos (ROLLBACK terhadap produksi, 2026-10-14 malam; lihat §5), tetapi 0006 dan 0011 hanya tercakup sebagai prasyarat dan test statis; konkurensi sejati, tampilan di browser, dan kueri rekap FO pada PostgREST sungguhan tidak diuji.
 - Klaim `session_id` JWT stabil dan prosedur menyalakan flag `sesi_tunggal_aktif`.
-- Parser ledger terhadap migrasi baru.
+- Parser ledger terhadap migrasi baru: ledger sudah diisi (12 baris) dan diverifikasi; tidak ada lagi yang tertunda selain lima migrasi lama (§7).
 - Lama kunci tabel saat apply atomik di produksi (diperkirakan singkat; `lock_timeout` 5 detik, `statement_timeout` 120 detik).
 - Jawaban CEO atas pertanyaan terbuka kontrak (§2 butir 7).
 
@@ -235,3 +237,15 @@ Uji asap aplikasi (akun uji, pengunjung sintetis): FO walk-in → selesai di FO 
 - **Setelah layanan berjalan dengan alur baru**, rollback 0007 masih bisa dijalankan (RPC 0004/0005 yang dipulihkan menangani kunjungan tanpa `visit`), tetapi: SKM/notifikasi/estimasi untuk kunjungan baru kembali mati (membaca `visit`), `visit` tidak disinkronkan mundur, dan nilai `skm_respons.kunjungan_id` hilang. Rollback 0008 ditolak bila sudah ada tahap `tidak_ditutup` kecuali `lmh.rollback_paksa` dinyalakan sadar (tahap itu menjadi `tidak_terlayani`). Lebih aman: perbaikan maju (migrasi forward baru).
 - Data yang **tidak** dikembalikan: kunjungan reservasi `bertemu_seseorang` yang dibuat 0007, kolom kunjungan yang dilengkapi dari `visit`, notifikasi/audit yang sudah terbit, status yang ditutup job, nilai yang sudah dianonimkan.
 - Pemicu rollback: tulis klien gagal massal yang tidak bisa diperbaiki dengan deploy klien, SKM/notifikasi tidak terantre untuk kunjungan selesai, atau job akhir hari gagal (cek `cron.job_run_details`).
+
+## 12. Sisa langkah setelah cutover (status 2026-10-14 malam)
+
+Sudah selesai: migrasi 0002-0013 terapan (tanpa 0010) dan terverifikasi read-only; ledger terisi (12 baris); klien ter-deploy lewat PR #10 (merge commit `cbff52a`); uji perilaku ROLLBACK lolos (§5). Yang tersisa:
+
+1. **Pemeriksaan kesehatan dari luar:** `/api/health/live` dan `/api/health/ready` pada domain produksi. **[BELUM TERBUKTI]** (deployment dilindungi Vercel Authentication; domain `lmh.lampungprov.go.id` tidak ter-resolve dari mesin penguji). Cek dari jaringan/akun yang punya akses.
+2. **Uji asap di browser** (§4 butir 6) dengan akun uji dan pengunjung sintetis: walk-in FO, eskalasi, petugas selesai dengan Pendataan, chat, scan QR, rekap FO (termasuk kueri rekap FO pada PostgREST sungguhan), layar TV. **[BELUM TERBUKTI]**
+3. **Pembuktian `session_id` JWT stabil** setelah refresh token (§8 butir 2). **[BELUM TERBUKTI]**
+4. **Flag `sesi_tunggal_aktif`:** tetap `false`. Nyalakan hanya setelah butir 3 terbukti dan semua staf aktif login ulang (§8). Staf BELUM login ulang.
+5. **Komunikasi ke staf** (§9): kirim/ingatkan (halaman lama dimuat ulang, login ulang, alur baru).
+6. **Pantauan:** job `penanganan_tutup_otomatis` (23:00 WIB) dan `chat_tutup_otomatis` (23:30 WIB) pada `cron.job_run_details` malam ini dan besok pagi; log error 30 menit pertama layanan Senin; konkurensi sejati tidak teruji sehingga perhatikan galat `SUDAH_DIAMBIL`/`DIVERGENSI`.
+7. Rollback bila perlu: §6 (jendela utama sampai Senin 08:00 WIB; setelahnya lebih aman perbaikan maju).

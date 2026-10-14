@@ -23,7 +23,7 @@
 | Panggil ulang nomor | ✓ | ✓ | `S` | ✗ | ✗ |
 | Buku tamu | ✓ | ✓ | ✗ | ✗ | ✗ |
 | Balas live chat | ✓ | ✓ (takeover semua) | `S` | ✗ | ✗ |
-| Kelola FAQ | ✓ (semua layanan + FAQ umum) | ✓ **hanya FAQ umum** (`layanan_id` NULL; M-202610130001, belum diterapkan) | `S` (FAQ layanannya; FAQ umum tidak terjangkau) | ✗ | ✗ |
+| Kelola FAQ | ✓ (semua layanan + FAQ umum) | ✓ **hanya FAQ umum** (`layanan_id` NULL; M-202610130001, diterapkan 2026-10-13) | `S` (FAQ layanannya; FAQ umum tidak terjangkau) | ✗ | ✗ |
 | Unggah dokumen peraturan | ✓ | ✗ | `S` | ✗ | ✗ |
 | Ubah aturan penjaga bot | **✗ (CMS-04)** | ✗ | ✗ | ✗ | ✗ |
 | Review listing UMKM | ✓ | ✗ | `S` (Matchmaking) | ✗ | ✗ |
@@ -123,7 +123,7 @@ Setiap kebijakan RLS baru/perubahan **wajib** punya tes perilaku dengan token ny
 
 ## 6. PEMBARUAN 2026-10-14 — Alur Front Office → eskalasi, chat online, rekap FO/performa
 
-> Status: kode ditulis; migrasi `0003`-`0009`, `0011` BELUM DITERAPKAN ke produksi (hanya `202610140001` sesi staf yang sudah). Sumber kebenaran akses halaman admin tetap **`src/lib/admin-nav.ts`** (bila berbeda dengan tabel §1/§3 di atas, yang berlaku `admin-nav.ts`: mis. `/admin` dashboard, `/admin/kunjungan`, `/admin/scan` kini dapat dibuka `admin` dan `front_office`). Kontrak RPC: `docs/analysis/FO-ESKALASI-KONTRAK-RPC.md`, `docs/analysis/FO-CHAT-KONTRAK-RPC.md`.
+> Status: kode ditulis; migrasi `0002`-`0009`, `0011`, `0012`, `0013` DITERAPKAN ke produksi 2026-10-14 malam (`0001` sesi staf sejak 2026-10-13); tampilan di browser belum terbukti. Sumber kebenaran akses halaman admin tetap **`src/lib/admin-nav.ts`** (bila berbeda dengan tabel §1/§3 di atas, yang berlaku `admin-nav.ts`: mis. `/admin` dashboard, `/admin/kunjungan`, `/admin/scan` kini dapat dibuka `admin` dan `front_office`). Kontrak RPC: `docs/analysis/FO-ESKALASI-KONTRAK-RPC.md`, `docs/analysis/FO-CHAT-KONTRAK-RPC.md`.
 
 ### 6.1 Rute baru (`admin-nav.ts`)
 
@@ -166,9 +166,9 @@ Setiap kebijakan RLS baru/perubahan **wajib** punya tes perilaku dengan token ny
 - `chat_sesi`: kolom staf (status, `ditangani_oleh`, `layanan_id`, `kunjungan_id`) hanya lewat RPC (`CHAT_HARUS_RPC`).
 - Draf pendataan `pelayanan_oss`/`pelayanan_perizinan`: hanya pemilik tiket `dilayani` (`pemilik_tiket()`; keputusan CEO 7.5).
 - `pengunjung.nama`: terkunci bagi pemilik setelah profil lengkap (trigger); pengecualian service_role/pg_cron dan flag `lmh.ubah_nama` (RPC).
-- Uji perilaku wajib (SEC-04) per migrasi: `scripts/test-tiket-kepemilikan.mjs`, `test-fo-eskalasi.mjs`, `test-wp24.mjs`, `test-chat-online.mjs` (transaksi di-ROLLBACK; di luar jam layanan). Belum dijalankan semuanya terhadap DB yang memuat migrasi terkait, kecuali `test-chat-online.mjs` (99 lolos, 2026-10-14).
+- Uji perilaku wajib (SEC-04) per migrasi: `scripts/test-tiket-kepemilikan.mjs`, `test-fo-eskalasi.mjs`, `test-wp24.mjs`, `test-chat-online.mjs` (transaksi di-ROLLBACK; di luar jam layanan). Dijalankan 2026-10-14 malam terhadap produksi, semua lolos: 0002=84, 0003-0005=150, 0007/0008=101, 0009=106, 0012=61, 0013=26 (0006/0011 hanya prasyarat + test statis); konkurensi sejati tidak teruji.
 
-### 6.4 Keterbukaan data antar Front Office (keputusan CEO 2026-10-14, migrasi `202610140013`, BELUM DITERAPKAN)
+### 6.4 Keterbukaan data antar Front Office (keputusan CEO 2026-10-14, migrasi `202610140013`, DITERAPKAN 2026-10-14 malam)
 
 Kata CEO: "role FO itu walaupun petugas FO ada banyak, tapi semua antrian, semua pengunjung, rekap, dll itu terbuka untuk semua FO, tapi nanti di setiap pengunjung ada nama petugas FO yang melayani itu siapa." Semua FO = satu unit layanan: data tidak dipersempit per FO. **Baca saja**: tidak ada hak tulis baru; penulisan tetap lewat RPC yang memeriksa pemilik tahap.
 
@@ -190,6 +190,6 @@ Kata CEO: "role FO itu walaupun petugas FO ada banyak, tapi semua antrian, semua
 
 Nama FO yang melayani tampil di: Penanganan (riwayat + FO lain), Kotak Masuk FO (FO sebelumnya untuk item yang dikembalikan), Kelola Kunjungan (kolom Front Office), Rekap FO (kolom Front Office, sudah ada), tab Rekap Petugas Layanan (kolom baru + Excel + filter FO yang mengeskalasi), tab Pendataan Helpdesk OSS / Non OSS / Rekap Per Layanan dan panel detail tiket (kolom Front Office + Excel; tiket lama tanpa tahap FO = em dash), Antrian (catatan eskalasi "oleh <FO>", sudah ada; kini terbaca untuk FO lain juga). Layar TV antrean tidak menampilkan nama staf (tidak diubah).
 
-Audit akses: tidak ada pencatatan per-baca antar-FO (keputusan CEO 2026-10-14); ekspor Excel tetap tercatat `audit_log`; pembacaan hanya oleh staf aktif ber-sesi. Lihat `docs/KEBIJAKAN_PDP.md`. Uji perilaku: `scripts/test-fo-keterbukaan.mjs` (belum dijalankan; hanya di luar jam layanan).
+Audit akses: tidak ada pencatatan per-baca antar-FO (keputusan CEO 2026-10-14); ekspor Excel tetap tercatat `audit_log`; pembacaan hanya oleh staf aktif ber-sesi. Lihat `docs/KEBIJAKAN_PDP.md`. Uji perilaku: `scripts/test-fo-keterbukaan.mjs` (dijalankan 2026-10-14 malam terhadap produksi, ROLLBACK: 26 lolos; hanya di luar jam layanan).
 
 **BERHENTI DI SINI.** Menunggu persetujuan manusia sebelum melanjutkan ke **Fase D (Rencana implementasi)**.

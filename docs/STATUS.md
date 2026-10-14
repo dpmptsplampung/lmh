@@ -5,34 +5,36 @@ Lampung Maju Hub — Sistem Pelayanan Digital DPMPTSP Provinsi Lampung.
 > **Catatan 2026-10-13: dokumen ini tertinggal dari 30 Juli 2026.** Tabel WP dan daftar "Migrations applied: 24 file" di bawah belum mencakup migrasi Agustus–Oktober 2026 (`202608…` s.d. `202610…`, termasuk RBAC Tahap 0/1). Fakta yang sudah diverifikasi read-only pada 2026-10-13: ledger migrasi produksi (`supabase_migrations.schema_migrations`) berisi 13 entri dan berhenti di `202607280005`, sedangkan repo memuat 57 file; dari 44 file yang tidak tercatat, 39 terbukti terpasang di produksi, 1 (`202609020001`) tidak terpasang, dan 4 tidak dapat ditentukan. Sumber terbaru: `docs/analysis/DB-CHANGES.md` (bagian "Inventaris ledger 2026-10-13"), `docs/analysis/LEDGER-VERIFIKASI-2026-10-13.md`, `docs/MIGRATIONS.md`, `docs/DECISION_LOG.md`, `docs/RUNBOOK_RBAC_TAHAP0.md`, `docs/audit/AUDIT-2026-10-12-TRACKER.md`, `docs/superpowers/{specs,plans}`, dan `.superpowers/sdd/progress.md`.
 
 
-## Progres Fase 3 (diperbarui 2026-10-14)
+## Progres Fase 3 (diperbarui 2026-10-14 malam)
 
-Branch lokal `feat/audit-fondasi-fo-eskalasi` (belum di-push). **Penting: hampir semua pekerjaan di bawah BELUM diterapkan ke produksi dan BELUM di-deploy.** Hanya migrasi `202610140001` (sesi staf) yang sudah di produksi (2026-10-13, flag `sesi_tunggal_aktif` = false). Rincian migrasi, urutan terapan, dan rollback: `docs/MIGRATIONS.md`, `docs/analysis/DB-CHANGES.md`; prosedur cutover: `docs/RUNBOOK_FO_ESKALASI.md`; keputusan: `docs/DECISION_LOG.md` (bagian Fase 3).
+Branch `feat/audit-fondasi-fo-eskalasi` sudah di-merge ke `main` lewat PR #10 (merge commit `cbff52a`); deploy produksi Vercel sukses menurut status GitHub. **Semua migrasi Fase 3 (`202610140001`-`0009`, `0011`, `0012`, `0013`; tanpa `0010`) sudah DITERAPKAN ke produksi** (0002-0013 pada 2026-10-14 ±17:52-17:57 WIB, atomik: dry-run lalu COMMIT) dan diverifikasi read-only; ledger produksi diisi (12 baris, verifikasi `docs/analysis/LEDGER-VERIFIKASI-2026-10-14.md`). **Belum terbukti:** pemeriksaan kesehatan dari luar (deployment dilindungi Vercel Authentication; domain `lmh.lampungprov.go.id` tidak ter-resolve dari mesin penguji), tampilan di browser, konkurensi sejati, kueri rekap FO pada PostgREST sungguhan, `session_id` JWT stabil setelah refresh. Flag `sesi_tunggal_aktif` masih `false`; staf belum login ulang. Rincian migrasi, urutan terapan, dan rollback: `docs/MIGRATIONS.md`, `docs/analysis/DB-CHANGES.md`; prosedur dan sisa langkah: `docs/RUNBOOK_FO_ESKALASI.md` (§12); keputusan: `docs/DECISION_LOG.md` (bagian Fase 3).
 
 | Pekerjaan | Kode | Migrasi | Status |
 |---|---|---|---|
-| Audit fondasi: upgrade `next`/`sharp`, gerbang lokal `audit:check`/`deps:check`, manifest + penjaga migrasi, verifikasi dan pengisian ledger (13 -> 54 entri) | Commit lokal | - | Selesai (ledger terisi di produksi 2026-10-13) |
-| Mutasi Supabase tercek (helper `mutate.ts`, aturan lint `lmh/mutasi-tercek`), error publik, consent memblokir | Commit lokal | - | Kode selesai; belum di-deploy |
-| FAQ umum untuk FO + `faq_petugas_all` hanya petugas | Commit lokal | `202610130001`, `202610130002` | DITERAPKAN ke produksi 2026-10-13; UI belum di-deploy |
-| Sesi tunggal staf (daftar saat login, heartbeat, idle 2 jam, logout tutup) | Commit lokal (klien A2) | `202610140001` | Migrasi DITERAPKAN; klien belum di-deploy; flag `sesi_tunggal_aktif` masih false |
-| Kepemilikan tiket atomik (`layanan_mulai`/`layanan_selesai`, ambil alih Admin) | Commit lokal (klien A3) | `202610140002` | DITULIS, BELUM DITERAPKAN |
-| Alur FO -> eskalasi (kotak masuk, penanganan, daftar walk-in, scan QR via RPC, topik, prefiks antrean 2 huruf) | Sebagian commit; klien Tahap B di working tree (belum di-commit) | `202610140003`, `0004`, `0005` | DITULIS, BELUM DITERAPKAN |
-| Nama pengunjung terkunci + pernyataan kebenaran (C2) | Commit lokal | `202610140006` | DITULIS, BELUM DITERAPKAN |
-| WP-24: akhiri dual-write `visit`, tutup otomatis tahap tertinggal, retensi PII | SQL + test kontrak di working tree; pembaca `visit` di klien sudah dipindah | `202610140007`, `0008` | DITULIS, BELUM DITERAPKAN (uji perilaku `scripts/test-wp24.mjs` belum dijalankan) |
-| Live chat sebagai layanan online tercatat (Tahap C) | Working tree (belum di-commit) | `202610140009` | DITULIS, BELUM DITERAPKAN (uji perilaku 99 lolos pada transaksi ROLLBACK, 2026-10-14) |
-| Pendataan Pelayanan semua field wajib (C3) | Working tree | `202610140011` | DITULIS, BELUM DITERAPKAN |
-| Rekap harian Front Office + performa pelayanan + tab Rekap Petugas Layanan (Tahap D) | Working tree (belum di-commit) | tanpa migrasi | Kode ditulis; belum di-deploy |
-| Layar TV tahan gangguan jaringan (T4) | Commit lokal | - | Kode selesai; belum di-deploy |
-| Check-in mandiri dihapus (`/checkin` halaman informasi; `/api/checkin` dihapus) | Working tree | - | Belum di-deploy |
+| Audit fondasi: upgrade `next`/`sharp`, gerbang lokal `audit:check`/`deps:check`, manifest + penjaga migrasi, verifikasi dan pengisian ledger | Masuk `main` (PR #10) | - | Selesai (ledger terisi di produksi 2026-10-13; 0001-0013 dicatat 2026-10-14 malam) |
+| Mutasi Supabase tercek (helper `mutate.ts`, aturan lint `lmh/mutasi-tercek`), error publik, consent memblokir | Masuk `main` (PR #10) | - | Kode selesai; deploy produksi sukses menurut status GitHub; uji di browser belum terbukti |
+| FAQ umum untuk FO + `faq_petugas_all` hanya petugas | Masuk `main` | `202610130001`, `202610130002` | DITERAPKAN ke produksi 2026-10-13 |
+| Sesi tunggal staf (daftar saat login, heartbeat, idle 2 jam, logout tutup) | Masuk `main` (klien A2) | `202610140001` | Migrasi DITERAPKAN (2026-10-13); klien ter-deploy; flag `sesi_tunggal_aktif` masih false; `session_id` JWT belum terbukti |
+| Kepemilikan tiket atomik (`layanan_mulai`/`layanan_selesai`, ambil alih Admin) | Masuk `main` (klien A3) | `202610140002` | DITERAPKAN 2026-10-14 malam; uji perilaku ROLLBACK 84 lolos |
+| Alur FO -> eskalasi (kotak masuk, penanganan, daftar walk-in, scan QR via RPC, topik, prefiks antrean 2 huruf) | Masuk `main` (klien Tahap B) | `202610140003`, `0004`, `0005` | DITERAPKAN 2026-10-14 malam; uji perilaku ROLLBACK gabungan 150 lolos |
+| Nama pengunjung terkunci + pernyataan kebenaran (C2) | Masuk `main` | `202610140006` | DITERAPKAN 2026-10-14 malam; hanya prasyarat uji + test statis |
+| WP-24: akhiri dual-write `visit`, tutup otomatis tahap tertinggal, retensi PII | Masuk `main`; pembaca `visit` di klien sudah dipindah | `202610140007`, `0008` | DITERAPKAN 2026-10-14 malam; `visit` jadi arsip (`trg_visit_arsip` aktif, trigger tulis lama nonaktif); uji perilaku ROLLBACK 101 lolos |
+| Live chat sebagai layanan online tercatat (Tahap C) | Masuk `main` | `202610140009` | DITERAPKAN 2026-10-14 malam; uji perilaku ROLLBACK 106 lolos |
+| Pendataan Pelayanan semua field wajib (C3) | Masuk `main` | `202610140011` | DITERAPKAN 2026-10-14 malam; hanya prasyarat uji + test statis |
+| Perbaikan temuan review (form wajib per layanan, hari tanpa pelayanan, penjaga urutan rollback, job `chat_tutup_otomatis`) | Masuk `main` | `202610140012` | DITERAPKAN 2026-10-14 malam; uji perilaku ROLLBACK 61 lolos (`--akhir-hari`) |
+| Keterbukaan data antar Front Office (semua FO membaca semua `penanganan`; nama FO di rekap) | Masuk `main` | `202610140013` | DITERAPKAN 2026-10-14 malam; uji perilaku ROLLBACK 26 lolos; kueri rekap FO pada PostgREST sungguhan belum terbukti |
+| Rekap harian Front Office + performa pelayanan + tab Rekap Petugas Layanan (Tahap D) | Masuk `main` | tanpa migrasi | Kode ter-deploy; uji di browser belum terbukti |
+| Layar TV tahan gangguan jaringan (T4) | Masuk `main` | - | Kode ter-deploy; uji di browser belum terbukti |
+| Check-in mandiri dihapus (`/checkin` halaman informasi; `/api/checkin` dihapus) | Masuk `main` | - | Kode ter-deploy |
 | Tahap E: survei terpadu (SKM + anti korupsi + rating petugas + pengaduan) | - | - | **BELUM DIMULAI** (spec terpisah diperlukan) |
 
-Catatan: nomor `202610140010` tidak dipakai; `202610140012` sedang disiapkan terpisah dan belum tercatat di sini. Gerbang penuh (`verify:baseline`) untuk seluruh working tree harus dijalankan ulang sebelum commit/cutover; angka uji di dokumen lain bersifat per-paket pada tanggal masing-masing. Pelacak audit lokal: `docs/audit/AUDIT-2026-10-12-TRACKER.md` (gitignored).
+Catatan: nomor `202610140010` tidak dipakai. Angka uji di dokumen lain bersifat per-paket pada tanggal masing-masing. Pelacak audit lokal: `docs/audit/AUDIT-2026-10-12-TRACKER.md` (gitignored).
 
 ---
 
 ## Status Implementasi
 
-Work package WP-01 s.d. WP-32 selesai dan diterapkan ke produksi, **kecuali WP-24** (ditulis, belum diterapkan; lihat tabel).
+Work package WP-01 s.d. WP-32 selesai dan diterapkan ke produksi (WP-24 diterapkan 2026-10-14 malam sebagai migrasi `202610140007`/`0008`; lihat tabel).
 
 | WP | Deskripsi | Status |
 |---|---|---|
@@ -59,7 +61,7 @@ Work package WP-01 s.d. WP-32 selesai dan diterapkan ke produksi, **kecuali WP-2
 | WP-21 | Backfill + dual write trigger | ✅ diterapkan 13:17 WIB |
 | WP-22 | Pindah pembacaan ke kunjungan/tiket | ✅ |
 | WP-23 | Akhir hari + panggil ulang | ✅ |
-| WP-24 | Hentikan penulisan ke `visit` | ✍ Ditulis sebagai migrasi `202610140007`/`0008` (keputusan CEO G.1 Opsi A, 2026-10-13); **BELUM DITERAPKAN** (lihat Progres Fase 3) |
+| WP-24 | Hentikan penulisan ke `visit` | ✅ Diterapkan 2026-10-14 malam sebagai migrasi `202610140007`/`0008` (keputusan CEO G.1 Opsi A, 2026-10-13); uji perilaku ROLLBACK 101 lolos (lihat Progres Fase 3) |
 | WP-25 | Chat persisten schema | ✅ |
 | WP-26 | CMS registry + konten_versi | ✅ |
 | WP-27 | Bot RAG: dokumen_peraturan + match_dokumen | ✅ |
