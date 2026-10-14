@@ -1,5 +1,6 @@
+/* Padding halaman dipegang pembungkus tab (registrasi.module.css). */
 .scanPage {
-  padding: var(--space-8);
+  padding: 0;
   animation: fadeIn 0.4s ease-out;
 }
 
@@ -342,4 +343,29 @@
   margin: 0 0 var(--space-4);
   font-size: var(--text-sm);
   color: var(--color-danger-700);
+}
+
+/* Kamera dijeda karena halaman tersembunyi: tombol eksplisit untuk menyalakan lagi (tidak menyala sendiri). */
+.kameraDijeda {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  max-width: 400px;
+  padding: var(--space-4);
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  background: var(--color-neutral-100);
+  border-radius: var(--radius-lg);
+}
+
+.kameraDijeda p {
+  margin: 0;
+}
+
+.statusTambahan {
+  color: inherit;
+  opacity: 0.85;
 }

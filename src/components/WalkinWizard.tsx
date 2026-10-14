@@ -1,6 +1,6 @@
 'use client';
 
-// DEPRECATED (UI-2, K3): pendaftaran walk-in kini hanya lewat Front Office di /admin/fo/daftar
+// DEPRECATED (UI-2, K3): pendaftaran walk-in kini hanya lewat Front Office di /admin/fo/registrasi?tab=walkin
 // (rpc fo_mulai_kunjungan). Komponen ini tidak lagi menulis ke database (dulu: INSERT langsung ke `visit`
 // dengan tiket langsung terbit); ia hanya tautan ke halaman FO dengan props lama agar pemanggil yang belum
 // dimigrasi (src/app/admin/antrian) tetap terkompilasi. HAPUS file ini + test-nya setelah pemanggil terakhir
@@ -22,7 +22,7 @@ export default function WalkinWizard({
   triggerClassName,
 }: WalkinWizardProps) {
   return (
-    <Link href="/admin/fo/daftar" className={triggerClassName ?? 'btn btn--primary'}>
+    <Link href="/admin/fo/registrasi?tab=walkin" className={triggerClassName ?? 'btn btn--primary'}>
       <UserPlus size={18} aria-hidden="true" /> {triggerLabel}
     </Link>
   );

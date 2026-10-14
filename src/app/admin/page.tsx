@@ -1,7 +1,7 @@
 'use client';
 
 // WP-22: Stats reads migrated from visit → kunjungan + tiket_antrean.
-// Pendaftaran walk-in dilakukan Front Office di /admin/fo/daftar (rpc fo_mulai_kunjungan); halaman ini hanya membaca.
+// Pendaftaran walk-in dilakukan Front Office di /admin/fo/registrasi?tab=walkin (rpc fo_mulai_kunjungan); halaman ini hanya membaca.
 
 import { useEffect, useState, useCallback } from 'react';
 import { todayWIB, addDaysWIB } from '@/lib/time';
@@ -248,7 +248,7 @@ export default function AdminDashboard() {
         <CalendarBanner />
 
         <div className={styles.walkinTriggerContainer}>
-          <Link href="/admin/fo/daftar" className={styles.walkinTriggerBtn}>
+          <Link href="/admin/fo/registrasi?tab=walkin" className={styles.walkinTriggerBtn}>
             <UserPlus size={20} />
             Daftarkan Pengunjung Walk-in
           </Link>

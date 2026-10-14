@@ -16,7 +16,7 @@ vi.mock('@/lib/supabase/client', () => ({ createClient: createClientMock }));
 vi.mock('@/lib/offline/queue', () => ({ enqueueAction: enqueueMock }));
 vi.mock('@/lib/offline/sync', () => ({ daftarkanSyncOffline: syncMock }));
 
-import FoDaftarPage from './page';
+import WalkinPanel from './WalkinPanel';
 
 const UUID_LAYANAN = '33333333-3333-4333-8333-333333333333';
 const sukses = {
@@ -51,7 +51,7 @@ function rantaiKunjungan() {
 }
 
 async function renderHalaman() {
-  render(<FoDaftarPage />);
+  render(<WalkinPanel />);
   await screen.findByLabelText(/Nama Lengkap/);
   // tunggu daftar layanan dimuat
   await screen.findByRole('option', { name: 'Helpdesk OSS' });
@@ -81,7 +81,7 @@ const isiLengkap = (ubah: Partial<Record<string, string>> = {}) => {
   isi('Keperluan', nilai.keperluan);
 };
 
-describe('/admin/fo/daftar (pendaftaran walk-in oleh FO)', () => {
+describe('Panel Walk-in (/admin/fo/registrasi?tab=walkin, pendaftaran walk-in oleh FO)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     setOnline(true);

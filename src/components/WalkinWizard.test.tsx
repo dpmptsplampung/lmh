@@ -9,10 +9,10 @@ import WalkinWizard from './WalkinWizard';
 describe('WalkinWizard (shim tautan ke pendaftaran FO)', () => {
   afterEach(cleanup);
 
-  it('merender tautan ke /admin/fo/daftar dengan label dan kelas dari props', () => {
+  it('merender tautan ke /admin/fo/registrasi?tab=walkin dengan label dan kelas dari props', () => {
     render(<WalkinWizard triggerLabel="+ Walk-in" triggerClassName="btn btn--sm" fixedLayananId="l-1" />);
     const tautan = screen.getByRole('link', { name: /\+ Walk-in/ });
-    expect(tautan).toHaveAttribute('href', '/admin/fo/daftar');
+    expect(tautan).toHaveAttribute('href', '/admin/fo/registrasi?tab=walkin');
     expect(tautan).toHaveClass('btn', 'btn--sm');
   });
 

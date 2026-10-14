@@ -1,5 +1,5 @@
 // Pendaftaran walk-in oleh Front Office (K3): validasi, parameter RPC, pemetaan galat, panggilan RPC.
-// Dipakai halaman /admin/fo/daftar DAN replay antrean offline (src/lib/offline/replay.ts) agar kedua
+// Dipakai panel Walk-in (/admin/fo/registrasi) DAN replay antrean offline (src/lib/offline/replay.ts) agar kedua
 // jalur identik. Kontrak: docs/analysis/FO-ESKALASI-KONTRAK-RPC.md §2.1.
 //
 // ATURAN VALIDASI di bawah ini adalah kontrak yang SAMA PERSIS ditegakkan di DB (`fo_mulai_kunjungan`).

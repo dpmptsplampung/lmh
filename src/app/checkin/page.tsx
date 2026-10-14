@@ -1,5 +1,5 @@
 // Halaman /checkin = INFORMASI, tidak menulis ke database (K3, audit T3).
-// Pendaftaran walk-in dan check-in QR hanya dilakukan Front Office (/admin/fo/daftar, /admin/scan); pengunjung
+// Pendaftaran walk-in dan check-in QR hanya dilakukan Front Office (/admin/fo/registrasi, tab Walk-in dan Scan QR); pengunjung
 // cukup datang ke meja Front Office. Server component statis: tanpa sign-in anonim, tanpa akses Supabase.
 import type { Metadata } from 'next';
 import Link from 'next/link';

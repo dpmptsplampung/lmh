@@ -53,7 +53,7 @@ vi.mock('@/lib/supabase/client', async () => {
   return { createClient: () => buatFakeSupabase(m.h) };
 });
 
-import AdminScanPage from './page';
+import ScanPanel from './ScanPanel';
 
 const kunjungan = (o: Record<string, unknown> = {}) => ({
   id: 'k-1', nama: 'Budi', tanggal: todayWIB(), status: 'terjadwal', tujuan: 'loket', layanan_saran_id: 'l-1',
@@ -73,7 +73,7 @@ const hasilCheckin = {
 };
 
 async function pindaiManual(token = 'tok-1') {
-  render(<AdminScanPage />);
+  render(<ScanPanel />);
   const input = await screen.findByLabelText(/masukkan token secara manual/i);
   fireEvent.change(input, { target: { value: token } });
   fireEvent.keyDown(input, { key: 'Enter' });
@@ -247,6 +247,9 @@ describe('Scan QR: tolak reservasi (fo_tolak_reservasi)', () => {
   const bukaDialogTolak = async () => {
     await pindaiManual();
     const pemicu = await screen.findByRole('button', { name: /Tolak Pengunjung/ });
+    // Efek pasif yang memindahkan fokus ke hasil pindai harus selesai dulu; bila tidak ia merebut fokus dari pemicu
+    // (test jadi tidak stabil saat CPU sibuk).
+    await act(async () => {});
     pemicu.focus();
     fireEvent.click(pemicu);
     return { pemicu, dialog: await screen.findByRole('dialog') };
@@ -315,7 +318,7 @@ describe('Scan QR: tolak reservasi (fo_tolak_reservasi)', () => {
 
 describe('Scan QR: siklus hidup kamera (audit T9)', () => {
   it('kamera menyala saat memindai dan dimatikan (stop + clear) saat halaman ditinggalkan', async () => {
-    const { unmount } = render(<AdminScanPage />);
+    const { unmount } = render(<ScanPanel />);
     await waitFor(() => expect(m.pemindai).toHaveLength(1));
     await waitFor(() => expect(m.pemindai[0].start).toHaveBeenCalledTimes(1));
 
@@ -325,14 +328,14 @@ describe('Scan QR: siklus hidup kamera (audit T9)', () => {
   });
 
   it('kamera dimatikan begitu hasil pindai tampil, dan dinyalakan lagi (instans baru) saat Scan Ulang', async () => {
-    render(<AdminScanPage />);
+    render(<ScanPanel />);
     await waitFor(() => expect(m.pemindai[0]?.saatDekode).toBeTypeOf('function'));
 
     await act(async () => { m.pemindai[0].saatDekode!('tok-1'); });
     expect(await screen.findByText('Budi')).toBeInTheDocument();
     await waitFor(() => expect(m.pemindai[0].stop).toHaveBeenCalledTimes(1));
     expect(m.pemindai[0].clear).toHaveBeenCalledTimes(1);
-    expect(screen.getByText('Kamera dimatikan')).toBeInTheDocument();
+    expect(screen.getByText('Kamera mati')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Scan Pengunjung Lain/ }));
     await waitFor(() => expect(m.pemindai).toHaveLength(2));
@@ -341,7 +344,7 @@ describe('Scan QR: siklus hidup kamera (audit T9)', () => {
   });
 
   it('dekode berulang selagi pencarian berjalan hanya mencari sekali', async () => {
-    render(<AdminScanPage />);
+    render(<ScanPanel />);
     await waitFor(() => expect(m.pemindai[0]?.saatDekode).toBeTypeOf('function'));
     const dekode = m.pemindai[0].saatDekode!;
 
@@ -352,7 +355,7 @@ describe('Scan QR: siklus hidup kamera (audit T9)', () => {
 
   it('kamera gagal (izin ditolak): pesan galat + tombol coba lagi, input manual tetap tersedia', async () => {
     m.kameraGagal = true;
-    render(<AdminScanPage />);
+    render(<ScanPanel />);
 
     expect(await screen.findByText(/Gagal mengakses kamera/)).toBeInTheDocument();
     expect(screen.getByLabelText(/masukkan token secara manual/i)).toBeInTheDocument();

@@ -323,7 +323,7 @@ export default function PenangananFoPage() {
           ) : berjalan.length === 0 && !galatMuat ? (
             <p className={styles.kosong}>
               Belum ada pengunjung yang sedang Anda tangani. Ambil dari <Link href="/admin/fo/kotak-masuk">Kotak Masuk</Link>{' '}
-              atau pindai QR reservasi di <Link href="/admin/scan">Scan QR</Link>.
+              atau pindai QR reservasi di <Link href="/admin/fo/registrasi?tab=scan">Scan QR</Link>.
             </p>
           ) : (
             <ul className={styles.daftar}>
