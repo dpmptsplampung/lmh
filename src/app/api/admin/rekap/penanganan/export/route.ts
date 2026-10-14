@@ -49,6 +49,7 @@ export async function GET(request: NextRequest) {
         sampai: q.sampai,
         penanganId: cakupan.penanganId,
         layananId: cakupan.layananId,
+        eskalasiFoId: cakupan.eskalasiFoId,
         from,
         to,
       }),
@@ -71,6 +72,7 @@ export async function GET(request: NextRequest) {
     detail: {
       peran: q.peran, dari: q.dari, sampai: q.sampai,
       petugas_id: cakupan.penanganId, layanan_id: cakupan.layananId,
+      eskalasi_fo_id: cakupan.eskalasiFoId,
       total_rows: rows.length, truncated,
     },
   })) ?? { error: { message: 'service client tidak tersedia' } };

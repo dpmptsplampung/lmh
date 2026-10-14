@@ -94,8 +94,8 @@ export default function AdminRekapPage() {
   // Role-scoped options for the Layanan tab (lifted from RekapLayananTable so the
   // page knows whether to render the Layanan tab with a locked layanan filter).
   const [isPetugas, setIsPetugas] = useState(false);
-  // Peran dari layanan-options; tab Rekap Petugas Layanan tidak untuk Front Office (hanya Admin dan Petugas).
-  const [peranSaya, setPeranSaya] = useState<string | null>(null);
+  // Tab Rekap Petugas Layanan terbuka untuk Admin, Petugas, dan Front Office (keputusan CEO 2026-10-14). Cakupan
+  // ditegakkan server (api/admin/rekap/penanganan): FO hanya eskalasi asal dirinya, dengan catatan di dalam tab.
   const [initialLayananId, setInitialLayananId] = useState<string | null>(null);
   const [layananOptions, setLayananOptions] = useState<LayananOption[]>([]);
 
@@ -107,7 +107,6 @@ export default function AdminRekapPage() {
         const body = await res.json();
         if (!cancelled && res.ok) {
           setIsPetugas(!!body.is_petugas);
-          setPeranSaya(typeof body.role === 'string' ? body.role : null);
           setInitialLayananId(body.default_layanan_id ?? null);
           setLayananOptions((body.options ?? []) as LayananOption[]);
         }
@@ -287,15 +286,13 @@ export default function AdminRekapPage() {
           >
             <BarChart2 size={16} /> Rekap Per Layanan
           </button>
-          {peranSaya !== 'front_office' && (
-            <button
-              className={`btn ${activeTab === 'penanganan' ? 'btn--primary' : 'btn--ghost'} btn--sm`}
-              onClick={() => setActiveTab('penanganan')}
-              style={{ borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }}
-            >
-              <FileCheck size={16} /> Rekap Petugas Layanan
-            </button>
-          )}
+          <button
+            className={`btn ${activeTab === 'penanganan' ? 'btn--primary' : 'btn--ghost'} btn--sm`}
+            onClick={() => setActiveTab('penanganan')}
+            style={{ borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }}
+          >
+            <FileCheck size={16} /> Rekap Petugas Layanan
+          </button>
         </div>
 
         {/* Filter bar per tab (umum/oss/perizinan): rentang tanggal + Download Excel di kanan.
@@ -611,7 +608,7 @@ export default function AdminRekapPage() {
         )}
 
         {/* TAB 5: REKAP PETUGAS LAYANAN (tahap layanan + Pendataan Pelayanan per tiket) */}
-        {activeTab === 'penanganan' && peranSaya !== 'front_office' && (
+        {activeTab === 'penanganan' && (
           <RekapPenangananTable
             peran="layanan"
             isPetugas={isPetugas}

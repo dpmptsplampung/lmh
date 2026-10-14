@@ -36,17 +36,27 @@ export function hariKerjaBerikutnya(iso: string, libur: ReadonlySet<string>): st
   return d;
 }
 
+export type AlasanTanpaLayanan = Extract<AlasanTutup, 'akhir_pekan' | 'libur_nasional'>;
+
+/**
+ * HARI TANPA PELAYANAN (keputusan CEO 2026-10-14, live chat): Sabtu, Minggu, atau tanggal di tabel hari_libur.
+ * Cermin fungsi DB public.hari_tanpa_layanan(date) (202610140012): pada hari ini live chat dengan petugas tidak
+ * tersedia (bot saja, tanpa eskalasi, chat tidak dapat diambil staf). `iso` = tanggal WIB YYYY-MM-DD.
+ */
+export function hariTanpaLayanan(iso: string, libur: ReadonlySet<string>): AlasanTanpaLayanan | null {
+  return isWeekend(iso) ? 'akhir_pekan' : libur.has(iso) ? 'libur_nasional' : null;
+}
+
+/** true bila mode menandakan hari tanpa pelayanan (bukan sekadar setelah jam tutup hari kerja). */
+export const modeHariTanpaLayanan = (m: Pick<ModeLayanan, 'alasan'>): boolean =>
+  m.alasan === 'akhir_pekan' || m.alasan === 'libur_nasional';
+
 export function hitungMode(now: Date, jamTutupMenit: number, libur: ReadonlySet<string>): ModeLayanan {
   const hari = toWIBDateString(now);
   const wib = new Date(now.getTime() + WIB_MS);
   const menit = wib.getUTCHours() * 60 + wib.getUTCMinutes();
-  const alasan: AlasanTutup | null = isWeekend(hari)
-    ? 'akhir_pekan'
-    : libur.has(hari)
-      ? 'libur_nasional'
-      : menit >= jamTutupMenit
-        ? 'setelah_jam_tutup'
-        : null;
+  const alasan: AlasanTutup | null =
+    hariTanpaLayanan(hari, libur) ?? (menit >= jamTutupMenit ? 'setelah_jam_tutup' : null);
   return { tutup: alasan !== null, alasan, kerjaBerikutnya: alasan ? hariKerjaBerikutnya(hari, libur) : null };
 }
 

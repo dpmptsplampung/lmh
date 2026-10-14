@@ -103,6 +103,27 @@ describe('GET /api/admin/rekap/penanganan/export', () => {
     expect(ws.rowCount).toBe(2);
   });
 
+  it('Front Office: ekspor rekap layanan hanya eskalasi asal dirinya; audit mencatat cakupan', async () => {
+    const lyn = (id: string, foPenangan: string): Baris =>
+      tahap(id, {
+        peran_tahap: 'layanan', layanan_id: 'lyn-oss', penangan_id: 'ptg-1', layanan: { nama: 'Helpdesk OSS' },
+        petugas: { nama: 'Rina' }, tiket: null,
+        kunjungan: { nama: 'Budi', asal_instansi: 'CV', fo_asal: [{ penangan_id: foPenangan, peran_tahap: 'fo' }] },
+      });
+    const h = buatHRekap({ role: 'front_office', meId: 'p-saya', penanganan: [lyn('a', 'p-saya'), lyn('b', 'p-lain')] });
+    pasang(h);
+    const res = await get('&peran=layanan');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Content-Disposition')).toContain('rekap-petugas-layanan-2026-10-12-sd-2026-10-12.xlsx');
+    const ws = await bacaSheet(res, 'Rekap Petugas Layanan');
+    expect(ws.rowCount).toBe(2); // header + 1 baris (eskalasi FO lain tidak ikut)
+    expect(h.log[0].ops).toContainEqual(['eq', ['kunjungan.fo_asal.penangan_id', 'p-saya']]);
+    expect(auditInsert).toHaveBeenCalledWith(expect.objectContaining({
+      actor_role: 'front_office', entitas: 'rekap_penanganan_layanan',
+      detail: expect.objectContaining({ eskalasi_fo_id: 'p-saya', total_rows: 1 }),
+    }));
+  });
+
   it('galat DB -> 500 tanpa berkas', async () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     pasang(buatHRekap({ galatPenanganan: true }));

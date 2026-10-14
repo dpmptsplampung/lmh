@@ -27,7 +27,7 @@ describe('tentukanCakupan (hak akses rekap penanganan)', () => {
   const PTG = { id: 'p-1', role: 'petugas', layanan_id: 'lyn-oss' };
 
   it('FO hanya melihat penanganan miliknya, apa pun filter yang dikirim', () => {
-    expect(tentukanCakupan(FO, { peran: 'fo' })).toEqual({ ok: true, penanganId: 'fo-1', layananId: null });
+    expect(tentukanCakupan(FO, { peran: 'fo' })).toEqual({ ok: true, penanganId: 'fo-1', layananId: null, eskalasiFoId: null });
     expect(tentukanCakupan(FO, { peran: 'fo', petugas_id: 'fo-1' })).toMatchObject({ ok: true, penanganId: 'fo-1' });
   });
 
@@ -36,7 +36,7 @@ describe('tentukanCakupan (hak akses rekap penanganan)', () => {
   });
 
   it('Admin melihat semua FO dan boleh memfilter satu FO', () => {
-    expect(tentukanCakupan(ADMIN, { peran: 'fo' })).toEqual({ ok: true, penanganId: null, layananId: null });
+    expect(tentukanCakupan(ADMIN, { peran: 'fo' })).toEqual({ ok: true, penanganId: null, layananId: null, eskalasiFoId: null });
     expect(tentukanCakupan(ADMIN, { peran: 'fo', petugas_id: 'fo-9' })).toMatchObject({ penanganId: 'fo-9' });
   });
 
@@ -51,9 +51,26 @@ describe('tentukanCakupan (hak akses rekap penanganan)', () => {
     expect(tentukanCakupan({ ...PTG, layanan_id: null }, { peran: 'layanan' })).toMatchObject({ ok: false });
   });
 
-  it('rekap layanan: Admin semua; Front Office ditolak', () => {
-    expect(tentukanCakupan(ADMIN, { peran: 'layanan', layanan_id: 'lyn-x' })).toMatchObject({ ok: true, layananId: 'lyn-x' });
-    expect(tentukanCakupan(FO, { peran: 'layanan' })).toMatchObject({ ok: false, status: 403 });
+  it('rekap layanan: Admin semua tanpa batas eskalasi; Petugas tanpa batas eskalasi', () => {
+    expect(tentukanCakupan(ADMIN, { peran: 'layanan', layanan_id: 'lyn-x' })).toEqual({
+      ok: true, penanganId: null, layananId: 'lyn-x', eskalasiFoId: null,
+    });
+    expect(tentukanCakupan(PTG, { peran: 'layanan' })).toMatchObject({ eskalasiFoId: null });
+  });
+
+  it('rekap layanan: Front Office diizinkan, dibatasi ke eskalasi asal dirinya (id dari sesi, bukan input)', () => {
+    expect(tentukanCakupan(FO, { peran: 'layanan' })).toEqual({
+      ok: true, penanganId: null, layananId: null, eskalasiFoId: 'fo-1',
+    });
+    // Filter petugas/layanan opsional tetap di dalam cakupan eskalasi FO.
+    expect(tentukanCakupan(FO, { peran: 'layanan', petugas_id: 'p-9', layanan_id: 'lyn-x' })).toEqual({
+      ok: true, penanganId: 'p-9', layananId: 'lyn-x', eskalasiFoId: 'fo-1',
+    });
+  });
+
+  it('peran tak dikenal ditolak untuk rekap layanan', () => {
+    expect(tentukanCakupan({ id: 'x', role: 'pengunjung', layanan_id: null }, { peran: 'layanan' }))
+      .toMatchObject({ ok: false, status: 403 });
   });
 });
 
@@ -124,6 +141,38 @@ describe('buildPenangananQuery', () => {
     });
     const kolomEq = h.log[0].ops.filter(([m]) => m === 'eq').map(([, a]) => a[0]);
     expect(kolomEq).toEqual(['peran_tahap']);
+  });
+
+  it('rekap layanan untuk FO: inner join bertingkat ke tahap FO pemanggil', async () => {
+    const h = buatHRekap();
+    const klien = buatKlienRekap(h) as unknown as SupabaseClient;
+    await buildPenangananQuery(klien, {
+      peran: 'layanan', dari: '2026-10-12', sampai: '2026-10-12', penanganId: null, layananId: null,
+      eskalasiFoId: 'fo-1', from: 0, to: 9,
+    });
+    const ops = h.log[0].ops;
+    const select = String(ops.find(([m]) => m === 'select')?.[1][0]);
+    expect(select).toContain('kunjungan:kunjungan_id!inner(');
+    expect(select).toContain('fo_asal:penanganan!kunjungan_id!inner(');
+    expect(select).toContain('tiket:tiket_id(');
+    expect(ops).toContainEqual(['eq', ['kunjungan.fo_asal.peran_tahap', 'fo']]);
+    expect(ops).toContainEqual(['eq', ['kunjungan.fo_asal.penangan_id', 'fo-1']]);
+  });
+
+  it('eskalasiFoId diabaikan untuk peran fo dan bila kosong (Admin/Petugas tidak berubah)', async () => {
+    for (const p of [
+      { peran: 'fo' as const, eskalasiFoId: 'fo-1' },
+      { peran: 'layanan' as const, eskalasiFoId: null },
+    ]) {
+      const h = buatHRekap();
+      const klien = buatKlienRekap(h) as unknown as SupabaseClient;
+      await buildPenangananQuery(klien, {
+        ...p, dari: '2026-10-12', sampai: '2026-10-12', penanganId: null, layananId: null, from: 0, to: 9,
+      });
+      const ops = h.log[0].ops;
+      expect(String(ops.find(([m]) => m === 'select')?.[1][0])).not.toContain('!inner');
+      expect(ops.filter(([m]) => m === 'eq').map(([, a]) => a[0])).toEqual(['peran_tahap']);
+    }
   });
 });
 

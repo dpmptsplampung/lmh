@@ -58,8 +58,20 @@ const SELECT_DASAR = `
   petugas:penangan_id(nama),
   layanan:layanan_id(nama)
 `;
+const SELECT_TIKET = `tiket:tiket_id(nomor_display, tanggal, status, pelayanan_oss(*), pelayanan_perizinan(*))`;
 const SELECT_LAYANAN = `${SELECT_DASAR},
-  tiket:tiket_id(nomor_display, tanggal, status, pelayanan_oss(*), pelayanan_perizinan(*))
+  ${SELECT_TIKET}
+`;
+// Rekap layanan untuk Front Office: hanya tahap layanan pada kunjungan yang punya tahap FO milik pemanggil
+// (eskalasi asal FO itu). Inner join bertingkat: kunjungan -> tahap FO pemanggil (alias `fo_asal`); baris tanpa
+// pasangan dibuang di server. Alias `fo_asal` tidak dipetakan ke keluaran (mapRawPenangananRow mengabaikannya).
+const SELECT_LAYANAN_ESKALASI_FO = `
+  id, kunjungan_id, tahap_ke, peran_tahap, layanan_id, saluran, penangan_id, status, hasil, topik, catatan,
+  batal_karena, mulai_at, selesai_at, created_at,
+  kunjungan:kunjungan_id!inner(nama, asal_instansi, fo_asal:penanganan!kunjungan_id!inner(penangan_id, peran_tahap)),
+  petugas:penangan_id(nama),
+  layanan:layanan_id(nama),
+  ${SELECT_TIKET}
 `;
 
 export interface PenangananQueryParams {
@@ -70,6 +82,11 @@ export interface PenangananQueryParams {
   penanganId: string | null;
   /** Batasi ke satu layanan (peran 'layanan'). */
   layananId: string | null;
+  /**
+   * Hanya peran 'layanan' untuk Front Office: batasi ke kunjungan yang punya tahap FO dengan penangan_id ini
+   * (id petugas FO pemanggil, dari sesi; bukan input).
+   */
+  eskalasiFoId?: string | null;
   from: number;
   to: number;
 }
@@ -79,12 +96,16 @@ export interface PenangananQueryParams {
  * (23:59 WIB masih hari itu, 00:00 WIB hari berikutnya). Urutan (mulai_at, id) deterministik untuk paginasi.
  */
 export function buildPenangananQuery(supabase: SupabaseClient, p: PenangananQueryParams) {
+  const eskalasiFo = p.peran === 'layanan' && p.eskalasiFoId ? p.eskalasiFoId : null;
   let query = supabase
     .from('penanganan')
-    .select(p.peran === 'layanan' ? SELECT_LAYANAN : SELECT_DASAR)
+    .select(eskalasiFo ? SELECT_LAYANAN_ESKALASI_FO : p.peran === 'layanan' ? SELECT_LAYANAN : SELECT_DASAR)
     .eq('peran_tahap', p.peran)
     .gte('mulai_at', awalHariWIB(p.dari))
     .lt('mulai_at', awalHariBerikutnyaWIB(p.sampai));
+  if (eskalasiFo) {
+    query = query.eq('kunjungan.fo_asal.peran_tahap', 'fo').eq('kunjungan.fo_asal.penangan_id', eskalasiFo);
+  }
   if (p.penanganId) query = query.eq('penangan_id', p.penanganId);
   if (p.layananId) query = query.eq('layanan_id', p.layananId);
   return query
@@ -155,15 +176,25 @@ export interface StafRekap {
 }
 
 export type CakupanPenanganan =
-  | { ok: true; penanganId: string | null; layananId: string | null }
+  | {
+      ok: true;
+      penanganId: string | null;
+      layananId: string | null;
+      /** Terisi hanya untuk Front Office pada peran 'layanan' (id petugas FO pemanggil). */
+      eskalasiFoId: string | null;
+    }
   | { ok: false; status: 403; error: string };
 
 /**
  * Cakupan data yang boleh dibaca. Dipaksa di server (bukan hanya RLS: RLS Front Office juga memuat tahap lain
- * dari kunjungan yang pernah ia sentuh, sehingga filter eksplisit tetap wajib).
+ * dari kunjungan yang pernah ia sentuh dan kunjungan yang sedang menunggu di kotak masuk FO, sehingga filter
+ * eksplisit tetap wajib).
  *  - peran 'fo': Admin semua (boleh filter FO); Front Office HANYA miliknya (filter FO lain = 403); Petugas ditolak.
  *  - peran 'layanan': Admin semua; Petugas hanya layanannya (layanan lain / tanpa layanan = 403);
- *    Front Office ditolak (spec K9 hanya menyebut Admin dan Petugas; RLS pun hanya memberi FO sebagian tahap).
+ *    Front Office (keputusan CEO 2026-10-14) HANYA tahap layanan pada kunjungan yang punya tahap FO miliknya
+ *    (eskalasi asal FO itu). Cakupan ini tepat sama dengan bagian `penangan_id = staf` pada RLS
+ *    `boleh_penanganan` (202610140009), jadi dibaca dengan klien pengguna tanpa service-role dan tanpa melonggarkan
+ *    RLS. Filter petugas/layanan opsional tetap berlaku di dalam cakupan itu.
  */
 export function tentukanCakupan(
   me: StafRekap,
@@ -171,20 +202,23 @@ export function tentukanCakupan(
 ): CakupanPenanganan {
   const tolak = (error: string): CakupanPenanganan => ({ ok: false, status: 403, error });
   if (q.peran === 'fo') {
-    if (me.role === 'admin') return { ok: true, penanganId: q.petugas_id ?? null, layananId: null };
+    if (me.role === 'admin') return { ok: true, penanganId: q.petugas_id ?? null, layananId: null, eskalasiFoId: null };
     if (me.role === 'front_office') {
       if (q.petugas_id && q.petugas_id !== me.id) return tolak('Forbidden');
-      return { ok: true, penanganId: me.id, layananId: null };
+      return { ok: true, penanganId: me.id, layananId: null, eskalasiFoId: null };
     }
     return tolak('Forbidden');
   }
   if (me.role === 'admin') {
-    return { ok: true, penanganId: q.petugas_id ?? null, layananId: q.layanan_id ?? null };
+    return { ok: true, penanganId: q.petugas_id ?? null, layananId: q.layanan_id ?? null, eskalasiFoId: null };
   }
   if (me.role === 'petugas') {
     if (!me.layanan_id) return tolak('Forbidden');
     if (q.layanan_id && q.layanan_id !== me.layanan_id) return tolak('Forbidden');
-    return { ok: true, penanganId: q.petugas_id ?? null, layananId: me.layanan_id };
+    return { ok: true, penanganId: q.petugas_id ?? null, layananId: me.layanan_id, eskalasiFoId: null };
+  }
+  if (me.role === 'front_office') {
+    return { ok: true, penanganId: q.petugas_id ?? null, layananId: q.layanan_id ?? null, eskalasiFoId: me.id };
   }
   return tolak('Forbidden');
 }

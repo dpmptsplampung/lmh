@@ -123,6 +123,18 @@ describe('RekapPenangananTable', () => {
     expect(screen.queryByLabelText('Layanan')).not.toBeInTheDocument();
   });
 
+  it('FO pada rekap layanan: catatan keterbatasan eskalasi tampil, bukan catatan "penanganan Anda sendiri"', async () => {
+    jawab({
+      total: 0, truncated: false, peran_saya: 'front_office', terkunci_ke_saya: false, cakupan_eskalasi_fo: true,
+      ringkasan: { ...ringkasan, total: 0, per_topik: [], per_penangan_hari: [] }, rows: [],
+    });
+    render(<RekapPenangananTable peran="layanan" layananOptions={[{ id: 'l1', nama: 'Helpdesk OSS' }]} />);
+    expect(await screen.findByText(/pernah Anda tangani di Front Office/i)).toBeInTheDocument();
+    expect(screen.getByText(/tidak lengkap untuk seluruh layanan/i)).toBeInTheDocument();
+    expect(screen.queryByText(/hanya melihat penanganan Anda sendiri/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Petugas')).not.toBeInTheDocument();
+  });
+
   it('peringatan bila data terpotong 50.000 baris', async () => {
     jawab({ total: 1, truncated: true, peran_saya: 'admin', terkunci_ke_saya: false, ringkasan, rows: [baris('1')] });
     render(<RekapPenangananTable peran="fo" />);

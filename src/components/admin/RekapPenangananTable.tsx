@@ -2,7 +2,8 @@
 
 // Rekap penanganan per tahap (Tahap D): dipakai /admin/rekap-fo (peran 'fo') dan tab "Rekap Petugas Layanan"
 // di /admin/rekap (peran 'layanan'). Hak akses ditegakkan server (api/admin/rekap/penanganan); komponen ini hanya
-// menyesuaikan tampilan (mis. Front Office tidak punya filter FO karena selalu terkunci ke dirinya).
+// menyesuaikan tampilan (mis. Front Office tidak punya filter FO karena selalu terkunci ke dirinya; pada rekap
+// layanan Front Office hanya melihat eskalasi asal dirinya dan diberi catatan keterbatasan).
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertCircle, Download, Loader2, RefreshCw } from 'lucide-react';
 import Pagination from '@/components/Pagination';
@@ -45,6 +46,8 @@ interface Respons {
   truncated: boolean;
   peran_saya: string;
   terkunci_ke_saya: boolean;
+  /** Rekap layanan untuk Front Office: dibatasi ke eskalasi asal FO pemanggil (opsional untuk respons lama). */
+  cakupan_eskalasi_fo?: boolean;
   ringkasan: RingkasanPenanganan;
   rows: RekapPenangananRow[];
 }
@@ -163,6 +166,12 @@ export default function RekapPenangananTable({ peran, isPetugas = false, initial
     <div>
       {data?.terkunci_ke_saya && (
         <RoleNote>Anda hanya melihat penanganan Anda sendiri. Setiap ekspor tercatat.</RoleNote>
+      )}
+      {data?.cakupan_eskalasi_fo && (
+        <RoleNote>
+          Rekap ini tidak lengkap untuk seluruh layanan: Anda hanya melihat tahap petugas layanan pada kunjungan yang
+          pernah Anda tangani di Front Office (eskalasi dari Anda). Rekap lengkap ada pada Admin. Setiap ekspor tercatat.
+        </RoleNote>
       )}
       {peran === 'layanan' && isPetugas && (
         <RoleNote>

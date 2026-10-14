@@ -52,8 +52,11 @@ describe('admin chat: Ambil Chat -> kotak balasan', () => {
       return { ok: true, status: 200, json: async () => ({ messages: [], status: row.status }) };
     }));
     Element.prototype.scrollIntoView = vi.fn();
+    // Hari kerja (Rabu): pada hari tanpa pelayanan tombol Ambil Chat sengaja nonaktif.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-14T10:00:00+07:00'));
   });
-  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
   it('kotak balasan muncul dan aktif setelah petugas mengambil chat', async () => {
     render(<AdminChatPage />);

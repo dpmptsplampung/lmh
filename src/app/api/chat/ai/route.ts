@@ -7,6 +7,8 @@ import { logServerEvent } from '@/lib/observability/logger';
 import { redactPii } from '@/lib/pii';
 import { mutasiBolehKosong, mutasiInsert } from '@/lib/supabase/mutate';
 import { catatMutasi } from '@/lib/observability/catat-mutasi';
+import { modeHariTanpaLayanan, type AlasanTanpaLayanan } from '@/lib/llm/bot-waktu';
+import { muatInfoHariLayanan, teksBotTanpaPetugas } from '@/lib/chat/hari-tanpa-layanan';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -23,6 +25,8 @@ const ROUTE = '/api/chat/ai';
 const RATE_LIMIT_ACTION = 'chat_ai_call';
 const RATE_LIMIT_MAX = 10;
 const RATE_LIMIT_WINDOW_SEC = 60;
+/** Alasan (respons & chat_ai_log) saat bot gagal menjawab pada hari tanpa pelayanan: tanpa eskalasi. */
+const REASON_TANPA_LAYANAN = 'hari_tanpa_layanan';
 
 function getServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -236,13 +240,33 @@ export async function POST(request: NextRequest) {
     admin: adminClient, pertanyaan, rawPertanyaan, layananId: layanan_id, layananNama,
   });
   if (hasil.kind === 'gagal') {
+    // Hari tanpa pelayanan (Sabtu/Minggu/hari_libur; keputusan CEO 2026-10-14): live chat dengan petugas tidak
+    // tersedia -> TANPA eskalasi; balasan menyarankan menghubungi kembali pada hari kerja / kanal di pengaturan.
+    if (modeHariTanpaLayanan(hasil.mode)) {
+      logServerEvent('warn', { operation: hasil.operation, route: ROUTE, sesiId: sesi_id, cause: cause(hasil.err) });
+      const info = await muatInfoHariLayanan(adminClient);
+      const text = teksBotTanpaPetugas(
+        // Kalender route = kalender bot; bila pembacaan kedua berbeda (galat baca), pakai mode bot.
+        info.alasan ? info : { ...info, alasan: hasil.mode.alasan as AlasanTanpaLayanan, kerjaBerikutnya: hasil.mode.kerjaBerikutnya },
+        hasil.reason === 'prompt_injection' ? 'prompt_injection' : 'ai_error',
+      );
+      await logAiCall(adminClient, sesi_id, pertanyaan, hasil.faqIds, text, hasil.topSim, false, REASON_TANPA_LAYANAN);
+      const { pesan, status, ignored } = await saveBot(adminClient, sesi_id, sesiStatus, text, { eskalasi: false });
+      if (ignored) return NextResponse.json(ignoredBody(status));
+      const gagal = gagalSimpanBalasan(pesan, status);
+      if (gagal) return gagal;
+      return NextResponse.json({ jawaban: text, sumber: [], eskalasi: false, reason: REASON_TANPA_LAYANAN, pesan, status });
+    }
     return failAndEscalate(hasil.operation, hasil.err, hasil.faqIds, hasil.topSim, hasil.text, hasil.reason);
   }
 
+  // Pertahanan berlapis: pada hari tanpa pelayanan bot tidak pernah mengeskalasi (bot.ts juga sudah menahan).
+  const eskalasi = hasil.eskalasi && !modeHariTanpaLayanan(hasil.mode);
+
   // Audit log + simpan balasan bot + eskalasi status (hanya dari 'bot').
-  await logAiCall(adminClient, sesi_id, pertanyaan, hasil.faqIds, hasil.jawaban, hasil.topSim, hasil.eskalasi, hasil.reason);
+  await logAiCall(adminClient, sesi_id, pertanyaan, hasil.faqIds, hasil.jawaban, hasil.topSim, eskalasi, hasil.reason);
   const { pesan, status, ignored } = await saveBot(adminClient, sesi_id, sesiStatus, hasil.jawaban, {
-    eskalasi: hasil.eskalasi,
+    eskalasi,
     sumberFaqId: hasil.sumberFaqId,
   });
   if (ignored) return NextResponse.json(ignoredBody(status));
@@ -253,7 +277,7 @@ export async function POST(request: NextRequest) {
     jawaban: hasil.jawaban,
     sumber: hasil.sumber,
     sumber_dokumen: hasil.sumberDokumen,
-    eskalasi: hasil.eskalasi,
+    eskalasi,
     reason: hasil.reason,
     pesan,
     status,

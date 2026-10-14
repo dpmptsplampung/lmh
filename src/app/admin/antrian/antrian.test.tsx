@@ -380,6 +380,20 @@ describe('Admin antrian: Selesai hanya oleh pemilik (rpc layanan_selesai)', () =
     expect(mock.rpc.mock.calls.filter(([n]) => n === 'layanan_selesai')).toHaveLength(0);
   });
 
+  // Keputusan CEO 2026-10-14: Admin pengambil alih TIDAK boleh menutup tanpa form (pengecualian 0012 dihapus).
+  it('Admin pemilik setelah ambil alih, layanan wajib form: Selesai membuka wizard (tidak ada jalur tutup tanpa form)', async () => {
+    const mock = buildMock({
+      role: 'admin',
+      rows: [dilayaniSaya({ layanan: { nama: 'Helpdesk OSS', form_pendataan: 'oss' }, pelayan: { nama: 'Admin Satu' } })],
+    });
+    render(<AntrianPage />);
+    expect(await screen.findByRole('button', { name: /form pendataan/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^selesai$/i }));
+    await waitFor(() => expect(screen.getByTestId('pelayanan-wizard')).toHaveTextContent('Pendataan Pelayanan'));
+    expect(mock.rpc.mock.calls.filter(([n]) => n === 'layanan_selesai')).toHaveLength(0);
+    expect(screen.queryByRole('button', { name: /tanpa (form|pendataan)/i })).not.toBeInTheDocument();
+  });
+
   it('form_pendataan DB kosong pada "Helpdesk OSS" -> tanpa Form Pendataan, Selesai memanggil RPC langsung', async () => {
     const mock = buildMock({ rows: [dilayaniSaya({ layanan: { nama: 'Helpdesk OSS', form_pendataan: null } })] });
     render(<AntrianPage />);

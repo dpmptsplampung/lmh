@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { hariKerjaBerikutnya, hitungMode, labelTanggalID, parseJamTutup } from './bot-waktu';
+import {
+  hariKerjaBerikutnya, hariTanpaLayanan, hitungMode, labelTanggalID, modeHariTanpaLayanan, parseJamTutup,
+} from './bot-waktu';
 
 const wib = (iso: string) => new Date(`${iso}+07:00`);
 const tanpaLibur = new Set<string>();
@@ -39,5 +41,21 @@ describe('hitungMode (WIB)', () => {
   });
   it('label tanggal Indonesia', () => {
     expect(labelTanggalID('2026-08-10')).toBe('Senin, 10 Agustus 2026');
+  });
+});
+
+describe('hariTanpaLayanan (cermin public.hari_tanpa_layanan)', () => {
+  it('Sabtu/Minggu -> akhir_pekan; tanggal hari_libur -> libur_nasional; hari kerja -> null', () => {
+    expect(hariTanpaLayanan('2026-10-17', tanpaLibur)).toBe('akhir_pekan'); // Sabtu
+    expect(hariTanpaLayanan('2026-10-18', tanpaLibur)).toBe('akhir_pekan'); // Minggu
+    expect(hariTanpaLayanan('2026-10-14', tanpaLibur)).toBeNull(); // Rabu
+    expect(hariTanpaLayanan('2026-10-14', new Set(['2026-10-14']))).toBe('libur_nasional');
+  });
+  it('setelah jam tutup hari kerja BUKAN hari tanpa pelayanan', () => {
+    const m = hitungMode(wib('2026-08-05T17:00:00'), 960, tanpaLibur);
+    expect(m.alasan).toBe('setelah_jam_tutup');
+    expect(modeHariTanpaLayanan(m)).toBe(false);
+    expect(modeHariTanpaLayanan(hitungMode(wib('2026-08-08T10:00:00'), 960, tanpaLibur))).toBe(true);
+    expect(modeHariTanpaLayanan(hitungMode(wib('2026-08-17T10:00:00'), 960, new Set(['2026-08-17'])))).toBe(true);
   });
 });

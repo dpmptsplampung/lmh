@@ -51,12 +51,11 @@ describe('/admin/rekap: tab Rekap Petugas Layanan', () => {
     expect(await screen.findByTestId('penanganan')).toHaveTextContent('isPetugas=true;layanan=l1');
   });
 
-  it('Front Office tidak melihat tab (hanya Admin dan Petugas)', async () => {
+  it('Front Office melihat tab (keputusan CEO); isinya peran layanan tanpa kunci layanan', async () => {
     layananOptions({ role: 'front_office' });
     render(<AdminRekapPage />);
-    await screen.findByRole('button', { name: /rekap per layanan/i });
-    await new Promise((r) => setTimeout(r, 30));
-    expect(screen.queryByRole('button', { name: /rekap petugas layanan/i })).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: /rekap petugas layanan/i }));
+    expect(await screen.findByTestId('penanganan')).toHaveTextContent('peran=layanan;isPetugas=false;layanan=null');
   });
 
   it('tab Rekap Umum memuat catatan bahwa Hadir tidak menghitung tiket dialihkan', async () => {

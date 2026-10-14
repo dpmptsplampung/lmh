@@ -88,6 +88,7 @@ export type KodeGalatChat =
   | 'CATATAN_TERLALU_PANJANG'
   | 'LAYANAN_TIDAK_VALID'
   | 'CHAT_HARUS_RPC'
+  | 'HARI_TANPA_LAYANAN'
   | 'AKSI_TIDAK_DIDUKUNG';
 
 /** Pesan siap tampil (Indonesia, tanpa detail teknis) per kode galat RPC chat. */
@@ -109,6 +110,8 @@ export const PESAN_GALAT_CHAT: Record<KodeGalatChat, string> = {
   CATATAN_TERLALU_PANJANG: 'Catatan terlalu panjang. Persingkat catatan Anda.',
   LAYANAN_TIDAK_VALID: 'Layanan tujuan tidak dapat dipakai (tidak aktif atau tidak melayani chat). Pilih layanan lain.',
   CHAT_HARUS_RPC: 'Perubahan chat ditolak oleh sistem. Muat ulang halaman lalu coba lagi.',
+  HARI_TANPA_LAYANAN:
+    'Hari ini hari tanpa pelayanan (Sabtu/Minggu/hari libur): chat tidak dapat diambil atau diteruskan. Pengunjung dilayani bot; chat yang menunggu ditutup otomatis setelah 24 jam tanpa aktivitas.',
   AKSI_TIDAK_DIDUKUNG: 'Aksi ini tidak lagi didukung.',
 };
 
@@ -153,7 +156,8 @@ export function statusHttpGalatChat(kode: KodeGalatChat | null): number {
     case 'NOT_FOUND': return 404;
     case 'INVALID_STATUS':
     case 'SUDAH_DIAMBIL':
-    case 'BUKAN_TAHAP_FO': return 409;
+    case 'BUKAN_TAHAP_FO':
+    case 'HARI_TANPA_LAYANAN': return 409;
     case 'ALASAN_WAJIB':
     case 'TOPIK_WAJIB':
     case 'TOPIK_TIDAK_VALID':

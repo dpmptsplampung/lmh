@@ -1,6 +1,7 @@
 // Klien Supabase palsu untuk test rekap penanganan/performa. Bukan test (tanpa .test) sehingga tidak dikoleksi vitest.
 // Tabel `penanganan` meniru PostgREST seperlunya: filter eq/gte/lt pada kolom sederhana, urutan, range(), dan BATAS
 // BARIS SERVER (`serverCap`, setara max-rows PostgREST) yang memotong tiap halaman. `h.log` mencatat tiap kueri.
+// Filter eq pada kolom embed bertitik (mis. 'kunjungan.fo_asal.penangan_id') meniru `!inner` bertingkat.
 
 export type Baris = Record<string, unknown>;
 export type Op = [string, unknown[]];
@@ -36,6 +37,19 @@ function bandingkan(a: unknown, b: unknown): number {
   return x < y ? -1 : x > y ? 1 : 0;
 }
 
+/** Elemen pada jalur embed bertitik (mis. 'kunjungan.fo_asal'); larik diratakan seperti embed to-many PostgREST. */
+function elemenJalur(r: Baris, jalur: string[]): Baris[] {
+  let kini: unknown[] = [r];
+  for (const k of jalur) {
+    kini = kini.flatMap((x) => {
+      const v = (x as Baris | null)?.[k];
+      if (v == null) return [];
+      return Array.isArray(v) ? v : [v];
+    });
+  }
+  return kini as Baris[];
+}
+
 function bangunPenanganan(h: HRekap) {
   const ops: Op[] = [];
   let range: [number, number] | null = null;
@@ -45,8 +59,21 @@ function bangunPenanganan(h: HRekap) {
     if (h.galatPenanganan) return { data: null, error: { message: 'boom', code: 'XX000' } };
     let rows = [...h.penanganan];
     const order: [string, boolean][] = [];
+    // Filter embed bertitik (meniru `!inner` bertingkat): dikelompokkan per jalur induk; satu elemen embed yang SAMA
+    // harus memenuhi semua filter pada jalur itu agar baris induk lolos.
+    const embed = new Map<string, [string, unknown][]>();
     for (const [m, a] of ops) {
-      if (m === 'eq') rows = rows.filter((r) => r[a[0] as string] === a[1]);
+      const kolom = a[0] as string;
+      if (m !== 'eq' || !kolom.includes('.')) continue;
+      const titik = kolom.lastIndexOf('.');
+      const induk = kolom.slice(0, titik);
+      embed.set(induk, [...(embed.get(induk) ?? []), [kolom.slice(titik + 1), a[1]]]);
+    }
+    for (const [induk, syarat] of embed) {
+      rows = rows.filter((r) => elemenJalur(r, induk.split('.')).some((e) => syarat.every(([k, v]) => e[k] === v)));
+    }
+    for (const [m, a] of ops) {
+      if (m === 'eq' && !(a[0] as string).includes('.')) rows = rows.filter((r) => r[a[0] as string] === a[1]);
       if (m === 'gte') rows = rows.filter((r) => r[a[0] as string] != null && new Date(r[a[0] as string] as string).getTime() >= new Date(a[1] as string).getTime());
       if (m === 'lt') rows = rows.filter((r) => r[a[0] as string] != null && new Date(r[a[0] as string] as string).getTime() < new Date(a[1] as string).getTime());
       if (m === 'order') order.push([a[0] as string, (a[1] as { ascending?: boolean } | undefined)?.ascending !== false]);

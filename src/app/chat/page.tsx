@@ -17,6 +17,7 @@ import ErrorRetry from '@/components/ErrorRetry';
 import styles from './chat.module.css';
 import ui from './chat-ui.module.css';
 import { JENIS_PENUTUP_SURVEI } from '@/lib/chat-staf';
+import { muatInfoHariLayanan, teksPemberitahuanChat, type InfoHariLayanan } from '@/lib/chat/hari-tanpa-layanan';
 import { mergeMessages, petugasLabel, rtFromStatus, senderLabel, useFallbackPoll, useOnSubscribed, waktuLabel, type ChatMsg, type RtState } from './merge';
 import '@chatscope/chat-ui-kit-styles/dist/default/styles.min.css';
 import {
@@ -114,6 +115,29 @@ export default function PublicChatPage() {
   const [lewatJamTutup] = useState(
     () => Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jakarta', hour: '2-digit', hourCycle: 'h23' }).format(new Date())) >= 16,
   );
+  // Hari tanpa pelayanan (Sabtu/Minggu/hari_libur; keputusan CEO 2026-10-14): live chat dengan petugas tidak tersedia,
+  // pengunjung hanya bertanya kepada bot. DB menegakkan (chat_ambil menolak, eskalasi tidak mencatat kunjungan) dan
+  // /api/chat/ai tidak mengeskalasi; halaman ini memberi tahu dengan jelas. Dinilai sekali saat halaman dibuka.
+  const [infoHari, setInfoHari] = useState<InfoHariLayanan | null>(null);
+  const tanpaLayanan = !!infoHari?.alasan;
+  const tanpaLayananRef = useRef(false);
+  useEffect(() => {
+    tanpaLayananRef.current = tanpaLayanan;
+  }, [tanpaLayanan]);
+  useEffect(() => {
+    let batal = false;
+    Promise.resolve()
+      .then(() => muatInfoHariLayanan(createClient()))
+      .then((info) => {
+        if (!batal) setInfoHari(info);
+      })
+      .catch(() => {
+        /* gagal menilai hari: perilaku hari kerja; DB tetap penegak */
+      });
+    return () => {
+      batal = true;
+    };
+  }, []);
   const [sesiStatus, setSesiStatus] = useState<'bot' | 'eskalasi' | 'aktif' | 'selesai'>('bot');
   const [faqs, setFaqs] = useState<FAQ[]>([]);
   // S14: gagal memuat FAQ tidak boleh tampil sebagai daftar kosong senyap.
@@ -426,6 +450,14 @@ export default function PublicChatPage() {
 
     const nama = visitorName.trim() || 'Pengunjung';
     const selectedLayanan = layananList.find((l) => l.id === selectedLayananId);
+    // Hari tanpa pelayanan: layanan tanpa bot hanya bisa dilayani petugas -> tidak ada yang menjawab hari ini.
+    if (tanpaLayanan && selectedLayanan && !selectedLayanan.chatbot_aktif) {
+      setSetupError(
+        `${selectedLayanan.nama} hanya dilayani petugas dan tidak tersedia hari ini. Pilih layanan lain yang memiliki asisten virtual, atau hubungi kami kembali pada hari kerja.`,
+      );
+      setLoadingSetup(false);
+      return;
+    }
 
     try {
       const supabase = createClient();
@@ -489,9 +521,10 @@ export default function PublicChatPage() {
 
       // Welcome Message
       const welcomeText = `Halo Bapak/Ibu ${nama}.\nSelamat datang di layanan Live Chat ${selectedLayanan?.nama || 'DPMPTSP'}.\n` +
-        (selectedLayanan?.chatbot_aktif 
+        (selectedLayanan?.chatbot_aktif
           ? 'Saya adalah asisten virtual (bot) yang siap menjawab pertanyaan Anda secara otomatis. Silakan pilih salah satu menu FAQ di bawah atau ketik langsung pertanyaan Anda.'
-          : 'Layanan chatbot FAQ saat ini nonaktif. Kami sedang menghubungkan Anda ke petugas operasional. Mohon tunggu...');
+          : 'Layanan chatbot FAQ saat ini nonaktif. Kami sedang menghubungkan Anda ke petugas operasional. Mohon tunggu...') +
+        (infoHari?.alasan ? `\n${teksPemberitahuanChat(infoHari)}` : '');
 
       setMessages([
         {
@@ -587,8 +620,10 @@ export default function PublicChatPage() {
           ...prev,
           notice(
             ctrl.signal.aborted
-              ? 'Asisten virtual belum menjawab. Jika jawaban belum muncul, tekan "Hubungkan ke Petugas".'
-              : 'Maaf, asisten virtual sedang tidak tersedia. Silakan coba lagi beberapa saat.',
+              ? tanpaLayananRef.current
+                ? 'Asisten virtual belum menjawab. Jika jawaban belum muncul, kirim ulang pertanyaan Anda beberapa saat lagi.'
+                : 'Asisten virtual belum menjawab. Jika jawaban belum muncul, tekan "Hubungkan ke Petugas".'
+              :'Maaf, asisten virtual sedang tidak tersedia. Silakan coba lagi beberapa saat.',
           ),
         ]);
         // Server bisa saja sudah menyimpan balasan/eskalasi: ambil kebenarannya.
@@ -623,13 +658,16 @@ export default function PublicChatPage() {
 
   // Simpan pesan lalu (mode bot) minta jawaban AI. Indikator "mengetik" langsung
   // tampil begitu pesan dikirim, tidak menunggu simpan selesai.
+  // Mode bot: sesi 'bot', ATAU sesi 'eskalasi' pada hari tanpa pelayanan (tidak ada petugas yang akan mengambil;
+  // bot menjawab tanpa eskalasi). Sesi 'aktif' (dipegang petugas) tidak pernah dijawab bot.
+  const modeBot = (status: typeof sesiStatus, tanpa: boolean) => status === 'bot' || (status === 'eskalasi' && tanpa);
   const sendAndAsk = async (msg: Message) => {
-    const botMode = sesiStatusRef.current === 'bot';
+    const botMode = modeBot(sesiStatusRef.current, tanpaLayananRef.current);
     if (botMode) bumpTyping(1);
     try {
       const saved = await postPesan(msg);
       // AI hanya dipanggil saat sesi benar-benar mode bot.
-      if (saved && sesiStatusRef.current === 'bot') await askAI(msg.isi);
+      if (saved && modeBot(sesiStatusRef.current, tanpaLayananRef.current)) await askAI(msg.isi);
     } finally {
       if (botMode) bumpTyping(-1);
     }
@@ -641,7 +679,7 @@ export default function PublicChatPage() {
   };
 
   const handleEscalateManual = async () => {
-    if (!sesiId || sesiStatus !== 'bot') return;
+    if (!sesiId || sesiStatus !== 'bot' || tanpaLayanan) return;
 
     // Eskalasi manual: kirim sebagai pertanyaan ke AI route — server akan
     // menandai sesi eskalasi + menyiarkan pesan bot. (Pengunjung tidak boleh
@@ -694,6 +732,15 @@ export default function PublicChatPage() {
                 {PII_DISCLAIMER}
               </p>
             </div>
+
+            {infoHari?.alasan && (
+              <div role="note" data-testid="chat-hari-tanpa-layanan" className={styles.hariTanpaLayanan}>
+                <AlertCircle size={16} aria-hidden="true" style={{ flexShrink: 0, marginTop: 2 }} />
+                <span>
+                  <strong>Live chat dengan petugas tidak tersedia hari ini.</strong> {teksPemberitahuanChat(infoHari)}
+                </span>
+              </div>
+            )}
 
             {!isOnline && (
               <div
@@ -772,11 +819,21 @@ export default function PublicChatPage() {
                   required
                 >
                   <option value="">{layananError ? '— Layanan belum dapat dimuat —' : '— Pilih layanan tujuan —'}</option>
-                  {layananList.map((layanan) => (
-                    <option key={layanan.id} value={layanan.id} disabled={layanan.status_tampilan === 'coming_soon'}>
-                      {layanan.nama}{layanan.status_tampilan === 'coming_soon' ? ' (Segera hadir)' : ''}
-                    </option>
-                  ))}
+                  {layananList.map((layanan) => {
+                    // Hari tanpa pelayanan: layanan tanpa bot (hanya petugas) tidak dapat dilayani hari ini.
+                    const tanpaBotHariIni = tanpaLayanan && !layanan.chatbot_aktif;
+                    return (
+                      <option
+                        key={layanan.id}
+                        value={layanan.id}
+                        disabled={layanan.status_tampilan === 'coming_soon' || tanpaBotHariIni}
+                      >
+                        {layanan.nama}
+                        {layanan.status_tampilan === 'coming_soon' ? ' (Segera hadir)' : ''}
+                        {tanpaBotHariIni && layanan.status_tampilan !== 'coming_soon' ? ' (hanya petugas, tidak tersedia hari ini)' : ''}
+                      </option>
+                    );
+                  })}
                 </select>
                 {layananError && (
                   <ErrorRetry
@@ -850,18 +907,26 @@ export default function PublicChatPage() {
               {sesiStatus === 'bot' && (
                 <>
                   <Bot size={14} />
-                  <span>Mode Chatbot FAQ Aktif</span>
-                  <button 
-                    type="button" 
-                    className="btn btn--secondary btn--sm" 
-                    style={{ marginLeft: 'auto', padding: 'var(--space-1) var(--space-2)', fontSize: '10px' }}
-                    onClick={handleEscalateManual}
-                  >
-                    Hubungkan ke Petugas
-                  </button>
+                  <span>{tanpaLayanan ? 'Mode Chatbot FAQ — petugas tidak bertugas hari ini' : 'Mode Chatbot FAQ Aktif'}</span>
+                  {!tanpaLayanan && (
+                    <button
+                      type="button"
+                      className="btn btn--secondary btn--sm"
+                      style={{ marginLeft: 'auto', padding: 'var(--space-1) var(--space-2)', fontSize: '10px' }}
+                      onClick={handleEscalateManual}
+                    >
+                      Hubungkan ke Petugas
+                    </button>
+                  )}
                 </>
               )}
-              {sesiStatus === 'eskalasi' && (
+              {sesiStatus === 'eskalasi' && tanpaLayanan && (
+                <>
+                  <Bot size={14} />
+                  <span>Petugas tidak bertugas hari ini — pertanyaan Anda dijawab asisten virtual.</span>
+                </>
+              )}
+              {sesiStatus === 'eskalasi' && !tanpaLayanan && (
                 <>
                   <Loader2 size={12} className="animate-pulse" />
                   <span>Menghubungkan ke petugas operasional loket... Mohon tunggu.</span>
@@ -881,8 +946,14 @@ export default function PublicChatPage() {
               )}
             </div>
 
-            {lewatJamTutup && (
-              <p role="note" style={{ margin: 0, padding: 'var(--space-2) var(--space-4)', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
+            {infoHari?.alasan && (
+              <div role="note" data-testid="chat-hari-tanpa-layanan" className={styles.hariTanpaLayananBar}>
+                <AlertCircle size={14} aria-hidden="true" style={{ flexShrink: 0, marginTop: 2 }} />
+                <span>{teksPemberitahuanChat(infoHari)}</span>
+              </div>
+            )}
+            {lewatJamTutup && !infoHari?.alasan && (
+              <p role="note"style={{ margin: 0, padding: 'var(--space-2) var(--space-4)', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
                 Layanan sudah tutup pukul 16.00 WIB. Bot tetap dapat menjawab; petugas melayani lagi pada jam kerja berikutnya.
               </p>
             )}
@@ -957,7 +1028,7 @@ export default function PublicChatPage() {
                     ))}
                     
                     {/* S14: FAQ gagal dimuat -> pesan jelas + Coba lagi (bukan daftar kosong senyap) */}
-                    {sesiStatus === 'bot' && faqError && (
+                    {modeBot(sesiStatus, tanpaLayanan) && faqError && (
                       <div className={styles.faqError}>
                         <ErrorRetry
                           judul="FAQ belum dapat dimuat"
@@ -969,7 +1040,7 @@ export default function PublicChatPage() {
                     )}
 
                     {/* Quick FAQ Chips embedded in MessageList as custom component if active */}
-                    {sesiStatus === 'bot' && !faqError && faqs.length > 0 && (
+                    {modeBot(sesiStatus, tanpaLayanan) && !faqError && faqs.length > 0 && (
                       <div className={styles.quickFaqSection} style={{ marginTop: 'var(--space-4)', marginBottom: 'var(--space-2)' }}>
                         <span className={styles.quickFaqTitle}>FAQ Cepat:</span>
                         <div className={styles.quickFaqGrid}>

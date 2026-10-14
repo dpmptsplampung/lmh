@@ -30,6 +30,7 @@ import {
   type PeranTahapChat,
 } from '@/lib/chat-staf';
 import type { TopikFo } from '@/lib/fo-penanganan';
+import { muatInfoHariLayanan, sebabHariTanpaLayanan, type InfoHariLayanan } from '@/lib/chat/hari-tanpa-layanan';
 import {
   ChatAmbilAlihDialog,
   ChatSelesaiDialog,
@@ -125,6 +126,29 @@ export default function AdminChatPage() {
   const [aksiBusy, setAksiBusy] = useState(false);
   // Peringatan setelah meneruskan chat ke layanan yang belum ada petugas hadir (bukan galat; kontrak §2.2).
   const [peringatan, setPeringatan] = useState<string | null>(null);
+  // Hari tanpa pelayanan (Sabtu/Minggu/hari_libur; keputusan CEO 2026-10-14): chat tidak dapat diambil, diambil alih,
+  // atau diteruskan (DB menolak HARI_TANPA_LAYANAN). Tombol dinonaktifkan dengan alasan; pemegang chat dari hari kerja
+  // tetap dapat membalas dan menyelesaikan.
+  const [infoHari, setInfoHari] = useState<InfoHariLayanan | null>(null);
+  useEffect(() => {
+    let batal = false;
+    Promise.resolve()
+      .then(() => muatInfoHariLayanan(createClient(), new Date(), { kanal: false }))
+      .then((info) => {
+        if (!batal) setInfoHari(info);
+      })
+      .catch(() => {
+        /* gagal menilai hari: tombol tetap aktif; DB tetap penegak */
+      });
+    return () => {
+      batal = true;
+    };
+  }, []);
+  const tanpaLayanan = !!infoHari?.alasan;
+  const alasanTanpaLayanan = infoHari?.alasan
+    ? `Chat tidak dapat diambil atau diteruskan karena ${sebabHariTanpaLayanan(infoHari)} (hari tanpa pelayanan). ` +
+      'Pengunjung hanya dilayani asisten virtual; chat yang menunggu ditutup otomatis setelah 24 jam tanpa aktivitas.'
+    : null;
 
   const { toast } = useToast();
   const selectedIdRef = useRef<string | null>(null);
@@ -550,6 +574,21 @@ export default function AdminChatPage() {
         description="Panel petugas — tangani chat pengunjung yang masuk"
       />
 
+      {alasanTanpaLayanan && (
+        <div
+          role="status"
+          data-testid="admin-chat-hari-tanpa-layanan"
+          id="alasan-hari-tanpa-layanan"
+          style={{
+            margin: 'var(--space-4) var(--space-8) 0', padding: 'var(--space-2) var(--space-3)',
+            fontSize: 'var(--text-sm)', color: 'var(--color-warning-600)', background: 'var(--color-warning-50)',
+            border: '1px solid var(--color-warning-500)', borderRadius: 'var(--radius-md)',
+          }}
+        >
+          {alasanTanpaLayanan}
+        </div>
+      )}
+
       {peringatan && (
         <div
           role="status"
@@ -699,20 +738,36 @@ export default function AdminChatPage() {
                         type="button"
                         className="btn btn--primary btn--sm"
                         onClick={() => void handleAmbil()}
-                        disabled={aksiBusy}
+                        disabled={aksiBusy || tanpaLayanan}
                         aria-busy={aksiBusy}
+                        title={alasanTanpaLayanan ?? undefined}
+                        aria-describedby={tanpaLayanan ? 'alasan-hari-tanpa-layanan' : undefined}
                       >
                         {aksiBusy ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <UserCheck size={14} aria-hidden="true" />}
                         Ambil Chat
                       </button>
                     )}
                     {bolehAmbilAlih(selectedSession) && (
-                      <button type="button" className="btn btn--primary btn--sm" onClick={() => setDialog('ambil_alih')} disabled={aksiBusy}>
+                      <button
+                        type="button"
+                        className="btn btn--primary btn--sm"
+                        onClick={() => setDialog('ambil_alih')}
+                        disabled={aksiBusy || tanpaLayanan}
+                        title={alasanTanpaLayanan ?? undefined}
+                        aria-describedby={tanpaLayanan ? 'alasan-hari-tanpa-layanan' : undefined}
+                      >
                         <UserCog size={14} aria-hidden="true" /> Ambil Alih Chat
                       </button>
                     )}
                     {bolehTeruskan(selectedSession) && (
-                      <button type="button" className="btn btn--secondary btn--sm" onClick={() => setDialog('teruskan')} disabled={aksiBusy}>
+                      <button
+                        type="button"
+                        className="btn btn--secondary btn--sm"
+                        onClick={() => setDialog('teruskan')}
+                        disabled={aksiBusy || tanpaLayanan}
+                        title={alasanTanpaLayanan ?? undefined}
+                        aria-describedby={tanpaLayanan ? 'alasan-hari-tanpa-layanan' : undefined}
+                      >
                         <ArrowRight size={14} aria-hidden="true" /> Teruskan ke Layanan
                       </button>
                     )}
@@ -729,7 +784,11 @@ export default function AdminChatPage() {
                 <div style={{ display: 'flex', flexDirection: 'column', background: 'var(--surface-primary)', borderBottom: '1px solid var(--border-default)' }}>
                         {!canReply && (
                           <div role="status" style={{ padding: 'var(--space-2) var(--space-4)', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
-                            {dipegangLain(selectedSession)
+                            {alasanTanpaLayanan
+                              ? dipegangLain(selectedSession)
+                                ? `Chat ini sedang ditangani ${holderName(selectedSession) ?? 'petugas lain'}. ${alasanTanpaLayanan}`
+                                : alasanTanpaLayanan
+                              : dipegangLain(selectedSession)
                               ? `Chat ini sedang ditangani ${holderName(selectedSession) ?? 'petugas lain'}.${bolehAmbilAlih(selectedSession) ? ' Tekan "Ambil Alih Chat" (alasan wajib) untuk membalas.' : ''}`
                               : menungguLayanan(selectedSession) && !bolehAmbil(selectedSession)
                                 ? 'Chat ini sudah diteruskan ke petugas layanan. Petugas layanan yang akan mengambilnya.'

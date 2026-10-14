@@ -42,7 +42,11 @@ export type BotHasil =
       provider: string | null;
       mode: ModeLayanan;
     }
-  | { kind: 'gagal'; operation: string; err: unknown; faqIds: string[]; topSim: number | null; text: string; reason: string };
+  | {
+      kind: 'gagal'; operation: string; err: unknown; faqIds: string[]; topSim: number | null; text: string; reason: string;
+      /** Mode waktu saat gagal: pemanggil TIDAK mengeskalasi pada hari tanpa pelayanan (modeHariTanpaLayanan). */
+      mode: ModeLayanan;
+    };
 
 export const teksTolak = (nama?: string | null) =>
   `Mohon maaf, saya hanya dapat membantu seputar ${nama ? `layanan ${nama}` : 'layanan ini'}. ` +
@@ -97,16 +101,18 @@ export async function jalankanBot(input: {
   const { admin, pertanyaan, layananId } = input;
   const layananNama = input.layananNama ?? undefined;
   const now = input.now ?? new Date();
+  // Kalender dimuat lebih dulu: jalur gagal (termasuk injeksi prompt) juga membawa mode agar pemanggil tidak
+  // mengeskalasi pada hari tanpa pelayanan (keputusan CEO 2026-10-14).
+  const mode = await muatKalender(admin, now);
 
   if (detectPromptInjection(input.rawPertanyaan)) {
     return {
       kind: 'gagal', operation: 'chat.ai.prompt_injection', err: new Error('prompt injection terdeteksi'),
-      faqIds: [], topSim: null, reason: 'prompt_injection',
+      faqIds: [], topSim: null, reason: 'prompt_injection', mode,
       text: 'Maaf, pertanyaan Anda mengandung instruksi yang tidak diizinkan. Saya akan menghubungkan Anda ke petugas.',
     };
   }
 
-  const mode = await muatKalender(admin, now);
   const baseOk = { sumberDokumen: [] as SumberDokumen[], provider: null as string | null, mode };
 
   // TINGKAT 0 — pencocok FAQ deterministik di Postgres (tanpa LLM).
@@ -152,7 +158,7 @@ export async function jalankanBot(input: {
     degraded = cause(e);
     logServerEvent('error', { operation: 'chat.ai.embed_or_match', route: '/api/chat/ai', cause: degraded });
     if (ftsCandidates.length === 0) {
-      return { kind: 'gagal', operation: 'chat.ai.no_context', err: e, faqIds: [], topSim: null, text: FALLBACK_TEXT, reason: 'ai_error' };
+      return { kind: 'gagal', operation: 'chat.ai.no_context', err: e, faqIds: [], topSim: null, text: FALLBACK_TEXT, reason: 'ai_error', mode };
     }
     // match_faq_teks tidak mengembalikan layanan_id dan barisnya bisa FAQ umum (layanan_id NULL, migrasi
     // 202610130001): jangan mengarang layanan_id = layananId. null = umum/tidak diketahui (tak dipakai pemanggil).
@@ -248,7 +254,7 @@ export async function jalankanBot(input: {
       const text = isExactMatch && best
         ? `${best.jawaban}\n\nPetugas kami juga akan membantu Anda lebih lanjut.`
         : FALLBACK_TEXT;
-      return { kind: 'gagal', operation: 'chat.ai.llm_failed', err: new Error('semua penyedia LLM gagal'), faqIds, topSim, text, reason: 'ai_error' };
+      return { kind: 'gagal', operation: 'chat.ai.llm_failed', err: new Error('semua penyedia LLM gagal'), faqIds, topSim, text, reason: 'ai_error', mode };
     }
   }
 

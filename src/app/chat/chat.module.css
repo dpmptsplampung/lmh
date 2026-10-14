@@ -217,6 +217,34 @@
   margin: var(--space-4) var(--space-4) var(--space-2);
 }
 
+/* Hari tanpa pelayanan (Sabtu/Minggu/hari libur): live chat dengan petugas tidak tersedia, bot saja. */
+.hariTanpaLayanan {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  margin-bottom: var(--space-4);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--color-warning-600);
+  background: var(--color-warning-50);
+  border: 1px solid var(--color-warning-500);
+  border-radius: var(--radius-md);
+}
+
+.hariTanpaLayananBar {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--color-warning-600);
+  background: var(--color-warning-50);
+  border-bottom: 1px solid var(--border-default);
+}
+
 .quickFaqTitle {
   font-size: var(--text-xs);
   font-weight: 700;

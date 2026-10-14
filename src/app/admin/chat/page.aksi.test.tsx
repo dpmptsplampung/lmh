@@ -95,8 +95,11 @@ beforeEach(() => {
   }));
   Element.prototype.scrollIntoView = vi.fn();
   window.history.replaceState({}, '', '/admin/chat');
+  // Hari kerja (Rabu) agar suite tidak bergantung hari dijalankan: pada Sabtu/Minggu/hari_libur tombol ambil nonaktif.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-10-14T10:00:00+07:00'));
 });
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe('kotak masuk chat', () => {
   it('chat eskalasi yang menunggu tampil paling atas dengan hitungan "menunggu diambil"', async () => {
@@ -260,6 +263,55 @@ describe('Ambil Chat', () => {
     await waitFor(() => expect(tombol).toBeDisabled());
     expect(panggilSesi).toHaveLength(1);
     selesai();
+  });
+});
+
+describe('hari tanpa pelayanan (Sabtu/Minggu/hari_libur): chat tidak dapat diambil', () => {
+  it('hari libur (tabel hari_libur): tombol Ambil Chat nonaktif dengan alasan; klik tidak mengirim permintaan', async () => {
+    siapkan('front_office');
+    m.h.tabel.hari_libur = { data: [{ tanggal: '2026-10-14', keterangan: 'Cuti bersama' }], error: null };
+    await bukaSesi();
+    const banner = await screen.findByTestId('admin-chat-hari-tanpa-layanan');
+    expect(banner).toHaveTextContent(/hari ini hari libur \(Cuti bersama\)/);
+    expect(banner).toHaveTextContent(/ditutup otomatis setelah 24 jam/);
+    const tombol = screen.getByRole('button', { name: /Ambil Chat/ });
+    await waitFor(() => expect(tombol).toBeDisabled());
+    expect(tombol).toHaveAttribute('aria-describedby', 'alasan-hari-tanpa-layanan');
+    expect(tombol).toHaveAccessibleDescription(/tidak dapat diambil atau diteruskan/);
+    fireEvent.click(tombol);
+    expect(panggilSesi).toHaveLength(0);
+    // Hari libur dibaca dari tabel hari_libur rentang hari ini (WIB)
+    const kueri = m.h.log.find((l) => l.tabel === 'hari_libur')!;
+    expect(punyaOp(kueri.ops, 'gte', 'tanggal', '2026-10-14')).toBe(true);
+  });
+
+  it('Sabtu: Ambil Alih (Admin) dan Teruskan nonaktif; pemegang chat tetap dapat Selesaikan', async () => {
+    vi.setSystemTime(new Date('2026-10-17T10:00:00+07:00')); // Sabtu
+    siapkan('admin', { sesiRow: sesi0({ status: 'aktif', ditangani_oleh: 'pet-2' }), tahapRows: [tahapFo({ status: 'berjalan', penangan_id: 'pet-2' })] });
+    await bukaSesi();
+    expect(await screen.findByTestId('admin-chat-hari-tanpa-layanan')).toHaveTextContent(/hari ini Sabtu/);
+    await waitFor(() => expect(screen.getByRole('button', { name: /Ambil Alih Chat/ })).toBeDisabled());
+    cleanup();
+
+    siapkan('front_office', {
+      sesiRow: sesi0({ status: 'aktif', ditangani_oleh: ME }),
+      tahapRows: [tahapFo({ status: 'berjalan', penangan_id: ME })],
+    });
+    await bukaSesi();
+    await waitFor(() => expect(screen.getByRole('button', { name: /Teruskan ke Layanan/ })).toBeDisabled());
+    expect(screen.getByRole('button', { name: /Selesaikan Chat/ })).toBeEnabled();
+  });
+
+  it('hari kerja: tanpa pemberitahuan, tombol Ambil aktif; galat DB HARI_TANPA_LAYANAN tetap dipetakan ke pesan jelas', async () => {
+    siapkan('front_office');
+    jawabSesi = () => galat('HARI_TANPA_LAYANAN', 'x', 409);
+    await bukaSesi();
+    expect(screen.queryByTestId('admin-chat-hari-tanpa-layanan')).toBeNull();
+    const tombol = screen.getByRole('button', { name: /Ambil Chat/ });
+    expect(tombol).toBeEnabled();
+    fireEvent.click(tombol);
+    await waitFor(() =>
+      expect(m.toast).toHaveBeenCalledWith(expect.stringContaining('hari tanpa pelayanan'), 'error'));
   });
 });
 

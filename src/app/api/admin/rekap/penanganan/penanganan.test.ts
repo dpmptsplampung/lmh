@@ -91,9 +91,56 @@ describe('GET /api/admin/rekap/penanganan', () => {
     expect((await get('&peran=layanan&layanan_id=550e8400-e29b-41d4-a716-446655440009')).status).toBe(403);
   });
 
-  it('Front Office ditolak untuk rekap layanan', async () => {
-    pasang(buatHRekap({ role: 'front_office' }));
-    expect((await get('&peran=layanan')).status).toBe(403);
+  it('Front Office boleh rekap layanan, HANYA tahap layanan dari kunjungan yang punya tahap FO miliknya', async () => {
+    const lyn = (id: string, foAsal: Baris[]): Baris =>
+      tahap(id, {
+        peran_tahap: 'layanan', layanan_id: 'lyn-oss', penangan_id: 'ptg-1', tiket: null,
+        kunjungan: { nama: 'Budi', asal_instansi: 'CV', fo_asal: foAsal },
+      });
+    const h = buatHRekap({
+      role: 'front_office', meId: 'p-saya',
+      penanganan: [
+        lyn('milik', [{ penangan_id: 'p-saya', peran_tahap: 'fo' }]),
+        lyn('fo-lain', [{ penangan_id: 'p-lain', peran_tahap: 'fo' }]),
+        lyn('tanpa-fo', []),
+        // Satu elemen embed yang sama harus memenuhi kedua syarat (bukan campuran dua elemen).
+        lyn('campur', [{ penangan_id: 'p-lain', peran_tahap: 'fo' }, { penangan_id: 'p-saya', peran_tahap: 'layanan' }]),
+        tahap('tahap-fo-saya'), // peran fo: tidak ikut rekap layanan
+      ],
+    });
+    pasang(h);
+    const res = await get('&peran=layanan');
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.rows.map((r: { id: string }) => r.id)).toEqual(['milik']);
+    expect(body.ringkasan.total).toBe(1);
+    expect(body.cakupan_eskalasi_fo).toBe(true);
+    expect(body.terkunci_ke_saya).toBe(false);
+    expect(body.rows[0]).not.toHaveProperty('kunjungan');
+    const ops = h.log[0].ops;
+    expect(ops).toContainEqual(['eq', ['kunjungan.fo_asal.penangan_id', 'p-saya']]);
+    expect(ops).toContainEqual(['eq', ['kunjungan.fo_asal.peran_tahap', 'fo']]);
+  });
+
+  it('Front Office: id FO cakupan selalu dari sesi; petugas_id/layanan_id hanya menyempitkan', async () => {
+    const h = buatHRekap({ role: 'front_office', meId: 'p-saya' });
+    pasang(h);
+    const res = await get(`&peran=layanan&petugas_id=${UUID_FO2}`);
+    expect(res.status).toBe(200);
+    const ops = h.log[0].ops;
+    expect(ops).toContainEqual(['eq', ['kunjungan.fo_asal.penangan_id', 'p-saya']]);
+    expect(ops).toContainEqual(['eq', ['penangan_id', UUID_FO2]]);
+    expect(ops).not.toContainEqual(['eq', ['kunjungan.fo_asal.penangan_id', UUID_FO2]]);
+  });
+
+  it('Admin dan Petugas: rekap layanan tanpa batas eskalasi FO (perilaku lama)', async () => {
+    for (const role of ['admin', 'petugas']) {
+      const h = buatHRekap({ role, layananId: role === 'petugas' ? 'lyn-oss' : null });
+      pasang(h);
+      const body = await (await get('&peran=layanan')).json();
+      expect(body.cakupan_eskalasi_fo).toBe(false);
+      expect(h.log[0].ops.some(([, a]) => String(a[0]).startsWith('kunjungan.'))).toBe(false);
+    }
   });
 
   it('data > batas baris server (2.500 baris, cap 1.000): total dan ringkasan lengkap, daftar dipaginasi', async () => {

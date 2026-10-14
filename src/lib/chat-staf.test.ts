@@ -39,6 +39,10 @@ describe('pesan & status HTTP', () => {
     expect(statusHttpGalatChat('SUDAH_DIAMBIL')).toBe(409);
     expect(statusHttpGalatChat('ALASAN_WAJIB')).toBe(422);
     expect(statusHttpGalatChat(null)).toBe(500);
+    // 202610140012 #13: chat_ambil / chat_teruskan pada hari tanpa pelayanan
+    expect(kodeGalatChat('HARI_TANPA_LAYANAN: chat tidak dapat diambil pada hari tanpa pelayanan')).toBe('HARI_TANPA_LAYANAN');
+    expect(statusHttpGalatChat('HARI_TANPA_LAYANAN')).toBe(409);
+    expect(PESAN_GALAT_CHAT.HARI_TANPA_LAYANAN).toMatch(/Sabtu\/Minggu\/hari libur/);
     expect(pesanGalatChat('SUDAH_DIAMBIL')).toBe(PESAN_GALAT_CHAT.SUDAH_DIAMBIL);
     expect(pesanGalatChat('XYZ', 'cadangan')).toBe('cadangan');
   });

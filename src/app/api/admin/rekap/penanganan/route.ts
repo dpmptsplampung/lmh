@@ -39,6 +39,7 @@ export async function GET(request: NextRequest) {
         sampai: q.sampai,
         penanganId: cakupan.penanganId,
         layananId: cakupan.layananId,
+        eskalasiFoId: cakupan.eskalasiFoId,
         from,
         to,
       }),
@@ -49,8 +50,10 @@ export async function GET(request: NextRequest) {
       total: semua.length,
       truncated,
       peran_saya: staf.me.role,
-      // FO terkunci ke dirinya sendiri; UI menyembunyikan filter FO.
-      terkunci_ke_saya: staf.me.role === 'front_office',
+      // Rekap FO: FO terkunci ke dirinya sendiri; UI menyembunyikan filter FO.
+      terkunci_ke_saya: staf.me.role === 'front_office' && q.peran === 'fo',
+      // Rekap layanan untuk FO: hanya tahap layanan dari kunjungan yang pernah ia tangani (eskalasi asal FO itu).
+      cakupan_eskalasi_fo: cakupan.eskalasiFoId != null,
       ringkasan: ringkasPenanganan(semua),
       rows: semua.slice(awal, awal + q.page_size),
     });
