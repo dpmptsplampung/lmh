@@ -1,3 +1,7 @@
 # Pastikan hook & skrip shell selalu LF (core.autocrlf=true di Windows bisa merusak `sh`)
 .githooks/* text eol=lf
 *.sh text eol=lf
+
+# Skrip Node dengan shebang harus LF (CRLF merusak "#!/usr/bin/env node" di Windows/vmForks)
+scripts/**/*.mjs text eol=lf
+scripts/*.mjs text eol=lf
