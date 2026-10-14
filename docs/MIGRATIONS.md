@@ -231,7 +231,7 @@ Dry-run terhadap produksi 2026-10-14 (siang, read-only, di-ROLLBACK, saat 0003 b
 
 | Versi | Berkas | Prasyarat | Rollback | Status |
 |---|---|---|---|---|
-| 202610140014 | `202610140014_walkin_data_lengkap.sql` | 0013 (penanda komentar `boleh_penanganan`) + 0012 (`hari_tanpa_layanan`) + `fo_mulai_kunjungan` (0004) — penjaga `PRASYARAT` | `docs/rollback-walkin-data-lengkap-202610140014.sql` (PERTAMA dalam urutan rollback; memulihkan `fo_mulai_kunjungan` persis versi 0012 dan menghapus komentar) | **DITULIS, BELUM DITERAPKAN ke produksi; menunggu konfirmasi CEO** |
+| 202610140014 | `202610140014_walkin_data_lengkap.sql` | 0013 (penanda komentar `boleh_penanganan`) + 0012 (`hari_tanpa_layanan`) + `fo_mulai_kunjungan` (0004) — penjaga `PRASYARAT` | `docs/rollback-walkin-data-lengkap-202610140014.sql` (PERTAMA dalam urutan rollback; memulihkan `fo_mulai_kunjungan` persis versi 0012 dan menghapus komentar) | **DITERAPKAN 2026-10-14 malam (atomik); klien baru di-deploy lebih dulu (PR #12), ledger terisi** |
 
 Permintaan CEO 2026-10-14: pendaftaran walk-in FO memuat SEMUA field wajib dan tervalidasi (HP dan email diperiksa).
 Hanya `fo_mulai_kunjungan` yang diganti (CREATE OR REPLACE penuh dari versi 0012); yang berubah HANYA normalisasi input
