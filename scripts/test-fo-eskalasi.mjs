@@ -176,7 +176,17 @@ async function buatFixture() {
 }
 
 // Fixture alur lama (dibuat SEBELUM migrasi): reservasi visit 'terjadwal' hari ini + tiket walk-in lama.
+// WP-24 (202610140007): sesudahnya `visit` adalah ARSIP (tulis ditolak VISIT_ARSIP) dan RPC tidak menyinkronkan visit
+// lagi. Pada DB yang sudah memuat 0007 fixture alur lama tidak bisa dibuat: seksi tiket/reservasi lama dilewati
+// (cakupan pengganti: scripts/test-wp24.mjs seksi 2-3). Skrip ini menguji 0003-0005 SEBELUM 0007.
 async function siapkanLama() {
+  F.wp24 = (await satu(`SELECT to_regprocedure('public.visit_arsip_jaga()') IS NOT NULL AS a`))?.a === true;
+  if (F.wp24) {
+    info('DB sudah memuat WP-24 (0007): fixture visit lama dilewati; seksi 5/8 bagian "lama" dilewati (lihat test-wp24.mjs)');
+    F.resvLama = null;
+    F.tiketLama = null;
+    return;
+  }
   const r = await pgq(`INSERT INTO public.visit (asal, pengunjung_id, nama, tujuan, tanggal_rencana, keperluan, status, layanan_id)
     VALUES ('reservasi',$1,'ZZ Resv Lama','loket',$2::date,'uji lama','terjadwal',$3) RETURNING id, qr_token`,
     [F.p_visitor, F.hariIni, F.A]);
@@ -490,6 +500,7 @@ async function fasePasca() {
         && (await satu(`SELECT count(*)::int n FROM public.audit_log WHERE aksi='fo_tolak_reservasi' AND entitas_id=$1`, [besok.id])).n === 1);
     });
     await sp(async () => {
+      if (!F.resvLama) { info('reservasi lama (visit) tidak tersedia (DB pasca WP-24); dilewati'); return; }
       const k = await satu(`SELECT id FROM public.kunjungan WHERE legacy_visit_id=$1`, [F.resvLama.id]);
       if (!k) { cek('reservasi lama punya baris kunjungan (dual-write)', false); return; }
       const rr = async () => (await satu(`SELECT coalesce(sum(dilayani),0)::int n FROM public.skm_response_rate WHERE layanan_id=$1`, [F.A])).n;
@@ -519,7 +530,9 @@ async function fasePasca() {
       cek('petugas membaca topik: ok', ((await run(F.act.petA, `SELECT id FROM public.topik_penanganan WHERE layanan_id=$1`, [F.A])).rows?.length ?? 0) >= 1);
       cek('pengunjung membaca topik: 0 baris', ((await run(F.act.visitor, `SELECT id FROM public.topik_penanganan`)).rows?.length ?? -1) === 0);
       cek('pengunjung membaca penanganan: 0 baris', ((await run(F.act.visitor, `SELECT id FROM public.penanganan`)).rows?.length ?? -1) === 0);
-      cek('anon memanggil fo_sinkron_visit: 42501', ditolak(await run(ANON, `SELECT public.fo_sinkron_visit($1)`, [x.kunjungan])));
+      const sinkron = await run(ANON, `SELECT public.fo_sinkron_visit($1)`, [x.kunjungan]);
+      cek('anon memanggil fo_sinkron_visit: 42501 (atau fungsi sudah dihapus WP-24: 42883)',
+        ditolak(sinkron) || (F.wp24 && !sinkron.ok && sinkron.code === '42883'), sebut(sinkron));
       cek('authenticated memanggil staf_wajib_sesi: 42501', ditolak(await run(F.act.fo, `SELECT * FROM public.staf_wajib_sesi(ARRAY['front_office'])`)));
     });
   });

@@ -72,6 +72,11 @@ export const FORWARD_MIGRATION_FILES = [
   '202610140004_fo_rpc.sql',
   '202610140005_fo_selaras_antrean.sql',
   '202610140006_pernyataan_kebenaran.sql',
+  '202610140007_wp24_akhiri_dual_write.sql',
+  '202610140008_wp24_tutup_otomatis_retensi.sql',
+  '202610140009_chat_online.sql',
+  '202610140011_pendataan_wajib.sql',
+  '202610140012_perbaikan_review.sql',
 ] as const;
 
 export function listMigrationFiles(): string[] {

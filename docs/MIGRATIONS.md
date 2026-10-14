@@ -85,6 +85,10 @@ Skrip ini menyentuh DB produksi (terapan nyata butuh izin CEO).
 | `202610140004_fo_rpc.sql` | Tahap B RPC: `fo_mulai_kunjungan`, `fo_checkin_reservasi`, `fo_tolak_reservasi`, `fo_selesai`, `fo_eskalasi` (tiket baru + notifikasi petugas), `fo_ambil_dari_kotak_masuk` (atomik), `layanan_kembalikan`, `admin_alihkan` (audit_log), `reservasi_buat`, `reservasi_batalkan`; semua `sesi_valid()`, waktu server. Kontrak UI: `docs/analysis/FO-ESKALASI-KONTRAK-RPC.md`. | **DITULIS, BELUM DITERAPKAN ke produksi; menunggu konfirmasi CEO.** | `docs/rollback-fo-rpc-202610140004.sql` (setelah rollback 0005) |
 | `202610140005_fo_selaras_antrean.sql` | Tahap B penyelarasan: `layanan_mulai`/`layanan_selesai` (signature baru `(uuid, text, jsonb, uuid, text)`; topik + catatan wajib untuk tiket hasil eskalasi)/`admin_ambil_alih` menggerakkan tahap `penanganan`; `get_queue_position`, `tandai_tidak_terlayani_akhir_hari`, `tandai_reservasi_no_show`, `rollup_rekap_harian` memahami tiket/reservasi tanpa `visit` dan status baru. Sinkron `visit` A3 dipertahankan (WP-24). | **DITULIS, BELUM DITERAPKAN ke produksi; menunggu konfirmasi CEO.** | `docs/rollback-fo-selaras-antrean-202610140005.sql` (pertama; memulihkan 7 fungsi persis) |
 | `202610140006_pernyataan_kebenaran.sql` | Kunci Nama Lengkap pengunjung (C2/K12, keputusan CEO G.3 Opsi A): `pengunjung_profil_lengkap(...)` (definisi "profil lengkap" tanpa NIK), trigger `trg_jaga_nama_pengunjung` (nama tidak bisa diubah pemilik setelah profil lengkap; profil lengkap tidak bisa dikosongkan; dikecualikan service_role/pg_cron dan flag `lmh.ubah_nama`), RPC `ubah_nama_pengunjung(uuid, text, text)` (admin/FO aktif, `sesi_valid()`, alasan wajib, `audit_log`). Tanpa kolom/tabel baru; `consent_log` tidak diubah. Syarat: `202610140001`, `202610080001`, `202610090004`, `202607240001`. **Terapkan SEBELUM deploy klien C2; profil yang sudah lengkap langsung terkunci.** | **DITULIS, BELUM DITERAPKAN ke produksi; menunggu konfirmasi CEO.** | `docs/rollback-pernyataan-kebenaran-202610140006.sql` |
+| `202610140007_wp24_akhiri_dual_write.sql` | WP-24 (Gerbang G.1 Opsi A): `visit` menjadi arsip (8 trigger efek DISABLE, `trg_visit_arsip`, policy/hak tulis dicabut, penjaga A3 dihapus); reservasi lama dilengkapi/dibuatkan `kunjungan`; RPC FO/layanan + job akhir hari/no-show tanpa `visit` (`fo_sinkron_visit` dihapus); SKM, notifikasi, response rate, audit, `mv_estimasi_layanan`/`v_antrian_loket`, `jumlah_terdaftar`, `metrik_kepatuhan` pindah ke `kunjungan`/`tiket_antrean`; `skm_respons.kunjungan_id`. Penjaga: prasyarat 0003..0006 + antrean kosong (`CUTOVER_DITOLAK`). | **DITULIS, BELUM DITERAPKAN ke produksi; menunggu konfirmasi CEO.** | `docs/rollback-wp24-akhiri-dual-write-202610140007.sql` (setelah rollback 0008) |
+| `202610140008_wp24_tutup_otomatis_retensi.sql` | `batal_karena` += `tidak_ditutup`; `tutup_penanganan_tertinggal()` + job `penanganan_tutup_otomatis` (23:00 WIB); anonimisasi 730 hari mencakup `kunjungan`, `penanganan.catatan`, arsip `visit`. Syarat: 0007. | **DITULIS, BELUM DITERAPKAN ke produksi; menunggu konfirmasi CEO.** | `docs/rollback-wp24-tutup-otomatis-retensi-202610140008.sql` (pertama) |
+| `202610140009_chat_online.sql` | Tahap C live chat = layanan online tercatat (K8/K10): `chat_sesi.kunjungan_id`; eskalasi membuat `kunjungan` asal `online` + tahap `penanganan` FO chat `menunggu` (trigger); RPC `chat_ambil` (atomik; petugas layanan boleh ambil langsung sebelum FO; Admin ambil alih + alasan + audit), `chat_teruskan` (handoff tanpa tiket + notifikasi petugas), `chat_selesai` (topik + catatan wajib, pesan penutup `penutup_survei`); penjaga `CHAT_HARUS_RPC` atas kolom staf `chat_sesi`; `boleh_penanganan`/`boleh_kunjungan` + cabang chat petugas; backfill sesi `eskalasi`/`aktif`. Syarat: 0003-0005. **Terapkan bersamaan dengan klien Tahap C; route lama `/api/chat/sesi` ditolak setelahnya.** | **DITULIS, BELUM DITERAPKAN ke produksi; menunggu konfirmasi CEO.** | `docs/rollback-chat-online-202610140009.sql` (sebelum rollback 0005) |
+| `202610140011_pendataan_wajib.sql` | Tahap C3 (G.5): Pendataan semua field wajib. `pendataan_validasi_payload` (`INVALID_PAYLOAD`) dipanggil `layanan_selesai` (salinan persis 0007 + validasi); CHECK `tipe_pelaku_usaha`/`skala_usaha` dilonggarkan (+ opsi "tidak berlaku"). Penjaga: 0007 harus sudah diterapkan. Data lama tidak disentuh. | **DITULIS, BELUM DITERAPKAN ke produksi; menunggu konfirmasi CEO.** | `docs/rollback-pendataan-wajib-202610140011.sql` |
 
 Cara menerapkan `202610130001_faq_umum.sql` (menyentuh DB produksi via `.env.local`; hanya setelah konfirmasi CEO). Berkas ini **mengubah policy dan fungsi, jadi WAJIB `--atomic`**: tanpa `--atomic`, `scripts/apply-migration.mjs` menolaknya (lihat komentar skrip itu dan `scripts/lib/sql-txn.mjs`).
 
@@ -131,9 +135,71 @@ node scripts/apply-migration.mjs supabase/migrations/202610140005_fo_selaras_ant
 node scripts/apply-migration.mjs supabase/migrations/202610140005_fo_selaras_antrean.sql --atomic
 ```
 
-> **PERINGATAN Tahap B.** (1) Dry-run 0004 dan 0005 hanya bermakna bila 0003 (dan 0004) sudah ada; dry-run berurutan terpisah akan gagal di penjaga prasyarat. Untuk pratinjau gabungan pakai `scripts/test-fo-eskalasi.mjs` (ketiganya di satu transaksi yang di-ROLLBACK). (2) Deploy klien Tahap B bersamaan: Kelola Layanan (prefiks 2 huruf), halaman FO (kotak masuk, penanganan, eskalasi), scan QR (`fo_checkin_reservasi`), `me/reservasi` (`reservasi_buat`), antrean petugas (`layanan_selesai` + topik/catatan, `layanan_kembalikan`), Admin (`admin_alihkan`). (3) WP-24 (mematikan dual-write `visit`) tetap pekerjaan terpisah; SKM/notifikasi/estimasi untuk kunjungan baru belum berjalan sampai itu selesai. (4) Rollback urutan terbalik: 0005 -> 0004 -> 0003.
+> **PERINGATAN Tahap B.** (1) Dry-run 0004 dan 0005 hanya bermakna bila 0003 (dan 0004) sudah ada; dry-run berurutan terpisah akan gagal di penjaga prasyarat. Untuk pratinjau gabungan pakai `scripts/test-fo-eskalasi.mjs` (ketiganya di satu transaksi yang di-ROLLBACK). (2) Deploy klien Tahap B bersamaan: Kelola Layanan (prefiks 2 huruf), halaman FO (kotak masuk, penanganan, eskalasi), scan QR (`fo_checkin_reservasi`), `me/reservasi` (`reservasi_buat`), antrean petugas (`layanan_selesai` + topik/catatan, `layanan_kembalikan`), Admin (`admin_alihkan`). (3) WP-24 (mematikan dual-write `visit`) ditulis sebagai 0007/0008 (lihat di bawah); selama 0007 belum diterapkan, SKM/notifikasi/estimasi untuk kunjungan baru tanpa `visit` belum berjalan. (4) Rollback urutan terbalik: 0005 -> 0004 -> 0003.
+
+Cara menerapkan 0007, 0008, 0009, dan 0011 (menyentuh DB produksi; hanya setelah konfirmasi CEO; di luar jam layanan dengan antrean kosong). Semuanya WAJIB `--atomic`, selalu `--dry-run` dulu. Dry-run tunggal hanya bermakna bila prasyaratnya sudah terpasang (penjaga `PRASYARAT` menolak di produksi saat ini, ROLLBACK, tidak mengubah apa pun):
+
+```bash
+node scripts/apply-migration.mjs supabase/migrations/202610140007_wp24_akhiri_dual_write.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202610140007_wp24_akhiri_dual_write.sql --atomic
+node scripts/apply-migration.mjs supabase/migrations/202610140008_wp24_tutup_otomatis_retensi.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202610140008_wp24_tutup_otomatis_retensi.sql --atomic
+node scripts/apply-migration.mjs supabase/migrations/202610140009_chat_online.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202610140009_chat_online.sql --atomic
+node scripts/apply-migration.mjs supabase/migrations/202610140011_pendataan_wajib.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202610140011_pendataan_wajib.sql --atomic
+```
+
+Pratinjau gabungan sebelum 0003-0005 diterapkan (satu transaksi, selalu ROLLBACK; skrip menolak jam layanan Senin-Jumat 07:00-16:59 WIB): `node scripts/test-chat-online.mjs --pre 0002 --pre 0003 --pre 0004 --pre 0005 --apply 202610140009_chat_online.sql` (path lengkap per berkas) dan `scripts/test-wp24.mjs` (lihat `docs/RUNBOOK_FO_ESKALASI.md`).
+
+### URUTAN TERAPAN (satu jendela cutover) dan larangan
+
+Status per 2026-10-14: hanya `202610140001` yang DITERAPKAN; `0002`-`0009` dan `0011` DITULIS, BELUM DITERAPKAN. Nomor `0010` tidak dipakai (tidak ada berkasnya). `0012` sedang ditulis (lihat `docs/analysis/DB-CHANGES.md` bila sudah dicatat).
+
+```
+0002 -> 0003 -> 0004 -> 0005 -> 0006 -> 0007 -> 0008 -> 0009 -> 0011 -> (0012)
+```
+
+- Rollback = urutan terbalik: 0012 -> 0011 -> 0009 -> 0008 -> 0007 -> 0006 -> 0005 -> 0004 -> 0003 -> 0002 (0009 sebelum 0005; 0008 sebelum 0007; 0007 setelah 0008 dan sebelum 0006/0005/0004/0003/0002).
+- **DILARANG menerapkan ulang 0004 atau 0005 SETELAH 0007 diterapkan.** Keduanya `CREATE OR REPLACE` fungsi yang oleh 0007 sudah diganti dengan versi tanpa `visit`; menjalankannya lagi menimpa versi 0007 dengan versi lama yang masih menulis/mengunci `visit` (kini arsip, ditolak `VISIT_ARSIP`), sehingga RPC FO/layanan dan job akhir hari/no-show rusak. Hal yang sama untuk 0003 dan 0002 (penjaga/DROP/policy yang sudah ditimpa). Berkas 0002-0006 hanya dijalankan ulang bila rollback 0007 dilakukan lebih dulu. Skrip uji (`scripts/test-fo-eskalasi.mjs`, `test-chat-online.mjs`, `test-wp24.mjs`) hanya memakai transaksi ROLLBACK, sehingga aman.
+- 0011 hanya SETELAH 0007 (penjaga membaca `visit_arsip_jaga()`; bila dijalankan sebelum 0007, `layanan_selesai` ditimpa lagi oleh 0007 dan validasi hilang).
+- 0007 menolak (`CUTOVER_DITOLAK`) bila ada tiket `menunggu`/`dipanggil` hari ini: terapkan setelah antrean kosong (Jumat setelah 16:00 WIB atau akhir pekan, Gerbang G.6), bersamaan dengan deploy klien. Muat ulang skema PostgREST setelah setiap migrasi.
+- Setelah migrasi diterapkan lewat `scripts/apply-migration.mjs`, ledger `supabase_migrations.schema_migrations` TIDAK ikut tercatat; catat kemudian lewat `scripts/fill-migration-ledger.mjs` (izin CEO).
+- Urutan lengkap, rollback, dan verifikasi pasca: `docs/RUNBOOK_FO_ESKALASI.md`.
 
 > **PERINGATAN URUTAN DEPLOY.** Menu "Kelola FAQ" untuk Front Office sudah dibuka di `src/lib/admin-nav.ts`. Urutan yang benar: `202610130001` -> `202610130002` -> **baru** deploy kode UI FO. Bila kode di-deploy SEBELUM kedua migrasi diterapkan, FO yang menyimpan FAQ umum gagal (INSERT `layanan_id NULL` melanggar `NOT NULL`, karena `202610130001` belum melonggarkannya); bila hanya `202610130002` yang belum, FO ber-layanan masih dapat menulis FAQ layanannya dan memindahkan baris. Migrasi idempoten dan tidak mengubah baris data.
+
+## Perbaikan temuan review (0012) dan perubahan in-place 0009
+
+### Baris tabel urutan terapan
+
+| Versi | Berkas | Prasyarat | Rollback | Status |
+|---|---|---|---|---|
+| 202610140012 | `202610140012_perbaikan_review.sql` | 0011 (+0009, 0007, pg_cron) — penjaga `PRASYARAT` | `docs/rollback-perbaikan-review-202610140012.sql` (PERTAMA dalam urutan rollback) | ditulis, belum diterapkan |
+
+Urutan cutover menjadi `0002 -> ... -> 0008 -> 0009 -> 0011 -> 0012`. Urutan rollback: `0012 -> 0011 -> 0009 -> 0008 -> 0007 -> ...`.
+
+### Catatan perubahan in-place 202610140009 (belum diterapkan)
+
+`202610140009_chat_online.sql` DIUBAH in-place (diizinkan karena belum diterapkan; hanya trigger dan backfill):
+- trigger `trg_chat_sesi_eskalasi_kunjungan` kini mensyaratkan minimal satu pesan pengunjung;
+- trigger baru `trg_chat_pesan_eskalasi_kunjungan` (AFTER INSERT `chat_pesan`, pengirim `pengunjung`) + fungsi `chat_pesan_eskalasi_kunjungan()`;
+- backfill hanya sesi `eskalasi`/`aktif` yang punya pesan pengunjung dan aktivitas terakhir <= 24 jam.
+Entri manifest 0009 dihapus lalu diregenerasi (`node scripts/gen-migration-manifest.mjs`); hash baru `ac5602d8...b932ff`. Rollback 0009 ikut diperbarui (drop trigger/fungsi baru + penjaga 0012). Uji perilaku `scripts/test-chat-online.mjs` (lolos 99/99 pada versi lama 2026-10-14 06:14 WIB) **wajib diulang**; skrip sudah disesuaikan.
+
+### Larangan (tambahkan ke bagian larangan)
+
+- JANGAN menerapkan ulang 202610140004 atau 202610140005 setelah 0007: menimpa fungsi versi 0007/0011/0012 tanpa galat. Bila terlanjur, terapkan ulang 0007 -> 0008 -> 0009 -> 0011 -> 0012 (idempoten). 0004/0005 tidak diberi penjaga (biaya: hash manifest berubah); ditegakkan lewat runbook.
+- Penjaga urutan rollback (DO di awal berkas): rollback 0011, 0009, 0007 menolak bila 0012 masih ada; rollback 0007 juga menolak bila 0011 masih ada; rollback 0012 menolak bila 0011/0009 sudah tidak ada.
+
+### Perintah
+
+```
+node scripts/apply-migration.mjs supabase/migrations/202610140012_perbaikan_review.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202610140012_perbaikan_review.sql --atomic
+```
+
+Dry-run terhadap produksi 2026-10-14 (siang, read-only, di-ROLLBACK): berhenti di penjaga `PRASYARAT: 202610140011_pendataan_wajib belum diterapkan` (benar). Dry-run 0009 (setelah diubah): berhenti di `PRASYARAT: tabel penanganan/topik_penanganan belum ada` (benar).
 
 ## Ledger migrasi produksi (status 2026-10-13)
 
