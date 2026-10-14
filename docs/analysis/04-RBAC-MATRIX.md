@@ -184,12 +184,12 @@ Kata CEO: "role FO itu walaupun petugas FO ada banyak, tapi semua antrian, semua
 | `pengunjung` (profil akun pengunjung) | tidak | **tidak** (data yang dibutuhkan sudah disalin ke `kunjungan`) | `pengunjung_self_select` |
 | `chat_sesi` | semua | tidak berubah | `chat_sesi_owner_select` |
 | Rekap FO (`/admin/rekap-fo`, ekspor) | hanya miliknya (filter FO lain = 403) | semua FO, filter FO opsional | `tentukanCakupan` (`src/lib/rekap/penanganan.ts`) |
-| Tab Rekap Petugas Layanan (+ ekspor) | hanya eskalasi asal dirinya | semua, filter petugas/layanan opsional, kolom Front Office | idem |
-| `/admin/performa` | ✗ | ✗ (tidak diubah; pertanyaan terbuka ke CEO) | `api/admin/rekap/performa` |
+| Tab Rekap Petugas Layanan (+ ekspor) | hanya eskalasi asal dirinya | semua, filter petugas/layanan opsional, kolom Front Office, filter "Front Office yang mengeskalasi" (`fo_id`, semua role yang melihat tab) | idem; `saringFo` |
+| `/admin/performa` | ✗ | ✗ (tetap Admin saja; keputusan CEO 2026-10-14) | `api/admin/rekap/performa` |
 | Petugas layanan / pengunjung / anon | – | **tidak berubah** (cabang lain `boleh_penanganan` identik 0009) | – |
 
-Nama FO yang melayani tampil di: Penanganan Saya (riwayat + FO lain), Kotak Masuk FO (FO sebelumnya untuk item yang dikembalikan), Kelola Kunjungan (kolom Front Office), Rekap FO (kolom Front Office, sudah ada), tab Rekap Petugas Layanan (kolom baru + Excel), Antrian (catatan eskalasi "oleh <FO>", sudah ada; kini terbaca untuk FO lain juga). Layar TV antrean tidak menampilkan nama staf (tidak diubah).
+Nama FO yang melayani tampil di: Penanganan (riwayat + FO lain), Kotak Masuk FO (FO sebelumnya untuk item yang dikembalikan), Kelola Kunjungan (kolom Front Office), Rekap FO (kolom Front Office, sudah ada), tab Rekap Petugas Layanan (kolom baru + Excel + filter FO yang mengeskalasi), tab Pendataan Helpdesk OSS / Non OSS / Rekap Per Layanan dan panel detail tiket (kolom Front Office + Excel; tiket lama tanpa tahap FO = em dash), Antrian (catatan eskalasi "oleh <FO>", sudah ada; kini terbaca untuk FO lain juga). Layar TV antrean tidak menampilkan nama staf (tidak diubah).
 
-Audit akses: tidak ada pencatatan per-baca (bukan fitur baru); ekspor Excel tetap tercatat `audit_log`; pembacaan hanya oleh staf aktif ber-sesi. Lihat `docs/KEBIJAKAN_PDP.md`. Uji perilaku: `scripts/test-fo-keterbukaan.mjs` (belum dijalankan; hanya di luar jam layanan).
+Audit akses: tidak ada pencatatan per-baca antar-FO (keputusan CEO 2026-10-14); ekspor Excel tetap tercatat `audit_log`; pembacaan hanya oleh staf aktif ber-sesi. Lihat `docs/KEBIJAKAN_PDP.md`. Uji perilaku: `scripts/test-fo-keterbukaan.mjs` (belum dijalankan; hanya di luar jam layanan).
 
 **BERHENTI DI SINI.** Menunggu persetujuan manusia sebelum melanjutkan ke **Fase D (Rencana implementasi)**.

@@ -14,7 +14,7 @@
  -> 0012 perbaikan_review -> 0013 fo_keterbukaan_data
 ```
 
-`0013` (keterbukaan data antar FO, keputusan CEO 2026-10-14) hanya mengganti `boleh_penanganan` (semua FO membaca semua tahap; baca saja). Klien rekap/nama FO aman di-deploy sebelum/sesudah 0013; tanpa 0013 data FO hanya tidak lengkap. Verifikasi pasca: FO-B melihat penanganan FO-A di Penanganan Saya (seksi "Sedang ditangani Front Office lain") dan Rekap FO, tetapi "Selesaikan" milik FO-A tidak tersedia baginya (RPC menolak `BUKAN_PEMILIK`).
+`0013` (keterbukaan data antar FO, keputusan CEO 2026-10-14) hanya mengganti `boleh_penanganan` (semua FO membaca semua tahap; baca saja). Klien rekap/nama FO aman di-deploy sebelum/sesudah 0013; tanpa 0013 data FO hanya tidak lengkap. Verifikasi pasca: FO-B melihat penanganan FO-A di Penanganan (seksi "Sedang ditangani Front Office lain") dan Rekap FO, tetapi "Selesaikan" milik FO-A tidak tersedia baginya (RPC menolak `BUKAN_PEMILIK`).
 
 (`202610140010` tidak dipakai. `0012` = perbaikan temuan review atas 0002..0011, wajib SETELAH 0011 dan 0009; rincian `docs/analysis/_fragmen-R12.md` sampai digabung ke `docs/MIGRATIONS.md`/`DB-CHANGES.md`. Klien rilis ini membaca `layanan.form_pendataan` (0012), jadi klien tetap dideploy SETELAH seluruh rantai termasuk 0012.) Nama berkas lengkap `202610140NNN_<nama>.sql` ada di `docs/MIGRATIONS.md`.
 
