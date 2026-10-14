@@ -495,12 +495,14 @@ describe('Tiket kepemilikan: rollback', () => {
 });
 
 describe('Tiket kepemilikan: pencatatan (docs/ATURAN_MIGRASI.md #4)', () => {
-  it('tercatat di docs/MIGRATIONS.md dan docs/analysis/DB-CHANGES.md: BELUM DITERAPKAN, urutan, jam penerapan, TRANSISI_LEWAT_RPC, skrip lama', () => {
+  it('tercatat di docs/MIGRATIONS.md dan docs/analysis/DB-CHANGES.md: DITERAPKAN 2026-10-14, urutan, jam penerapan, TRANSISI_LEWAT_RPC, skrip lama', () => {
     const migrations = bacaDocs('MIGRATIONS.md');
     expect(migrations).toContain('202610140002_tiket_kepemilikan');
     const dbChanges = bacaDocs('analysis', 'DB-CHANGES.md');
     const entri = dbChanges.slice(dbChanges.indexOf('202610140002_tiket_kepemilikan'));
-    expect(entri).toMatch(/^[\s\S]{0,6000}BELUM DITERAPKAN/);
+    // Status penerapan: DITERAPKAN ke produksi 2026-10-14 malam (cutover atomik). Penanda status "BELUM" tidak boleh tersisa.
+    expect(entri).toMatch(/^[\s\S]{0,6000}DITERAPKAN ke produksi 2026-10-14/);
+    expect(entri.slice(0, 6000)).not.toMatch(/Status\s*:\s*BELUM DITERAPKAN/);
     expect(entri).toMatch(/^[\s\S]{0,6000}202610140001/);
     expect(entri).toMatch(/^[\s\S]{0,6000}TRANSISI_LEWAT_RPC/);
     expect(entri).toMatch(/^[\s\S]{0,6000}selftest-wp21/);

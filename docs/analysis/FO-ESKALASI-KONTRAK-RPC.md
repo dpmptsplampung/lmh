@@ -1,9 +1,9 @@
 # Kontrak DB Tahap B: Alur Front Office → Eskalasi (untuk agent UI)
 
-> Tanggal: 2026-10-13 · Branch `feat/audit-fondasi-fo-eskalasi` · Status migrasi: **DITULIS, BELUM DITERAPKAN** (tidak pernah dijalankan ke DB mana pun).
+> Tanggal: 2026-10-13 · Branch `feat/audit-fondasi-fo-eskalasi` · Status migrasi: **DITERAPKAN ke produksi 2026-10-14 malam** (0002-0009, 0011-0013; semula ditulis tanpa pernah dijalankan; uji perilaku ROLLBACK lolos).
 > Migrasi: `supabase/migrations/202610140003_fo_model_data.sql`, `202610140004_fo_rpc.sql`, `202610140005_fo_selaras_antrean.sql`.
 > Rollback: `docs/rollback-fo-model-data-202610140003.sql`, `docs/rollback-fo-rpc-202610140004.sql`, `docs/rollback-fo-selaras-antrean-202610140005.sql`.
-> Test kontrak statis: `supabase/migrations/fo_eskalasi.test.ts` (memeriksa bahwa dokumen ini memuat semua RPC dan kode galat). Uji perilaku: `scripts/test-fo-eskalasi.mjs` (belum dijalankan).
+> Test kontrak statis: `supabase/migrations/fo_eskalasi.test.ts` (memeriksa bahwa dokumen ini memuat semua RPC dan kode galat). Uji perilaku: `scripts/test-fo-eskalasi.mjs` (dijalankan 2026-10-14 malam terhadap produksi, ROLLBACK, gabungan 0003-0005: 150 lolos).
 > Spec: `docs/superpowers/specs/2026-10-12-alur-fo-eskalasi-design.md` §3–§4. Dokumen ini **mengikat**: bila berbeda dengan spec, yang berlaku adalah dokumen ini (lihat §8 Deviasi).
 
 ## 0. Aturan umum untuk klien
@@ -277,7 +277,7 @@ supabase.from('kunjungan').select('id, tanggal, status, qr_token, tujuan, layana
 
 ## 10. WP-24 (202610140007 + 202610140008): yang berubah bagi klien
 
-> Ditulis, belum diterapkan. Diterapkan dalam jendela cutover yang sama dengan 0002..0006 (runbook `docs/RUNBOOK_FO_ESKALASI.md` bagian WP-24). Bagian ini MENGGANTIKAN peringatan §7.1–7.2 dan menjawab §9 butir 3, 6, 7.
+> Ditulis, lalu diterapkan 2026-10-14 malam. Diterapkan dalam jendela cutover yang sama dengan 0002..0006 (runbook `docs/RUNBOOK_FO_ESKALASI.md` bagian WP-24). Bagian ini MENGGANTIKAN peringatan §7.1–7.2 dan menjawab §9 butir 3, 6, 7.
 
 1. **`visit` = arsip baca saja.** INSERT/UPDATE/DELETE dari klien gagal `42501` (permission denied); dari fungsi/service_role gagal `VISIT_ARSIP` (42501). SELECT (`visit_select_own`) tetap. Tidak ada RPC yang menyinkronkan `visit` lagi; `fo_sinkron_visit` dihapus. Realtime `postgres_changes` pada `visit` (mis. `admin/page.tsx`, `admin/kunjungan/page.tsx`) tidak akan menyala lagi: dengarkan `tiket_antrean`/`penanganan`/`kunjungan` atau andalkan polling.
 2. **Reservasi lama**: reservasi `loket` yang masih `terjadwal` kini punya `tujuan`, `layanan_saran_id`, `keperluan`, `nama_yang_ditemui`, `jam_rencana`, `asal_instansi` di `kunjungan` (disalin dari `visit`). Reservasi lama `bertemu_seseorang` bertanggal hari ini atau nanti dibuatkan baris `kunjungan` (QR sama) sehingga `fo_checkin_reservasi` bekerja (§9.7 terjawab). Pratinjau §6.4 tidak perlu membaca `visit` lagi. Balasan `fo_checkin_reservasi` tetap sama.

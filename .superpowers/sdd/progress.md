@@ -132,7 +132,7 @@ Plan: `docs/superpowers/plans/2026-10-13-implementasi-fo-mutasi-fondasi-plan.md`
 - [x] 1.2 Inventaris mutasi (115 mutasi)
 - [x] 1.3 Konversi T2a/T2b/T2c
 - [x] 1.4 Konversi sisa mutasi (T2d) — 3 agent + review Opus + paket perbaikan FixA/B/C
-- [x] 1.5 Migrasi FAQ umum (0001) + penutup celah FO (0002) — DITULIS, BELUM DITERAPKAN ke produksi (konfirmasi CEO)
+- [x] 1.5 Migrasi FAQ umum (0001) + penutup celah FO (0002) — DITERAPKAN ke produksi 2026-10-13
 - [x] 1.6 Aturan lint `lmh/mutasi-tercek` memblokir (61 test)
 
 ## Fase 2 — Error publik & consent
@@ -141,22 +141,32 @@ Plan: `docs/superpowers/plans/2026-10-13-implementasi-fo-mutasi-fondasi-plan.md`
 
 ## Menunggu keputusan CEO
 - Gerbang G (WP-24, idle sesi, kolom identitas, topik, field wajib, cutover) sebelum Fase 3
-- Konfirmasi terapan migrasi 202610130001/0002 ke produksi; pengisian ledger; V5
+- (Selesai: migrasi 202610130001/0002 terapan 2026-10-13; ledger terisi) V5 masih menunggu CEO
 
 
 ## Pembaruan 2026-10-14 — Tahap A-D (branch `feat/audit-fondasi-fo-eskalasi`, lokal, belum di-push)
 
-Catatan: sebagian besar BELUM diterapkan ke produksi dan BELUM di-deploy. Hanya migrasi 202610140001 yang di produksi. Sumber: `docs/MIGRATIONS.md`, `docs/analysis/DB-CHANGES.md`, `docs/RUNBOOK_FO_ESKALASI.md`, pelacak lokal `docs/audit/AUDIT-2026-10-12-TRACKER.md`.
+Catatan (diperbarui 2026-10-14 malam): SEMUA migrasi Fase 3 (0001-0009, 0011, 0012, 0013; tanpa 0010) sudah DITERAPKAN ke produksi dan branch di-merge ke main (PR #10, cbff52a); lihat bagian "Pembaruan 2026-10-14 malam" di bawah. Baris di bawah ditulis sebelum cutover. Sumber: `docs/MIGRATIONS.md`, `docs/analysis/DB-CHANGES.md`, `docs/RUNBOOK_FO_ESKALASI.md`, pelacak lokal `docs/audit/AUDIT-2026-10-12-TRACKER.md`.
 
 - [x] Fase 0-2 fondasi/mutasi tercek/error publik/FAQ umum: di-commit lokal (894f170, 3161882, 901739f, 423e02e); FAQ umum (202610130001/2) DITERAPKAN 2026-10-13
 - [x] A1/A2 sesi tunggal: migrasi 0001 DITERAPKAN 2026-10-13 (flag `sesi_tunggal_aktif`=false); klien di-commit lokal (ef9bfab), belum di-deploy
-- [x] A3 kepemilikan tiket: kode di-commit lokal (e3d9208); migrasi 0002 DITULIS, BELUM DITERAPKAN
-- [x] B-DB1 model data + RPC FO + penyelarasan (0003-0005) dan C2 kunci nama (0006): SQL di-commit lokal (2e77296), BELUM DITERAPKAN
+- [x] A3 kepemilikan tiket: kode di-commit lokal (e3d9208); migrasi 0002 DITERAPKAN 2026-10-14 malam (uji ROLLBACK 84 lolos)
+- [x] B-DB1 model data + RPC FO + penyelarasan (0003-0005) dan C2 kunci nama (0006): SQL di-commit lokal (2e77296); DITERAPKAN 2026-10-14 malam (0003-0005 uji ROLLBACK gabungan 150 lolos; 0006 hanya prasyarat + test statis)
 - [x] Klien Tahap B/D (halaman `admin/fo/*`, `admin/topik`, `rekap-fo`, `performa`, dialog, scan, reservasi): working tree, belum di-commit
-- [x] WP-24 (0007, 0008) ditulis + `wp24.test.ts`: BELUM DITERAPKAN; `scripts/test-wp24.mjs` belum dijalankan
-- [x] C1 chat online (0009): ditulis; uji perilaku ROLLBACK 99 lolos (2026-10-14); BELUM DITERAPKAN
-- [x] C3 pendataan wajib (0011): ditulis; BELUM DITERAPKAN
+- [x] WP-24 (0007, 0008) ditulis + `wp24.test.ts`: DITERAPKAN 2026-10-14 malam; `scripts/test-wp24.mjs` dijalankan (ROLLBACK) 101 lolos
+- [x] C1 chat online (0009): ditulis; uji perilaku ROLLBACK 99 lolos (siang, versi lama) lalu 106 lolos (malam, versi final); DITERAPKAN 2026-10-14 malam
+- [x] C3 pendataan wajib (0011): ditulis; DITERAPKAN 2026-10-14 malam (prasyarat uji + test statis)
 - [x] Dokumentasi: fragmen DB2/C1/C3 digabung ke MIGRATIONS.md + DB-CHANGES.md; STATUS, DECISION_LOG, RBAC-MATRIX §6, ENVIRONMENT_VARIABLES, RUNBOOK_FO_ESKALASI, KEBIJAKAN_PDP/PRD (rujukan `/api/checkin`) diperbarui
-- [ ] 0012 (agent lain) dan `_fragmen-R12.md`: belum digabung
-- [ ] Gerbang penuh `verify:baseline` untuk working tree + commit klien Tahap B-D; cutover malam (CEO); pengisian ledger; nyalakan flag sesi tunggal
+- [x] 0012 dan 0013: digabung ke dokumen; DITERAPKAN 2026-10-14 malam (uji ROLLBACK 0012 = 61, 0013 = 26)
+- [x] Cutover malam dijalankan; ledger diisi (12 baris). Gerbang penuh `verify:baseline` untuk commit akhir: tidak dicatat di sini, ulangi sebelum rilis berikutnya.
+- [ ] Nyalakan flag sesi tunggal (`sesi_tunggal_aktif` masih false; menunggu pembuktian `session_id` JWT + login ulang staf)
 - [ ] Tahap E survei terpadu (B7): belum dimulai
+
+## Pembaruan 2026-10-14 malam — cutover dijalankan
+
+- [x] Migrasi 0002-0009, 0011, 0012, 0013 (tanpa 0010) DITERAPKAN ke produksi ±17:52-17:57 WIB (`apply-migration --atomic`, dry-run lalu COMMIT); verifikasi read-only lolos (fungsi FO/chat/layanan, `visit` arsip + `trg_visit_arsip`, prefiks 2 huruf, job `penanganan_tutup_otomatis` + `chat_tutup_otomatis`)
+- [x] Ledger produksi diisi: 12 baris (`fill-migration-ledger.mjs --apply --yes`); `docs/analysis/LEDGER-VERIFIKASI-2026-10-14.md`
+- [x] Branch di-merge ke main lewat PR #10 (merge commit cbff52a); deploy produksi Vercel sukses menurut status GitHub
+- [x] Uji perilaku ROLLBACK terhadap produksi lolos: 0002=84, 0003-0005=150, 0007/0008=101, 0009=106, 0012=61, 0013=26; dua bug skrip uji diperbaiki (d7344e3)
+- [ ] BELUM TERBUKTI: pemeriksaan kesehatan dari luar (Vercel Authentication; domain tidak ter-resolve dari mesin penguji), tampilan di browser, konkurensi sejati, kueri rekap FO pada PostgREST sungguhan, `session_id` JWT stabil setelah refresh
+- [ ] Flag `sesi_tunggal_aktif` masih false; staf belum login ulang; komunikasi ke staf (RUNBOOK §9/§12)
