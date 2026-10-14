@@ -77,6 +77,7 @@ export const FORWARD_MIGRATION_FILES = [
   '202610140009_chat_online.sql',
   '202610140011_pendataan_wajib.sql',
   '202610140012_perbaikan_review.sql',
+  '202610140013_fo_keterbukaan_data.sql',
 ] as const;
 
 export function listMigrationFiles(): string[] {

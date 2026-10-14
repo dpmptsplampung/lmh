@@ -3,8 +3,9 @@
 -- ATOMIK (dry-run dulu):
 --   node scripts/apply-migration.mjs docs/rollback-perbaikan-review-202610140012.sql --atomic --dry-run
 --   node scripts/apply-migration.mjs docs/rollback-perbaikan-review-202610140012.sql --atomic
--- URUTAN: rollback ini PERTAMA (sebelum rollback 202610140011, 202610140009, 202610140008, 202610140007, ...). Rollback
--- 0011/0009/0007 menolak dijalankan selama objek 0012 masih ada.
+-- URUTAN: rollback ini setelah rollback 202610140013 (bila 0013 terpasang; penjaga di bawah menolak selama penandanya
+-- ada) dan sebelum rollback 202610140011, 202610140009, 202610140008, 202610140007, ... Rollback 0011/0009/0007 menolak
+-- dijalankan selama objek 0012 masih ada.
 --
 -- Yang dikembalikan (salinan PERSIS dari berkas sumber, diuji perbaikan_review.test.ts):
 --   layanan_selesai                                   <- 202610140011_pendataan_wajib.sql
@@ -30,6 +31,11 @@
 
 DO $$
 BEGIN
+  -- 202610140013 (keterbukaan data antar FO) harus di-rollback lebih dulu (penanda: komentar boleh_penanganan).
+  IF COALESCE(pg_catalog.obj_description(
+       pg_catalog.to_regprocedure('public.boleh_penanganan(uuid,text,uuid,uuid,text)'), 'pg_proc'), '') LIKE '%202610140013%' THEN
+    RAISE EXCEPTION 'ROLLBACK DITOLAK: 202610140013 masih terpasang (jalankan docs/rollback-fo-keterbukaan-data-202610140013.sql dulu)';
+  END IF;
   IF pg_catalog.to_regprocedure('public.pendataan_validasi_payload(text,jsonb)') IS NULL THEN
     RAISE EXCEPTION 'ROLLBACK DITOLAK: 202610140011 tidak terpasang (keadaan tak terduga; layanan_selesai 0011 memanggil pendataan_validasi_payload)';
   END IF;
