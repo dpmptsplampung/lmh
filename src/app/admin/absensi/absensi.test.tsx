@@ -14,6 +14,10 @@ const h = vi.hoisted(() => ({
     role: 'front_office' as string,
     rows: [] as unknown[],
     rpcError: null as RpcErr,
+    // Efek samping RPC pada data server (mis. catat_pulang mengisi jam_pulang) — dipicu saat RPC sukses.
+    onRpcOk: null as ((fn: string) => void) | null,
+    // Galat query daftar absensi (supabase-js tidak melempar: kembali sebagai { error }, data null).
+    queryError: null as { message: string; code?: string } | null,
   },
 }));
 
@@ -36,7 +40,11 @@ vi.mock('@/lib/supabase/client', () => {
     };
     b.single = () => Promise.resolve({ data: { id: 'me', role: h.state.role, layanan_id: 'l1' } });
     b.then = (r: (v: unknown) => unknown, j?: (e: unknown) => unknown) =>
-      Promise.resolve({ data: h.state.rows, count: h.state.rows.length }).then(r, j);
+      Promise.resolve(
+        h.state.queryError
+          ? { data: null, count: null, error: h.state.queryError }
+          : { data: h.state.rows, count: h.state.rows.length, error: null },
+      ).then(r, j);
     return b;
   };
   return {
@@ -45,7 +53,12 @@ vi.mock('@/lib/supabase/client', () => {
       from: builder,
       rpc: (fn: string, args: unknown) => {
         h.rpc(fn, args);
-        return Promise.resolve({ data: null, error: h.state.rpcError });
+        if (!h.state.rpcError) h.state.onRpcOk?.(fn);
+        // catat_pulang selalu mengembalikan now() walau tak ada baris yang diubah (idempoten, lihat migrasi 202610080001).
+        return Promise.resolve({
+          data: fn === 'catat_pulang' ? '2026-10-08T09:00:00Z' : null,
+          error: h.state.rpcError,
+        });
       },
     }),
   };
@@ -159,5 +172,64 @@ describe('admin absensi: pengajuan hadir petugas (catat_absensi)', () => {
     expect(screen.getByText(/tercatat Alpa hari ini/)).toBeTruthy();
     expect(screen.getByText(/disetujui Front Office\/Admin/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Absen Pulang/ })).toBeNull();
+  });
+});
+
+describe('admin absensi: absen pulang petugas (catat_pulang)', () => {
+  beforeEach(() => {
+    h.toast.mockClear();
+    h.rpc.mockClear();
+    h.state.role = 'petugas';
+    h.state.rows = [row({ petugas_id: 'me', status: 'approved' })];
+    h.state.rpcError = null;
+    h.state.onRpcOk = null;
+    h.state.queryError = null;
+  });
+  afterEach(cleanup);
+
+  it('query muat ulang gagal ({ error }) -> tak bisa membuktikan, BUKAN toast palsu "tidak tercatat"', async () => {
+    // Setelah catat_pulang sukses, query muat-ulang gagal (mis. jaringan). Sebelum perbaikan galat itu
+    // diabaikan -> daftar [] -> "Absen pulang tidak tercatat" padahal RPC sukses.
+    h.state.onRpcOk = (fn) => {
+      if (fn === 'catat_pulang') h.state.queryError = { message: 'TypeError: Failed to fetch', code: '' };
+    };
+    render(<AbsensiPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /Absen Pulang/ }));
+    await waitFor(() => expect(h.rpc).toHaveBeenCalledWith('catat_pulang', { p_petugas_id: 'me' }));
+    await waitFor(() => expect(h.toast).toHaveBeenCalledWith('Absen pulang berhasil dicatat', 'success'));
+    expect(h.toast).not.toHaveBeenCalledWith(expect.stringContaining('tidak tercatat'), 'error');
+  });
+
+  it('sukses: RPC dipanggil, jam_pulang terbukti tercatat setelah muat ulang -> toast sukses', async () => {
+    h.state.onRpcOk = (fn) => {
+      if (fn === 'catat_pulang') {
+        h.state.rows = [row({ petugas_id: 'me', status: 'approved', jam_pulang: '2026-10-08T09:00:00Z' })];
+      }
+    };
+    render(<AbsensiPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /Absen Pulang/ }));
+    await waitFor(() => expect(h.rpc).toHaveBeenCalledWith('catat_pulang', { p_petugas_id: 'me' }));
+    await waitFor(() => expect(h.toast).toHaveBeenCalledWith('Absen pulang berhasil dicatat', 'success'));
+  });
+
+  it('RPC mengembalikan error -> toast gagal, BUKAN sukses', async () => {
+    h.state.rpcError = { code: '42501', message: 'hanya boleh mencatat pulang diri sendiri' };
+    render(<AbsensiPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /Absen Pulang/ }));
+    await waitFor(() =>
+      expect(h.toast).toHaveBeenCalledWith(expect.stringContaining('tidak berwenang'), 'error'),
+    );
+    expect(h.toast).not.toHaveBeenCalledWith(expect.anything(), 'success');
+  });
+
+  it('RPC tanpa error tetapi tak ada baris berubah (idempoten: belum ada absen hadir / sudah pulang) -> BUKAN sukses', async () => {
+    // onRpcOk tidak diisi: data server tetap jam_pulang = null setelah RPC "sukses".
+    render(<AbsensiPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /Absen Pulang/ }));
+    await waitFor(() => expect(h.rpc).toHaveBeenCalledWith('catat_pulang', { p_petugas_id: 'me' }));
+    await waitFor(() =>
+      expect(h.toast).toHaveBeenCalledWith(expect.stringContaining('Absen pulang tidak tercatat'), 'error'),
+    );
+    expect(h.toast).not.toHaveBeenCalledWith('Absen pulang berhasil dicatat', 'success');
   });
 });

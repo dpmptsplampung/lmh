@@ -7,12 +7,12 @@ import { render, screen, waitFor, cleanup } from '@testing-library/react';
 vi.mock('@/lib/supabase/client', () => {
   const q = (table: string) => {
     const b: Record<string, unknown> = {};
-    for (const k of ['select', 'eq', 'neq', 'order']) b[k] = () => b;
+    for (const k of ['select', 'eq', 'neq', 'order', 'or']) b[k] = () => b;
     b.single = () =>
       Promise.resolve({
         data:
           table === 'chat_sesi'
-            ? { status: 'aktif', kontak_pengunjung: 'Budi', layanan_id: 'l2' }
+            ? { status: 'aktif', kontak_pengunjung: 'Budi', layanan_id: '22222222-2222-4222-8222-222222222222' }
             : table === 'pengunjung'
               ? { id: 'p1', nama: 'Budi' }
               : null,
@@ -23,8 +23,8 @@ vi.mock('@/lib/supabase/client', () => {
         data:
           table === 'v_layanan_publik'
             ? [
-                { id: 'l1', nama: 'Bank Lampung', chatbot_aktif: true },
-                { id: 'l2', nama: 'Helpdesk OSS', chatbot_aktif: true },
+                { id: '11111111-1111-4111-8111-111111111111', nama: 'Bank Lampung', chatbot_aktif: true },
+                { id: '22222222-2222-4222-8222-222222222222', nama: 'Helpdesk OSS', chatbot_aktif: true },
               ]
             : [],
         error: null,
@@ -48,7 +48,7 @@ describe('chat pengunjung: nama layanan pada sesi yang dipulihkan', () => {
   beforeEach(() => {
     localStorage.setItem('lmh_chat_sesi_id', 's1');
     // localStorage sengaja menyimpan layanan LAIN: sumber kebenaran = chat_sesi.layanan_id.
-    localStorage.setItem('lmh_chat_layanan_id', 'l1');
+    localStorage.setItem('lmh_chat_layanan_id', '11111111-1111-4111-8111-111111111111');
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => ({

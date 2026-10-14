@@ -230,6 +230,7 @@ export default function RekapLayananTable({ isPetugas, initialLayananId, options
                 <th>Nama Pengunjung</th>
                 <th>Asal</th>
                 <th>Petugas</th>
+                <th>Front Office</th>
                 <th>Mulai</th>
                 <th>Selesai</th>
                 <th>Durasi</th>
@@ -246,6 +247,7 @@ export default function RekapLayananTable({ isPetugas, initialLayananId, options
                     <td>{r.kunjungan?.nama ?? '—'}</td>
                     <td><span className="badge badge--draft">{r.kunjungan?.asal ?? '—'}</span></td>
                     <td>{r.petugas?.nama ?? '—'}</td>
+                    <td>{r.fo_nama ?? '—'}</td>
                     <td>{formatWaktuId(r.waktu_mulai_layan)}</td>
                     <td>{formatWaktuId(r.waktu_selesai)}</td>
                     <td>{dur != null ? `${dur} mnt` : '—'}</td>

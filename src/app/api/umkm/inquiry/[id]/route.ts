@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { z } from 'zod';
+import { mutasiWajibBaris } from '@/lib/supabase/mutate';
+import { catatMutasi } from '@/lib/observability/catat-mutasi';
 
 // ============================================================
 // Inovasi #7: Marketplace UMKM — owner approve/reject inquiry
@@ -109,14 +111,20 @@ export async function PATCH(
 
   // UPDATE via server client only (RLS "umkm_inquiry_update_owner").
   // No service-role fallback — that would bypass ownership.
-  const { data: updated, error: updateErr } = await supabase
-    .from('umkm_inquiry')
-    .update({ status, updated_at: new Date().toISOString() })
-    .eq('id', inquiryId)
-    .select('id, listing_id, from_email, from_nama, pesan, status, updated_at')
-    .maybeSingle();
-
-  if (updateErr || !updated) {
+  // Inquiry sudah terbukti terlihat oleh pemanggil (dibaca di atas), jadi 0 baris = RLS update_owner menolak diam-diam
+  // -> gagal (kontrak lama: 500), bukan sukses.
+  let updated: Record<string, unknown>;
+  try {
+    [updated] = await mutasiWajibBaris<Record<string, unknown>>(
+      supabase
+        .from('umkm_inquiry')
+        .update({ status, updated_at: new Date().toISOString() })
+        .eq('id', inquiryId)
+        .select('id, listing_id, from_email, from_nama, pesan, status, updated_at')
+        .maybeSingle(),
+    );
+  } catch (e) {
+    catatMutasi('error', 'umkm_inquiry.update_status', '/api/umkm/inquiry/[id]', e, { inquiryId });
     return NextResponse.json(
       { error: 'Gagal memperbarui inquiry' },
       { status: 500 },

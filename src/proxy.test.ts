@@ -24,6 +24,11 @@ interface ClientOpts {
   petugasRow?: PetugasRow | null;
   authFailure?: Error;
   roleFailure?: Error;
+  // Balasan RPC sesi_status (bawaan 'ok'); sesiError = RPC mengembalikan { error }; sesiRejects = RPC menolak (jaringan).
+  sesiStatus?: unknown;
+  sesiError?: { message: string };
+  sesiRejects?: Error;
+  sesiHang?: boolean;
 }
 
 const buildRequest = (url: string, headers?: HeadersInit): NextRequest => {
@@ -69,7 +74,9 @@ describe('proxy — request ID propagation', () => {
   });
 });
 
-const mockCreateServerClient = async ({ user, petugasRow, authFailure, roleFailure }: ClientOpts) => {
+const mockCreateServerClient = async ({
+  user, petugasRow, authFailure, roleFailure, sesiStatus = 'ok', sesiError, sesiRejects, sesiHang,
+}: ClientOpts) => {
   const ssrMod = await import('@supabase/ssr');
   const createServerClient = ssrMod.createServerClient as unknown as Mock;
 
@@ -90,6 +97,11 @@ const mockCreateServerClient = async ({ user, petugasRow, authFailure, roleFailu
         : Promise.resolve({ data: { user }, error: null })),
     },
     from: vi.fn().mockReturnValue(fromChain),
+    rpc: vi.fn().mockImplementation(() => {
+      if (sesiHang) return new Promise(() => undefined);
+      if (sesiRejects) return Promise.reject(sesiRejects);
+      return Promise.resolve(sesiError ? { data: null, error: sesiError } : { data: sesiStatus, error: null });
+    }),
   };
 
   createServerClient.mockReturnValue(mockClient);
@@ -295,5 +307,75 @@ describe('proxy — /me route (no role check)', () => {
     expect(res.status).toBe(200);
     expectRequestId(res);
     expect(mockClient.from).not.toHaveBeenCalled();
+  });
+});
+
+describe('proxy — sesi tunggal staf (/admin)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.resetModules();
+    setEnv();
+  });
+
+  const staf = { id: 'u-1', app_metadata: { role: 'petugas' } };
+
+  it.each(['ok', 'transisi', 'bukan_staf'])('status %s melanjutkan halaman dan memanggil sesi_status sekali', async (sesiStatus) => {
+    const { mockClient } = await mockCreateServerClient({ user: staf, sesiStatus });
+    const { proxy } = await import('./proxy');
+    const res = await proxy(buildRequest('http://localhost/admin/antrian'));
+    expect(res.status).toBe(200);
+    expect(mockClient.rpc).toHaveBeenCalledTimes(1);
+    expect(mockClient.rpc).toHaveBeenCalledWith('sesi_status');
+  });
+
+  it.each(['digantikan', 'idle', 'tidak_terdaftar'])('status %s dialihkan ke /login dengan alasan yang sama', async (sesiStatus) => {
+    await mockCreateServerClient({ user: staf, sesiStatus });
+    const { proxy } = await import('./proxy');
+    const res = await proxy(buildRequest('http://localhost/admin/antrian', { 'x-request-id': 'req-sesi' }));
+    expect(res.headers.get('location')).toBe(`http://localhost/login?alasan=${sesiStatus}`);
+    expectRequestId(res);
+  });
+
+  it('sesi tak sah menang atas paksaan ganti sandi (cek sesi mendahului)', async () => {
+    await mockCreateServerClient({ user: staf, sesiStatus: 'digantikan', petugasRow: { wajib_ganti_sandi: true } });
+    const { proxy } = await import('./proxy');
+    const res = await proxy(buildRequest('http://localhost/admin/antrian'));
+    expect(res.headers.get('location')).toMatch(/alasan=digantikan/);
+  });
+
+  it('tidak memanggil sesi_status untuk non-staf (dialihkan ke /me) maupun /me', async () => {
+    const a = await mockCreateServerClient({ user: { id: 'u-2', app_metadata: { role: 'pengunjung' } } });
+    const { proxy } = await import('./proxy');
+    await proxy(buildRequest('http://localhost/admin'));
+    await proxy(buildRequest('http://localhost/me'));
+    expect(a.mockClient.rpc).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['RPC mengembalikan error', { sesiError: { message: 'function sesi_status does not exist' } }],
+    ['RPC menolak (jaringan)', { sesiRejects: new Error('fetch failed') }],
+    ['status di luar kontrak', { sesiStatus: 'aneh' }],
+    ['balasan kosong', { sesiStatus: null }],
+  ] as const)('gagal-terbuka dan dicatat bila %s', async (_nama, opsi) => {
+    await mockCreateServerClient({ user: staf, ...opsi });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { proxy } = await import('./proxy');
+    const res = await proxy(buildRequest('http://localhost/admin/antrian'));
+    expect(res.status).toBe(200);
+    expect(JSON.parse(String(warn.mock.calls[0][0]))).toMatchObject({ operation: 'proxy.sesi_status_gagal' });
+  });
+
+  it('gagal-terbuka bila RPC menggantung melewati batas waktu', async () => {
+    vi.useFakeTimers();
+    try {
+      await mockCreateServerClient({ user: staf, sesiHang: true });
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const { proxy } = await import('./proxy');
+      const pending = proxy(buildRequest('http://localhost/admin/antrian'));
+      await vi.advanceTimersByTimeAsync(3000);
+      expect((await pending).status).toBe(200);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -23,6 +23,8 @@ import PageHeader from '@/components/layout/PageHeader';
 import { KATEGORI_UMKM, type KategoriUMKM } from '@/lib/constants';
 import { cn, waLink } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
+import { mutasiInsert, mutasiWajibBaris, pesanMutasi } from '@/lib/supabase/mutate';
+import { perluMuatUlang } from '@/components/admin/mutasi-ui';
 import { useToast } from '@/components/Toast';
 
 interface UMKMListing {
@@ -161,21 +163,24 @@ export default function AdminUMKMPage() {
   const handleUpdateStatus = async (id: string, newStatus: string) => {
     try {
       const supabase = createClient();
-      const { error } = await supabase
-        .from('listing_umkm')
-        .update({
-          status: newStatus,
-          updated_at: new Date().toISOString(),
-          ...(newStatus === 'published' ? { snapshot_approved: null } : {}),
-        })
-        .eq('id', id);
-
-      if (error) throw error;
+      // .select('id') + mutasiWajibBaris: RLS yang menolak UPDATE = 0 baris tanpa error (sukses palsu).
+      await mutasiWajibBaris(
+        supabase
+          .from('listing_umkm')
+          .update({
+            status: newStatus,
+            updated_at: new Date().toISOString(),
+            ...(newStatus === 'published' ? { snapshot_approved: null } : {}),
+          })
+          .eq('id', id)
+          .select('id'),
+      );
 
       setUmkmList(prev => prev.map(l => l.id === id ? { ...l, status: newStatus } : l));
       toast(`Status UMKM berhasil diperbarui menjadi ${STATUS_LABELS[newStatus] || newStatus}`, 'success');
-    } catch {
-      toast('Gagal memperbarui status. Silakan coba lagi.', 'error');
+    } catch (e) {
+      toast(`Gagal memperbarui status. ${pesanMutasi(e)}`, 'error');
+      if (perluMuatUlang(e)) await loadData();
     }
   };
 
@@ -184,17 +189,20 @@ export default function AdminUMKMPage() {
 
     try {
       const supabase = createClient();
-      const { error } = await supabase
-        .from('listing_umkm')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
+      // 0 baris terhapus (RLS menolak diam-diam / listing sudah tak ada) = gagal, bukan sukses.
+      await mutasiWajibBaris(
+        supabase
+          .from('listing_umkm')
+          .delete()
+          .eq('id', id)
+          .select('id'),
+      );
 
       setUmkmList(prev => prev.filter(l => l.id !== id));
       toast('Listing UMKM berhasil dihapus.', 'success');
-    } catch {
-      toast('Gagal menghapus listing. Silakan coba lagi.', 'error');
+    } catch (e) {
+      toast(`Gagal menghapus listing. ${pesanMutasi(e)}`, 'error');
+      if (perluMuatUlang(e)) await loadData();
     }
   };
 
@@ -331,12 +339,13 @@ export default function AdminUMKMPage() {
       };
 
       if (editingId) {
-        const { error } = await supabase
-          .from('listing_umkm')
-          .update(payload)
-          .eq('id', editingId);
-
-        if (error) throw error;
+        await mutasiWajibBaris(
+          supabase
+            .from('listing_umkm')
+            .update(payload)
+            .eq('id', editingId)
+            .select('id'),
+        );
 
         setUmkmList(prev => prev.map(l => l.id === editingId ? { ...l, ...payload } as UMKMListing : l));
         toast('UMKM berhasil diperbarui.', 'success');
@@ -373,9 +382,13 @@ export default function AdminUMKMPage() {
 
       setShowForm(false);
       setEditingId(null);
-    } catch {
-      setFormError('Gagal menyimpan data. Pastikan Anda memiliki akses admin.');
-      toast('Gagal menyimpan data. Pastikan Anda memiliki akses admin.', 'error');
+    } catch (e) {
+      // MutasiError (edit) membawa pesan spesifik; galat insert (dilempar mentah) memakai teks lama.
+      const pesan = `Gagal menyimpan data. ${pesanMutasi(e, 'Pastikan Anda memiliki akses admin.')}`;
+      setFormError(pesan);
+      toast(pesan, 'error');
+      // Modal dibiarkan terbuka (isian tidak hilang); daftar di belakangnya dimuat ulang bila basi.
+      if (perluMuatUlang(e)) void loadData();
     } finally {
       setSaving(false);
     }
@@ -394,20 +407,23 @@ export default function AdminUMKMPage() {
     setOwnerSaving(true);
     try {
       const supabase = createClient();
-      const { error } = await supabase
-        .from('umkm_listing_owner')
-        .upsert(
-          { listing_id: listingId, email },
-          { onConflict: 'listing_id,email', ignoreDuplicates: true },
-        );
-
-      if (error) throw error;
+      // mutasiInsert (BUKAN mutasiWajibBaris): ignoreDuplicates = ON CONFLICT DO NOTHING, jadi pemilik yang
+      // sudah tertaut menghasilkan 0 baris TANPA error — itu sah (tujuan "tertaut" sudah tercapai). Penolakan
+      // RLS pada INSERT tetap error 42501 -> mutasiInsert melempar, jadi tidak ada sukses palsu.
+      await mutasiInsert(
+        supabase
+          .from('umkm_listing_owner')
+          .upsert(
+            { listing_id: listingId, email },
+            { onConflict: 'listing_id,email', ignoreDuplicates: true },
+          ),
+      );
 
       setOwnerEmailInput('');
       toast(`Pemilik ${email} berhasil ditautkan.`, 'success');
       await loadData();
-    } catch {
-      toast('Gagal menautkan pemilik. Silakan coba lagi.', 'error');
+    } catch (e) {
+      toast(`Gagal menautkan pemilik. ${pesanMutasi(e)}`, 'error');
     } finally {
       setOwnerSaving(false);
     }
@@ -418,17 +434,20 @@ export default function AdminUMKMPage() {
 
     try {
       const supabase = createClient();
-      const { error } = await supabase
-        .from('umkm_listing_owner')
-        .delete()
-        .eq('id', ownerId);
-
-      if (error) throw error;
+      // 0 baris = pemilik MASIH bisa mengedit listing (RLS menolak diam-diam) -> wajib dianggap gagal.
+      await mutasiWajibBaris(
+        supabase
+          .from('umkm_listing_owner')
+          .delete()
+          .eq('id', ownerId)
+          .select('id'),
+      );
 
       setOwners(prev => prev.filter(o => o.id !== ownerId));
       toast('Tautan pemilik berhasil dihapus.', 'success');
-    } catch {
-      toast('Gagal menghapus tautan pemilik. Silakan coba lagi.', 'error');
+    } catch (e) {
+      toast(`Gagal menghapus tautan pemilik. ${pesanMutasi(e)}`, 'error');
+      if (perluMuatUlang(e)) await loadData();
     }
   };
 

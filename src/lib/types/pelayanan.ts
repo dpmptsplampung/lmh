@@ -7,23 +7,28 @@ import { z } from 'zod';
 // 1. OPSI & ENUM STANDAR (PRAKTIS & FLEKSIBEL)
 // ============================================================
 
+// Pendataan (keputusan CEO G.5, migrasi 202610140011): SEMUA field wajib saat menyelesaikan layanan. Pemohon yang
+// belum/tidak punya usaha memilih opsi eksplisit "Tidak berlaku" (bukan mengosongkan field).
 export const SKALA_USAHA_OPTIONS = [
   'Mikro',
   'Kecil',
   'Menengah',
   'Besar',
+  'Tidak berlaku',
 ] as const;
 export type SkalaUsaha = (typeof SKALA_USAHA_OPTIONS)[number];
 
 export const TIPE_PELAKU_USAHA_OPTIONS = [
   'perseorangan',
   'non_perseorangan',
+  'tidak_berlaku',
 ] as const;
 export type TipePelakuUsaha = (typeof TIPE_PELAKU_USAHA_OPTIONS)[number];
 
 export const TIPE_PELAKU_USAHA_LABELS: Record<TipePelakuUsaha, string> = {
   perseorangan: 'Orang Perseorangan',
   non_perseorangan: 'Badan Usaha (Non-Perseorangan)',
+  tidak_berlaku: 'Tidak berlaku',
 };
 
 export const STATUS_PENANAMAN_MODAL_OPTIONS = [
@@ -78,6 +83,14 @@ export const TINDAK_LANJUT_PERIZINAN_OPTIONS = [
 export type TindakLanjutPerizinan = (typeof TINDAK_LANJUT_PERIZINAN_OPTIONS)[number];
 
 // ============================================================
+// 1b. NILAI ISIAN EKSPLISIT (field wajib yang memang tidak ada)
+// ============================================================
+export const NILAI_BELUM_ADA = 'Belum ada';
+export const NILAI_TIDAK_BERLAKU = 'Tidak berlaku';
+/** Isian untuk kolom catatan yang tidak ada catatannya. */
+export const NILAI_CATATAN_KOSONG = '-';
+
+// ============================================================
 // 2. SKEMA VALIDASI ZOD (DRAFT & FINAL)
 // ============================================================
 
@@ -99,11 +112,27 @@ export const ossPelayananDraftSchema = z.object({
   catatan_internal: z.string().trim().optional().nullable(),
 });
 
-export const ossPelayananFinalSchema = ossPelayananDraftSchema.extend({
-  nama_usaha: z.string().trim().min(1, 'Nama usaha / badan usaha wajib diisi'),
-  tindak_lanjut: z.string().trim().min(1, 'Tindak lanjut / tindakan wajib diisi'),
-  uraian_solusi: z.string().trim().min(1, 'Uraian solusi / konsultasi wajib diisi'),
-  // tipe_pelaku_usaha, status_penanaman_modal, lokasi_usaha, skala_usaha, sektor_usaha_kbli tetap OPSIONAL
+// Skema FINAL (menyelesaikan layanan): SEMUA field wajib non-kosong (keputusan CEO G.5). Draf (autosave) tetap
+// longgar. Cermin validasi server: migrasi 202610140011 (layanan_selesai -> INVALID_PAYLOAD).
+const wajibTeks = (pesan: string) => z.string({ error: pesan }).trim().min(1, pesan);
+const wajibPilihan = <T extends readonly [string, ...string[]]>(opsi: T, pesan: string) =>
+  z.enum(opsi, { error: pesan });
+
+export const ossPelayananFinalSchema = z.object({
+  nama_pemohon: wajibTeks('Nama pemohon wajib diisi'),
+  alamat_pemohon: wajibTeks('Asal instansi / alamat domisili wajib diisi (isi "Tidak berlaku" bila tidak ada)'),
+  no_hp: wajibTeks('Nomor HP / WhatsApp wajib diisi (isi "Tidak berlaku" bila tidak ada)'),
+  email: wajibTeks('Alamat email wajib diisi (isi "Tidak berlaku" bila tidak ada)'),
+  keperluan_awal: wajibTeks('Keperluan awal wajib diisi (isi "Tidak berlaku" bila tidak ada)'),
+  nama_usaha: wajibTeks('Nama usaha wajib diisi (isi "Belum ada" atau "Tidak berlaku" bila tidak ada)'),
+  tipe_pelaku_usaha: wajibPilihan(TIPE_PELAKU_USAHA_OPTIONS, 'Tipe pelaku usaha wajib dipilih'),
+  status_penanaman_modal: wajibPilihan(STATUS_PENANAMAN_MODAL_OPTIONS, 'Status penanaman modal wajib dipilih'),
+  lokasi_usaha: wajibTeks('Lokasi usaha wajib diisi (isi "Belum ada" atau "Tidak berlaku" bila tidak ada)'),
+  skala_usaha: wajibPilihan(SKALA_USAHA_OPTIONS, 'Skala usaha wajib dipilih'),
+  sektor_usaha_kbli: wajibTeks('KBLI / sektor usaha wajib diisi (isi "Belum ada" atau "Tidak berlaku" bila tidak ada)'),
+  tindak_lanjut: wajibTeks('Tindak lanjut / tindakan wajib diisi'),
+  uraian_solusi: wajibTeks('Uraian solusi / konsultasi wajib diisi'),
+  catatan_internal: wajibTeks('Catatan internal wajib diisi (isi "-" bila tidak ada catatan)'),
 });
 
 // --- PERIZINAN DPMPTSP ---
@@ -121,12 +150,18 @@ export const perizinanPelayananDraftSchema = z.object({
   catatan_petugas: z.string().trim().optional().nullable(),
 });
 
-export const perizinanPelayananFinalSchema = perizinanPelayananDraftSchema.extend({
-  nama_perusahaan: z.string().trim().min(1, 'Nama perusahaan / pemohon wajib diisi'),
-  opd_teknis: z.string().trim().min(1, 'OPD Teknis wajib dipilih / diisi'),
-  uraian_permohonan: z.string().trim().min(1, 'Uraian permohonan wajib diisi'),
-  tindak_lanjut: z.string().trim().min(1, 'Tindak lanjut wajib dipilih / diisi'),
-  // catatan_petugas tetap opsional
+export const perizinanPelayananFinalSchema = z.object({
+  nama_pemohon: wajibTeks('Nama pemohon wajib diisi'),
+  alamat_pemohon: wajibTeks('Asal instansi / alamat domisili wajib diisi (isi "Tidak berlaku" bila tidak ada)'),
+  no_hp: wajibTeks('Nomor HP / WhatsApp wajib diisi (isi "Tidak berlaku" bila tidak ada)'),
+  email: wajibTeks('Alamat email wajib diisi (isi "Tidak berlaku" bila tidak ada)'),
+  keperluan_awal: wajibTeks('Keperluan awal wajib diisi (isi "Tidak berlaku" bila tidak ada)'),
+  nama_perusahaan: wajibTeks('Nama perusahaan / pemohon wajib diisi (isi "Belum ada" atau "Tidak berlaku" bila tidak ada)'),
+  lokasi_usaha: wajibTeks('Lokasi usaha wajib diisi (isi "Belum ada" atau "Tidak berlaku" bila tidak ada)'),
+  opd_teknis: wajibTeks('OPD teknis wajib dipilih / diisi (isi "Tidak berlaku" bila tidak ada)'),
+  uraian_permohonan: wajibTeks('Uraian permohonan wajib diisi'),
+  tindak_lanjut: wajibTeks('Tindak lanjut wajib dipilih / diisi'),
+  catatan_petugas: wajibTeks('Catatan petugas wajib diisi (isi "-" bila tidak ada catatan)'),
 });
 
 // ============================================================
@@ -143,7 +178,7 @@ export type FormPelayananType = 'oss' | 'perizinan';
 
 export interface PelayananInitialData {
   tiket_id: string;
-  legacy_visit_id: string;
+  legacy_visit_id: string | null;
   nomor_display: string;
   layanan_id: string;
   layanan_nama: string;
@@ -156,6 +191,19 @@ export interface PelayananInitialData {
   keperluan_awal: string | null;
   // Status Pelayanan
   status_tiket: string;
+  /** petugas.id yang memulai layanan (pemilik tiket); null bila belum dimulai / tidak tercatat. */
+  dilayani_oleh: string | null;
+  /** Nama pemilik bila terbaca oleh pemanggil (RLS petugas: petugas hanya membaca barisnya sendiri). */
+  dilayani_oleh_nama: string | null;
+  /**
+   * true hanya bila pemanggil = pemilik tiket berstatus 'dilayani' dan data belum terkunci:
+   * hanya saat itu draf boleh disimpan dan layanan boleh diselesaikan. Selain itu wizard baca-saja.
+   */
+  boleh_ubah: boolean;
+  /** true bila tiket hasil eskalasi Front Office (penanganan_asal_id terisi): menyelesaikan WAJIB topik + catatan. */
+  dari_eskalasi?: boolean;
+  /** Topik aktif milik layanan tiket (hanya diisi bila dari_eskalasi). */
+  topik_pilihan?: { id: string; nama: string }[];
   is_locked: boolean;
   status_draft: 'draft' | 'selesai' | 'belum_diisi';
   // Data Form Eksisting (bila sudah ada draft / final)

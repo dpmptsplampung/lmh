@@ -110,7 +110,10 @@ export default function RekapTiketDetailPanel({ tiket, onClose }: Props) {
               <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 700, marginBottom: 'var(--space-3)', display: 'flex', alignItems: 'center', gap: 6 }}>
                 <Briefcase size={14} /> Petugas
               </h3>
-              <Field label="Nama Petugas" value={tiket.petugas?.nama} />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
+                <Field label="Nama Petugas" value={tiket.petugas?.nama} />
+                <Field label="Front Office" value={tiket.fo_nama} />
+              </div>
             </section>
 
             {tiket.form_type === 'oss' && o && (

@@ -1,6 +1,8 @@
 // Pembantu route admin konsol pengaturan (server-only).
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { json } from '@/lib/akun/server';
+import { MutasiError, mutasiInsert } from '@/lib/supabase/mutate';
+import { catatMutasi } from '@/lib/observability/catat-mutasi';
 
 /** Audit perubahan pengaturan. Detail TIDAK boleh memuat rahasia/kunci. Gagal audit tidak menggagalkan aksi. */
 export async function auditSettings(
@@ -10,10 +12,15 @@ export async function auditSettings(
   entitasId: string,
   detail: Record<string, unknown>,
 ) {
-  const { error } = await service.from('audit_log').insert({
-    actor_id: actor.id, actor_role: actor.role, aksi, entitas: 'pengaturan', entitas_id: entitasId, detail,
-  });
-  if (error) console.error('[settings] gagal menulis audit_log', aksi, error.message);
+  // best-effort: perubahan pengaturan sudah terjadi; gagal menulis audit tidak boleh menggagalkannya, tetapi dicatat.
+  try {
+    await mutasiInsert(service.from('audit_log').insert({
+      actor_id: actor.id, actor_role: actor.role, aksi, entitas: 'pengaturan', entitas_id: entitasId, detail,
+    }));
+  } catch (e) {
+    if (!(e instanceof MutasiError)) throw e;
+    catatMutasi('error', 'settings.audit', 'lib/settings/admin', e, { aksi });
+  }
 }
 
 const KODE_STATUS: Record<string, number> = {

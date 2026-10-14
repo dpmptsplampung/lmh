@@ -18,7 +18,7 @@ type LogOptions = {
 };
 
 const REDACTED = '[REDACTED]';
-const SENSITIVE_KEY = /(?:authorization|cookie|token|secret|password|email|phone|telepon|hp|nama|name|form|message)/i;
+export const SENSITIVE_KEY = /(?:authorization|cookie|token|secret|password|email|phone|telepon|hp|nama|name|form|message)/i;
 
 function sanitize(value: unknown, environment: string, seen = new WeakSet<object>()): unknown {
   if (value instanceof Error) {

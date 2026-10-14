@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { CalendarDays, Clock, Plus, Trash2, Loader2, Save } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import { createClient } from '@/lib/supabase/client';
+import { mutasiWajibBaris, pesanMutasi } from '@/lib/supabase/mutate';
+import { perluMuatUlang } from '@/components/admin/mutasi-ui';
 import { useToast } from '@/components/Toast';
 
 interface Layanan {
@@ -148,14 +150,14 @@ export default function AdminJadwalPage() {
     if (!canEdit) return;
     try {
       const supabase = createClient();
-      // .select('id'): delete yang ditolak RLS bisa 0 baris tanpa error -> jangan lapor sukses palsu.
-      const { data: deleted, error } = await supabase.from('layanan_libur').delete().eq('id', id).select('id');
-      if (error) throw error;
-      if (!deleted || deleted.length === 0) throw new Error('tidak ada baris terhapus');
+      // .select('id') + mutasiWajibBaris: DELETE yang ditolak RLS = 0 baris tanpa error -> bukan sukses.
+      await mutasiWajibBaris(supabase.from('layanan_libur').delete().eq('id', id).select('id'));
       await loadData(selectedLayananId);
       toast('Tanggal libur dihapus.', 'success');
-    } catch {
-      toast('Gagal menghapus tanggal libur.', 'error');
+    } catch (e) {
+      toast(`Gagal menghapus tanggal libur. ${pesanMutasi(e)}`, 'error');
+      // Ditolak/0 baris: daftar libur di layar kemungkinan basi (baris sudah dihapus pihak lain) -> muat ulang.
+      if (perluMuatUlang(e)) await loadData(selectedLayananId);
     }
   };
 

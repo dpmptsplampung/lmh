@@ -68,7 +68,8 @@ export function getEmbeddingModel(client: GoogleGenerativeAI, model?: string) {
 
 export interface FaqMatch {
   id: string;
-  layanan_id: string;
+  /** null = FAQ umum (berlaku untuk semua layanan) atau tidak diketahui (hasil FTS tidak membawa kolom ini). */
+  layanan_id: string | null;
   pertanyaan: string;
   jawaban: string;
   dasar_hukum?: string | null;

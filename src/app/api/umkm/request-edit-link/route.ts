@@ -3,6 +3,9 @@ import { createClient as createServiceClient, type SupabaseClient } from '@supab
 import { Resend } from 'resend';
 import { z } from 'zod';
 import crypto from 'node:crypto';
+import { mutasiInsert } from '@/lib/supabase/mutate';
+import { catatMutasi } from '@/lib/observability/catat-mutasi';
+import { logServerEvent } from '@/lib/observability/logger';
 
 // ============================================================
 // K5: Magic-link edit UMKM
@@ -72,10 +75,14 @@ function rateLimitKey(email: string): string {
   return `${RATE_LIMIT_ACTION}:${hash}`;
 }
 
+// 'dibatasi' = pengguna melewati batas (429). 'gagal' = pembatas sendiri error (503): fail-closed, tetapi itu
+// kegagalan server, bukan salah pengguna, jadi tidak boleh dibalas "terlalu banyak permintaan".
+type HasilBatas = 'ok' | 'dibatasi' | 'gagal';
+
 async function checkRateLimit(
   adminClient: SupabaseClient,
   key: string,
-): Promise<boolean> {
+): Promise<HasilBatas> {
   const since = new Date(Date.now() - RATE_LIMIT_WINDOW_SEC * 1000).toISOString();
 
   const { count, error } = await adminClient
@@ -85,19 +92,37 @@ async function checkRateLimit(
     .gte('created_at', since)
     .is('user_id', null);
 
-  if (error) return false;
-  if (count !== null && count >= RATE_LIMIT_MAX) return false;
-  return true;
+  if (error) {
+    // Hanya kode SQLSTATE yang dicatat; pesan teknis PostgREST tidak.
+    logServerEvent('error', {
+      operation: 'umkm.request_edit_link.rate_limit_read',
+      route: '/api/umkm/request-edit-link',
+      asalCode: error.code || undefined,
+    });
+    return 'gagal';
+  }
+  if (count !== null && count >= RATE_LIMIT_MAX) return 'dibatasi';
+  return 'ok';
 }
 
+// true = jatah tercatat. Gagal mencatat berarti pembatas tidak menghitung permintaan ini (bisa dilewati diam-diam),
+// jadi pemanggil menolak (fail-closed, sama seperti kegagalan membaca hitungan di checkRateLimit).
 async function logRateLimit(
   adminClient: SupabaseClient,
   key: string,
-): Promise<void> {
-  await adminClient.from('anon_rate_limit').insert({
-    user_id: null,
-    action: key,
-  });
+): Promise<boolean> {
+  try {
+    await mutasiInsert(
+      adminClient.from('anon_rate_limit').insert({
+        user_id: null,
+        action: key,
+      }),
+    );
+    return true;
+  } catch (e) {
+    catatMutasi('error', 'umkm.request_edit_link.rate_limit_insert', '/api/umkm/request-edit-link', e);
+    return false;
+  }
 }
 
 function canReturnDevLink(): boolean {
@@ -136,15 +161,19 @@ export async function POST(request: NextRequest) {
   // Rate-limit (best-effort, per requested email hash).
   void clientIp(request);
   const limitKey = rateLimitKey(email);
-  const allowed = await checkRateLimit(adminClient, limitKey);
-  if (!allowed) {
+  const batas = await checkRateLimit(adminClient, limitKey);
+  if (batas === 'dibatasi') {
     return NextResponse.json(
       { error: 'Terlalu banyak permintaan. Coba lagi dalam beberapa menit.' },
       { status: 429 },
     );
   }
-
-  await logRateLimit(adminClient, limitKey);
+  if (batas === 'gagal' || !(await logRateLimit(adminClient, limitKey))) {
+    return NextResponse.json(
+      { error: 'Layanan sementara tidak tersedia. Coba lagi dalam beberapa menit.' },
+      { status: 503 },
+    );
+  }
 
   const { data: ownerRows, error: ownerError } = await adminClient
     .from('umkm_listing_owner')

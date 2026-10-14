@@ -1,0 +1,49 @@
+#!/bin/sh
+# Hook pre-push LMH - menjalankan gerbang lokal penuh sebelum push.
+#
+# Tidak ada CI GitHub yang menjadi gerbang (.github/workflows/ci.yml dibiarkan apa adanya),
+# jadi pemeriksaan wajib dijalankan di sini: `npm run verify:baseline`
+# (deps:check + audit:check + lint + typecheck + test + build). Bila gagal, push DIBATALKAN.
+#
+# Aktifkan sekali per clone:  git config core.hooksPath .githooks
+# Berkas ini WAJIB berakhiran baris LF (bukan CRLF) agar `sh` dapat menjalankannya.
+
+# Git menjalankan hook dari akar repo, tetapi pastikan.
+cd "$(git rev-parse --show-toplevel)" || {
+  echo "[pre-push] GAGAL: tidak dapat menemukan akar repo git." >&2
+  exit 1
+}
+
+# Hapus-branch/tag remote saja (semua sha lokal nol) tidak membawa kode baru: jangan memblokirnya.
+# Tanpa masukan sama sekali (mis. dijalankan manual) gerbang tetap dijalankan.
+ada_baris=0
+ada_kiriman=0
+while read -r _ref_lokal sha_lokal _ref_remote _sha_remote; do
+  ada_baris=1
+  case "$sha_lokal" in
+    *[!0]*) ada_kiriman=1 ;;
+  esac
+done
+if [ "$ada_baris" = 1 ] && [ "$ada_kiriman" = 0 ]; then
+  echo "[pre-push] Hanya penghapusan ref remote; gerbang dilewati."
+  exit 0
+fi
+
+if ! command -v npm >/dev/null 2>&1; then
+  echo "[pre-push] GAGAL: perintah npm tidak ditemukan di PATH; gerbang tidak dapat dijalankan, push dibatalkan." >&2
+  exit 1
+fi
+
+echo "[pre-push] Menjalankan gerbang lokal: npm run verify:baseline"
+echo "[pre-push] (cek sinkron dependensi + audit high+ + lint + typecheck + test + build; bisa beberapa menit)"
+
+if npm run verify:baseline; then
+  echo "[pre-push] Gerbang lolos. Push dilanjutkan."
+  exit 0
+fi
+
+echo "" >&2
+echo "[pre-push] GAGAL: npm run verify:baseline tidak lolos. Push DIBATALKAN." >&2
+echo "[pre-push] Perbaiki penyebabnya (lihat keluaran di atas), jalankan ulang 'npm run verify:baseline' sampai hijau, lalu push lagi." >&2
+echo "[pre-push] Pengecualian audit yang sah: tambahkan di audit-allow.json beserta alasan + tenggat (lihat docs/TESTING.md)." >&2
+exit 1

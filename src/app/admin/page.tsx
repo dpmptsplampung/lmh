@@ -1,7 +1,7 @@
 'use client';
 
 // WP-22: Stats reads migrated from visit → kunjungan + tiket_antrean.
-// Writes (WalkinWizard) still target visit; dual-write trigger handles propagation.
+// Pendaftaran walk-in dilakukan Front Office di /admin/fo/daftar (rpc fo_mulai_kunjungan); halaman ini hanya membaca.
 
 import { useEffect, useState, useCallback } from 'react';
 import { todayWIB, addDaysWIB } from '@/lib/time';
@@ -32,7 +32,6 @@ import {
 } from 'recharts';
 import PageHeader from '@/components/layout/PageHeader';
 import CalendarBanner from '@/components/admin/CalendarBanner';
-import WalkinWizard from '@/components/WalkinWizard';
 import { createClient } from '@/lib/supabase/client';
 import { useRealtimeRefetch } from '@/lib/hooks/useRealtimeRefetch';
 import { useToast } from '@/components/Toast';
@@ -87,7 +86,6 @@ export default function AdminDashboard() {
   const [dailyVisitsState, setDailyVisitsState] = useState<DailyVisit[]>([]);
   const [layananBreakdownState, setLayananBreakdownState] = useState<LayananBreakdown[]>([]);
   const [loading, setLoading] = useState(true);
-  const [layananList, setLayananList] = useState<{ id: string; nama: string }[]>([]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -172,12 +170,6 @@ export default function AdminDashboard() {
         };
       }));
 
-      // --- 6. Layanan list untuk WalkinWizard ---
-      const { data: layananData } = await supabase
-        .from('layanan')
-        .select('id, nama')
-        .order('nama');
-      setLayananList(layananData ?? []);
 
       // --- 7. Volume kunjungan mingguan (last 7 days via kunjungan.tanggal) ---
       const days = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
@@ -240,7 +232,9 @@ export default function AdminDashboard() {
   }, [loadData]);
 
   // Fase 3: data menyegarkan sendiri via realtime + polling cadangan 30 dtk.
-  useRealtimeRefetch(loadData, { table: 'visit', pollMs: 30_000 });
+  // visit = arsip baca-saja sejak WP-24 (tak pernah berubah lagi): dengarkan tiket_antrean + penanganan (tabel yang
+  // bergerak di alur FO/antrean; kunjungan sendiri tidak ada di publikasi realtime, perubahannya terjemput polling).
+  useRealtimeRefetch(loadData, { tables: ['tiket_antrean', 'penanganan'], pollMs: 30_000 });
 
 
   return (
@@ -254,7 +248,10 @@ export default function AdminDashboard() {
         <CalendarBanner />
 
         <div className={styles.walkinTriggerContainer}>
-          <WalkinWizard onSuccess={loadData} triggerClassName={styles.walkinTriggerBtn} />
+          <Link href="/admin/fo/daftar" className={styles.walkinTriggerBtn}>
+            <UserPlus size={20} />
+            Daftarkan Pengunjung Walk-in
+          </Link>
           {isAdmin && (
             <Link href="/admin/petugas/invite" className="btn btn--secondary">
               <UserPlus size={20} />
@@ -439,8 +436,6 @@ export default function AdminDashboard() {
           </>
         )}
 
-        {/* layananList consumed only by WalkinWizard indirectly; kept for possible future use */}
-        {layananList.length === 0 && false && null}
       </div>
     </>
   );

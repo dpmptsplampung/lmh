@@ -11,10 +11,13 @@ export function useRealtimeRefetch(
   opts: {
     topic?: string;           // topik broadcast_changes (mis. 'antrean:publik')
     table?: string;           // tabel postgres_changes (staf authenticated)
+    tables?: string[];        // beberapa tabel postgres_changes dalam SATU channel (mis. tiket_antrean + penanganan)
     pollMs?: number;          // default 30000
   } = {},
 ): void {
-  const { topic, table, pollMs = 30_000 } = opts;
+  const { topic, table, tables, pollMs = 30_000 } = opts;
+  // Kunci string stabil agar effect tidak berlangganan ulang tiap render (array baru dari pemanggil).
+  const kunciTabel = Array.from(new Set([...(table ? [table] : []), ...(tables ?? [])])).join(',');
   const refetchRef = useRef(refetch);
 
   // Simpan di effect (bukan saat render) — aturan react-hooks/refs.
@@ -49,13 +52,14 @@ export function useRealtimeRefetch(
               .subscribe(),
           );
         }
-        if (table) {
-          channels.push(
-            (supabase as NonNullable<typeof supabase>)
-              .channel(`realtime-refetch-table-${table}`)
-              .on('postgres_changes', { event: '*', schema: 'public', table }, trigger)
-              .subscribe(),
+        if (kunciTabel) {
+          let ch = (supabase as NonNullable<typeof supabase>).channel(
+            `realtime-refetch-table-${kunciTabel.split(',').join('+')}`,
           );
+          for (const nama of kunciTabel.split(',')) {
+            ch = ch.on('postgres_changes', { event: '*', schema: 'public', table: nama }, trigger);
+          }
+          channels.push(ch.subscribe());
         }
       } catch {
         // Tanpa realtime: polling tetap berjalan di bawah.
@@ -70,5 +74,5 @@ export function useRealtimeRefetch(
         for (const ch of channels) void supabase.removeChannel(ch);
       }
     };
-  }, [topic, table, pollMs]);
+  }, [topic, kunciTabel, pollMs]);
 }

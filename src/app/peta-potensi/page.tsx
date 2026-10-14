@@ -43,12 +43,14 @@ export default function PetaPotensiPage() {
       setAuthChecked(true);
 
       // Log page view (INV-02)
-      await supabase.from('jejak_minat_investasi').insert({
+      // Telemetri best-effort: kegagalan dicatat, tidak boleh mengganggu halaman.
+      const { error: jejakError } = await supabase.from('jejak_minat_investasi').insert({
         pengunjung_id: p?.id ?? null,
         jenis_konten: 'peta_potensi',
         konten_id: 'halaman_utama',
         sumber_halaman: '/peta-potensi',
       });
+      if (jejakError) console.error('[peta-potensi] gagal mencatat jejak minat', jejakError);
     }
     check();
   }, [router]);
@@ -56,12 +58,13 @@ export default function PetaPotensiPage() {
   const logSektorView = async (sektorId: string) => {
     if (!authChecked) return;
     const supabase = createClient();
-    await supabase.from('jejak_minat_investasi').insert({
+    const { error: jejakError } = await supabase.from('jejak_minat_investasi').insert({
       pengunjung_id: pengunjungId ?? null,
       jenis_konten: 'sektor',
       konten_id: sektorId,
       sumber_halaman: '/peta-potensi',
     });
+    if (jejakError) console.error('[peta-potensi] gagal mencatat jejak minat', jejakError);
   };
 
   if (!authChecked) {

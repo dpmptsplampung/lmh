@@ -9,6 +9,8 @@ export interface ChatMsg {
   isi: string;
   created_at: string;
   client_uuid?: string | null;
+  // Penanda pesan sistem tertentu, mis. 'penutup_survei' (ditulis RPC chat_selesai; tempat tautan survei).
+  jenis_jawaban?: string | null;
   local?: 'pending' | 'failed' | 'notice';
   // notice sementara (mis. "masih diproses"): hilang otomatis saat pesan bot asli tiba.
   transient?: boolean;

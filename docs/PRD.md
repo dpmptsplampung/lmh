@@ -199,7 +199,7 @@ d:\Project\LMH\
         │   └── callback/           # OAuth callback handler
         │
         ├── checkin/
-        │   ├── page.tsx            # Walk-in check-in form (16KB — WalkinWizard integration)
+        │   ├── page.tsx            # Halaman informasi check-in (statis; 2026-10-14)
         │   └── checkin.module.css
         │
         ├── chat/
@@ -271,8 +271,7 @@ d:\Project\LMH\
             ├── health/
             │   ├── live/           # GET — liveness probe
             │   └── ready/          # GET — readiness probe
-            ├── checkin/
-            │   └── route.ts        # POST — walk-in check-in registration
+            ├── checkin/        # DIHAPUS (2026-10-14): walk-in kini via RPC `fo_mulai_kunjungan` (Front Office)
             ├── chat/
             │   ├── ai/
             │   │   └── route.ts    # POST — RAG AI chat (embed → match_faq → Gemini → persist → broadcast)
@@ -338,7 +337,7 @@ Warga yang mengakses portal **tanpa login**.
 | Galeri Investasi (PDF watermarked) | `/gallery` | ✅ Read-only |
 | Katalog UMKM publik | `/umkm` | ✅ Read-only (via `v_umkm_public` view) |
 | IKM publik / Transparansi | `/transparansi` | ✅ Read-only (via `hitung_ikm()`) |
-| Walk-in check-in | `/checkin` | ✅ Rate-limited (5/menit via `check_anon_rate`) |
+| Check-in kunjungan | `/checkin` | ℹ️ Halaman informasi statis (diperbarui 2026-10-14): tanpa isian dan tanpa akses DB; walk-in dan scan QR dilakukan Front Office (`/admin/fo/daftar`, `/admin/scan`). Rate limit `check_anon_rate` untuk check-in mandiri tidak berlaku lagi |
 | Live Chat AI | `/chat` | ✅ Rate-limited (chat_sesi: 3/menit, chat_pesan: 20/menit) |
 | SKM survey | `/skm?token=...` | ✅ Token-gated (tiket selesai) |
 | UMKM inquiry | `/umkm` → form | ✅ Rate-limited (5/jam) |
@@ -596,7 +595,7 @@ Unregistered `/admin/*` paths default to **admin-only** (fail-closed).
 
 | Method | Path | Input | Output | Notes |
 |---|---|---|---|---|
-| `POST` | `/api/checkin` | `{ nama, asal_instansi, layanan_id, tujuan, ... }` | `{ visit }` | Walk-in registration, rate-limited |
+| ~~`POST`~~ | ~~`/api/checkin`~~ | — | — | **Dihapus (2026-10-14).** Walk-in didaftarkan Front Office lewat RPC `fo_mulai_kunjungan` (kontrak: `docs/analysis/FO-ESKALASI-KONTRAK-RPC.md`); replay antrean offline memakai RPC, bukan endpoint ini |
 | `POST` | `/api/chat/ai` | `{ pertanyaan, layanan_id, sesi_id }` | `{ jawaban, sumber[], eskalasi, reason }` | RAG AI: embed → match_faq → Gemini → persist → broadcast |
 | `POST` | `/api/chat/messages` | `{ sesi_id, isi }` | `{ message }` | Direct message in chat session |
 | `POST` | `/api/skm/submit` | `{ token, u1..u9, saran }` | `{ status }` | SKM submission via `submit_skm_response()` |
@@ -686,7 +685,7 @@ Pattern:
 | Admin Chat (`/admin/chat`) | 25.6KB | Multi-panel: session list + message view + escalation controls |
 | Investment Gallery (`/gallery`) | 24KB | PDF viewer, watermark overlay, lead form |
 | Admin Dashboard (`/admin`) | 16KB | Charts (Recharts), KPIs, quick actions |
-| Checkin (`/checkin`) | 16KB | WalkinWizard integration, layanan selector, consent |
+| Checkin (`/checkin`) | kecil | Halaman informasi statis (diperbarui 2026-10-14; sebelumnya WalkinWizard + consent) |
 | Me Dashboard (`/me`) | 16.5KB | Visit history, active queue, QR display, reservasi link |
 | Login (`/login`) | 10KB | Google OAuth button, email magic-link form, redirect handling |
 | SKM (`/skm`) | 9.6KB | 9-question form, token validation, submission |

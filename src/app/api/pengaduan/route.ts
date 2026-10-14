@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { z } from 'zod';
+import { MutasiError, mutasiInsert } from '@/lib/supabase/mutate';
+import { catatMutasi } from '@/lib/observability/catat-mutasi';
 
 export const dynamic = 'force-dynamic';
+
+const ROUTE = '/api/pengaduan';
 
 // CMP-01/CMP-05: buat pengaduan baru (publik, tanpa login wajib).
 // Rate limit per-IP sederhana untuk mencegah spam (CMP-05).
@@ -71,26 +75,42 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 });
   }
 
-  const { data, error } = await service.rpc('buat_pengaduan', {
-    p_jalur: jalur,
-    p_isi: isi,
-    p_kontak: kontak ?? null,
-    p_layanan_id: layanan_id ?? null,
-    p_anonim: anonim ?? false,
-    p_sesi_chat_id: null,
-  });
-
-  if (error) {
-    return NextResponse.json(
-      { error: error.message || 'Gagal menyimpan pengaduan' },
-      { status: 400 },
+  let rows: { nomor_tiket?: string }[];
+  try {
+    rows = await mutasiInsert<{ nomor_tiket?: string }>(
+      service.rpc('buat_pengaduan', {
+        p_jalur: jalur,
+        p_isi: isi,
+        p_kontak: kontak ?? null,
+        p_layanan_id: layanan_id ?? null,
+        p_anonim: anonim ?? false,
+        p_sesi_chat_id: null,
+      }),
     );
+  } catch (e) {
+    const asal = (e instanceof MutasiError ? e.asal : undefined) as { code?: string; message?: string } | undefined;
+    // RAISE EXCEPTION di buat_pengaduan (P0001) = pesan validasi yang memang ditulis untuk pengguna (kontrak lama: 400).
+    if (asal?.code === 'P0001') {
+      return NextResponse.json({ error: asal.message || 'Gagal menyimpan pengaduan' }, { status: 400 });
+    }
+    // layanan_id yang tidak ada (FK): salah input, tetapi pesan database-nya memuat nama konstrain -> pesan baku.
+    if (asal?.code === '23503') {
+      return NextResponse.json({ error: 'Layanan tidak valid' }, { status: 400 });
+    }
+    // Selebihnya galat teknis: dicatat, jangan bocorkan pesan database ke klien publik.
+    catatMutasi('error', 'pengaduan.buat', ROUTE, e);
+    return NextResponse.json({ error: 'Gagal menyimpan pengaduan' }, { status: 500 });
   }
 
-  const row = Array.isArray(data) ? data[0] : data;
+  // RPC sukses tanpa nomor tiket = tidak ada yang bisa dilacak pelapor; jangan dijawab 201 "simpan nomor tiket ini".
+  const row = rows[0];
+  if (!row?.nomor_tiket) {
+    catatMutasi('error', 'pengaduan.buat', ROUTE, new MutasiError('tidak_ada_baris'));
+    return NextResponse.json({ error: 'Gagal menyimpan pengaduan' }, { status: 500 });
+  }
   return NextResponse.json(
     {
-      nomor_tiket: row?.nomor_tiket,
+      nomor_tiket: row.nomor_tiket,
       pesan:
         'Pengaduan Anda tercatat. Simpan nomor tiket ini untuk melacak status. ' +
         'Batas verifikasi 3 hari kerja, penanganan 14 hari kerja.',

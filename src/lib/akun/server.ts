@@ -1,6 +1,8 @@
 // Pembantu route akun (server-only): service client, penjaga Admin/staf, rate limit, audit, token, email.
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { MutasiError, mutasiInsert } from '@/lib/supabase/mutate';
+import { catatMutasi } from '@/lib/observability/catat-mutasi';
 import { createClient as createServiceClient, type SupabaseClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import crypto from 'node:crypto';
@@ -66,7 +68,15 @@ export async function ambilJatah(service: SupabaseClient, key: string, max: numb
     .gte('created_at', since)
     .is('user_id', null);
   if (error || (count ?? 0) >= max) return false;
-  await service.from('anon_rate_limit').insert({ user_id: null, action: key });
+  // Gagal-tutup juga untuk PENCATATAN: bila pemakaian ini tidak tersimpan, batas laju bisa dilewati tanpa henti
+  // (mis. tebak sandi), jadi permintaan ditolak dan kegagalannya dicatat.
+  try {
+    await mutasiInsert(service.from('anon_rate_limit').insert({ user_id: null, action: key }));
+  } catch (e) {
+    if (!(e instanceof MutasiError)) throw e;
+    catatMutasi('error', 'akun.ambil_jatah.catat', 'lib/akun/server', e);
+    return false;
+  }
   return true;
 }
 
@@ -93,11 +103,16 @@ export async function audit(
   entitasId: string,
   detail: Record<string, unknown>,
 ) {
-  // Detail TIDAK boleh memuat sandi/token. Kegagalan audit tidak menggagalkan aksi (dicatat di log).
-  const { error } = await service.from('audit_log').insert({
-    actor_id: actor.id, actor_role: actor.role, aksi, entitas: 'petugas', entitas_id: entitasId, detail,
-  });
-  if (error) console.error('[akun] gagal menulis audit_log', aksi, error.message);
+  // Detail TIDAK boleh memuat sandi/token.
+  // best-effort: aksi sudah terjadi di DB; gagal menulis audit tidak boleh menggagalkannya, tetapi dicatat (bukan ditelan).
+  try {
+    await mutasiInsert(service.from('audit_log').insert({
+      actor_id: actor.id, actor_role: actor.role, aksi, entitas: 'petugas', entitas_id: entitasId, detail,
+    }));
+  } catch (e) {
+    if (!(e instanceof MutasiError)) throw e;
+    catatMutasi('error', 'akun.audit', 'lib/akun/server', e, { aksi });
+  }
 }
 
 export const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -118,14 +133,20 @@ export async function kirimVerifikasiEmail(service: SupabaseClient, petugasId: s
   if (!base) return false;
   if (!(await ambilJatah(service, `akun_verif:${petugasId}`, 3, 3600))) return false;
   const token = newToken();
-  const { error } = await service.from('petugas_verif_email').upsert({
-    petugas_id: petugasId,
-    email,
-    token_hash: sha256(token),
-    kedaluwarsa: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-    dibuat_at: new Date().toISOString(),
-  });
-  if (error) return false;
+  // petugas_id = PRIMARY KEY (migrasi 202610090002): upsert menimpa token lama petugas yang sama; eksplisit agar jelas.
+  try {
+    await mutasiInsert(service.from('petugas_verif_email').upsert({
+      petugas_id: petugasId,
+      email,
+      token_hash: sha256(token),
+      kedaluwarsa: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      dibuat_at: new Date().toISOString(),
+    }, { onConflict: 'petugas_id' }));
+  } catch (e) {
+    if (!(e instanceof MutasiError)) throw e;
+    catatMutasi('error', 'akun.verif_email.simpan_token', 'lib/akun/server', e);
+    return false;
+  }
   const link = `${base}/api/auth/verifikasi-email?token=${encodeURIComponent(token)}`;
   return kirimEmail(
     email,

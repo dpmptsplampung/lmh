@@ -21,6 +21,10 @@ interface Profil {
   wajib_ganti_sandi: boolean;
 }
 
+// Sandi SUDAH berubah tetapi penanda wajib-ganti gagal dibersihkan: pengguna masih login dan sandi barunya berlaku.
+const PESAN_SANDI_BERLAKU_FLAG_GAGAL =
+  'Kata sandi baru Anda sudah berlaku, tetapi status wajib-ganti belum bersih. Muat ulang halaman; bila masih diminta mengganti sandi, hubungi Admin.';
+
 const ROLE_LABEL = { admin: 'Admin', petugas: 'Petugas', front_office: 'Front Office' } as const;
 
 function ProfilContent() {
@@ -136,20 +140,37 @@ function ProfilContent() {
     }
     setSandiSaving(true);
     try {
+      const sandiSudahBerlaku = () => {
+        // Jangan biarkan sandi (lama/baru) menggantung di form dan jangan suruh mencoba lagi dengan sandi lama.
+        setSandiLama('');
+        setSandiBaru('');
+        setSandiUlang('');
+        setSandiError(PESAN_SANDI_BERLAKU_FLAG_GAGAL);
+        toast(PESAN_SANDI_BERLAKU_FLAG_GAGAL, 'warning');
+      };
       if (recovery) {
         const { error } = await createClient().auth.updateUser({ password: sandiBaru });
         if (error) throw new Error('Gagal mengganti kata sandi. Tautan pemulihan mungkin sudah kedaluwarsa.');
         // Bersihkan penanda "wajib ganti sandi" (kontrak RBAC akhir §4).
         const done = await fetch('/api/me/sandi-selesai', { method: 'POST' });
-        if (!done.ok) throw new Error('Sandi berubah, tetapi status wajib-ganti belum bersih. Muat ulang halaman lalu coba lagi.');
+        if (!done.ok) {
+          sandiSudahBerlaku();
+          return;
+        }
       } else {
         const res = await fetch('/api/me/sandi', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ sandi_lama: sandiLama, sandi_baru: sandiBaru, keluarkan_perangkat_lain: keluarkan }),
         });
-        const json = await res.json();
-        if (!res.ok) throw new Error(json.error ?? 'Gagal mengganti kata sandi');
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          if (json.kode === 'SANDI_BERUBAH_FLAG_GAGAL') {
+            sandiSudahBerlaku();
+            return;
+          }
+          throw new Error(json.error ?? 'Gagal mengganti kata sandi');
+        }
       }
       setSandiLama('');
       setSandiBaru('');

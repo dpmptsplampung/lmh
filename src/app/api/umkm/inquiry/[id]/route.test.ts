@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(),
@@ -33,7 +33,7 @@ interface MockServerOpts {
     status: string;
   } | null;
   inquiryError?: { message: string } | null;
-  updateError?: { message: string } | null;
+  updateError?: { message: string; code?: string } | null;
   updated?: Record<string, unknown> | null;
   updateThrows?: { message?: string };
 }
@@ -316,5 +316,51 @@ describe('PATCH /api/umkm/inquiry/[id] — DB error handling', () => {
     const { PATCH } = await import('./route');
     const res = await PATCH(buildRequest({ status: 'approved' }, INQUIRY_ID), validParams);
     expect(res.status).toBe(500);
+  });
+});
+
+// Audit T2d (No 112): UPDATE dibungkus mutasiWajibBaris; kontrak respons (500 'Gagal memperbarui inquiry') tetap, tetapi
+// kegagalannya kini tercatat dengan kode (0 baris RLS vs error) tanpa pesan teknis.
+describe('PATCH /api/umkm/inquiry/[id] — kegagalan UPDATE tercatat (audit T2d)', () => {
+  let errSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    vi.resetModules();
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://supabase.local';
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-key';
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}')));
+    errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    errSpy.mockRestore();
+    vi.unstubAllGlobals();
+  });
+  const log = () =>
+    errSpy.mock.calls
+      .map((c: unknown[]) => { try { return JSON.parse(String(c[0])) as Record<string, unknown>; } catch { return null; } })
+      .find((e: Record<string, unknown> | null) => e?.operation === 'umkm_inquiry.update_status');
+  const inquiry = { id: INQUIRY_ID, listing_id: 'listing-1', status: 'pending' };
+
+  it('RLS menolak diam-diam (0 baris, tanpa error): 500 dan dicatat tidak_ada_baris', async () => {
+    await mockServerClient({ inquiry, updated: null, updateError: null });
+    const { PATCH } = await import('./route');
+    const res = await PATCH(buildRequest({ status: 'approved' }, INQUIRY_ID), validParams);
+
+    expect(res.status).toBe(500);
+    expect((await res.json()).error).toBe('Gagal memperbarui inquiry');
+    expect(log()).toMatchObject({ kode: 'tidak_ada_baris', inquiryId: INQUIRY_ID });
+  });
+
+  it('error 42501: 500 dan dicatat ditolak tanpa pesan teknis', async () => {
+    await mockServerClient({
+      inquiry,
+      updated: null,
+      updateError: { message: 'permission denied for table secret-xyz', code: '42501' },
+    });
+    const { PATCH } = await import('./route');
+    const res = await PATCH(buildRequest({ status: 'approved' }, INQUIRY_ID), validParams);
+
+    expect(res.status).toBe(500);
+    expect(log()).toMatchObject({ kode: 'ditolak', asalCode: '42501' });
+    expect(JSON.stringify(log())).not.toContain('secret-xyz');
   });
 });

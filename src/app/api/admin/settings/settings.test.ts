@@ -19,6 +19,7 @@ vi.mock('@/lib/akun/server', async (orig) => ({
   ambilJatah: vi.fn(async () => g.jatah),
 }));
 vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn() }));
+vi.mock('@/lib/observability/logger', () => ({ logServerEvent: vi.fn() }));
 
 const SECRET = 'sk-SANGAT-RAHASIA-1234567890wxyz';
 const E1 = '00000000-0000-4000-8000-000000000001';
@@ -33,11 +34,20 @@ function makeService(results: Record<string, unknown> = {}, rpcResult: { data?: 
   const service = {
     rpc,
     from: (table: string) => {
-      const result = results[table] ?? { data: null, error: null };
+      // Hasil bisa dibedakan per operasi mutasi lewat kunci "<tabel>:update" / ":insert" / ":delete" / ":upsert".
+      const ops: string[] = [];
       const c: unknown = new Proxy({}, {
         get: (_t, p) => {
-          if (p === 'then') return (res: (v: unknown) => unknown) => Promise.resolve(result).then(res);
-          return (...args: unknown[]) => { log.push({ table, op: String(p), args }); return c; };
+          if (p === 'then') {
+            return (res: (v: unknown) => unknown) => {
+              const mutasi = ops.find((o) => ['insert', 'update', 'delete', 'upsert'].includes(o));
+              const mentah = (mutasi && results[`${table}:${mutasi}`]) ?? results[table] ?? { data: null, error: null };
+              // Fungsi = hasil berurutan per pembacaan (mis. simulasi balapan: baca pertama vs baca ulang).
+              const result = typeof mentah === 'function' ? (mentah as () => unknown)() : mentah;
+              return Promise.resolve(result).then(res);
+            };
+          }
+          return (...args: unknown[]) => { ops.push(String(p)); log.push({ table, op: String(p), args }); return c; };
         },
       });
       return c;
@@ -168,6 +178,72 @@ describe('GET/PUT llm', () => {
     expect((await PUT(req({ entries: [entry({ rahasia_id: RID })] }))).status).toBe(200);
     vi.doUnmock('@/lib/settings/ssrf');
   });
+  // Audit T2d (No 82): mengikat kunci ke host adalah kontrol keamanan; kegagalan TIDAK boleh diabaikan.
+  describe('PUT: pengikatan host kunci dicek', () => {
+    const mockSsrf = () => vi.doMock('@/lib/settings/ssrf', async (orig) => ({ ...(await orig<typeof import('@/lib/settings/ssrf')>()), validateBaseUrl: vi.fn(async (u: string) => ({ ok: true, url: new URL(u), ip: { address: '93.184.216.34', family: 4 } })) }));
+
+    it('UPDATE host 0 baris (host keburu diikat permintaan lain) = 409 dan draf TIDAK disimpan', async () => {
+      mockSsrf();
+      const m = makeService({ rahasia_pengaturan: { data: [{ id: RID }], error: null }, 'rahasia_pengaturan:update': { data: [], error: null } });
+      admin(m.service);
+      const res = await (await import('./llm/route')).PUT(req({ entries: [entry({ rahasia_id: RID })] }));
+      expect(res.status).toBe(409);
+      expect(m.rpc).not.toHaveBeenCalled();
+      expect(JSON.stringify(await res.json())).toMatch(/host/i);
+    });
+
+    // Balapan: dua PUT bersamaan mengikat host YANG SAMA; yang kalah mendapat 0 baris. Baca ulang host terikat:
+    // bila sama dengan host yang dituju, tujuan tercapai (sukses); bila beda tetap 409.
+    const urutanBaca = (...hasil: unknown[]) => { let i = 0; return () => hasil[Math.min(i++, hasil.length - 1)]; };
+
+    it('balapan: 0 baris tetapi host terikat ternyata SAMA dengan yang dituju -> lanjut sukses (bukan 409 palsu)', async () => {
+      mockSsrf();
+      const m = makeService({
+        rahasia_pengaturan: urutanBaca(
+          { data: [{ id: RID, host: null }], error: null }, // baca awal: belum terikat
+          { data: { host: 'gw.example.com' }, error: null }, // baca ulang: pemenang mengikat host yang sama
+        ),
+        'rahasia_pengaturan:update': { data: [], error: null },
+      }, { data: 7 });
+      admin(m.service);
+      const res = await (await import('./llm/route')).PUT(req({ entries: [entry({ rahasia_id: RID })] }));
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ ok: true, versi: 7 });
+      expect(m.rpc).toHaveBeenCalled();
+    });
+
+    it('balapan: 0 baris dan host terikat BEDA dari yang dituju -> tetap 409, draf tidak disimpan', async () => {
+      mockSsrf();
+      const m = makeService({
+        rahasia_pengaturan: urutanBaca(
+          { data: [{ id: RID, host: null }], error: null },
+          { data: { host: 'api.groq.com' }, error: null },
+        ),
+        'rahasia_pengaturan:update': { data: [], error: null },
+      });
+      admin(m.service);
+      const res = await (await import('./llm/route')).PUT(req({ entries: [entry({ rahasia_id: RID })] }));
+      expect(res.status).toBe(409);
+      expect((await res.json()).kode).toBe('HOST_KUNCI_BERUBAH');
+      expect(m.rpc).not.toHaveBeenCalled();
+    });
+
+    it('galat UPDATE host = 500, draf TIDAK disimpan, kegagalan tercatat tanpa bocor pesan DB', async () => {
+      mockSsrf();
+      const m = makeService({
+        rahasia_pengaturan: { data: [{ id: RID }], error: null },
+        'rahasia_pengaturan:update': { data: null, error: { code: '57014', message: 'timeout rahasia-db' } },
+      });
+      admin(m.service);
+      const res = await (await import('./llm/route')).PUT(req({ entries: [entry({ rahasia_id: RID })] }));
+      expect(res.status).toBe(500);
+      expect(JSON.stringify(await res.json())).not.toContain('rahasia-db');
+      expect(m.rpc).not.toHaveBeenCalled();
+      const logger = await import('@/lib/observability/logger');
+      expect(logger.logServerEvent).toHaveBeenCalledWith('error', expect.objectContaining({ operation: 'admin.settings.llm.ikat_host', asalCode: '57014' }));
+    });
+  });
+
   it('POST rahasia: base_url mengikat host saat dibuat; base_url tak valid 400', async () => {
     const m = makeService({ rahasia_pengaturan: { data: { id: RID }, error: null } });
     admin(m.service);
@@ -228,6 +304,57 @@ describe('POST llm/test', () => {
     expect(upd.hasil_uji[E1].ok).toBe(true);
     vi.doUnmock('@/lib/settings/ssrf');
   });
+  // Audit T2d (No 84): hasil uji yang tidak tersimpan akan membuat aktivasi ditolak BELUM_DIUJI tanpa penjelasan.
+  it('hasil uji gagal disimpan (galat / 0 baris): hasil uji tetap dikembalikan TAPI ada peringatan + tersimpan=false, tercatat', async () => {
+    const { encryptSecret } = await import('@/lib/settings/crypto');
+    const blob = encryptSecret(SECRET);
+    const dasar = {
+      pengaturan_sistem: { data: { id: 'row-1', nilai: [entry({ rahasia_id: RID })], hasil_uji: {} }, error: null },
+      rahasia_pengaturan: { data: { id: RID, ...blob, last4: 'wxyz' }, error: null },
+    };
+    const logger = await import('@/lib/observability/logger');
+
+    for (const [update, kode] of [
+      [{ data: null, error: { code: '57014', message: 'timeout' } }, 'database'],
+      [{ data: [], error: null }, 'tidak_ada_baris'],
+    ] as const) {
+      vi.resetModules();
+      vi.mocked(logger.logServerEvent).mockClear();
+      const m = makeService({ ...dasar, 'pengaturan_sistem:update': update });
+      admin(m.service);
+      vi.doMock('@/lib/settings/ssrf', async (orig) => ({
+        ...(await orig<typeof import('@/lib/settings/ssrf')>()),
+        makeGuardedFetch: () => (async () => new Response(JSON.stringify({ choices: [{ message: { content: 'SIAP' } }] }), { status: 200 })) as never,
+      }));
+      const res = await (await import('./llm/test/route')).POST(req({ entry_id: E1 }));
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body).toMatchObject({ ok: true, http_status: 200, tersimpan: false });
+      expect(body.peringatan).toMatch(/uji/i);
+      const lg = vi.mocked((await import('@/lib/observability/logger')).logServerEvent);
+      expect(lg).toHaveBeenCalledWith(expect.stringMatching(/warn|error/), expect.objectContaining({ operation: 'admin.settings.llm.simpan_hasil_uji', kode: kode }));
+    }
+    vi.doUnmock('@/lib/settings/ssrf');
+  });
+
+  it('hasil uji tersimpan: respons tidak memuat tersimpan/peringatan (kontrak lama)', async () => {
+    const { encryptSecret } = await import('@/lib/settings/crypto');
+    const blob = encryptSecret(SECRET);
+    const m = makeService({
+      pengaturan_sistem: { data: { id: 'row-1', nilai: [entry({ rahasia_id: RID })], hasil_uji: {} }, error: null },
+      rahasia_pengaturan: { data: { id: RID, ...blob, last4: 'wxyz' }, error: null },
+    });
+    admin(m.service);
+    vi.doMock('@/lib/settings/ssrf', async (orig) => ({
+      ...(await orig<typeof import('@/lib/settings/ssrf')>()),
+      makeGuardedFetch: () => (async () => new Response(JSON.stringify({ choices: [{ message: { content: 'SIAP' } }] }), { status: 200 })) as never,
+    }));
+    const body = await (await (await import('./llm/test/route')).POST(req({ entry_id: E1 }))).json();
+    expect(body.tersimpan).toBeUndefined();
+    expect(body.peringatan).toBeUndefined();
+    vi.doUnmock('@/lib/settings/ssrf');
+  });
+
   it('entri tidak ada -> 404; batas 20/jam -> 429', async () => {
     const m = makeService({ pengaturan_sistem: { data: { id: 'row-1', nilai: [entry()], hasil_uji: {} }, error: null } });
     admin(m.service);

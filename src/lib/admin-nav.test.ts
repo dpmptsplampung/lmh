@@ -64,6 +64,71 @@ describe('canAccessAdminPath', () => {
     expect(canAccessAdminPath('front_office', '/admin/gallery')).toBe(false);
     expect(canAccessAdminPath('front_office', '/admin/data-governance')).toBe(false);
     expect(canAccessAdminPath('front_office', '/admin/chat/ai-log')).toBe(false);
-    expect(canAccessAdminPath('front_office', '/admin/chat/faq')).toBe(false);
+  });
+
+  it('front_office dapat mengakses Kelola FAQ (hanya FAQ umum; dibatasi RLS faq_fo_umum), tetangganya tetap tertutup', () => {
+    expect(canAccessAdminPath('front_office', '/admin/chat/faq')).toBe(true);
+    // Entri paling spesifik menang: izin FAQ tidak merembes ke /admin/chat/ai-log (admin-only).
+    expect(canAccessAdminPath('front_office', '/admin/chat/ai-log')).toBe(false);
+    const entri = ADMIN_NAV.find((e) => e.href === '/admin/chat/faq');
+    expect(entri?.roles).toEqual(['admin', 'petugas', 'front_office']);
+  });
+
+  it('peran lain tidak berubah untuk Kelola FAQ: admin dan petugas boleh, peran tak dikenal ditolak', () => {
+    expect(canAccessAdminPath('admin', '/admin/chat/faq')).toBe(true);
+    expect(canAccessAdminPath('petugas', '/admin/chat/faq')).toBe(true);
+    expect(canAccessAdminPath('pengunjung' as never, '/admin/chat/faq')).toBe(false);
+  });
+  // Alur Front Office (Tahap B): halaman /admin/fo/*, topik, rekap FO, performa.
+  describe('halaman alur Front Office', () => {
+    const HALAMAN_FO = ['/admin/fo/kotak-masuk', '/admin/fo/penanganan', '/admin/fo/daftar'];
+
+    it('admin dan front_office boleh membuka halaman /admin/fo/*', () => {
+      for (const href of HALAMAN_FO) {
+        expect(canAccessAdminPath('admin', href)).toBe(true);
+        expect(canAccessAdminPath('front_office', href)).toBe(true);
+      }
+    });
+
+    it('petugas layanan TIDAK boleh membuka halaman /admin/fo/* (termasuk sub-path yang belum terdaftar)', () => {
+      for (const href of [...HALAMAN_FO, '/admin/fo/halaman-baru']) {
+        expect(canAccessAdminPath('petugas', href)).toBe(false);
+      }
+    });
+
+    it('/admin/topik hanya admin', () => {
+      expect(canAccessAdminPath('admin', '/admin/topik')).toBe(true);
+      expect(canAccessAdminPath('front_office', '/admin/topik')).toBe(false);
+      expect(canAccessAdminPath('petugas', '/admin/topik')).toBe(false);
+    });
+
+    it('/admin/rekap-fo untuk admin dan front_office; /admin/performa hanya admin', () => {
+      expect(canAccessAdminPath('admin', '/admin/rekap-fo')).toBe(true);
+      expect(canAccessAdminPath('front_office', '/admin/rekap-fo')).toBe(true);
+      expect(canAccessAdminPath('petugas', '/admin/rekap-fo')).toBe(false);
+      expect(canAccessAdminPath('admin', '/admin/performa')).toBe(true);
+      expect(canAccessAdminPath('front_office', '/admin/performa')).toBe(false);
+      expect(canAccessAdminPath('petugas', '/admin/performa')).toBe(false);
+    });
+
+    it('/admin/rekap-fo tidak mewarisi izin /admin/rekap (prefiks harus diikuti "/")', () => {
+      const rekap = ADMIN_NAV.find((e) => e.href === '/admin/rekap');
+      expect(rekap?.roles).toContain('petugas');
+      expect(canAccessAdminPath('petugas', '/admin/rekap-fo')).toBe(false);
+    });
+
+    it('semua entri baru terdaftar sekali dengan iconKey unik per entri', () => {
+      const hrefBaru = [...HALAMAN_FO, '/admin/topik', '/admin/rekap-fo', '/admin/performa'];
+      for (const href of hrefBaru) {
+        expect(ADMIN_NAV.filter((e) => e.href === href)).toHaveLength(1);
+      }
+      const kunci = hrefBaru.map((h) => ADMIN_NAV.find((e) => e.href === h)?.iconKey);
+      expect(new Set(kunci).size).toBe(hrefBaru.length);
+    });
+
+    it('semua href di ADMIN_NAV unik', () => {
+      const hrefs = ADMIN_NAV.map((e) => e.href);
+      expect(new Set(hrefs).size).toBe(hrefs.length);
+    });
   });
 });

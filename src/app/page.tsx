@@ -25,6 +25,7 @@ import {
   Mail,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { keluarDariSesi } from '@/lib/sesi-staf';
 import { APP_NAME, WA_NUMBER, WA_DEFAULT_MESSAGE } from '@/lib/constants';
 import { getSiteSettings } from '@/lib/site-settings';
 import { waLink } from '@/lib/utils';
@@ -294,7 +295,7 @@ export default function LandingPage() {
 
   const handleLogout = async () => {
     const supabase = createClient();
-    await supabase.auth.signOut();
+    await keluarDariSesi(supabase);
     setUser(null);
   };
 

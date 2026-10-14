@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { KATEGORI_UMKM, type KategoriUMKM } from '@/lib/constants';
 import { createClient } from '@/lib/supabase/client';
+import { mutasiWajibBaris, pesanMutasi } from '@/lib/supabase/mutate';
 import styles from './edit.module.css';
 
 interface Listing {
@@ -114,27 +115,33 @@ export default function UmkmEditPage() {
     setSubmitResult(null);
 
     const supabase = createClient();
-    const { error } = await supabase
-      .from('listing_umkm')
-      .update({
-        nama_umkm: form.nama_umkm,
-        kategori_kebutuhan: form.kategori_kebutuhan,
-        sisi: form.sisi,
-        deskripsi: form.deskripsi || null,
-        kontak_nama: form.kontak_nama,
-        kontak_hp: form.kontak_hp || null,
-        kontak_email: form.kontak_email || null,
-        status: 'pending_review',
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', id);
-
-    setSubmitting(false);
-
-    if (error) {
-      setSubmitResult({ kind: 'error', message: error.message });
+    try {
+      // RLS menolak (bukan pemilik / tautan kedaluwarsa) = 0 baris tanpa error: mutasiWajibBaris melempar
+      // sehingga UI tidak melaporkan "berhasil" palsu (audit T2).
+      await mutasiWajibBaris(
+        supabase
+          .from('listing_umkm')
+          .update({
+            nama_umkm: form.nama_umkm,
+            kategori_kebutuhan: form.kategori_kebutuhan,
+            sisi: form.sisi,
+            deskripsi: form.deskripsi || null,
+            kontak_nama: form.kontak_nama,
+            kontak_hp: form.kontak_hp || null,
+            kontak_email: form.kontak_email || null,
+            status: 'pending_review',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', id)
+          .select('id'),
+      );
+    } catch (e) {
+      setSubmitting(false);
+      setSubmitResult({ kind: 'error', message: pesanMutasi(e) });
       return;
     }
+
+    setSubmitting(false);
     setSubmitResult({ kind: 'success' });
   };
 

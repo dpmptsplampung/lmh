@@ -5,6 +5,7 @@ import type { NextRequest } from 'next/server';
 
 vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn() }));
 vi.mock('@supabase/supabase-js', () => ({ createClient: vi.fn() }));
+vi.mock('@/lib/observability/logger', () => ({ logServerEvent: vi.fn() }));
 
 const ID = '660e8400-e29b-41d4-a716-446655440001';
 type Calls = Record<string, Array<[string, unknown[]]>>;
@@ -104,6 +105,12 @@ describe('layanan', () => {
     expect((await m.PATCH(req('PATCH', { chatbot_aktif: true }), ctx)).status).toBe(400);
     expect((await m.PATCH(req('PATCH', { aktif: false }), ctx)).status).toBe(400);
     expect((await m.PATCH(req('PATCH', { prefiks: '12' }), ctx)).status).toBe(400);
+    // Prefiks TEPAT 2 huruf (migrasi 202610140003): 1 atau 3 huruf dan campuran angka ditolak sebelum menyentuh DB.
+    for (const salah of ['A', 'ABC', 'A1', 'A-', 'ÄB']) {
+      const res = await m.PATCH(req('PATCH', { prefiks: salah }), ctx);
+      expect(res.status, `prefiks "${salah}"`).toBe(400);
+      expect((await res.json()).error).toMatch(/tepat 2 huruf/);
+    }
     expect((await m.PATCH(req('PATCH', {}), ctx)).status).toBe(400);
     expect((await m.PATCH(req('PATCH', { status_tampilan: 'tampil' }), ctx)).status).toBe(400);
   });
@@ -119,12 +126,75 @@ describe('layanan', () => {
     expect(s.svcCalls.layanan).toBeUndefined();
   });
 
+  it('PATCH: prefiks kosong / null = minta kode otomatis (prefiks_antrean dikirim null); spasi dipangkas', async () => {
+    for (const nilai of [null, '', '   ']) {
+      vi.resetModules();
+      const s = await setup({ tables: { layanan: { data: { id: ID } } } });
+      const { PATCH } = await import('./layanan/[id]/route');
+      expect((await PATCH(req('PATCH', { prefiks: nilai }), ctx)).status).toBe(200);
+      expect(callOf(s.calls, 'layanan', 'update')?.[0]).toEqual({ prefiks_antrean: null });
+    }
+    vi.resetModules();
+    const s = await setup({ tables: { layanan: { data: { id: ID } } } });
+    const { PATCH } = await import('./layanan/[id]/route');
+    expect((await PATCH(req('PATCH', { prefiks: ' bm ' }), ctx)).status).toBe(200);
+    expect(callOf(s.calls, 'layanan', 'update')?.[0]).toEqual({ prefiks_antrean: 'BM' });
+  });
+
+  it('PATCH: bentrok UNIQUE prefiks (23505) = 409 PREFIKS_BENTROK dengan pesan khusus; format ditolak CHECK (23514) = 422', async () => {
+    await setup({
+      tables: { layanan: { data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint "uq_layanan_prefiks_antrean"' } } },
+    });
+    let res = await (await import('./layanan/[id]/route')).PATCH(req('PATCH', { prefiks: 'OS' }), ctx);
+    expect(res.status).toBe(409);
+    let json = await res.json();
+    expect(json.kode).toBe('PREFIKS_BENTROK');
+    expect(json.error).toMatch(/Prefiks antrean sudah dipakai/);
+    expect(JSON.stringify(json)).not.toContain('uq_layanan_prefiks_antrean');
+
+    vi.resetModules();
+    await setup({
+      tables: { layanan: { data: null, error: { code: '23514', message: 'new row for relation "layanan" violates check constraint "layanan_prefiks_antrean_format"' } } },
+    });
+    res = await (await import('./layanan/[id]/route')).PATCH(req('PATCH', { prefiks: 'OS' }), ctx);
+    expect(res.status).toBe(422);
+    json = await res.json();
+    expect(json.kode).toBe('PREFIKS_FORMAT');
+    expect(json.error).toMatch(/tepat 2 huruf/);
+  });
+
   it('PATCH: 404 bila tidak ada, 409 bila nama/prefiks bentrok', async () => {
     await setup({ tables: { layanan: { data: null } } });
     expect((await (await import('./layanan/[id]/route')).PATCH(req('PATCH', { nama: 'Zz' }), ctx)).status).toBe(404);
     vi.resetModules();
     await setup({ tables: { layanan: { data: null, error: { code: '23505', message: 'dup' } } } });
     expect((await (await import('./layanan/[id]/route')).PATCH(req('PATCH', { nama: 'Zz' }), ctx)).status).toBe(409);
+  });
+
+  // Audit T2d (No 55-56): UPDATE layanan wajib baris; 0 baris/galat tidak boleh jadi sukses.
+  it('PATCH: UPDATE 0 baris (array kosong) = 404; galat database = 500 dan tercatat', async () => {
+    await setup({ tables: { layanan: { data: [] } } });
+    expect((await (await import('./layanan/[id]/route')).PATCH(req('PATCH', { nomor_loket: '3' }), ctx)).status).toBe(404);
+    vi.resetModules();
+    await setup({ tables: { layanan: { data: null, error: { code: '57014', message: 'timeout' } } } });
+    const logger = await import('@/lib/observability/logger');
+    vi.mocked(logger.logServerEvent).mockClear();
+    const res = await (await import('./layanan/[id]/route')).PATCH(req('PATCH', { nomor_loket: '3' }), ctx);
+    expect(res.status).toBe(500);
+    expect(JSON.stringify(await res.json())).not.toContain('timeout');
+    expect(logger.logServerEvent).toHaveBeenCalledWith('error', expect.objectContaining({ operation: 'admin.layanan.ubah', asalCode: '57014' }));
+  });
+
+  it('bot: UPDATE 0 baris = 404; galat database = 500 dan tercatat (bukan sukses palsu)', async () => {
+    await setup({ tables: { layanan: { data: [] } } });
+    expect((await (await import('./layanan/[id]/bot/route')).PATCH(req('PATCH', { aktif: true }), ctx)).status).toBe(404);
+    vi.resetModules();
+    await setup({ tables: { layanan: { data: null, error: { code: '08006', message: 'connection failure' } } } });
+    const logger = await import('@/lib/observability/logger');
+    vi.mocked(logger.logServerEvent).mockClear();
+    const res = await (await import('./layanan/[id]/bot/route')).PATCH(req('PATCH', { aktif: true }), ctx);
+    expect(res.status).toBe(500);
+    expect(logger.logServerEvent).toHaveBeenCalledWith('error', expect.objectContaining({ operation: 'admin.layanan.bot', asalCode: '08006' }));
   });
 
   it('PATCH: rename yang mengubah jenis form pendataan ditolak 422; rename aman lolos', async () => {
@@ -278,7 +348,8 @@ describe('POST /api/me/sandi-selesai', () => {
     await setup({ updatedAt: new Date(Date.now() - 3_600_000).toISOString() });
     expect((await (await import('../me/sandi-selesai/route')).POST()).status).toBe(409);
     vi.resetModules();
-    const s = await setup({ amr: 'otp' });
+    // UPDATE flag kini berakhir .select('id') dan 0 baris = gagal (mutasiWajibBaris): mock harus mengembalikan 1 baris.
+    const s = await setup({ amr: 'otp', svcTables: { petugas: { data: [{ id: 'p-actor' }] } } });
     const res = await (await import('../me/sandi-selesai/route')).POST();
     expect(res.status).toBe(200);
     expect(callOf(s.svcCalls, 'petugas', 'update')?.[0]).toEqual({ wajib_ganti_sandi: false });

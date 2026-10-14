@@ -1,10 +1,18 @@
 'use client';
 
 // WP-22: Queue reads migrated from visit → tiket_antrean + kunjungan.
-// Status updates (Mulai Layanan, Selesai) still write to visit via legacy_visit_id;
-// trg_visit_dual_write propagates the change back to tiket_antrean atomically.
+// A3 (migrasi 202610140002_tiket_kepemilikan): transisi status lewat RPC atomik, BUKAN UPDATE langsung visit.
+//   - "Mulai Layanan" -> rpc layanan_mulai: guard atomik di tiket (satu pemenang), dilayani_oleh = pemanggil.
+//   - "Selesai" (layanan tanpa pendataan) -> rpc layanan_selesai: hanya pemilik tiket (yang memulai).
+//   - Layanan pendataan diselesaikan lewat PelayananWizardModal -> POST /api/admin/pelayanan/[tiketId].
+//   - Admin dapat "Ambil alih" tiket yang dilayani orang lain (rpc admin_ambil_alih, alasan wajib).
+// B4 (migrasi 202610140004, kontrak docs/analysis/FO-ESKALASI-KONTRAK-RPC.md): tiket HASIL ESKALASI Front Office
+//   (penanganan_asal_id terisi) menampilkan catatan eskalasi FO; menyelesaikannya wajib topik + catatan
+//   (layanan_selesai 5 parameter), pemilik dapat "Kembalikan ke FO" (layanan_kembalikan), Admin dapat "Alihkan"
+//   (admin_alihkan). Tiket lama (penanganan_asal_id null) tetap tanpa topik/catatan.
+// RPC bekerja langsung pada kunjungan/tiket/penanganan (visit = arsip sejak WP-24; SKM/notifikasi/estimasi lewat trigger kunjungan).
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { todayWIB } from '@/lib/time';
 import {
   Calendar,
@@ -22,6 +30,10 @@ import {
   ChevronDown,
   ChevronUp,
   Download,
+  UserCog,
+  Undo2,
+  ArrowRightLeft,
+  MessageSquare,
 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import CalendarBanner from '@/components/admin/CalendarBanner';
@@ -30,13 +42,46 @@ import Pagination from '@/components/Pagination';
 import WalkinWizard from '@/components/WalkinWizard';
 import PelayananWizardModal from '@/components/admin/PelayananWizardModal';
 import KoreksiPelayananModal from '@/components/admin/KoreksiPelayananModal';
-import { isLayananPendataan } from '@/lib/pelayanan';
+import AmbilAlihTiketModal, { type TiketAmbilAlih } from '@/components/admin/AmbilAlihTiketModal';
+import AlihkanTiketModal, { type TiketAlihkan } from '@/components/admin/AlihkanTiketModal';
+import KembalikanKeFoModal, { type TiketKembalikan } from '@/components/admin/KembalikanKeFoModal';
+import SelesaiEskalasiModal, { type TiketSelesaiEskalasi } from '@/components/admin/SelesaiEskalasiModal';
+import {
+  formPendataanLayanan,
+  bolehMulaiTiket,
+  bolehSelesaikanTiket,
+  bolehAmbilAlihTiket,
+  bolehKembalikanTiket,
+  bolehAlihkanTiket,
+  tiketHasilEskalasi,
+  kodeGalatDariError,
+  PESAN_GALAT_ANTREAN,
+  type KodeGalatAntrean,
+} from '@/lib/pelayanan';
 import { createClient } from '@/lib/supabase/client';
+import { mutasiInsert, mutasiWajibBaris, pesanMutasi } from '@/lib/supabase/mutate';
+import { perluMuatUlang } from '@/components/admin/mutasi-ui';
 import { toCsv } from '@/lib/csv';
 import { useToast } from '@/components/Toast';
 import { useRealtimeRefetch } from '@/lib/hooks/useRealtimeRefetch';
 
 const PAGE_SIZE = 25;
+
+// Galat RPC yang berarti tampilan antrean basi (tiket berubah di tempat lain) -> muat ulang daftar.
+const KODE_MUAT_ULANG: ReadonlySet<KodeGalatAntrean> = new Set<KodeGalatAntrean>([
+  'SUDAH_DIAMBIL', 'BUKAN_PEMILIK', 'INVALID_STATUS', 'NOT_FOUND', 'DIVERGENSI', 'TRANSISI_LEWAT_RPC', 'TIKET_LAMA',
+]);
+
+// Teks khusus pembaca layar (pengumuman status proses), tidak tampil di layar.
+const SR_ONLY: React.CSSProperties = {
+  position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden',
+  clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0,
+};
+
+interface HasilMulai {
+  ok: boolean;
+  sudah_milik_anda?: boolean;
+}
 
 interface PetugasData {
   id: string;
@@ -51,17 +96,34 @@ interface KunjunganEmbed {
   waktu_masuk: string | null;
 }
 
+interface LayananEmbed {
+  nama: string;
+  form_pendataan?: string | null;
+}
+
 interface AntrianRow {
   id: string;             // tiket_antrean.id
-  legacy_visit_id: string; // used to UPDATE visit.status
+  legacy_visit_id: string;
+  layanan_id: string;
+  dilayani_oleh: string | null; // petugas.id yang memulai layanan (pemilik tiket)
+  penanganan_asal_id?: string | null; // tahap FO yang melahirkan tiket; null/kosong = tiket lama (alur visit)
+  pelayan: { nama: string } | { nama: string }[] | null; // nama pemilik (RLS: petugas hanya membaca barisnya sendiri)
   nomor: number;
   nomor_display: string;
-  status: 'menunggu' | 'dilayani' | 'selesai' | 'tidak_terlayani' | 'no_show' | 'batal';
+  status: 'menunggu' | 'dilayani' | 'selesai' | 'tidak_terlayani' | 'no_show' | 'batal' | 'dikembalikan' | 'dialihkan';
   waktu_terbit: string | null;
   waktu_mulai_layan: string | null;
   waktu_selesai: string | null;
-  layanan: { nama: string } | { nama: string }[] | null;
+  // form_pendataan: jenis Formulir Pendataan wajib (migrasi 202610140012; ditegakkan layanan_selesai).
+  layanan: LayananEmbed | LayananEmbed[] | null;
   kunjungan: KunjunganEmbed | KunjunganEmbed[] | null;
+}
+
+// Catatan eskalasi dari Front Office (kontrak §6.3): topik + catatan tahap FO yang melahirkan tiket.
+interface CatatanEskalasi {
+  topik: string | null;
+  catatan: string | null;
+  foNama: string | null;
 }
 
 interface AbsensiRekap {
@@ -89,6 +151,16 @@ export default function AntrianPage() {
   }>({ totalSelesai: 0, rataWaktuMenit: 0 });
   const [activeWizardTiketId, setActiveWizardTiketId] = useState<string | null>(null);
   const [koreksiTiketId, setKoreksiTiketId] = useState<string | null>(null);
+  const [ambilAlihTiket, setAmbilAlihTiket] = useState<TiketAmbilAlih | null>(null);
+  const [alihkanTiket, setAlihkanTiket] = useState<TiketAlihkan | null>(null);
+  const [kembalikanTiket, setKembalikanTiket] = useState<TiketKembalikan | null>(null);
+  const [selesaiEskalasiTiket, setSelesaiEskalasiTiket] = useState<TiketSelesaiEskalasi | null>(null);
+  // penanganan_asal_id -> catatan eskalasi FO (dimuat bersama daftar; kosong bila tak terbaca).
+  const [catatanEskalasi, setCatatanEskalasi] = useState<Record<string, CatatanEskalasi>>({});
+  // Tiket yang sedang diproses: tombolnya dikunci sampai RPC selesai (ref = penjaga klik ganda sebelum render ulang).
+  const [sedangProses, setSedangProses] = useState<ReadonlySet<string>>(new Set());
+  const prosesRef = useRef<Set<string>>(new Set());
+  const [pengumuman, setPengumuman] = useState('');
 
   // ── Rekapitulasi Absen ────────────────────────────────────────────────────
   const [rekapOpen, setRekapOpen] = useState(false);
@@ -144,9 +216,10 @@ export default function AntrianPage() {
       let query = supabase
         .from('tiket_antrean')
         .select(`
-          id, legacy_visit_id, nomor, nomor_display, status,
+          id, legacy_visit_id, layanan_id, dilayani_oleh, penanganan_asal_id, nomor, nomor_display, status,
           waktu_terbit, waktu_mulai_layan, waktu_selesai,
-          layanan:layanan_id(nama),
+          layanan:layanan_id(nama, form_pendataan),
+          pelayan:dilayani_oleh(nama),
           kunjungan(nama, asal, waktu_masuk)
         `, { count: 'exact' })
         .eq('tanggal', tanggal)
@@ -157,8 +230,10 @@ export default function AntrianPage() {
       }
 
       const { data, count } = await query.range(from, to);
-      setAntrian((data || []) as unknown as AntrianRow[]);
+      const barisAntrian = (data || []) as unknown as AntrianRow[];
+      setAntrian(barisAntrian);
       setTotalCount(count ?? (data?.length ?? 0));
+      await muatCatatanEskalasi(supabase, barisAntrian);
 
       // T-5: Stats dari server, bukan dari halaman aktif saja
       let statsQuery = supabase
@@ -189,80 +264,141 @@ export default function AntrianPage() {
     }
   }
 
+  // Kontrak §6.3: catatan eskalasi FO per tiket = baris penanganan tahap asal. Kegagalan memuat catatan tidak boleh
+  // menggagalkan daftar antrean (catatan hanya pelengkap tampilan).
+  async function muatCatatanEskalasi(supabase: ReturnType<typeof createClient>, baris: AntrianRow[]) {
+    const ids = Array.from(new Set(baris.map((b) => b.penanganan_asal_id).filter((v): v is string => !!v)));
+    if (ids.length === 0) {
+      setCatatanEskalasi({});
+      return;
+    }
+    try {
+      const { data, error } = await supabase
+        .from('penanganan')
+        .select('id, topik, catatan, penangan:penangan_id(nama)')
+        .in('id', ids);
+      if (error) throw error;
+      const peta: Record<string, CatatanEskalasi> = {};
+      for (const r of (data ?? []) as unknown as Array<{
+        id: string; topik: string | null; catatan: string | null; penangan: { nama: string } | { nama: string }[] | null;
+      }>) {
+        const fo = Array.isArray(r.penangan) ? r.penangan[0] : r.penangan;
+        peta[r.id] = { topik: r.topik, catatan: r.catatan, foNama: fo?.nama ?? null };
+      }
+      setCatatanEskalasi(peta);
+    } catch (e) {
+      console.error('Gagal memuat catatan eskalasi:', e);
+      setCatatanEskalasi({});
+    }
+  }
+
   // WP-23 QUE-17: emit nomor_dipanggil event via panggil_tiket RPC.
   const handlePanggil = async (tiketId: string, nomorDisplay: string) => {
     try {
       const supabase = createClient();
-      const { error } = await supabase.rpc('panggil_tiket', { p_tiket_id: tiketId });
-      if (error) {
-        console.error('Gagal memanggil tiket:', error);
-        toast(`Gagal memanggil ${nomorDisplay}`, 'error');
-      } else {
-        toast(`Memanggil ${nomorDisplay}…`, 'success');
+      // panggil_tiket mengembalikan nomor_display, atau NULL TANPA error bila tiket bukan 'menunggu'
+      // (sudah dilayani/batal/dst.) -> tak ada event ke layar TV. NULL (array kosong) = tidak dipanggil.
+      const dipanggil = await mutasiInsert(supabase.rpc('panggil_tiket', { p_tiket_id: tiketId }));
+      if (dipanggil.length === 0) {
+        toast(`${nomorDisplay} tidak dipanggil: tiket sudah tidak berstatus menunggu. Daftar dimuat ulang.`, 'error');
+        await fetchData();
+        return;
       }
+      toast(`Memanggil ${nomorDisplay}…`, 'success');
     } catch (e) {
-      console.error(e);
-      toast('Gagal memanggil tiket', 'error');
+      console.error('Gagal memanggil tiket:', e);
+      toast(`Gagal memanggil ${nomorDisplay}. ${pesanMutasi(e)}`, 'error');
     }
   };
 
-  // Status updates write to visit; trg_visit_dual_write propagates to tiket_antrean.
-  const handleMulaiLayanan = async (legacyVisitId: string, tiketId: string, layananNama: string) => {
+  // Kunci tombol per tiket selama request berjalan (mencegah klik ganda / dua aksi bersamaan pada tiket yang sama).
+  const jalankanAksi = async (tiketId: string, label: string, aksi: () => Promise<void>) => {
+    if (prosesRef.current.has(tiketId)) return;
+    prosesRef.current.add(tiketId);
+    setSedangProses(new Set(prosesRef.current));
+    setPengumuman(label);
     try {
-      const supabase = createClient();
-      const { error } = await supabase
-        .from('visit')
-        .update({ status: 'dilayani', waktu_mulai_layan: new Date().toISOString() })
-        .eq('id', legacyVisitId);
-      if (error) {
-        console.error('Gagal memulai layanan:', error);
-        toast('Gagal memulai layanan', 'error');
-      } else {
-        toast('Layanan dimulai', 'success');
+      await aksi();
+    } finally {
+      prosesRef.current.delete(tiketId);
+      setSedangProses(new Set(prosesRef.current));
+      setPengumuman('');
+    }
+  };
+
+  // Galat RPC antrean -> pesan jelas; muat ulang bila tampilan kemungkinan basi.
+  const tanganiGalatAksi = async (e: unknown, awalan: string) => {
+    const kode = kodeGalatDariError(e);
+    if (kode === 'SUDAH_DIAMBIL') {
+      toast(PESAN_GALAT_ANTREAN.SUDAH_DIAMBIL, 'error');
+    } else {
+      toast(`${awalan} ${kode ? PESAN_GALAT_ANTREAN[kode] : pesanMutasi(e)}`, 'error');
+    }
+    if (perluMuatUlang(e) || (kode !== null && KODE_MUAT_ULANG.has(kode))) await fetchData();
+  };
+
+  // A3: rpc layanan_mulai (atomik). Pemenang menjadi pemilik tiket (dilayani_oleh).
+  const handleMulaiLayanan = (a: AntrianRow) =>
+    jalankanAksi(a.id, `Memulai layanan ${a.nomor_display}…`, async () => {
+      try {
+        const supabase = createClient();
+        // Balasan jsonb tunggal; kosong/null tanpa error dianggap gagal (mutasiWajibBaris).
+        const [hasil] = await mutasiWajibBaris<HasilMulai>(
+          supabase.rpc('layanan_mulai', { p_tiket_id: a.id }),
+        );
+        toast(hasil?.sudah_milik_anda ? 'Layanan tiket ini sudah Anda mulai sebelumnya' : 'Layanan dimulai', 'success');
         await fetchData();
-        // Buka wizard pendataan untuk layanan yang didukung (Helpdesk OSS /
-        // Layanan Perizinan DPMPTSP). Layanan lain (mis. P4 / investasi)
-        // tidak punya form pendataan — tampilkan selesai saja.
-        if (isLayananPendataan(layananNama)) {
-          setActiveWizardTiketId(tiketId);
+        // Buka wizard pendataan untuk layanan yang didukung (Helpdesk OSS / Non OSS).
+        // Layanan lain (mis. P4 / investasi) tidak punya form pendataan.
+        if (punyaPendataan(a)) {
+          setActiveWizardTiketId(a.id);
         } else {
           toast('Layanan ini tidak memiliki form pendataan', 'info');
         }
+      } catch (e) {
+        console.error('Gagal memulai layanan:', e);
+        await tanganiGalatAksi(e, 'Gagal memulai layanan.');
       }
-    } catch (e) {
-      console.error(e);
-      toast('Gagal memulai layanan', 'error');
-    }
-  };
+    });
 
-  const handleSelesaikan = async (legacyVisitId: string, tiketId?: string, layananNama?: string) => {
-    if (layananNama && isLayananPendataan(layananNama) && tiketId) {
-      setActiveWizardTiketId(tiketId);
-      return;
+  const handleSelesaikan = (a: AntrianRow) => {
+    if (punyaPendataan(a)) {
+      // Wizard pendataan (juga mengumpulkan topik + catatan untuk tiket hasil eskalasi).
+      setActiveWizardTiketId(a.id);
+      return Promise.resolve();
     }
-    try {
-      const supabase = createClient();
-      const { error } = await supabase
-        .from('visit')
-        .update({ status: 'selesai', waktu_selesai: new Date().toISOString() })
-        .eq('id', legacyVisitId);
-      if (error) {
-        console.error('Gagal menyelesaikan antrian:', error);
-        toast('Gagal menyelesaikan antrian', 'error');
-      } else {
+    if (tiketHasilEskalasi(a)) {
+      // Tiket hasil eskalasi tanpa pendataan: dialog topik + catatan wajib (layanan_selesai 5 parameter).
+      setSelesaiEskalasiTiket({ id: a.id, nomor_display: a.nomor_display, layanan_id: a.layanan_id });
+      return Promise.resolve();
+    }
+    // A3: rpc layanan_selesai tanpa pendataan; hanya pemilik tiket (ditegakkan DB: BUKAN_PEMILIK).
+    return jalankanAksi(a.id, `Menyelesaikan ${a.nomor_display}…`, async () => {
+      try {
+        const supabase = createClient();
+        await mutasiWajibBaris(supabase.rpc('layanan_selesai', { p_tiket_id: a.id }));
         toast('Kunjungan berhasil diselesaikan', 'success');
         await fetchData();
+      } catch (e) {
+        console.error('Gagal menyelesaikan antrian:', e);
+        await tanganiGalatAksi(e, 'Gagal menyelesaikan antrian.');
       }
-    } catch (e) {
-      console.error(e);
-      toast('Gagal menyelesaikan antrian', 'error');
-    }
+    });
   };
 
   const resolveKunjungan = (a: AntrianRow): KunjunganEmbed | null => {
     if (!a.kunjungan) return null;
     return Array.isArray(a.kunjungan) ? a.kunjungan[0] ?? null : a.kunjungan;
   };
+
+  const resolvePelayanNama = (a: AntrianRow): string | null => {
+    if (!a.pelayan) return null;
+    return (Array.isArray(a.pelayan) ? a.pelayan[0]?.nama : a.pelayan.nama) ?? null;
+  };
+
+  // Layanan wajib Formulir Pendataan: kolom DB layanan.form_pendataan (fallback nama bila kolom tak ter-select).
+  const punyaPendataan = (a: AntrianRow): boolean =>
+    formPendataanLayanan(Array.isArray(a.layanan) ? a.layanan[0] : a.layanan) !== null;
 
   const resolveLayananNama = (a: AntrianRow): string => {
     if (!a.layanan) return '—';
@@ -289,6 +425,8 @@ export default function AntrianPage() {
       case 'tidak_terlayani': return '✗ Tidak Terlayani (petugas tidak hadir)';
       case 'no_show': return '○ Tidak Datang (warga)';
       case 'batal': return '⊘ Batal';
+      case 'dikembalikan': return '↩ Dikembalikan ke FO';
+      case 'dialihkan': return '⇄ Dialihkan';
       default: return status;
     }
   };
@@ -581,6 +719,28 @@ export default function AntrianPage() {
                         durasi = `${diff} menit`;
                       }
 
+                      const layananNama = resolveLayananNama(a);
+                      const pelayanNama = resolvePelayanNama(a);
+                      const milikSaya = bolehSelesaikanTiket(currentUser, a);
+                      const sibuk = sedangProses.has(a.id);
+                      const eskalasi = tiketHasilEskalasi(a);
+                      const catatanFo = a.penanganan_asal_id ? catatanEskalasi[a.penanganan_asal_id] : undefined;
+                      const tombolAlihkan = bolehAlihkanTiket(currentUser, a) && (
+                        <button
+                          className="btn btn--secondary btn--xs"
+                          onClick={() =>
+                            setAlihkanTiket({ id: a.id, nomor_display: a.nomor_display, layanan_id: a.layanan_id, layanan_nama: layananNama })
+                          }
+                          disabled={sibuk}
+                          aria-label={`Alihkan tiket ${a.nomor_display} ke layanan lain`}
+                          title="Pindahkan tiket ini ke layanan lain (Admin; wajib alasan, tercatat di audit)"
+                          style={{ fontSize: '11px', padding: '2px 6px', width: 'fit-content' }}
+                        >
+                          <ArrowRightLeft size={12} style={{ marginRight: '3px' }} aria-hidden="true" />
+                          Alihkan
+                        </button>
+                      );
+
                       return (
                         <tr key={a.id}>
                           <td>
@@ -602,7 +762,27 @@ export default function AntrianPage() {
                           {isAdminLike && (
                             <td style={{ fontWeight: 600 }}>{resolveLayananNama(a)}</td>
                           )}
-                          <td style={{ fontWeight: 600 }}>{k?.nama ?? '—'}</td>
+                          <td>
+                            <span style={{ fontWeight: 600 }}>{k?.nama ?? '—'}</span>
+                            {eskalasi && (
+                              <div
+                                style={{
+                                  marginTop: 4, padding: '4px 8px', maxWidth: 300, fontSize: 'var(--text-xs, 12px)',
+                                  background: 'var(--color-primary-50)', borderRadius: 'var(--radius-md)',
+                                  color: 'var(--text-secondary)', fontWeight: 400,
+                                }}
+                              >
+                                <strong style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--color-primary-700)' }}>
+                                  <MessageSquare size={12} aria-hidden="true" /> Eskalasi dari Front Office
+                                </strong>
+                                {catatanFo?.topik && <div>Topik: {catatanFo.topik}</div>}
+                                {catatanFo?.catatan && (
+                                  <div style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{catatanFo.catatan}</div>
+                                )}
+                                {catatanFo?.foNama && <div style={{ color: 'var(--text-tertiary)' }}>oleh {catatanFo.foNama}</div>}
+                              </div>
+                            )}
+                          </td>
                           <td>
                             <span className={`badge badge--${k?.asal === 'reservasi' ? 'pending' : 'draft'}`}>
                               {asalLabel(k?.asal ?? 'walk_in')}
@@ -617,6 +797,11 @@ export default function AntrianPage() {
                             <span className={`badge badge--${a.status}`}>
                               {statusLabel(a.status)}
                             </span>
+                            {a.status === 'dilayani' && (
+                              <small style={{ display: 'block', marginTop: 2, color: 'var(--text-tertiary)' }}>
+                                {milikSaya ? 'oleh Anda' : `oleh ${pelayanNama ?? 'petugas lain'}`}
+                              </small>
+                            )}
                           </td>
                           <td>
                             {a.status === 'menunggu' ? (
@@ -631,55 +816,101 @@ export default function AntrianPage() {
                                   <Volume2 size={14} style={{ marginRight: '4px' }} />
                                   Panggil
                                 </button>
-                                {/* Tombol manual 'Lengkapi Data' untuk layanan pendataan
-                                   — berguna bila wizard tidak auto-buka setelah Mulai Layanan.
-                                   Untuk OSS/Perizinan, Mulai Layanan akan auto-buka wizard;
-                                   tombol ini memberi fallback eksplisit. */}
-                                {isLayananPendataan(resolveLayananNama(a)) && (
-                                  <button
-                                    className="btn btn--secondary btn--sm"
-                                    onClick={() => setActiveWizardTiketId(a.id)}
-                                    title="Buka form pendataan secara manual"
-                                    style={{ padding: '4px 10px', fontSize: '12px' }}
-                                  >
-                                    <FileEdit size={14} style={{ marginRight: '4px' }} />
-                                    Lengkapi Data
-                                  </button>
-                                )}
-                                <button
-                                  className="btn btn--primary btn--sm"
-                                  onClick={() => handleMulaiLayanan(a.legacy_visit_id, a.id, resolveLayananNama(a))}
-                                  style={{ padding: '4px 12px', fontSize: '12px' }}
-                                >
-                                  <Play size={14} style={{ marginRight: '4px' }} />
-                                  Mulai Layanan
-                                </button>
-                              </div>
-                            ) : a.status === 'dilayani' ? (
-                              <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-                                {isLayananPendataan(resolveLayananNama(a)) && (
+                                {/* Keputusan CEO 7.5: tidak ada "Lengkapi Data" sebelum Mulai Layanan. Draf pendataan
+                                   hanya ditulis pemilik tiket yang sedang dilayani (wizard terbuka otomatis setelah Mulai). */}
+                                {bolehMulaiTiket(currentUser, a) && (
                                   <button
                                     className="btn btn--primary btn--sm"
-                                    onClick={() => setActiveWizardTiketId(a.id)}
-                                    style={{ padding: '4px 10px', fontSize: '12px' }}
+                                    onClick={() => handleMulaiLayanan(a)}
+                                    disabled={sibuk}
+                                    aria-busy={sibuk}
+                                    style={{ padding: '4px 12px', fontSize: '12px' }}
                                   >
-                                    <FileEdit size={14} style={{ marginRight: '4px' }} />
-                                    Form Pendataan
+                                    <Play size={14} style={{ marginRight: '4px' }} aria-hidden="true" />
+                                    {sibuk ? 'Memproses…' : 'Mulai Layanan'}
                                   </button>
                                 )}
-                                <button
-                                  className="btn btn--secondary btn--sm"
-                                  onClick={() => handleSelesaikan(a.legacy_visit_id, a.id, resolveLayananNama(a))}
-                                  style={{ padding: '4px 12px', fontSize: '12px' }}
-                                >
-                                  <CheckCircle2 size={14} style={{ marginRight: '4px', color: 'var(--color-success-600)' }} />
-                                  Selesai
-                                </button>
+                                {tombolAlihkan}
                               </div>
+                            ) : a.status === 'dilayani' ? (
+                              milikSaya ? (
+                                <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                                  {punyaPendataan(a) && (
+                                    <button
+                                      className="btn btn--primary btn--sm"
+                                      onClick={() => setActiveWizardTiketId(a.id)}
+                                      disabled={sibuk}
+                                      style={{ padding: '4px 10px', fontSize: '12px' }}
+                                    >
+                                      <FileEdit size={14} style={{ marginRight: '4px' }} aria-hidden="true" />
+                                      Form Pendataan
+                                    </button>
+                                  )}
+                                  <button
+                                    className="btn btn--secondary btn--sm"
+                                    onClick={() => handleSelesaikan(a)}
+                                    disabled={sibuk}
+                                    aria-busy={sibuk}
+                                    style={{ padding: '4px 12px', fontSize: '12px' }}
+                                  >
+                                    <CheckCircle2 size={14} style={{ marginRight: '4px', color: 'var(--color-success-600)' }} aria-hidden="true" />
+                                    {sibuk ? 'Memproses…' : 'Selesai'}
+                                  </button>
+                                  {bolehKembalikanTiket(currentUser, a) && (
+                                    <button
+                                      className="btn btn--ghost btn--sm"
+                                      onClick={() =>
+                                        setKembalikanTiket({ id: a.id, nomor_display: a.nomor_display, layanan_id: a.layanan_id })
+                                      }
+                                      disabled={sibuk}
+                                      aria-label={`Kembalikan tiket ${a.nomor_display} ke Front Office`}
+                                      title="Kembalikan pengunjung ke kotak masuk Front Office (wajib catatan)"
+                                      style={{ padding: '4px 10px', fontSize: '12px' }}
+                                    >
+                                      <Undo2 size={14} style={{ marginRight: '4px' }} aria-hidden="true" />
+                                      Kembalikan ke FO
+                                    </button>
+                                  )}
+                                  {tombolAlihkan}
+                                </div>
+                              ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                  <small style={{ color: 'var(--text-secondary)', maxWidth: 240 }}>
+                                    Hanya {pelayanNama ?? 'petugas yang memulai'} yang dapat menyelesaikan tiket ini.
+                                  </small>
+                                  <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                                    {punyaPendataan(a) && (
+                                      <button
+                                        className="btn btn--ghost btn--xs"
+                                        onClick={() => setActiveWizardTiketId(a.id)}
+                                        style={{ fontSize: '11px', padding: '2px 6px', width: 'fit-content' }}
+                                      >
+                                        <FileText size={12} style={{ marginRight: '3px' }} aria-hidden="true" />
+                                        Lihat Data
+                                      </button>
+                                    )}
+                                    {bolehAmbilAlihTiket(currentUser, a) && (
+                                      <button
+                                        className="btn btn--secondary btn--xs"
+                                        onClick={() =>
+                                          setAmbilAlihTiket({ id: a.id, nomor_display: a.nomor_display, pemilik_nama: pelayanNama })
+                                        }
+                                        disabled={sibuk}
+                                        title="Darurat: jadikan Anda penanggung jawab tiket ini (wajib alasan, tercatat di audit)"
+                                        style={{ fontSize: '11px', padding: '2px 6px', width: 'fit-content' }}
+                                      >
+                                        <UserCog size={12} style={{ marginRight: '3px' }} aria-hidden="true" />
+                                        Ambil alih
+                                      </button>
+                                    )}
+                                    {tombolAlihkan}
+                                  </div>
+                                </div>
+                              )
                             ) : (
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                 <span style={{ color: 'var(--text-secondary)' }}>{durasi}</span>
-                                {isLayananPendataan(resolveLayananNama(a)) && (
+                                {punyaPendataan(a) && (
                                   <button
                                     className="btn btn--ghost btn--xs"
                                     onClick={() => setActiveWizardTiketId(a.id)}
@@ -689,7 +920,7 @@ export default function AntrianPage() {
                                     Lihat Data
                                   </button>
                                 )}
-                                {a.status === 'selesai' && isLayananPendataan(resolveLayananNama(a)) && (
+                                {a.status === 'selesai' && punyaPendataan(a) && (
                                   isAdminLike ? (
                                     <button
                                       className="btn btn--secondary btn--xs"
@@ -734,6 +965,44 @@ export default function AntrianPage() {
         )}
       </div>
 
+      <p role="status" aria-live="polite" style={SR_ONLY}>{pengumuman}</p>
+
+      {ambilAlihTiket && (
+        <AmbilAlihTiketModal
+          key={ambilAlihTiket.id}
+          tiket={ambilAlihTiket}
+          onClose={() => setAmbilAlihTiket(null)}
+          onSuccess={fetchData}
+        />
+      )}
+
+      {alihkanTiket && (
+        <AlihkanTiketModal
+          key={alihkanTiket.id}
+          tiket={alihkanTiket}
+          onClose={() => setAlihkanTiket(null)}
+          onSuccess={fetchData}
+        />
+      )}
+
+      {kembalikanTiket && (
+        <KembalikanKeFoModal
+          key={kembalikanTiket.id}
+          tiket={kembalikanTiket}
+          onClose={() => setKembalikanTiket(null)}
+          onSuccess={fetchData}
+        />
+      )}
+
+      {selesaiEskalasiTiket && (
+        <SelesaiEskalasiModal
+          key={selesaiEskalasiTiket.id}
+          tiket={selesaiEskalasiTiket}
+          onClose={() => setSelesaiEskalasiTiket(null)}
+          onSuccess={fetchData}
+        />
+      )}
+
       <KoreksiPelayananModal
         isOpen={Boolean(koreksiTiketId)}
         tiketId={koreksiTiketId}
@@ -748,6 +1017,7 @@ export default function AntrianPage() {
         onSuccess={async () => {
           await fetchData();
         }}
+        onDataBasi={fetchData}
       />
     </>
   );

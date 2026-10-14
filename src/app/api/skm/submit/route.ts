@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
+import { MutasiError, mutasiInsert } from '@/lib/supabase/mutate';
+import { catatMutasi } from '@/lib/observability/catat-mutasi';
 
 const bodySchema = z.object({
   token: z.string().min(16).max(128),
@@ -41,21 +43,31 @@ export async function POST(request: NextRequest) {
 
   const { token, u1, u2, u3, u4, u5, u6, u7, u8, u9, saran } = parsed.data;
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc('submit_skm_response', {
-    p_token: token,
-    p_u1: u1,
-    p_u2: u2,
-    p_u3: u3,
-    p_u4: u4,
-    p_u5: u5,
-    p_u6: u6,
-    p_u7: u7,
-    p_u8: u8,
-    p_u9: u9,
-    p_saran: saran?.trim() || null,
-  });
+  let data: unknown;
+  try {
+    // RPC mengembalikan teks status ('submitted' | 'duplicate' | ...); status selain 'submitted' dipetakan di bawah.
+    [data] = await mutasiInsert<string>(
+      supabase.rpc('submit_skm_response', {
+        p_token: token,
+        p_u1: u1,
+        p_u2: u2,
+        p_u3: u3,
+        p_u4: u4,
+        p_u5: u5,
+        p_u6: u6,
+        p_u7: u7,
+        p_u8: u8,
+        p_u9: u9,
+        p_saran: saran?.trim() || null,
+      }),
+    );
+  } catch (e) {
+    catatMutasi('error', 'skm.submit', '/api/skm/submit', e);
+    return NextResponse.json({ error: 'Gagal mengirim survei' }, { status: 500 });
+  }
 
-  if (error || typeof data !== 'string') {
+  if (typeof data !== 'string') {
+    catatMutasi('error', 'skm.submit', '/api/skm/submit', new MutasiError('tidak_ada_baris'));
     return NextResponse.json({ error: 'Gagal mengirim survei' }, { status: 500 });
   }
   if (data !== 'submitted') {

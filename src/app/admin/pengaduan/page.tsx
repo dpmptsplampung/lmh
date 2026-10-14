@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Loader2, AlertTriangle, ShieldAlert, Clock } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import RoleNote from '@/components/admin/RoleNote';
+import { useToast } from '@/components/Toast';
 
 // CMP-02/CMP-03/CMP-06: dashboard pengaduan untuk Admin & FO.
 // Jalur integritas hanya tampil untuk Admin (I-15); penanda warna mendekati batas SLA.
@@ -45,6 +46,7 @@ function SlaBadge({ batas }: { batas: string }) {
 }
 
 export default function AdminPengaduanPage() {
+  const { toast } = useToast();
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<'layanan' | 'integritas'>('layanan');
@@ -114,6 +116,9 @@ export default function AdminPengaduanPage() {
       setError(data.error ?? 'Gagal mengubah status pengaduan');
       return;
     }
+    // Status sudah berubah, tetapi server dapat membalas ok + `peringatan` (mis. riwayat perubahan gagal dicatat).
+    const hasil = await res.json().catch(() => ({}));
+    if (typeof hasil?.peringatan === 'string' && hasil.peringatan.trim()) toast(hasil.peringatan, 'warning');
     void load();
   };
 

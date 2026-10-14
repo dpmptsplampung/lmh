@@ -12,6 +12,7 @@ const baseRow: RekapTicketRow = {
   status: 'selesai',
   kunjungan: { nama: 'Budi', asal: 'walk_in', qr_token: null },
   petugas: { nama: 'Andi' },
+  fo_nama: 'Sari FO',
   form_type: 'oss',
   pelayanan_oss: {
     id: 'p-1',
@@ -94,10 +95,35 @@ describe('buildRekapWorkbook', () => {
     expect(headers).toEqual([
       'Tanggal', 'Nomor Tiket', 'Nama Pemohon', 'No HP', 'Nama Perusahaan', 'Email',
       'Lokasi Usaha', 'OPD Teknis', 'Uraian Permohonan', 'Tindak Lanjut',
-      'Catatan Petugas', 'Petugas', 'Status',
+      'Catatan Petugas', 'Petugas', 'Front Office', 'Status',
     ]);
     expect(ws.getCell('D2').value).toBe('081300000001');
     expect(ws.getCell('D2').numFmt).toBe('@');
+  });
+
+  it('layanan: kolom Front Office tepat setelah Petugas; nama FO dinetralkan; tiket lama tanpa tahap FO = em dash', async () => {
+    const buf = await buildRekapWorkbook('layanan', [baseRow, { ...baseRow, id: 't-2', fo_nama: '=HYPERLINK("x")' }, { ...baseRow, id: 't-3', fo_nama: null }]);
+    const ws = (await loadWorkbook(buf)).getWorksheet('Rekap Layanan')!;
+    const header = (ws.getRow(1).values as unknown[]).slice(1) as string[];
+    const kolom = header.indexOf('Front Office') + 1;
+    expect(kolom).toBe(header.indexOf('Petugas') + 2);
+    expect(ws.getRow(2).getCell(kolom).value).toBe('Sari FO');
+    expect(ws.getRow(3).getCell(kolom).value).toBe("'=HYPERLINK(\"x\")");
+    expect(ws.getRow(4).getCell(kolom).value).toBe('\u2014');
+  });
+
+  it('oss: kolom Front Office dari fo_nama; kosong/undefined = em dash', async () => {
+    const dasar = {
+      tanggal: '2026-08-31', nomor_display: 'OSS-001', nama_pemohon: 'Budi', no_hp: null, nama_usaha: 'U',
+      tipe_pelaku_usaha: null, status_penanaman_modal: null, lokasi_usaha: null, skala_usaha: null,
+      sektor_usaha_kbli: null, tindak_lanjut: 'Selesai', uraian_solusi: 'S', nama_petugas: 'Andi', status_draft: 'selesai',
+    };
+    const ws = (await loadWorkbook(await buildRekapWorkbook('oss', [{ ...dasar, fo_nama: 'Ani FO' }, dasar]))).getWorksheet('Helpdesk OSS')!;
+    const header = (ws.getRow(1).values as unknown[]).slice(1) as string[];
+    const kolom = header.indexOf('Front Office') + 1;
+    expect(kolom).toBeGreaterThan(0);
+    expect(ws.getRow(2).getCell(kolom).value).toBe('Ani FO');
+    expect(ws.getRow(3).getCell(kolom).value).toBe('\u2014');
   });
 
   it('creates an empty sheet with its header only', async () => {

@@ -11,7 +11,8 @@ export interface AdminNavEntry {
     | 'dashboard' | 'kunjungan' | 'scan' | 'antrian' | 'absensi' | 'chat'
     | 'faq' | 'umkm' | 'gallery' | 'leads' | 'skm' | 'aiLog' | 'governance'
     | 'petugas' | 'jadwal' | 'settings' | 'landing' | 'public' | 'pengaduan' | 'layar'
-    | 'rekap' | 'dokumen' | 'profil' | 'kelolaLayanan' | 'bukuTamu' | 'riwayat' | 'ai';
+    | 'rekap' | 'dokumen' | 'profil' | 'kelolaLayanan' | 'bukuTamu' | 'riwayat' | 'ai'
+    | 'kotakMasuk' | 'penanganan' | 'daftarFo' | 'topik' | 'rekapFo' | 'performa';
   roles: AdminRole[];
 }
 
@@ -19,10 +20,16 @@ export const ADMIN_NAV: AdminNavEntry[] = [
   { label: 'Dashboard', href: '/admin', iconKey: 'dashboard', roles: ['admin', 'front_office'] },
   { label: 'Kunjungan', href: '/admin/kunjungan', iconKey: 'kunjungan', roles: ['admin', 'front_office'] },
   { label: 'Scan QR', href: '/admin/scan', iconKey: 'scan', roles: ['admin', 'front_office'] },
+  // Alur Front Office (Tahap B): FO melayani dulu, mengeskalasi ke petugas layanan bila perlu.
+  // Halaman /admin/fo/* hanya untuk FO dan Admin (Admin sebagai pengganti FO, kontrak RPC §8).
+  { label: 'Kotak Masuk FO', href: '/admin/fo/kotak-masuk', iconKey: 'kotakMasuk', roles: ['admin', 'front_office'] },
+  { label: 'Penanganan', href: '/admin/fo/penanganan', iconKey: 'penanganan', roles: ['admin', 'front_office'] },
+  { label: 'Daftar FO', href: '/admin/fo/daftar', iconKey: 'daftarFo', roles: ['admin', 'front_office'] },
   { label: 'Antrian', href: '/admin/antrian', iconKey: 'antrian', roles: ['admin', 'petugas', 'front_office'] },
   { label: 'Absensi', href: '/admin/absensi', iconKey: 'absensi', roles: ['admin', 'petugas', 'front_office'] },
   { label: 'Live Chat', href: '/admin/chat', iconKey: 'chat', roles: ['admin', 'petugas', 'front_office'] },
-  { label: 'Kelola FAQ', href: '/admin/chat/faq', iconKey: 'faq', roles: ['admin', 'petugas'] },
+  // Front Office hanya mengelola FAQ umum (layanan_id NULL; RLS faq_fo_umum, lihat src/lib/faq-scope.ts).
+  { label: 'Kelola FAQ', href: '/admin/chat/faq', iconKey: 'faq', roles: ['admin', 'petugas', 'front_office'] },
   { label: 'UMKM', href: '/admin/umkm', iconKey: 'umkm', roles: ['admin'] },
   { label: 'Investment Gallery', href: '/admin/gallery', iconKey: 'gallery', roles: ['admin'] },
   { label: 'Lead Investasi', href: '/admin/investasi-leads', iconKey: 'leads', roles: ['admin'] },
@@ -36,9 +43,13 @@ export const ADMIN_NAV: AdminNavEntry[] = [
   { label: 'Pengaturan AI', href: '/admin/settings/ai', iconKey: 'ai', roles: ['admin'] },
   { label: 'Kelola Layar', href: '/admin/layar', iconKey: 'layar', roles: ['admin'] },
   { label: 'Rekap Harian', href: '/admin/rekap', iconKey: 'rekap', roles: ['admin', 'petugas', 'front_office'] },
+  // Tahap D: rekap harian FO (Admin dan semua FO melihat semua FO, keputusan CEO 2026-10-14) dan performa (Admin).
+  { label: 'Rekap Front Office', href: '/admin/rekap-fo', iconKey: 'rekapFo', roles: ['admin', 'front_office'] },
+  { label: 'Performa Pelayanan', href: '/admin/performa', iconKey: 'performa', roles: ['admin'] },
   { label: 'Dokumen Peraturan', href: '/admin/dokumen', iconKey: 'dokumen', roles: ['admin'] },
   { label: 'Konten Landing', href: '/admin/settings/landing', iconKey: 'landing', roles: ['admin'] },
   { label: 'Kelola Layanan', href: '/admin/layanan', iconKey: 'kelolaLayanan', roles: ['admin', 'front_office'] },
+  { label: 'Topik Penanganan', href: '/admin/topik', iconKey: 'topik', roles: ['admin'] },
   { label: 'Buku Tamu', href: '/admin/buku-tamu', iconKey: 'bukuTamu', roles: ['admin', 'front_office'] },
   { label: 'Riwayat Perubahan', href: '/admin/riwayat', iconKey: 'riwayat', roles: ['admin'] },
   { label: 'Profil Saya', href: '/admin/profil', iconKey: 'profil', roles: ['admin', 'petugas', 'front_office'] },

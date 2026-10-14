@@ -24,6 +24,8 @@ import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/components/Toast';
 import RoleNote from '@/components/admin/RoleNote';
 import RekapLayananTable, { type LayananOption } from '@/components/admin/RekapLayananTable';
+import RekapPenangananTable from '@/components/admin/RekapPenangananTable';
+import { tambahNamaFo } from '@/lib/rekap/foTiket';
 
 interface RekapRow {
   layanan_id: string;
@@ -54,6 +56,8 @@ interface RekapOssRow {
   tindak_lanjut: string;
   uraian_solusi: string;
   nama_petugas: string;
+  /** Front Office dari tahap FO pada kunjungan tiket; null = tiket lama tanpa tahap FO. */
+  fo_nama?: string | null;
   status_draft: string;
   is_locked: boolean;
   created_at: string;
@@ -72,12 +76,13 @@ interface RekapPerizinanRow {
   tindak_lanjut: string;
   catatan_petugas: string | null;
   nama_petugas: string;
+  fo_nama?: string | null;
   status_draft: string;
   is_locked: boolean;
   created_at: string;
 }
 
-type TabType = 'umum' | 'oss' | 'perizinan' | 'layanan';
+type TabType = 'umum' | 'oss' | 'perizinan' | 'layanan' | 'penanganan';
 
 export default function AdminRekapPage() {
   const { toast } = useToast();
@@ -93,6 +98,8 @@ export default function AdminRekapPage() {
   // Role-scoped options for the Layanan tab (lifted from RekapLayananTable so the
   // page knows whether to render the Layanan tab with a locked layanan filter).
   const [isPetugas, setIsPetugas] = useState(false);
+  // Tab Rekap Petugas Layanan terbuka untuk Admin, Petugas, dan Front Office (keputusan CEO 2026-10-14). Cakupan
+  // ditegakkan server (api/admin/rekap/penanganan): Admin & FO semua (keterbukaan antar FO), Petugas layanannya.
   const [initialLayananId, setInitialLayananId] = useState<string | null>(null);
   const [layananOptions, setLayananOptions] = useState<LayananOption[]>([]);
 
@@ -139,7 +146,8 @@ export default function AdminRekapPage() {
           .lte('tanggal', selesai)
           .order('created_at', { ascending: false });
         if (error) throw error;
-        setOssRows((data ?? []) as RekapOssRow[]);
+        // Nama FO dimuat terpisah (view tidak memuat penanganan); gagal -> '—', rekap tetap tampil.
+        setOssRows(await tambahNamaFo(supabase, (data ?? []) as RekapOssRow[]));
       } else if (activeTab === 'perizinan') {
         const { data, error } = await supabase
           .from('v_rekap_pelayanan_perizinan')
@@ -148,7 +156,7 @@ export default function AdminRekapPage() {
           .lte('tanggal', selesai)
           .order('created_at', { ascending: false });
         if (error) throw error;
-        setPerizinanRows((data ?? []) as RekapPerizinanRow[]);
+        setPerizinanRows(await tambahNamaFo(supabase, (data ?? []) as RekapPerizinanRow[]));
       }
     } catch {
       toast('Gagal memuat rekap', 'error');
@@ -283,11 +291,18 @@ export default function AdminRekapPage() {
           >
             <BarChart2 size={16} /> Rekap Per Layanan
           </button>
+          <button
+            className={`btn ${activeTab === 'penanganan' ? 'btn--primary' : 'btn--ghost'} btn--sm`}
+            onClick={() => setActiveTab('penanganan')}
+            style={{ borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }}
+          >
+            <FileCheck size={16} /> Rekap Petugas Layanan
+          </button>
         </div>
 
         {/* Filter bar per tab (umum/oss/perizinan): rentang tanggal + Download Excel di kanan.
             Tab layanan punya filter sendiri di dalam RekapLayananTable. */}
-        {activeTab !== 'layanan' && (
+        {activeTab !== 'layanan' && activeTab !== 'penanganan' && (
           <div
             style={{
               display: 'flex',
@@ -335,6 +350,11 @@ export default function AdminRekapPage() {
         {/* TAB 1: REKAP UMUM */}
         {activeTab === 'umum' && (
           <>
+            <RoleNote>
+              Rekap harian lama (historis). Kolom Hadir tidak menghitung tiket yang dialihkan Admin ke layanan lain;
+              tiket yang dikembalikan petugas ke Front Office atau dialihkan tidak termasuk Selesai.
+              Untuk rincian per tahap (topik, hasil, durasi) lihat Rekap Front Office dan tab Rekap Petugas Layanan.
+            </RoleNote>
             <div className="grid-stats" style={{ marginBottom: 'var(--space-8)' }}>
               <div className="stat-card">
                 <div className="stat-card__icon" style={{ background: 'var(--color-primary-50)', color: 'var(--color-primary-600)' }}>
@@ -429,7 +449,7 @@ export default function AdminRekapPage() {
                 <tbody>
                   {Array.from({ length: 5 }).map((_, i) => (
                     <tr key={i}>
-                      <td colSpan={8}><div className="skeleton" style={{ height: 20, width: '100%' }} /></td>
+                      <td colSpan={9}><div className="skeleton" style={{ height: 20, width: '100%' }} /></td>
                     </tr>
                   ))}
                 </tbody>
@@ -446,12 +466,13 @@ export default function AdminRekapPage() {
                     <th>Tindakan</th>
                     <th>Uraian Solusi</th>
                     <th>Petugas</th>
+                    <th>Front Office</th>
                   </tr>
                 </thead>
                 <tbody>
                   {ossRows.length === 0 ? (
                     <tr>
-                      <td colSpan={8} style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: 'var(--space-8)' }}>
+                      <td colSpan={9} style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: 'var(--space-8)' }}>
                         Belum ada data pendataan Helpdesk OSS pada rentang tanggal ini.
                       </td>
                     </tr>
@@ -470,7 +491,7 @@ export default function AdminRekapPage() {
                           <div style={{ fontWeight: 600 }}>{r.nama_usaha}</div>
                           {r.tipe_pelaku_usaha && (
                             <div style={{ fontSize: '11px', color: 'var(--color-primary-700)' }}>
-                              {r.tipe_pelaku_usaha === 'perseorangan' ? 'Perseorangan' : 'Badan Usaha'}
+                              {r.tipe_pelaku_usaha === 'perseorangan' ? 'Perseorangan' : r.tipe_pelaku_usaha === 'tidak_berlaku' ? 'Tidak berlaku' : 'Badan Usaha'}
                             </div>
                           )}
                         </td>
@@ -499,6 +520,7 @@ export default function AdminRekapPage() {
                           {r.uraian_solusi}
                         </td>
                         <td style={{ fontSize: '12px', fontWeight: 500 }}>{r.nama_petugas}</td>
+                        <td style={{ fontSize: '12px' }}>{r.fo_nama ?? '—'}</td>
                       </tr>
                     ))
                   )}
@@ -516,7 +538,7 @@ export default function AdminRekapPage() {
                 <tbody>
                   {Array.from({ length: 5 }).map((_, i) => (
                     <tr key={i}>
-                      <td colSpan={7}><div className="skeleton" style={{ height: 20, width: '100%' }} /></td>
+                      <td colSpan={8}><div className="skeleton" style={{ height: 20, width: '100%' }} /></td>
                     </tr>
                   ))}
                 </tbody>
@@ -532,12 +554,13 @@ export default function AdminRekapPage() {
                     <th>Tindak Lanjut</th>
                     <th>Catatan Petugas</th>
                     <th>Petugas</th>
+                    <th>Front Office</th>
                   </tr>
                 </thead>
                 <tbody>
                   {perizinanRows.length === 0 ? (
                     <tr>
-                      <td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: 'var(--space-8)' }}>
+                      <td colSpan={8} style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: 'var(--space-8)' }}>
                         Belum ada data pendataan Non OSS (SiCantik Lampung) pada rentang tanggal ini.
                       </td>
                     </tr>
@@ -574,6 +597,7 @@ export default function AdminRekapPage() {
                           {r.catatan_petugas || '—'}
                         </td>
                         <td style={{ fontSize: '12px', fontWeight: 500 }}>{r.nama_petugas}</td>
+                        <td style={{ fontSize: '12px' }}>{r.fo_nama ?? '—'}</td>
                       </tr>
                     ))
                   )}
@@ -589,6 +613,16 @@ export default function AdminRekapPage() {
             isPetugas={isPetugas}
             initialLayananId={initialLayananId}
             options={layananOptions}
+          />
+        )}
+
+        {/* TAB 5: REKAP PETUGAS LAYANAN (tahap layanan + Pendataan Pelayanan per tiket) */}
+        {activeTab === 'penanganan' && (
+          <RekapPenangananTable
+            peran="layanan"
+            isPetugas={isPetugas}
+            initialLayananId={initialLayananId}
+            layananOptions={layananOptions}
           />
         )}
       </div>

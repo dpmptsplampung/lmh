@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   HelpCircle,
   Edit2,
@@ -15,7 +15,11 @@ import {
 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import { createClient } from '@/lib/supabase/client';
+import { mutasiInsert, mutasiWajibBaris, pesanMutasi } from '@/lib/supabase/mutate';
+import { perluMuatUlang } from '@/components/admin/mutasi-ui';
+import { layananFaqBolehDikelola, type OpsiFaqLayanan } from '@/lib/faq-scope';
 import { useToast } from '@/components/Toast';
+import ErrorRetry from '@/components/ErrorRetry';
 import RoleNote from '@/components/admin/RoleNote';
 import CobaTanyaBot from '@/components/admin/settings/CobaTanyaBot';
 import styles from './faq.module.css';
@@ -25,6 +29,10 @@ const readAck = () => {
   try { return sessionStorage.getItem(ACK_KEY) === '1'; } catch { return false; }
 };
 
+// Nilai <option> untuk FAQ umum (layanan_id NULL); id layanan sungguhan adalah UUID sehingga tak bisa bentrok.
+const UMUM_KEY = '__umum__';
+const keyOpsi = (o: OpsiFaqLayanan) => o.id ?? UMUM_KEY;
+
 interface Layanan {
   id: string;
   nama: string;
@@ -33,7 +41,7 @@ interface Layanan {
 
 interface FAQ {
   id: string;
-  layanan_id: string;
+  layanan_id: string | null; // null = FAQ umum (semua layanan)
   pertanyaan: string;
   jawaban: string;
   dasar_hukum?: string | null;
@@ -44,15 +52,42 @@ interface FAQ {
 export default function AdminFAQPage() {
   const { toast } = useToast();
   const [layananList, setLayananList] = useState<Layanan[]>([]);
-  const [selectedLayananId, setSelectedLayananId] = useState('');
+  const [layananSelesai, setLayananSelesai] = useState(false); // daftar layanan sudah dimuat (sukses/gagal)
+  const [pilihKey, setPilihKey] = useState(''); // pilihan pengguna di dropdown ('' = belum memilih)
   const [faqList, setFaqList] = useState<FAQ[]>([]);
   const [loading, setLoading] = useState(true);
   const [layananError, setLayananError] = useState(false);
+  const [layananMuatKe, setLayananMuatKe] = useState(0); // dinaikkan tombol "Muat ulang" untuk memuat ulang layanan
+  const [layananMemuat, setLayananMemuat] = useState(false); // muat ulang layanan sedang berjalan
   const [refreshTrigger, setRefreshTrigger] = useState(0);
-  const [role, setRole] = useState<string | null>(null); // null = belum dimuat
+  const [role, setRole] = useState<string | null>(null); // null = belum dimuat (atau gagal dimuat: lihat roleError)
+  const [roleError, setRoleError] = useState(false); // gagal membaca peran (jaringan/galat DB) != memang tanpa akses
+  const [roleMuatKe, setRoleMuatKe] = useState(0);
+  const [roleMemuat, setRoleMemuat] = useState(false);
+  const [layananPetugasId, setLayananPetugasId] = useState<string | null>(null);
   const [togglingBot, setTogglingBot] = useState(false);
   const isAdmin = role === 'admin';
   const isPetugas = role === 'petugas';
+  const isFrontOffice = role === 'front_office';
+
+  // Opsi dropdown = layanan yang BOLEH dikelola peran ini (selaras RLS; lihat lib/faq-scope.ts).
+  const opsiLayanan = useMemo(
+    () => (role === null ? [] : layananFaqBolehDikelola(role, layananPetugasId, layananList)),
+    [role, layananPetugasId, layananList],
+  );
+  // Pilihan efektif diturunkan (bukan di-set lewat effect): pilihan pengguna bila masih valid, kalau tidak
+  // layanan pertama (perilaku lama) atau, bila hanya ada Umum, Umum.
+  const selectedKey = useMemo(() => {
+    if (opsiLayanan.some((o) => keyOpsi(o) === pilihKey)) return pilihKey;
+    const awal = opsiLayanan.find((o) => o.id !== null) ?? opsiLayanan[0];
+    return awal ? keyOpsi(awal) : '';
+  }, [opsiLayanan, pilihKey]);
+  const selectedLayananId: string | null = selectedKey && selectedKey !== UMUM_KEY ? selectedKey : null;
+  // Admin dan petugas (berlayanan) butuh daftar layanan; Front Office hanya mengelola "Umum" sehingga gagal
+  // memuat layanan tidak boleh memblokirnya.
+  const butuhDaftarLayanan = isAdmin || (isPetugas && !!layananPetugasId);
+  const layananGagalBlokir = layananError && butuhDaftarLayanan;
+  const tanpaAkses = role !== null && layananSelesai && !layananGagalBlokir && opsiLayanan.length === 0;
   // Petugas wajib mencentang pernyataan tanggung jawab sekali per sesi sebelum menyimpan FAQ.
   const [acked, setAcked] = useState(false);
   const [ackChecked, setAckChecked] = useState(false);
@@ -75,7 +110,9 @@ export default function AdminFAQPage() {
   // Embedding RAG: generate ulang embedding FAQ yang belum punya (max 50/panggilan)
   const [embedding, setEmbedding] = useState(false);
 
+  // /api/admin/faq/embed khusus Admin (403 untuk Front Office/petugas): dipanggil HANYA bila isAdmin.
   const generateEmbeddings = async (): Promise<boolean> => {
+    if (!isAdmin) return false;
     try {
       const res = await fetch('/api/admin/faq/embed', { method: 'POST' });
       const data = await res.json().catch(() => null);
@@ -114,8 +151,10 @@ export default function AdminFAQPage() {
     }
   }, []);
 
-  // Load Layanan
+  // Load Layanan (diulang saat layananMuatKe naik). Kegagalan tidak memblokir Front Office (hanya butuh "Umum");
+  // untuk admin/petugas ditampilkan ErrorRetry (lihat layananGagalBlokir), bukan toast saja.
   useEffect(() => {
+    let batal = false;
     async function loadLayanan() {
       try {
         const supabase = createClient();
@@ -126,65 +165,110 @@ export default function AdminFAQPage() {
 
         if (fetchErr) throw fetchErr;
 
-        setLayananList(data || []);
-        setLayananError(false);
-        if (data && data.length > 0) {
-          setSelectedLayananId(data[0].id);
+        if (!batal) {
+          setLayananList(data || []);
+          setLayananError(false);
         }
       } catch {
-        setLayananList([]);
-        setLayananError(true);
-        toast('Gagal memuat layanan', 'error');
+        if (!batal) {
+          setLayananList([]);
+          setLayananError(true);
+        }
+      } finally {
+        if (!batal) {
+          setLayananSelesai(true);
+          setLayananMemuat(false);
+        }
       }
     }
     loadLayanan();
-  }, [toast]);
+    return () => {
+      batal = true;
+    };
+  }, [layananMuatKe]);
 
-  // Load FAQs when selected service changes or refresh triggered
+  const handleMuatUlangLayanan = () => {
+    if (layananMemuat) return;
+    setLayananMemuat(true);
+    setLayananMuatKe((n) => n + 1);
+  };
+
+  // Load FAQs when selected service changes or refresh triggered.
+  // "Umum" = layanan_id IS NULL (bukan eq: `= NULL` tidak pernah cocok di SQL).
   useEffect(() => {
-    if (!selectedLayananId) return;
+    if (!selectedKey) return;
+    let batal = false;
 
     async function loadFAQs() {
       try {
         const supabase = createClient();
-        const { data, error: fetchErr } = await supabase
+        const dasar = supabase
           .from('faq_knowledge_base')
-          .select('id, layanan_id, pertanyaan, jawaban, dasar_hukum, aktif, urutan')
-          .eq('layanan_id', selectedLayananId)
-          .order('urutan', { ascending: true });
+          .select('id, layanan_id, pertanyaan, jawaban, dasar_hukum, aktif, urutan');
+        const { data, error: fetchErr } = await (
+          selectedKey === UMUM_KEY ? dasar.is('layanan_id', null) : dasar.eq('layanan_id', selectedKey)
+        ).order('urutan', { ascending: true });
 
         if (fetchErr) throw fetchErr;
-        setFaqList(data || []);
+        if (!batal) setFaqList(data || []);
       } catch {
-        setFaqList([]);
-        toast('Gagal memuat FAQ', 'error');
+        if (!batal) {
+          setFaqList([]);
+          toast('Gagal memuat FAQ', 'error');
+        }
       } finally {
-        setLoading(false);
+        if (!batal) setLoading(false);
       }
     }
     loadFAQs();
-  }, [selectedLayananId, refreshTrigger, toast]);
+    return () => {
+      batal = true;
+    };
+  }, [selectedKey, refreshTrigger, toast]);
 
   // RBAC Tahap 0: bot hidup/mati = Admin saja (tabel `layanan` hanya boleh ditulis Admin).
-  // Role dibaca dari tabel petugas; selama belum terbukti admin, semua jalur tulis ditolak.
+  // Role (+ layanan_id untuk petugas) dibaca dari tabel petugas; selama belum terbukti, semua jalur tulis ditolak.
+  // Galat baca (jaringan/DB) dibedakan dari "memang tanpa akses": galat -> roleError (ErrorRetry), baris tak ada -> 'unknown'.
   useEffect(() => {
+    let batal = false;
     async function loadRole() {
       try {
         const supabase = createClient();
-        const { data: { user } } = await supabase.auth.getUser();
+        const { data: { user }, error: userErr } = await supabase.auth.getUser();
+        // Tanpa sesi = tidak ada akses; galat lain (mis. jaringan) = gagal memuat, bukan tanpa akses.
+        if (userErr && userErr.name !== 'AuthSessionMissingError') throw userErr;
         if (!user) {
-          setRole('unknown');
+          if (!batal) setRole('unknown');
           return;
         }
-        const { data: p } = await supabase
-          .from('petugas').select('role').eq('auth_user_id', user.id).maybeSingle();
-        setRole(p?.role ?? 'unknown');
+        const { data: p, error: pErr } = await supabase
+          .from('petugas').select('role, layanan_id').eq('auth_user_id', user.id).maybeSingle();
+        if (pErr) throw pErr;
+        if (!batal) {
+          setLayananPetugasId(p?.layanan_id ?? null);
+          setRole(p?.role ?? 'unknown');
+          setRoleError(false);
+        }
       } catch {
-        setRole('unknown');
+        if (!batal) {
+          setRoleError(true);
+          toast('Gagal memuat hak akses Anda', 'error');
+        }
+      } finally {
+        if (!batal) setRoleMemuat(false);
       }
     }
     loadRole();
-  }, []);
+    return () => {
+      batal = true;
+    };
+  }, [roleMuatKe, toast]);
+
+  const handleMuatUlangRole = () => {
+    if (roleMemuat) return;
+    setRoleMemuat(true);
+    setRoleMuatKe((n) => n + 1);
+  };
 
   // Toggle chatbot state per-service (Admin saja; dijaga di handler, bukan hanya di UI)
   const handleToggleChatbot = async (id: string, currentVal: boolean) => {
@@ -193,22 +277,17 @@ export default function AdminFAQPage() {
     const supabase = createClient();
     try {
       const newVal = !currentVal;
-      // .select('id'): RLS yang menolak update bisa 0 baris tanpa error -> jangan lapor sukses palsu.
-      const { data: updated, error: updateErr } = await supabase
-        .from('layanan')
-        .update({ chatbot_aktif: newVal })
-        .eq('id', id)
-        .select('id');
-
-      if (updateErr) throw updateErr;
-      if (!updated || updated.length === 0) throw new Error('tidak ada baris berubah');
+      // RLS yang menolak update = 0 baris tanpa error -> mutasiWajibBaris melempar, tak ada sukses palsu.
+      await mutasiWajibBaris(
+        supabase.from('layanan').update({ chatbot_aktif: newVal }).eq('id', id).select('id'),
+      );
 
       setLayananList((prev) =>
         prev.map((l) => (l.id === id ? { ...l, chatbot_aktif: newVal } : l))
       );
       toast('Status chatbot layanan berhasil diperbarui', 'success');
-    } catch {
-      toast('Gagal memperbarui status chatbot. Hanya Admin yang dapat mengubahnya.', 'error');
+    } catch (e) {
+      toast(`Gagal memperbarui status chatbot. ${pesanMutasi(e)}`, 'error');
     } finally {
       setTogglingBot(false);
     }
@@ -240,6 +319,11 @@ export default function AdminFAQPage() {
       return;
     }
 
+    if (!selectedKey) {
+      setError('Pilih loket layanan terlebih dahulu.');
+      return;
+    }
+
     if (isPetugas && !acked && !ackChecked) {
       setError('Centang pernyataan tanggung jawab isi FAQ terlebih dahulu.');
       return;
@@ -256,47 +340,53 @@ export default function AdminFAQPage() {
 
     try {
       if (editingFaqId) {
-        const { error: editErr } = await supabase
-          .from('faq_knowledge_base')
-          .update({
+        // .select('id') + mutasiWajibBaris: RLS yang menolak update = 0 baris tanpa error (audit T2a).
+        await mutasiWajibBaris(
+          supabase
+            .from('faq_knowledge_base')
+            .update({
+              pertanyaan: formPertanyaan.trim(),
+              jawaban: formJawaban.trim(),
+              dasar_hukum: formDasarHukum.trim() || null,
+              aktif: formAktif,
+              urutan: formUrutan,
+              // Konten berubah → embedding lama tidak valid; null-kan supaya
+              // di-embed ulang oleh /api/admin/faq/embed (yang hanya memproses
+              // baris embedding IS NULL).
+              embedding: null,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', editingFaqId)
+            .select('id'),
+        );
+        toast('FAQ berhasil diperbarui', 'success');
+      } else {
+        // selectedLayananId null = FAQ umum (kolom layanan_id NULL).
+        await mutasiInsert(
+          supabase.from('faq_knowledge_base').insert({
+            layanan_id: selectedLayananId,
             pertanyaan: formPertanyaan.trim(),
             jawaban: formJawaban.trim(),
             dasar_hukum: formDasarHukum.trim() || null,
             aktif: formAktif,
             urutan: formUrutan,
-            // Konten berubah → embedding lama tidak valid; null-kan supaya
-            // di-embed ulang oleh /api/admin/faq/embed (yang hanya memproses
-            // baris embedding IS NULL).
-            embedding: null,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', editingFaqId);
-
-        if (editErr) throw editErr;
-        toast('FAQ berhasil diperbarui', 'success');
-      } else {
-        const { error: insertErr } = await supabase.from('faq_knowledge_base').insert({
-          layanan_id: selectedLayananId,
-          pertanyaan: formPertanyaan.trim(),
-          jawaban: formJawaban.trim(),
-          dasar_hukum: formDasarHukum.trim() || null,
-          aktif: formAktif,
-          urutan: formUrutan,
-        });
-
-        if (insertErr) throw insertErr;
+          }),
+        );
         toast('FAQ baru berhasil ditambahkan', 'success');
       }
 
       handleResetForm();
       setRefreshTrigger((prev) => prev + 1);
 
-      // Auto-generate embedding RAG untuk FAQ baru/diubah (best-effort).
-      await generateEmbeddings();
+      // Auto-generate embedding RAG untuk FAQ baru/diubah (best-effort) -- hanya Admin yang berhak memanggilnya.
+      // Front Office/petugas tidak: embedding baru terisi setelah Admin menjalankannya (lihat catatan di daftar FAQ).
+      if (isAdmin) await generateEmbeddings();
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Gagal menyimpan FAQ.';
+      // Isian form sengaja dipertahankan agar pengguna tidak kehilangan tulisannya.
+      const errorMsg = pesanMutasi(err, 'Gagal menyimpan FAQ.');
       setError(errorMsg);
       toast(errorMsg, 'error');
+      if (perluMuatUlang(err)) setRefreshTrigger((prev) => prev + 1);
     } finally {
       setSaving(false);
     }
@@ -307,22 +397,22 @@ export default function AdminFAQPage() {
 
     const supabase = createClient();
     try {
-      const { error: delErr } = await supabase
-        .from('faq_knowledge_base')
-        .delete()
-        .eq('id', id);
-
-      if (delErr) throw delErr;
+      // 0 baris terhapus (RLS menolak diam-diam / FAQ sudah tidak ada) = gagal, bukan sukses.
+      await mutasiWajibBaris(
+        supabase.from('faq_knowledge_base').delete().eq('id', id).select('id'),
+      );
 
       toast('FAQ berhasil dihapus', 'success');
       setRefreshTrigger((prev) => prev + 1);
-    } catch {
-      toast('Gagal menghapus FAQ', 'error');
+    } catch (err) {
+      toast(pesanMutasi(err, 'Gagal menghapus FAQ'), 'error');
+      if (perluMuatUlang(err)) setRefreshTrigger((prev) => prev + 1);
     }
   };
 
+  // Undefined untuk "Umum": kartu status bot per layanan tidak berlaku bagi FAQ umum.
   const getSelectedLayanan = () => {
-    return layananList.find((l) => l.id === selectedLayananId);
+    return selectedLayananId ? layananList.find((l) => l.id === selectedLayananId) : undefined;
   };
 
   return (
@@ -347,24 +437,46 @@ export default function AdminFAQPage() {
           <select
             id="filterLayanan"
             className="form-select"
-            value={selectedLayananId}
+            value={selectedKey}
             onChange={(e) => {
               setLoading(true);
-              setSelectedLayananId(e.target.value);
+              setPilihKey(e.target.value);
               handleResetForm();
             }}
-            disabled={layananError}
+            disabled={layananGagalBlokir || roleError}
           >
-            {layananList.map((l) => (
-              <option key={l.id} value={l.id}>{l.nama}</option>
+            {opsiLayanan.map((o) => (
+              <option key={keyOpsi(o)} value={keyOpsi(o)}>{o.nama}</option>
             ))}
           </select>
         </div>
 
-        {layananError ? (
-          <div className={styles.faqListCard} style={{ textAlign: 'center', padding: 'var(--space-10)', color: 'var(--color-danger-600)' }}>
+        {roleError ? (
+          <ErrorRetry
+            judul="Hak akses Anda belum dapat dimuat"
+            pesan="Peran akun Anda gagal dibaca sehingga halaman FAQ belum bisa dipakai. Ini bukan berarti Anda tidak punya akses."
+            onRetry={handleMuatUlangRole}
+            memuat={roleMemuat}
+            labelTombol="Muat ulang"
+          />
+        ) : layananGagalBlokir ? (
+          <ErrorRetry
+            judul="Daftar layanan belum dapat dimuat"
+            pesan="Layanan yang dapat dikelola FAQ-nya belum bisa ditampilkan. Periksa koneksi lalu muat ulang."
+            onRetry={handleMuatUlangLayanan}
+            memuat={layananMemuat}
+            labelTombol="Muat ulang"
+          />
+        ) : tanpaAkses ? (
+          <div
+            className={styles.faqListCard}
+            data-testid="faq-tanpa-akses"
+            style={{ textAlign: 'center', padding: 'var(--space-10)', color: 'var(--text-secondary)' }}
+          >
             <AlertCircle size={40} style={{ margin: '0 auto var(--space-2)', opacity: 0.5 }} />
-            <p style={{ fontSize: 'var(--text-sm)' }}>Gagal memuat daftar layanan.</p>
+            <p style={{ fontSize: 'var(--text-sm)' }}>
+              Tidak ada layanan yang dapat Anda kelola FAQ-nya. Hubungi Admin bila peran atau layanan Anda belum terdaftar.
+            </p>
           </div>
         ) : (
           <div className={styles.faqLayout}>
@@ -387,7 +499,7 @@ export default function AdminFAQPage() {
                         <button
                           type="button"
                           className={`btn btn--sm ${getSelectedLayanan()?.chatbot_aktif ? 'btn--primary' : 'btn--secondary'}`}
-                          onClick={() => handleToggleChatbot(selectedLayananId, getSelectedLayanan()?.chatbot_aktif || false)}
+                          onClick={() => selectedLayananId && handleToggleChatbot(selectedLayananId, getSelectedLayanan()?.chatbot_aktif || false)}
                           disabled={togglingBot}
                           aria-busy={togglingBot}
                         >
@@ -425,24 +537,36 @@ export default function AdminFAQPage() {
                     Anda dapat menonaktifkan FAQ yang keliru. Penghapusan permanen hanya oleh Admin.
                   </RoleNote>
                 )}
+                {isFrontOffice && (
+                  <RoleNote>
+                    Anda mengelola FAQ umum yang berlaku untuk semua layanan. FAQ khusus tiap layanan dikelola Admin dan petugas layanan.
+                  </RoleNote>
+                )}
                 <div className={styles.faqListHeader}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
                     <MessageSquare size={18} style={{ color: 'var(--color-primary-600)' }} />
                     <span className={styles.faqListTitle}>Database Knowledge Base FAQ</span>
                   </div>
-                  <button
-                    type="button"
-                    className="btn btn--secondary btn--sm"
-                    onClick={handleGenerateEmbeddings}
-                    disabled={embedding || loading}
-                  >
-                    {embedding ? (
-                      <><Loader2 size={14} className="animate-pulse" /> Membuat Embedding...</>
-                    ) : (
-                      <><Sparkles size={14} /> Generate Embedding</>
-                    )}
-                  </button>
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      className="btn btn--secondary btn--sm"
+                      onClick={handleGenerateEmbeddings}
+                      disabled={embedding || loading}
+                    >
+                      {embedding ? (
+                        <><Loader2 size={14} className="animate-pulse" /> Membuat Embedding...</>
+                      ) : (
+                        <><Sparkles size={14} /> Generate Embedding</>
+                      )}
+                    </button>
+                  )}
                 </div>
+                {(isPetugas || isFrontOffice) && (
+                  <RoleNote>
+                    Pencarian cepat bot (embedding) untuk FAQ yang Anda simpan baru aktif setelah Admin menjalankan embedding.
+                  </RoleNote>
+                )}
 
                 {loading ? (
                   <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-10)' }}>
@@ -457,6 +581,8 @@ export default function AdminFAQPage() {
                             <span className={styles.faqQuestion}>Q: {faq.pertanyaan}</span>
                             <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
                               <button
+                                type="button"
+                                aria-label={`Edit FAQ: ${faq.pertanyaan}`}
                                 className="btn btn--secondary btn--sm"
                                 style={{ padding: '4px 8px' }}
                                 onClick={() => handleEdit(faq)}
@@ -465,6 +591,8 @@ export default function AdminFAQPage() {
                               </button>
                               {!isPetugas && (
                                 <button
+                                  type="button"
+                                  aria-label={`Hapus FAQ: ${faq.pertanyaan}`}
                                   className="btn btn--ghost btn--sm"
                                   style={{ padding: '4px 8px', color: 'var(--color-danger-600)' }}
                                   onClick={() => handleDelete(faq.id)}
@@ -491,7 +619,9 @@ export default function AdminFAQPage() {
                     ) : (
                       <div style={{ textAlign: 'center', padding: 'var(--space-10)', color: 'var(--text-tertiary)' }}>
                         <HelpCircle size={40} style={{ margin: '0 auto var(--space-2)', opacity: 0.5 }} />
-                        <p style={{ fontSize: 'var(--text-sm)' }}>Belum ada FAQ untuk layanan ini.</p>
+                        <p style={{ fontSize: 'var(--text-sm)' }}>
+                          {selectedLayananId ? 'Belum ada FAQ untuk layanan ini.' : 'Belum ada FAQ umum.'}
+                        </p>
                       </div>
                     )}
                   </div>

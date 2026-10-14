@@ -11,7 +11,7 @@ import {
   type QueuedAction,
 } from './queue';
 
-describe('I9.2 offline queue (IndexedDB)', () => {
+describe('I9.2 offline queue (IndexedDB) — hanya pendaftaran walk-in FO', () => {
   beforeEach(() => {
     // Reset fake-indexeddb state between tests
     return clearQueue();
@@ -23,49 +23,54 @@ describe('I9.2 offline queue (IndexedDB)', () => {
 
   it('enqueueAction stores an action and returns an id', async () => {
     const id = await enqueueAction({
-      type: 'checkin',
-      payload: { nama: 'Budi', layanan_id: 'lay-1' },
+      type: 'fo_walkin',
+      payload: { p_nama: 'Budi' },
+      owner_user_id: 'user-a',
     });
     expect(id).toBeTruthy();
     expect(typeof id).toBe('string');
   });
 
+  it('menolak antrean tanpa pemilik (T3c)', async () => {
+    await expect(
+      enqueueAction({ type: 'fo_walkin', payload: {}, owner_user_id: '' }),
+    ).rejects.toThrow(/owner_user_id/);
+    expect(await getQueue()).toHaveLength(0);
+  });
+
   it('enqueued action appears in getQueue', async () => {
     const id = await enqueueAction({
-      type: 'checkin',
-      payload: { nama: 'Siti' },
+      type: 'fo_walkin',
+      payload: { p_nama: 'Siti' },
+      owner_user_id: 'user-a',
     });
     const queue = await getQueue();
     expect(queue).toHaveLength(1);
     const action = queue[0] as QueuedAction;
     expect(action.id).toBe(id);
-    expect(action.type).toBe('checkin');
-    expect(action.payload.nama).toBe('Siti');
+    expect(action.type).toBe('fo_walkin');
+    expect(action.payload.p_nama).toBe('Siti');
     expect(action.synced).toBe(0);
+    expect(action.owner_user_id).toBe('user-a');
     expect(action.created_at).toBeGreaterThan(0);
   });
 
   it('getPending returns only synced=0 actions', async () => {
-    await enqueueAction({ type: 'checkin', payload: { nama: 'A' } });
-    const id2 = await enqueueAction({ type: 'checkin', payload: { nama: 'B' } });
+    await enqueueAction({ type: 'fo_walkin', payload: { p_nama: 'A' }, owner_user_id: 'u' });
+    const id2 = await enqueueAction({ type: 'fo_walkin', payload: { p_nama: 'B' }, owner_user_id: 'u' });
     await markSynced(id2);
 
     const pending = await getPending();
     expect(pending).toHaveLength(1);
-    expect((pending[0] as QueuedAction).payload.nama).toBe('A');
+    expect((pending[0] as QueuedAction).payload.p_nama).toBe('A');
   });
 
   it('markSynced moves action out of getPending', async () => {
-    const id = await enqueueAction({
-      type: 'investasi_lead',
-      payload: { doc_id: 'd-1' },
-    });
-    let pending = await getPending();
-    expect(pending).toHaveLength(1);
+    const id = await enqueueAction({ type: 'fo_walkin', payload: {}, owner_user_id: 'u' });
+    expect(await getPending()).toHaveLength(1);
 
     await markSynced(id);
-    pending = await getPending();
-    expect(pending).toHaveLength(0);
+    expect(await getPending()).toHaveLength(0);
 
     const all = await getQueue();
     expect(all).toHaveLength(1);
@@ -73,8 +78,8 @@ describe('I9.2 offline queue (IndexedDB)', () => {
   });
 
   it('removeSynced removes only synced entries', async () => {
-    const id1 = await enqueueAction({ type: 'checkin', payload: { nama: 'X' } });
-    const id2 = await enqueueAction({ type: 'checkin', payload: { nama: 'Y' } });
+    const id1 = await enqueueAction({ type: 'fo_walkin', payload: { p_nama: 'X' }, owner_user_id: 'u' });
+    const id2 = await enqueueAction({ type: 'fo_walkin', payload: { p_nama: 'Y' }, owner_user_id: 'u' });
     await markSynced(id1);
 
     await removeSynced();
@@ -86,13 +91,11 @@ describe('I9.2 offline queue (IndexedDB)', () => {
   });
 
   it('clearQueue empties the store', async () => {
-    await enqueueAction({ type: 'checkin', payload: {} });
-    await enqueueAction({ type: 'umkm_inquiry', payload: {} });
-    await enqueueAction({ type: 'investasi_lead', payload: {} });
+    await enqueueAction({ type: 'fo_walkin', payload: {}, owner_user_id: 'u' });
+    await enqueueAction({ type: 'fo_walkin', payload: {}, owner_user_id: 'u' });
 
     await clearQueue();
-    const queue = await getQueue();
-    expect(queue).toHaveLength(0);
+    expect(await getQueue()).toHaveLength(0);
   });
 
   it('getQueue returns empty array when IndexedDB unavailable', async () => {
@@ -100,45 +103,26 @@ describe('I9.2 offline queue (IndexedDB)', () => {
     // @ts-expect-error simulate private mode
     globalThis.indexedDB = undefined;
     try {
-      const queue = await getQueue();
-      expect(queue).toEqual([]);
+      expect(await getQueue()).toEqual([]);
     } finally {
       globalThis.indexedDB = original;
     }
   });
 
-  it('stores owner_user_id when provided on enqueue', async () => {
-    const id = await enqueueAction({
-      type: 'checkin',
-      payload: { nama: 'Owned' },
-      owner_user_id: 'user-a',
-    });
-    const queue = await getQueue();
-    const action = queue.find((a) => a.id === id) as QueuedAction;
-    expect(action.owner_user_id).toBe('user-a');
-  });
-
   it('getPending(owner) returns only that owner actions', async () => {
-    await enqueueAction({
-      type: 'checkin',
-      payload: { nama: 'A' },
-      owner_user_id: 'user-a',
-    });
-    await enqueueAction({
-      type: 'checkin',
-      payload: { nama: 'B' },
-      owner_user_id: 'user-b',
-    });
-    await enqueueAction({
-      type: 'checkin',
-      payload: { nama: 'Anon' },
-    });
+    await enqueueAction({ type: 'fo_walkin', payload: { p_nama: 'A' }, owner_user_id: 'user-a' });
+    await enqueueAction({ type: 'fo_walkin', payload: { p_nama: 'B' }, owner_user_id: 'user-b' });
 
     const pendingA = await getPending('user-a');
     expect(pendingA).toHaveLength(1);
-    expect(pendingA[0]?.payload.nama).toBe('A');
+    expect(pendingA[0]?.payload.p_nama).toBe('A');
 
-    const pendingAll = await getPending();
-    expect(pendingAll).toHaveLength(3);
+    expect(await getPending()).toHaveLength(2); // tanpa argumen = semua (diagnosis)
+  });
+
+  it('getPending(null | "") TIDAK mengembalikan apa pun: pemilik tak diketahui jangan memutar antrean orang lain (T3c)', async () => {
+    await enqueueAction({ type: 'fo_walkin', payload: {}, owner_user_id: 'user-a' });
+    expect(await getPending(null)).toEqual([]);
+    expect(await getPending('')).toEqual([]);
   });
 });

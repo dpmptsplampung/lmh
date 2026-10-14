@@ -1,5 +1,5 @@
 ﻿// @vitest-environment node
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("resend", () => ({
   Resend: vi.fn(),
@@ -54,6 +54,9 @@ interface ServiceClientOpts {
   claimed?: ClaimedRow[];
   claimError?: { message: string } | null;
   subscriptions?: { endpoint: string; keys: { p256dh: string; auth: string } }[];
+  // Mutasi (audit T2d): hasil complete_notifikasi. false = claim_token tak cocok / status bukan 'processing'.
+  completeError?: { message: string; code?: string } | null;
+  completeResult?: boolean;
 }
 
 const mockServiceClient = async (opts: ServiceClientOpts = {}) => {
@@ -94,7 +97,8 @@ const mockServiceClient = async (opts: ServiceClientOpts = {}) => {
       }
       if (fn === "complete_notifikasi") {
         completeCalls.push(args);
-        return { data: true, error: null };
+        if (opts.completeError) return { data: null, error: opts.completeError };
+        return { data: opts.completeResult ?? true, error: null };
       }
       return { data: null, error: { message: `unknown rpc ${fn}` } };
     }),
@@ -384,5 +388,67 @@ describe("POST /api/notif/send — claim-before-send", () => {
     expect(src).toMatch(/claim_notifikasi/);
     expect(src).toMatch(/complete_notifikasi/);
     expect(src).not.toMatch(/\.eq\(\s*['"]status['"]\s*,\s*['"]pending['"]\s*\)/);
+  });
+});
+
+// Audit T2d (No 108): complete_notifikasi mengembalikan boolean DAN bisa mengembalikan { error }. Hasil yang dibuang
+// membuat baris tertinggal 'processing' selamanya (claim_notifikasi hanya mengambil pending/failed) tanpa jejak.
+describe("POST /api/notif/send — hasil complete_notifikasi dicek (audit T2d)", () => {
+  let errSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 200 })));
+    errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+  afterEach(() => {
+    errSpy.mockRestore();
+    vi.unstubAllGlobals();
+  });
+
+  const entri = () =>
+    errSpy.mock.calls
+      .map((c: unknown[]) => {
+        try { return JSON.parse(String(c[0])) as Record<string, unknown>; } catch { return null; }
+      })
+      .filter((x: Record<string, unknown> | null): x is Record<string, unknown> => x !== null);
+
+  it("complete_notifikasi error: dicatat (kode + id baris), dihitung complete_failed, dan jalan lanjut ke baris berikutnya", async () => {
+    const sc = await mockServiceClient({
+      claimed: [sampleEmailRow],
+      completeError: { message: "connection reset secret-xyz", code: "08006" },
+    });
+    await mockResendSuccess();
+    const { POST } = await import("./route");
+    const res = await POST(buildRequest("Bearer cron-secret"));
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json).toMatchObject({ sent: 1, processed: 1, complete_failed: 1 });
+    expect(sc._completeCalls).toHaveLength(1);
+    const log = entri().find((e: Record<string, unknown>) => e.operation === "notif.send.complete");
+    expect(log).toMatchObject({ kode: "database", asalCode: "08006", notifId: "n1", status: "sent" });
+    expect(JSON.stringify(log)).not.toContain("secret-xyz");
+  });
+
+  it("complete_notifikasi mengembalikan false (baris tidak terpasang): dicatat dan dihitung complete_failed", async () => {
+    await mockServiceClient({ claimed: [sampleEmailRow], completeResult: false });
+    await mockResendSuccess();
+    const { POST } = await import("./route");
+    const json = await (await POST(buildRequest("Bearer cron-secret"))).json();
+
+    expect(json.complete_failed).toBe(1);
+    const log = entri().find((e: Record<string, unknown>) => e.operation === "notif.send.complete");
+    expect(log).toMatchObject({ kode: "tidak_ada_baris", notifId: "n1" });
+  });
+
+  it("semua complete berhasil: bentuk respons tidak berubah (tanpa field complete_failed)", async () => {
+    await mockServiceClient({ claimed: [sampleEmailRow, samplePushRow], subscriptions: [{ endpoint: "https://push/x", keys: { p256dh: "p", auth: "a" } }] });
+    await mockResendSuccess();
+    await mockWebPushSuccess();
+    const { POST } = await import("./route");
+    const json = await (await POST(buildRequest("Bearer cron-secret"))).json();
+
+    expect(json).toEqual({ sent: 2, failed: 0, skipped: 0, processed: 2 });
   });
 });

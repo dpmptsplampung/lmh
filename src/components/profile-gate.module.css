@@ -341,3 +341,43 @@
     transform: translateY(0) scale(1);
   }
 }
+
+/* K12: field Nama Lengkap terkunci (read-only) */
+.inputLocked {
+  background: var(--bg-muted, rgba(148, 163, 184, 0.18));
+  color: var(--text-secondary);
+  cursor: not-allowed;
+}
+
+.lockNote {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-top: 2px;
+}
+
+/* K12: kotak centang pernyataan kebenaran data */
+.consentRow {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  border: 1.5px solid var(--border-default);
+  background: rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+}
+
+.consentRow input[type='checkbox'] {
+  margin-top: 3px;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.consentText {
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  line-height: 1.55;
+}

@@ -5,6 +5,10 @@ import { createClient as createServerClient } from '@/lib/supabase/server';
 import { jalankanBot, FALLBACK_TEXT } from '@/lib/llm/bot';
 import { logServerEvent } from '@/lib/observability/logger';
 import { redactPii } from '@/lib/pii';
+import { mutasiBolehKosong, mutasiInsert } from '@/lib/supabase/mutate';
+import { catatMutasi } from '@/lib/observability/catat-mutasi';
+import { modeHariTanpaLayanan, type AlasanTanpaLayanan } from '@/lib/llm/bot-waktu';
+import { muatInfoHariLayanan, teksBotTanpaPetugas } from '@/lib/chat/hari-tanpa-layanan';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -17,9 +21,12 @@ const bodySchema = z.object({
 
 // Rate limit: 10 calls per 60s per user. Generous enough for legitimate
 // chat, tight enough to prevent Gemini-quota abuse.
+const ROUTE = '/api/chat/ai';
 const RATE_LIMIT_ACTION = 'chat_ai_call';
 const RATE_LIMIT_MAX = 10;
 const RATE_LIMIT_WINDOW_SEC = 60;
+/** Alasan (respons & chat_ai_log) saat bot gagal menjawab pada hari tanpa pelayanan: tanpa eskalasi. */
+const REASON_TANPA_LAYANAN = 'hari_tanpa_layanan';
 
 function getServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -44,6 +51,8 @@ function cause(e: unknown): string {
 }
 
 // Simpan pesan bot (server-side) dan, bila eskalasi, naikkan status hanya dari 'bot'.
+// Klien chat menampilkan balasan bot HANYA lewat `pesan` (baris yang tersimpan), jadi `pesan: null` karena
+// gagal simpan = pengunjung tidak melihat apa pun; pemanggil memutuskan responsnya dari `pesan` + `status`.
 async function saveBot(
   admin: Admin,
   sesiId: string,
@@ -58,28 +67,54 @@ async function saveBot(
     return { pesan: null, status: now, ignored: true };
   }
   currentStatus = now;
-  const { data, error } = await admin
-    .from('chat_pesan')
-    .insert({ sesi_id: sesiId, pengirim: 'bot', isi, sumber_faq_id: opts.sumberFaqId ?? null })
-    .select('id, pengirim, isi, created_at, sumber_faq_id')
-    .single();
-  if (error) {
-    logServerEvent('error', { operation: 'chat.ai.save_bot', route: '/api/chat/ai', cause: error.message });
+
+  let pesan: BotRow | null = null;
+  try {
+    const [baris] = await mutasiInsert<BotRow>(
+      admin
+        .from('chat_pesan')
+        .insert({ sesi_id: sesiId, pengirim: 'bot', isi, sumber_faq_id: opts.sumberFaqId ?? null })
+        .select('id, pengirim, isi, created_at, sumber_faq_id')
+        .single(),
+    );
+    pesan = baris ?? null;
+  } catch (e) {
+    catatMutasi('error', 'chat.ai.save_bot', ROUTE, e, { sesiId });
   }
-  let status = currentStatus;
+
+  let status: SesiStatus = currentStatus;
   if (opts.eskalasi && currentStatus === 'bot') {
-    const { error: statusErr } = await admin
-      .from('chat_sesi')
-      .update({ status: 'eskalasi' })
-      .eq('id', sesiId)
-      .eq('status', 'bot');
-    if (statusErr) {
-      logServerEvent('error', { operation: 'chat.ai.escalate_status', route: '/api/chat/ai', cause: statusErr.message });
-    } else {
-      status = 'eskalasi';
+    try {
+      // mutasiBolehKosong (bukan Wajib): UPDATE bersyarat `status='bot'`; 0 baris = petugas/permintaan lain
+      // sudah mengubah status di sela-sela (balapan), bukan kegagalan -> baca status sebenarnya di bawah.
+      const baris = await mutasiBolehKosong(
+        admin
+          .from('chat_sesi')
+          .update({ status: 'eskalasi' })
+          .eq('id', sesiId)
+          .eq('status', 'bot')
+          .select('id'),
+      );
+      if (baris.length > 0) {
+        status = 'eskalasi';
+      } else {
+        const { data: aktual } = await admin.from('chat_sesi').select('status').eq('id', sesiId).maybeSingle();
+        status = (aktual?.status ?? currentStatus) as SesiStatus;
+      }
+    } catch (e) {
+      // Eskalasi gagal: jangan mengklaim 'eskalasi' ke klien; status tetap seperti yang dibaca.
+      catatMutasi('error', 'chat.ai.escalate_status', ROUTE, e, { sesiId });
     }
   }
-  return { pesan: (data as BotRow | null) ?? null, status };
+  return { pesan, status };
+}
+
+// Balasan bot yang GAGAL tersimpan dan tidak ada petugas yang akan menjemput sesi (status masih 'bot'):
+// 500 agar klien menampilkan "asisten tidak tersedia, coba lagi" alih-alih 200 yang tak menampilkan apa pun.
+// Bila sesi sudah dieskalasi/diambil alih, 200 dengan `pesan: null` tetap benar (status dari server yang menentukan UI).
+function gagalSimpanBalasan(pesan: BotRow | null, status: SesiStatus): NextResponse | null {
+  if (pesan || status !== 'bot') return null;
+  return NextResponse.json({ error: 'Gagal menyimpan balasan asisten. Silakan coba lagi.' }, { status: 500 });
 }
 
 export async function POST(request: NextRequest) {
@@ -162,12 +197,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ...ignoredBody(sesiStatus), reason: 'bot_nonaktif' });
   }
 
-  // 2c. Rate limit (10/60s per user), fail-closed.
-  const allowed = await checkRateLimit(adminClient, caller.id);
-  if (!allowed) {
+  // 2c. Rate limit (10/60s per user), fail-closed. 429 HANYA bila pengguna memang melewati batas;
+  // kegagalan membaca/mencatat hitungan = masalah server -> 503 (bukan salah pengguna, dan klien
+  // menampilkannya sebagai "asisten tidak tersedia", bukan "terlalu cepat").
+  const batas = await checkRateLimit(adminClient, caller.id);
+  if (batas === 'dibatasi') {
     return NextResponse.json(
       { error: 'Terlalu banyak permintaan. Coba lagi nanti.' },
       { status: 429 },
+    );
+  }
+  if (batas === 'gagal') {
+    return NextResponse.json(
+      { error: 'Layanan sementara tidak tersedia. Coba lagi beberapa saat.' },
+      { status: 503 },
     );
   }
 
@@ -184,6 +227,8 @@ export async function POST(request: NextRequest) {
     await logAiCall(adminClient, sesi_id, pertanyaan, faqIds, null, topSim, true, reason);
     const { pesan, status, ignored } = await saveBot(adminClient, sesi_id, sesiStatus, text, { eskalasi: true });
     if (ignored) return NextResponse.json(ignoredBody(status));
+    const gagal = gagalSimpanBalasan(pesan, status);
+    if (gagal) return gagal;
     return NextResponse.json({
       jawaban: text, sumber: [], eskalasi: true, reason: reason, pesan, status,
     });
@@ -195,22 +240,44 @@ export async function POST(request: NextRequest) {
     admin: adminClient, pertanyaan, rawPertanyaan, layananId: layanan_id, layananNama,
   });
   if (hasil.kind === 'gagal') {
+    // Hari tanpa pelayanan (Sabtu/Minggu/hari_libur; keputusan CEO 2026-10-14): live chat dengan petugas tidak
+    // tersedia -> TANPA eskalasi; balasan menyarankan menghubungi kembali pada hari kerja / kanal di pengaturan.
+    if (modeHariTanpaLayanan(hasil.mode)) {
+      logServerEvent('warn', { operation: hasil.operation, route: ROUTE, sesiId: sesi_id, cause: cause(hasil.err) });
+      const info = await muatInfoHariLayanan(adminClient);
+      const text = teksBotTanpaPetugas(
+        // Kalender route = kalender bot; bila pembacaan kedua berbeda (galat baca), pakai mode bot.
+        info.alasan ? info : { ...info, alasan: hasil.mode.alasan as AlasanTanpaLayanan, kerjaBerikutnya: hasil.mode.kerjaBerikutnya },
+        hasil.reason === 'prompt_injection' ? 'prompt_injection' : 'ai_error',
+      );
+      await logAiCall(adminClient, sesi_id, pertanyaan, hasil.faqIds, text, hasil.topSim, false, REASON_TANPA_LAYANAN);
+      const { pesan, status, ignored } = await saveBot(adminClient, sesi_id, sesiStatus, text, { eskalasi: false });
+      if (ignored) return NextResponse.json(ignoredBody(status));
+      const gagal = gagalSimpanBalasan(pesan, status);
+      if (gagal) return gagal;
+      return NextResponse.json({ jawaban: text, sumber: [], eskalasi: false, reason: REASON_TANPA_LAYANAN, pesan, status });
+    }
     return failAndEscalate(hasil.operation, hasil.err, hasil.faqIds, hasil.topSim, hasil.text, hasil.reason);
   }
 
+  // Pertahanan berlapis: pada hari tanpa pelayanan bot tidak pernah mengeskalasi (bot.ts juga sudah menahan).
+  const eskalasi = hasil.eskalasi && !modeHariTanpaLayanan(hasil.mode);
+
   // Audit log + simpan balasan bot + eskalasi status (hanya dari 'bot').
-  await logAiCall(adminClient, sesi_id, pertanyaan, hasil.faqIds, hasil.jawaban, hasil.topSim, hasil.eskalasi, hasil.reason);
+  await logAiCall(adminClient, sesi_id, pertanyaan, hasil.faqIds, hasil.jawaban, hasil.topSim, eskalasi, hasil.reason);
   const { pesan, status, ignored } = await saveBot(adminClient, sesi_id, sesiStatus, hasil.jawaban, {
-    eskalasi: hasil.eskalasi,
+    eskalasi,
     sumberFaqId: hasil.sumberFaqId,
   });
   if (ignored) return NextResponse.json(ignoredBody(status));
+  const gagal = gagalSimpanBalasan(pesan, status);
+  if (gagal) return gagal;
 
   return NextResponse.json({
     jawaban: hasil.jawaban,
     sumber: hasil.sumber,
     sumber_dokumen: hasil.sumberDokumen,
-    eskalasi: hasil.eskalasi,
+    eskalasi,
     reason: hasil.reason,
     pesan,
     status,
@@ -220,7 +287,7 @@ export async function POST(request: NextRequest) {
 async function checkRateLimit(
   adminClient: SupabaseClient,
   userId: string,
-): Promise<boolean> {
+): Promise<'ok' | 'dibatasi' | 'gagal'> {
   // Count existing rate-limit rows for this user+action within the window.
   const since = new Date(Date.now() - RATE_LIMIT_WINDOW_SEC * 1000).toISOString();
   const { count, error } = await adminClient
@@ -230,15 +297,27 @@ async function checkRateLimit(
     .eq('user_id', userId)
     .gte('created_at', since);
 
-  if (error) return false;
-  if (count !== null && count >= RATE_LIMIT_MAX) return false;
+  if (error) {
+    // Hanya kode SQLSTATE yang dicatat; pesan teknis PostgREST tidak.
+    logServerEvent('error', { operation: 'chat.ai.rate_limit_read', route: ROUTE, asalCode: error.code || undefined });
+    return 'gagal';
+  }
+  if (count !== null && count >= RATE_LIMIT_MAX) return 'dibatasi';
 
-  // Log this call so subsequent requests within the window are counted.
-  await adminClient.from('anon_rate_limit').insert({
-    user_id: userId,
-    action: RATE_LIMIT_ACTION,
-  });
-  return true;
+  // Log this call so subsequent requests within the window are counted. Fail-closed seperti pembacaan di atas:
+  // kegagalan mencatat berarti pembatas tidak menghitung (bisa dilewati diam-diam), jadi permintaan ditolak.
+  try {
+    await mutasiInsert(
+      adminClient.from('anon_rate_limit').insert({
+        user_id: userId,
+        action: RATE_LIMIT_ACTION,
+      }),
+    );
+  } catch (e) {
+    catatMutasi('error', 'chat.ai.rate_limit_insert', ROUTE, e);
+    return 'gagal';
+  }
+  return 'ok';
 }
 
 async function logAiCall(
@@ -252,17 +331,21 @@ async function logAiCall(
   reason: string | null,
 ): Promise<void> {
   if (!client) return;
+  // best-effort: log audit AI tidak boleh menggagalkan jawaban ke pengunjung. Kegagalan dicatat (peringatan),
+  // bukan ditelan: supabase-js mengembalikan { error } (tidak melempar), jadi try/catch saja tidak cukup.
   try {
-    await client.from('chat_ai_log').insert({
-      sesi_id: sesiId,
-      pertanyaan,
-      context_faq_ids: contextFaqIds,
-      jawaban,
-      top_similarity: topSimilarity,
-      eskalasi,
-      reason,
-    });
-  } catch {
-    // Audit logging is best-effort; do not fail the request if it errors.
+    await mutasiInsert(
+      client.from('chat_ai_log').insert({
+        sesi_id: sesiId,
+        pertanyaan,
+        context_faq_ids: contextFaqIds,
+        jawaban,
+        top_similarity: topSimilarity,
+        eskalasi,
+        reason,
+      }),
+    );
+  } catch (e) {
+    catatMutasi('warn', 'chat.ai.audit_log', ROUTE, e, { sesiId });
   }
 }

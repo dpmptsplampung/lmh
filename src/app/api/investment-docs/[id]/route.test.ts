@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(),
@@ -32,6 +32,8 @@ const mockSupabase = async (
   opts: {
     doc?: DocRow | null;
     deleteError?: unknown;
+    // Baris yang dikembalikan DELETE ... .select('id'); [] = 0 baris tanpa error (RLS menolak / sudah hilang).
+    deleteRows?: unknown[];
     removeError?: unknown;
     removeSpy?: ReturnType<typeof vi.fn>;
     deleteSpy?: ReturnType<typeof vi.fn>;
@@ -43,9 +45,11 @@ const mockSupabase = async (
   const remove =
     opts.removeSpy ??
     vi.fn().mockResolvedValue({ data: null, error: opts.removeError ?? null });
-  const deleteEq =
-    opts.deleteSpy ??
-    vi.fn().mockResolvedValue({ error: opts.deleteError ?? null });
+  const deleteSelect = vi.fn().mockResolvedValue({
+    data: opts.deleteError ? null : (opts.deleteRows ?? [{ id: DOC_ID }]),
+    error: opts.deleteError ?? null,
+  });
+  const deleteEq = opts.deleteSpy ?? vi.fn().mockReturnValue({ select: deleteSelect });
 
   const selectChain = {
     select: vi.fn().mockReturnThis(),
@@ -142,9 +146,12 @@ describe('DELETE /api/investment-docs/[id] — happy path + 404', () => {
     expect(res.status).toBe(404);
   });
 
-  it('removes storage paths then deletes DB row and returns 200', async () => {
-    const remove = vi.fn().mockResolvedValue({ data: null, error: null });
-    const deleteEq = vi.fn().mockResolvedValue({ error: null });
+  it('deletes the DB row FIRST, then removes storage paths, and returns 200', async () => {
+    const urutan: string[] = [];
+    const remove = vi.fn().mockImplementation(async () => { urutan.push('storage'); return { data: null, error: null }; });
+    const deleteEq = vi.fn().mockImplementation(() => ({
+      select: vi.fn().mockImplementation(async () => { urutan.push('db'); return { data: [{ id: DOC_ID }], error: null }; }),
+    }));
     const doc: DocRow = {
       id: DOC_ID,
       file_path: `_raw/${DOC_ID}.pdf`,
@@ -168,11 +175,13 @@ describe('DELETE /api/investment-docs/[id] — happy path + 404', () => {
       ]),
     );
     expect(deleteEq).toHaveBeenCalledWith('id', DOC_ID);
+    // Baris yatim tanpa file lebih berbahaya daripada file yatim tanpa baris: baris dihapus lebih dulu.
+    expect(urutan).toEqual(['db', 'storage']);
   });
 
-  it('still attempts DB delete after storage remove; returns 500 if DB fails', async () => {
+  it('DB delete fails: returns 500 and storage is NOT touched (file tetap utuh, dokumen tetap konsisten)', async () => {
     const remove = vi.fn().mockResolvedValue({ data: null, error: null });
-    const deleteEq = vi.fn().mockResolvedValue({ error: { message: 'db fail' } });
+    const deleteEq = vi.fn().mockReturnValue({ select: vi.fn().mockResolvedValue({ data: null, error: { message: 'db fail' } }) });
     await mockSupabase(
       { user: { id: 'u-1' }, role: 'admin' },
       {
@@ -188,9 +197,100 @@ describe('DELETE /api/investment-docs/[id] — happy path + 404', () => {
     const { DELETE } = await import('./route');
     const res = await DELETE(buildRequest(), paramsOf());
     expect(res.status).toBe(500);
-    expect(remove).toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
     expect(deleteEq).toHaveBeenCalled();
     const json = await res.json();
-    expect(json.error).toMatch(/delete|db|storage/i);
+    expect(json.error).toMatch(/gagal menghapus/i);
+  });
+});
+
+// Audit T2d (No 100): DELETE yang ditolak RLS / baris sudah hilang = 0 baris TANPA error. Storage sudah terhapus lebih
+// dulu, jadi melapor 200 {ok:true} di sini menyembunyikan dokumen yang masih ada di DB tetapi file-nya sudah hilang.
+describe('DELETE /api/investment-docs/[id] — hasil DELETE DB dicek (audit T2d)', () => {
+  let errSpy: ReturnType<typeof vi.spyOn>;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    vi.resetModules();
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}')));
+    errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    errSpy.mockRestore();
+    warnSpy.mockRestore();
+    vi.unstubAllGlobals();
+  });
+  const log = () =>
+    errSpy.mock.calls
+      .map((c: unknown[]) => { try { return JSON.parse(String(c[0])) as Record<string, unknown>; } catch { return null; } })
+      .find((e: Record<string, unknown> | null) => e?.operation === 'investment_docs.delete');
+
+  it('DELETE 0 baris tanpa error: 500 dengan bentuk error yang sama (bukan 200 ok), dicatat tidak_ada_baris', async () => {
+    const removeSpy = vi.fn().mockResolvedValue({ data: null, error: null });
+    await mockSupabase({ user: { id: 'u-1' }, role: 'admin' }, { deleteRows: [], removeSpy });
+    const { DELETE } = await import('./route');
+    const res = await DELETE(buildRequest(), paramsOf());
+
+    expect(res.status).toBe(500);
+    const json = await res.json();
+    expect(json.error).toMatch(/gagal menghapus/i);
+    expect(log()).toMatchObject({ kode: 'tidak_ada_baris', docId: DOC_ID });
+    expect(removeSpy).not.toHaveBeenCalled();
+  });
+
+  it('DELETE error: 500; detail ke klien = pesan aman (bukan teks error database mentah); dicatat dengan kode', async () => {
+    await mockSupabase(
+      { user: { id: 'u-1' }, role: 'admin' },
+      { deleteError: { message: 'update or delete violates foreign key "inv_lead_fk" secret-xyz', code: '23503' } },
+    );
+    const { DELETE } = await import('./route');
+    const res = await DELETE(buildRequest(), paramsOf());
+
+    expect(res.status).toBe(500);
+    const json = await res.json();
+    expect(JSON.stringify(json)).not.toContain('secret-xyz');
+    expect(JSON.stringify(json)).not.toContain('inv_lead_fk');
+    expect(log()).toMatchObject({ kode: 'database', asalCode: '23503' });
+  });
+
+  it('berhasil: 200 {ok,id} tidak berubah dan DELETE memakai .select untuk membuktikan baris terdampak', async () => {
+    const select = vi.fn().mockResolvedValue({ data: [{ id: DOC_ID }], error: null });
+    const deleteEq = vi.fn().mockReturnValue({ select });
+    await mockSupabase({ user: { id: 'u-1' }, role: 'admin' }, { deleteSpy: deleteEq });
+    const { DELETE } = await import('./route');
+    const res = await DELETE(buildRequest(), paramsOf());
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, id: DOC_ID });
+    expect(select).toHaveBeenCalledWith('id');
+  });
+
+  it('storage gagal SETELAH baris terhapus: tetap 200 (file yatim lebih aman daripada baris yatim), tetapi dicatat', async () => {
+    await mockSupabase({ user: { id: 'u-1' }, role: 'admin' }, { removeError: { message: 'storage down secret-xyz' } });
+    const { DELETE } = await import('./route');
+    const res = await DELETE(buildRequest(), paramsOf());
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, id: DOC_ID });
+    const l = errSpy.mock.calls
+      .concat(warnSpy.mock.calls)
+      .map((c: unknown[]) => { try { return JSON.parse(String(c[0])) as Record<string, unknown>; } catch { return null; } })
+      .find((e: Record<string, unknown> | null) => e?.operation === 'investment_docs.delete.storage');
+    expect(l).toMatchObject({ docId: DOC_ID, nFile: 3 });
+    expect(JSON.stringify(l)).not.toContain('secret-xyz');
+  });
+
+  it('storage melempar SETELAH baris terhapus: tetap 200 dan dicatat', async () => {
+    const removeSpy = vi.fn().mockRejectedValue(new Error('jaringan putus'));
+    await mockSupabase({ user: { id: 'u-1' }, role: 'admin' }, { removeSpy });
+    const { DELETE } = await import('./route');
+    const res = await DELETE(buildRequest(), paramsOf());
+
+    expect(res.status).toBe(200);
+    const l = errSpy.mock.calls
+      .concat(warnSpy.mock.calls)
+      .map((c: unknown[]) => { try { return JSON.parse(String(c[0])) as Record<string, unknown>; } catch { return null; } })
+      .find((e: Record<string, unknown> | null) => e?.operation === 'investment_docs.delete.storage');
+    expect(l).toBeTruthy();
   });
 });

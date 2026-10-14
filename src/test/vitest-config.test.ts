@@ -45,7 +45,7 @@ describe('baseline verification metadata', () => {
   it('treats lint warnings as failures and provides the baseline gate', () => {
     expect(packageJson.scripts?.lint).toBe('eslint . --max-warnings=0');
     expect(packageJson.scripts?.['verify:baseline']).toBe(
-      'npm run lint && npm run typecheck && npm test && npm run build',
+      'npm run deps:check && npm run audit:check && npm run lint && npm run typecheck && npm test && npm run build',
     );
   });
 

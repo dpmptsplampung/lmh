@@ -27,6 +27,7 @@ Do not copy the marked replacement values from `.env.example` into staging or pr
 | `LLM_DAILY_LIMIT` | Optional (default 200 per provider per day, WIB) | Optional | Optional | Optional | No |
 | `SETTINGS_ENCRYPTION_KEY` | Optional | Optional | Optional (disarankan) | Optional (disarankan) | No |
 | `GROQ_API_KEY` / `OPENROUTER_API_KEY` / `MISTRAL_API_KEY` | Optional | Optional | Optional | Optional | No |
+| `NEXT_PUBLIC_STAFF_LOGIN_DOMAIN` | Optional (default `staf.lmh.internal`) | Optional | Optional | Optional (jangan diubah setelah akun staf dibuat; dipakai membentuk email login username staf, `src/lib/akun/login.ts`) | Yes |
 | `LMH_DEV_RETURN_LINK` | May be `set` only for deliberate local debugging | Unset | Must not be `set` | Must not be `set` | No |
 
 ## Chat bot LLM chain

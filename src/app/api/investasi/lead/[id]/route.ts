@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { mutasiWajibBaris } from '@/lib/supabase/mutate';
 import { z } from 'zod';
+import { catatMutasi } from '@/lib/observability/catat-mutasi';
 
 const bodySchema = z.object({
   status: z.enum(['baru', 'dihubungi', 'berlanjut', 'ditolak', 'selesai']),
@@ -64,15 +66,19 @@ export async function PATCH(
     );
   }
 
-  const { data: updated, error: updateErr } = await supabase
-    .from('investasi_lead')
-    .update({ status })
-    .eq('id', leadId)
-    .select('id, status')
-    .maybeSingle();
-
-  if (updateErr || !updated) {
-    console.error('[investasi/lead] update failed', updateErr);
+  let updated: { id: string; status: string };
+  try {
+    // Baris lead sudah terbukti ada (dibaca di atas), jadi 0 baris = RLS menolak diam-diam -> gagal, bukan sukses.
+    [updated] = await mutasiWajibBaris<{ id: string; status: string }>(
+      supabase
+        .from('investasi_lead')
+        .update({ status })
+        .eq('id', leadId)
+        .select('id, status')
+        .maybeSingle(),
+    );
+  } catch (e) {
+    catatMutasi('error', 'investasi_lead.update_status', '/api/investasi/lead/[id]', e, { leadId });
     return NextResponse.json({ error: 'Gagal memperbarui lead' }, { status: 500 });
   }
 

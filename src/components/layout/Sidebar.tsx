@@ -35,10 +35,17 @@ import {
   BookUser,
   History,
   Sparkles,
+  Inbox,
+  ClipboardList,
+  ListChecks,
+  Tags,
+  FileSpreadsheet,
+  Gauge,
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
+import { keluarDariSesi } from '@/lib/sesi-staf';
 import { makeThrottle } from '@/app/chat/merge';
 import { ADMIN_NAV, type AdminNavEntry } from '@/lib/admin-nav';
 import styles from './Sidebar.module.css';
@@ -71,6 +78,12 @@ const ICONS: Record<AdminNavEntry['iconKey'], React.ReactNode> = {
   bukuTamu:  <BookUser size={20} />,
   riwayat:   <History size={20} />,
   ai:        <Sparkles size={20} />,
+  kotakMasuk: <Inbox size={20} />,
+  penanganan: <ClipboardList size={20} />,
+  daftarFo:  <ListChecks size={20} />,
+  topik:     <Tags size={20} />,
+  rekapFo:   <FileSpreadsheet size={20} />,
+  performa:  <Gauge size={20} />,
 };
 
 const navItems = ADMIN_NAV.map((entry) => ({
@@ -205,7 +218,10 @@ export default function Sidebar() {
 
   const handleLogout = async () => {
     const supabase = createClient();
-    await supabase.auth.signOut();
+    // akhiri_sesi dulu (kegagalannya tidak menghalangi signOut), lalu keluar dari sesi ini saja.
+    await keluarDariSesi(supabase);
+    // Navigasi keras disengaja setelah keluar: reload penuh membersihkan seluruh state klien.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.href = '/login';
   };
 

@@ -238,6 +238,35 @@ describe('POST /api/admin/petugas/invite — input validation', () => {
     expect(res.status).toBe(201);
   });
 
+  // FAQ umum (keputusan CEO): Front Office/Admin lintas layanan -> layanan_id HARUS kosong.
+  it('returns 400 when layanan_id is supplied for role front_office or admin; user never created', async () => {
+    for (const role of ['front_office', 'admin']) {
+      vi.resetModules();
+      await mockServerClient({ user: { id: 'u-1' }, role: 'admin' });
+      const serviceMock = await mockServiceClient();
+      await mockResend();
+      const { POST } = await import('./route');
+      const res = await POST(buildRequest({ ...validBody, role }));
+      expect(res.status, role).toBe(400);
+      expect(JSON.stringify(await res.json())).toMatch(/layanan_id/);
+      expect(serviceMock.auth.admin.createUser).not.toHaveBeenCalled();
+    }
+  });
+
+  it('front_office without layanan_id (or explicit null) -> 201 and petugas row stored with layanan_id null', async () => {
+    for (const layanan_id of [undefined, null]) {
+      vi.resetModules();
+      await mockServerClient({ user: { id: 'u-1' }, role: 'admin' });
+      const serviceMock = await mockServiceClient();
+      await mockResend();
+      const { POST } = await import('./route');
+      const res = await POST(buildRequest({ ...validBody, role: 'front_office', layanan_id }));
+      expect(res.status).toBe(201);
+      const upsertArg = (serviceMock.from('petugas').upsert as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(upsertArg).toMatchObject({ role: 'front_office', layanan_id: null });
+    }
+  });
+
   it('returns 400 when role is invalid', async () => {
     await mockServerClient({ user: { id: 'u-1' }, role: 'admin' });
     await mockServiceClient();

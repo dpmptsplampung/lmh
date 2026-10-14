@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, Suspense } from 'react';
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
@@ -24,6 +24,7 @@ import {
 import { KATEGORI_UMKM, type KategoriUMKM } from '@/lib/constants';
 import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
+import ErrorRetry from '@/components/ErrorRetry';
 import styles from './umkm.module.css';
 
 interface UMKMListing {
@@ -57,6 +58,26 @@ const bankLampungBranches = [
   { nama: 'Kantor Cabang Kotabumi', alamat: 'Jl. Jend. Sudirman No. 240, Kotabumi' },
 ];
 
+type StatusMuat = 'idle' | 'memuat' | 'ok' | 'gagal';
+
+// T6: pesan gagal permintaan link edit. Hanya 429 yang memakai pesan dari server
+// (berbahasa Indonesia, ditulis untuk pengguna); status lain dipetakan statis karena
+// pesan servernya teknis/Inggris ("Service unavailable — ...", "Invalid input").
+const PESAN_EDIT_RATE_LIMIT = 'Terlalu banyak permintaan. Coba lagi dalam beberapa menit.';
+const PESAN_EDIT_EMAIL_TIDAK_VALID = 'Email tidak valid. Periksa kembali email Anda, lalu coba lagi.';
+const PESAN_EDIT_GAGAL = 'Link edit belum dapat dikirim. Silakan coba lagi beberapa saat lagi.';
+const PESAN_EDIT_JARINGAN = 'Permintaan gagal terkirim. Periksa koneksi internet Anda, lalu coba lagi.';
+
+async function pesanGagalEditLink(res: Response): Promise<string> {
+  if (res.status === 429) {
+    const body: unknown = await res.json().catch(() => null);
+    const pesan = (body as { error?: unknown } | null)?.error;
+    return typeof pesan === 'string' && pesan.trim() ? pesan : PESAN_EDIT_RATE_LIMIT;
+  }
+  if (res.status === 400) return PESAN_EDIT_EMAIL_TIDAK_VALID;
+  return PESAN_EDIT_GAGAL;
+}
+
 function LoginNotice() {
   const searchParams = useSearchParams();
   const showLoginNotice = searchParams?.get('edit_login_required') === '1';
@@ -80,11 +101,14 @@ export default function UMKMPage() {
   const [listings, setListings] = useState<UMKMListing[]>([]);
   const [matches, setMatches] = useState<UMKMMatch[]>([]);
   const [loading, setLoading] = useState(true);
+  const [listingError, setListingError] = useState(false);
+  const [matchStatus, setMatchStatus] = useState<StatusMuat>('idle');
 
   const [editModalListing, setEditModalListing] = useState<UMKMListing | null>(null);
   const [editEmail, setEditEmail] = useState('');
   const [editSending, setEditSending] = useState(false);
   const [editSent, setEditSent] = useState(false);
+  const [editError, setEditError] = useState('');
 
   const [inquiryModalListing, setInquiryModalListing] = useState<UMKMListing | null>(null);
   const [inquiryForm, setInquiryForm] = useState({ from_nama: '', from_email: '', pesan: '' });
@@ -98,78 +122,83 @@ export default function UMKMPage() {
   const editCloseRef = useRef<HTMLButtonElement>(null);
   const editPrevFocusRef = useRef<HTMLElement | null>(null);
 
-  useEffect(() => {
-    async function fetchListings() {
-      setLoading(true);
-      try {
-        const supabase = createClient();
-        const { data } = await supabase
-          .from('v_umkm_public')
-          .select('id, nama_umkm, kategori_kebutuhan, deskripsi, foto_produk, status, sisi, created_at')
-          .order('created_at', { ascending: false });
+  // T6: kegagalan memuat TIDAK boleh tampil sebagai "Belum ada listing". supabase-js tidak
+  // melempar: kegagalan kembali sebagai { error }, jadi diperiksa lalu dilempar ke catch.
+  const muatListing = useCallback(async () => {
+    setLoading(true);
+    setListingError(false);
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('v_umkm_public')
+        .select('id, nama_umkm, kategori_kebutuhan, deskripsi, foto_produk, status, sisi, created_at')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
 
-        if (data && data.length > 0) {
-          setListings(data.map((l) => {
-            const row = l as Record<string, unknown>;
-            const foto = row.foto_produk as string[] | null;
-            return {
-              id: row.id as string,
-              nama_umkm: row.nama_umkm as string,
-              kategori_kebutuhan: row.kategori_kebutuhan as string,
-              deskripsi: (row.deskripsi as string) ?? null,
-              foto_produk: foto ?? null,
-              status: row.status as string,
-              sisi: (row.sisi as string) ?? 'kebutuhan',
-              created_at: row.created_at as string,
-              image: (foto && Array.isArray(foto) && foto.length > 0) ? foto[0] : null,
-            };
-          }));
-        } else {
-          setListings([]);
-        }
-      } catch (e) {
-        console.error('Error fetching UMKM listings:', e);
-        setListings([]);
-      } finally {
-        setLoading(false);
-      }
+      setListings((data ?? []).map((l) => {
+        const row = l as Record<string, unknown>;
+        const foto = row.foto_produk as string[] | null;
+        return {
+          id: row.id as string,
+          nama_umkm: row.nama_umkm as string,
+          kategori_kebutuhan: row.kategori_kebutuhan as string,
+          deskripsi: (row.deskripsi as string) ?? null,
+          foto_produk: foto ?? null,
+          status: row.status as string,
+          sisi: (row.sisi as string) ?? 'kebutuhan',
+          created_at: row.created_at as string,
+          image: (foto && Array.isArray(foto) && foto.length > 0) ? foto[0] : null,
+        };
+      }));
+    } catch (e) {
+      console.error('Error fetching UMKM listings:', e);
+      setListings([]);
+      setListingError(true);
+    } finally {
+      setLoading(false);
     }
-    fetchListings();
   }, []);
 
   useEffect(() => {
-    async function fetchMatches() {
-      if (sisiTab !== 'match') return;
-      try {
-        const supabase = createClient();
-        const { data } = await supabase
-          .from('v_umkm_match')
-          .select('kebutuhan_id, kebutuhan_nama, kategori, kebutuhan_deskripsi, penawaran_id, penawaran_nama, penawaran_deskripsi')
-          .order('kategori', { ascending: true });
+    // Pola repo untuk fetch-saat-mount (set state awal 'memuat' di dalam muatListing).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    muatListing();
+  }, [muatListing]);
 
-        if (data && data.length > 0) {
-          setMatches(data.map((m) => {
-            const row = m as Record<string, unknown>;
-            return {
-              kebutuhan_id: row.kebutuhan_id as string,
-              kebutuhan_nama: row.kebutuhan_nama as string,
-              kategori: row.kategori as string,
-              kebutuhan_deskripsi: (row.kebutuhan_deskripsi as string) ?? null,
-              penawaran_id: row.penawaran_id as string,
-              penawaran_nama: row.penawaran_nama as string,
-              penawaran_deskripsi: (row.penawaran_deskripsi as string) ?? null,
-            };
-          }));
-        } else {
-          setMatches([]);
-        }
-      } catch (e) {
-        console.error('Error fetching UMKM matches:', e);
-        setMatches([]);
-      }
+  const muatMatch = useCallback(async () => {
+    setMatchStatus('memuat');
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('v_umkm_match')
+        .select('kebutuhan_id, kebutuhan_nama, kategori, kebutuhan_deskripsi, penawaran_id, penawaran_nama, penawaran_deskripsi')
+        .order('kategori', { ascending: true });
+      if (error) throw error;
+
+      setMatches((data ?? []).map((m) => {
+        const row = m as Record<string, unknown>;
+        return {
+          kebutuhan_id: row.kebutuhan_id as string,
+          kebutuhan_nama: row.kebutuhan_nama as string,
+          kategori: row.kategori as string,
+          kebutuhan_deskripsi: (row.kebutuhan_deskripsi as string) ?? null,
+          penawaran_id: row.penawaran_id as string,
+          penawaran_nama: row.penawaran_nama as string,
+          penawaran_deskripsi: (row.penawaran_deskripsi as string) ?? null,
+        };
+      }));
+      setMatchStatus('ok');
+    } catch (e) {
+      console.error('Error fetching UMKM matches:', e);
+      setMatches([]);
+      setMatchStatus('gagal');
     }
-    fetchMatches();
-  }, [sisiTab]);
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (sisiTab === 'match') muatMatch();
+  }, [sisiTab, muatMatch]);
 
   const filtered = listings.filter((l) => {
     if (sisiTab !== 'kebutuhan' && sisiTab !== 'penawaran') return false;
@@ -192,6 +221,7 @@ export default function UMKMPage() {
     setEditModalListing(null);
     setEditEmail('');
     setEditSent(false);
+    setEditError('');
     editPrevFocusRef.current?.focus();
   };
 
@@ -228,6 +258,7 @@ export default function UMKMPage() {
     setEditModalListing(listing);
     setEditEmail('');
     setEditSent(false);
+    setEditError('');
   };
 
   const submitEditRequest = async (e: React.FormEvent) => {
@@ -235,15 +266,21 @@ export default function UMKMPage() {
     if (!editModalListing) return;
     setEditSending(true);
     setEditSent(false);
+    setEditError('');
     try {
-      await fetch('/api/umkm/request-edit-link', {
+      const res = await fetch('/api/umkm/request-edit-link', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ listing_id: editModalListing.id, email: editEmail }),
       });
-      setEditSent(true);
+      // T6: "terkirim" hanya bila server menjawab 2xx (sebelumnya selalu tampil sukses).
+      if (res.ok) {
+        setEditSent(true);
+      } else {
+        setEditError(await pesanGagalEditLink(res));
+      }
     } catch {
-      setEditSent(true);
+      setEditError(PESAN_EDIT_JARINGAN);
     } finally {
       setEditSending(false);
     }
@@ -461,11 +498,17 @@ export default function UMKMPage() {
                   ))}
                 </div>
 
-                {loading ? (
+                {matchStatus === 'idle' || matchStatus === 'memuat' ? (
                   <div className="empty-state">
                     <Loader2 size={48} className={styles.spinner} />
                     <h3 className="empty-state__title">Memuat pencocokan…</h3>
                   </div>
+                ) : matchStatus === 'gagal' ? (
+                  <ErrorRetry
+                    judul="Pencocokan UMKM belum dapat dimuat"
+                    pesan="Terjadi gangguan saat mengambil data. Periksa koneksi internet Anda, lalu coba lagi."
+                    onRetry={muatMatch}
+                  />
                 ) : filteredMatches.length === 0 ? (
                   <div className="empty-state">
                     <Sparkles size={48} className="empty-state__icon" />
@@ -549,6 +592,12 @@ export default function UMKMPage() {
                     <Loader2 size={48} className={styles.spinner} />
                     <h3 className="empty-state__title">Memuat listing…</h3>
                   </div>
+                ) : listingError ? (
+                  <ErrorRetry
+                    judul="Daftar UMKM belum dapat dimuat"
+                    pesan="Terjadi gangguan saat mengambil data. Periksa koneksi internet Anda, lalu coba lagi."
+                    onRetry={muatListing}
+                  />
                 ) : listings.length === 0 ? (
                   <div className="empty-state">
                     <Store size={48} className="empty-state__icon" />
@@ -733,6 +782,9 @@ export default function UMKMPage() {
                   Masukkan email yang terdaftar sebagai pemilik listing. Jika email
                   terdaftar, kami akan mengirimkan link edit ke email tersebut.
                 </p>
+                {editError && (
+                  <p className={styles.inquiryError} role="alert">{editError}</p>
+                )}
                 <form className={styles.editModalForm} onSubmit={submitEditRequest}>
                   <input
                     type="email"
@@ -755,7 +807,7 @@ export default function UMKMPage() {
                         Mengirim…
                       </>
                     ) : (
-                      'Kirim Link Edit'
+                      editError ? 'Coba lagi' : 'Kirim Link Edit'
                     )}
                   </button>
                 </form>

@@ -64,6 +64,20 @@ export const FORWARD_MIGRATION_FILES = [
   '202610090003_konsol_pengaturan.sql',
   '202610090004_kelola_layanan_audit.sql',
   '202610090005_perbaikan_review.sql',
+  '202610130001_faq_umum.sql',
+  '202610130002_faq_petugas_hanya_petugas.sql',
+  '202610140001_sesi_staf.sql',
+  '202610140002_tiket_kepemilikan.sql',
+  '202610140003_fo_model_data.sql',
+  '202610140004_fo_rpc.sql',
+  '202610140005_fo_selaras_antrean.sql',
+  '202610140006_pernyataan_kebenaran.sql',
+  '202610140007_wp24_akhiri_dual_write.sql',
+  '202610140008_wp24_tutup_otomatis_retensi.sql',
+  '202610140009_chat_online.sql',
+  '202610140011_pendataan_wajib.sql',
+  '202610140012_perbaikan_review.sql',
+  '202610140013_fo_keterbukaan_data.sql',
 ] as const;
 
 export function listMigrationFiles(): string[] {

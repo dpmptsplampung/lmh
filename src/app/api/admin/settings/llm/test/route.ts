@@ -3,6 +3,8 @@
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { ambilJatah, json, requireAdmin } from '@/lib/akun/server';
+import { MutasiError, mutasiWajibBaris } from '@/lib/supabase/mutate';
+import { catatMutasiGagal } from '@/app/api/admin/_mutasi';
 import { ujiPenyedia } from '@/lib/llm/uji';
 import { decryptSecret } from '@/lib/settings/crypto';
 import { LLM_KUNCI, entryToSpec, hostEntri, rantaiSchema } from '@/lib/settings/llm-schema';
@@ -62,16 +64,32 @@ export async function POST(request: NextRequest) {
 
   const hasil = await ujiPenyedia(entryToSpec(entry, key), last4);
 
+  // Hasil uji tetap dikembalikan walau gagal disimpan, tetapi Admin harus tahu: tanpa hasil uji tersimpan,
+  // aktivasi draf ditolak BELUM_DIUJI. 0 baris = draf sudah diaktifkan/diganti sejak dibaca (filter status='draf').
+  let tersimpan = true;
   if (sumber === 'draf') {
     const at = new Date().toISOString();
     const uji = {
       ...(row.hasil_uji as Record<string, unknown>),
       [entry.id]: { ok: hasil.ok, http_status: hasil.http_status, latensi_ms: hasil.latensi_ms, at },
     };
-    await service.from('pengaturan_sistem').update({ hasil_uji: uji, diuji_at: at }).eq('id', row.id).eq('status', 'draf');
+    try {
+      await mutasiWajibBaris(
+        service.from('pengaturan_sistem').update({ hasil_uji: uji, diuji_at: at }).eq('id', row.id).eq('status', 'draf').select('id'),
+      );
+    } catch (e) {
+      if (!(e instanceof MutasiError)) throw e;
+      tersimpan = false;
+      catatMutasiGagal('/api/admin/settings/llm/test', 'admin.settings.llm.simpan_hasil_uji', e, { entriId: entry.id });
+    }
   }
   await auditSettings(service, actor, 'llm_uji', LLM_KUNCI, {
     entry_id: entry.id, ok: hasil.ok, http_status: hasil.http_status, latensi_ms: hasil.latensi_ms,
+    ...(tersimpan ? {} : { hasil_tidak_tersimpan: true }),
   });
-  return json(hasil);
+  return json(
+    tersimpan
+      ? hasil
+      : { ...hasil, tersimpan: false, peringatan: 'Hasil uji tidak tersimpan (draf berubah atau database bermasalah); jalankan uji lagi sebelum mengaktifkan.' },
+  );
 }

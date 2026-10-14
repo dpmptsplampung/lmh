@@ -754,3 +754,87 @@ sendiri, dan akun nonaktif masih lolos policy berbasis layanan. Detail: `docs/RB
   cron `absensi_alpa_otomatis` dijeda sampai absensi benar-benar dipakai (lihat runbook).
 **Dampak**: UI absensi/FAQ/jadwal perlu penyesuaian (daftar handoff di laporan S0).
 **Status**: kode siap ditinjau; belum diterapkan di produksi.
+
+
+---
+
+## Fase 3 — Audit fondasi, sesi tunggal, alur FO → eskalasi (2026-10-13 s.d. 2026-10-14)
+
+**Tanggal**: 13-14 Oktober 2026 · Branch `feat/audit-fondasi-fo-eskalasi` (lokal; belum di-push) · Rencana: `docs/superpowers/plans/2026-10-13-implementasi-fo-mutasi-fondasi-plan.md`, spec: `docs/superpowers/specs/2026-10-12-alur-fo-eskalasi-design.md`.
+**Status keseluruhan**: kode ditulis dan diuji lokal; migrasi `202610140001` DITERAPKAN ke produksi (2026-10-13); `0002`-`0009`, `0011`, dan `0012` DITULIS, BELUM DITERAPKAN; klien Tahap A-D belum di-deploy. Tahap E (survei terpadu) belum dimulai.
+
+### Keputusan CEO — Gerbang G (dijawab 2026-10-13)
+
+| # | Pertanyaan | Keputusan |
+|---|---|---|
+| G.1 | WP-24 / tulis `visit` | **Opsi A**: hentikan tulis `visit` bersamaan Tahap B; `trg_visit_dual_write` dinonaktifkan; data lama menjadi arsip; ada rollback; cutover di luar jam layanan. |
+| G.2 | Batas sesi | Logout otomatis setelah jam tutup layanan (16:00 WIB, dibaca dari pengaturan, bukan hardcode) dan idle 2 jam (`sesi_idle_menit` = 120, dapat diubah Admin). |
+| G.3 | Kolom identitas terkunci | **Opsi A**: hanya **Nama Lengkap** (profil pengunjung tidak punya kolom NIK). HP, instansi, kategori, email tetap dapat diubah pengunjung. Perubahan nama lewat FO/Admin + `audit_log`. |
+| G.4 | Topik penanganan per layanan | **Opsi A**: draf awal dari daftar layanan produksi (`docs/superpowers/specs/2026-10-13-topik-penanganan-draf.md`), disimpan di tabel `topik_penanganan` yang dapat diubah Admin tanpa deploy. |
+| G.5 | Field Pendataan Pelayanan | **Opsi A**: SEMUA field wajib; field usaha yang memang tidak ada diisi eksplisit "Belum ada"/"Tidak berlaku"; catatan boleh "-". Divalidasi di DB (`INVALID_PAYLOAD`) dan UI. |
+| G.6 | Jadwal cutover | Hanya setelah jam tutup (setelah 16:00 WIB) dan hanya bila antrean kosong; **Jumat sore atau akhir pekan**; didahului skrip uji perilaku (transaksi di-rollback) yang hijau; petugas diberi tahu sebelum hari H. |
+
+### Keputusan CEO — butir 7.x kepemilikan tiket (migrasi `202610140002`)
+
+- **7.1**: Admin BOLEH memulai dan menjadi pemilik tiket layanan mana pun; petugas hanya layanannya; Front Office ditolak.
+- **7.2**: jalur darurat `admin_ambil_alih(tiket, alasan)` (Admin, alasan >= 5 karakter, `audit_log`) dimajukan ke Tahap A.
+- **7.3**: backfill `dilayani_oleh` untuk tiket `dilayani` yang NULL dari `audit_log` (aktor transisi terakhir -> `petugas.id`; yang tak terpetakan dibiarkan NULL dan dapat diambil alih Admin).
+- **7.5**: draf pendataan hanya boleh ditulis pemilik tiket `dilayani` (route PATCH + RLS).
+- 7.4 (kolom `layanan.form_pendataan`) tidak dikerjakan di Tahap A: validasi pendataan tidak diubah; `petugas_id` = pemilik saat diselesaikan.
+
+### Keputusan teknis
+
+1. **Arah tulis antrean Tahap A = Opsi 1** (`docs/analysis/ANTREAN-ARAH-TULIS.md` §6): RPC `layanan_mulai`/`layanan_selesai` menulis `tiket_antrean` sebagai sumber kebenaran (guard atomik), lalu `visit` dalam transaksi yang sama; urutan kunci `visit` -> `kunjungan` -> `tiket`. `tiket_staff_update` dicabut, trigger penjaga `trg_guard_visit_transisi_layanan` menolak UPDATE langsung (`TRANSISI_LEWAT_RPC`), `finalize_pelayanan` menjadi pembungkus. WP-24 tidak dimajukan pada Tahap A.
+2. **WP-24 = Opsi A (migrasi `0007`/`0008`)**: `visit` menjadi arsip baca saja (8 trigger efek dinonaktifkan, `trg_visit_arsip`, hak tulis dicabut); SKM, notifikasi, response rate, audit, estimasi, pengingat pindah ke `kunjungan`/`tiket_antrean`; reservasi lama dilengkapi/dibuatkan `kunjungan`. Tahap/tiket yang tertinggal ditutup otomatis pukul 23:00 WIB (`batal_karena='tidak_ditutup'`; kunjungan -> `selesai`; `waktu_selesai` tiket NULL agar durasi tidak tercemar). Retensi 730 hari diperluas ke `kunjungan`, `penanganan.catatan`, dan arsip `visit`.
+3. **Sesi tunggal**: tabel `sesi_staf` + RPC `daftarkan_sesi`/`ping_sesi`/`akhiri_sesi`; semua RPC mutasi memanggil `sesi_valid()`. Flag `sesi_tunggal_aktif` = false selama transisi; baru `true` setelah klien ter-deploy, staf login ulang, dan klaim `session_id` JWT terbukti stabil (belum dibuktikan).
+4. **Alur FO -> eskalasi**: FO melayani dulu tanpa tiket (`fo_mulai_kunjungan`, `fo_checkin_reservasi`); tiket baru terbit hanya saat eskalasi (`fo_eskalasi`, nomor `<KODE 2 huruf>-<nnn>`); tahap per kunjungan di tabel `penanganan` (topik + catatan wajib: FO <= 200, layanan <= 1000); petugas dapat mengembalikan ke kotak masuk FO (`layanan_kembalikan`); Admin mengalihkan antar layanan (`admin_alihkan`). Semua perubahan status lewat RPC; klien tanpa INSERT/UPDATE/DELETE pada `kunjungan`/`tiket_antrean`/`penanganan`. Deviasi sadar dari spec: `docs/analysis/FO-ESKALASI-KONTRAK-RPC.md` §8 (mis. Admin boleh bertindak sebagai FO; masih perlu konfirmasi CEO).
+5. **Chat dicatat saat eskalasi** (`0009`): sesi chat menjadi kunjungan `online` saat berstatus `eskalasi` atau saat staf mengambil sesi `bot`; tanpa tiket; aksi staf hanya lewat `chat_ambil`/`chat_teruskan`/`chat_selesai` (`CHAT_HARUS_RPC` menolak ubah langsung). Sesi yang tuntas oleh bot tidak dicatat. Kapan dicatat (§7.1) dan penghapusan "kembali ke bot" (§7.2) **disetujui CEO 2026-10-14** (lihat bagian di bawah); pengembalian chat ke FO dan notifikasi FO masih pertanyaan terbuka (`FO-CHAT-KONTRAK-RPC.md` §7).
+6. **Pendataan semua field wajib** (`0011`, G.5): `pendataan_validasi_payload` dipanggil `layanan_selesai` (OSS 14 field, Perizinan 11 field); pilihan "Belum ada"/"Tidak berlaku" ditambahkan (CHECK dilonggarkan, superset); draf (autosave) tetap longgar; data lama tidak divalidasi ulang.
+7. **Kunci nama pengunjung** (`0006`, G.3): trigger `trg_jaga_nama_pengunjung` (`NAMA_TERKUNCI`/`PROFIL_WAJIB_LENGKAP`) + RPC `ubah_nama_pengunjung` (admin/FO, alasan wajib, `audit_log`); pernyataan kebenaran dicatat di `consent_log` (tujuan `pernyataan_kebenaran`) sebelum profil disimpan.
+8. **Rekap**: rekap harian FO (`/admin/rekap-fo`) dan performa pelayanan (`/admin/performa`, Admin saja) dibaca dari `penanganan`; rekap layanan (tab Rekap Petugas Layanan) semula hanya Admin dan Petugas. **Digantikan keputusan CEO 2026-10-14 "Keterbukaan data antar Front Office" (lihat bagian di bawah)**: semua FO melihat rekap FO dan rekap layanan seluruhnya (semula: FO hanya miliknya / hanya eskalasi asal dirinya).
+9. **Check-in mandiri dihapus**: `/checkin` menjadi halaman informasi statis; `POST /api/checkin` dihapus; walk-in dan scan QR hanya Front Office. Replay antrean offline memakai `fo_mulai_kunjungan` (entri kedaluwarsa hari lain dibuang). Dasar/consent walk-in oleh FO masih pertanyaan terbuka (`docs/KEBIJAKAN_PDP.md`).
+10. **Proses**: migrasi baru hanya forward + test kontrak + rollback `docs/rollback-*.sql`; penerapan lewat `scripts/apply-migration.mjs --atomic` dengan konfirmasi CEO; urutan dan larangan terap ulang 0004/0005 setelah 0007 tercatat di `docs/MIGRATIONS.md`. Gerbang lokal (`verify:baseline`), bukan GitHub Actions.
+
+### Keputusan CEO — setelah review independen (dijawab 2026-10-14)
+
+Diterapkan dengan mengedit in-place `202610140012_perbaikan_review.sql` (belum diterapkan ke produksi; manifest diregenerasi) beserta rollback, test statis, dan skrip uji perilaku.
+
+1. **Pendataan wajib tanpa pengecualian peran** (mengubah desain awal `0012` #1): Admin, termasuk Admin yang mengambil alih tiket (`admin_ambil_alih`), **wajib** mengisi Formulir Pendataan lengkap untuk layanan wajib-form (`layanan.form_pendataan`); `layanan_selesai` menolak `INVALID_PAYLOAD` untuk semua peran. Pengecualian "Admin pengambil alih menutup tanpa form" dan audit `layanan_selesai_tanpa_pendataan` dihapus. Satu-satunya jalur penutupan tanpa form adalah **jalur otomatis**: job `tutup_penanganan_tertinggal` (`0008`, 23:00 WIB) menutup tiket `dilayani` yang macet tanpa data (tiket `selesai` dengan `waktu_selesai` NULL, tahap `batal`/`tidak_ditutup`, `audit_log` `tutup_otomatis_penanganan`). UI `/admin/antrian` membuka wizard pendataan untuk pemilik tiket termasuk Admin (diuji).
+2. **Live chat pada hari tanpa pelayanan** = Sabtu, Minggu, atau tanggal di tabel `hari_libur` (aturan sama dengan bot: `src/lib/llm/bot-waktu.ts` `hariTanpaLayanan` = DB `public.hari_tanpa_layanan(date)`; tidak memakai `jadwal_standby` per layanan karena chat bersifat lintas layanan):
+   - `/chat`: pemberitahuan jelas (role=note) bahwa live chat dengan petugas tidak tersedia, hanya tanya-jawab dengan bot, hari kerja berikutnya, dan kanal kontak dari Pengaturan (`wa_number`, `contact_email`, hanya bila terisi); tombol "Hubungkan ke Petugas" disembunyikan; layanan tanpa bot tidak dapat dipilih; sesi `eskalasi` yang masih terbuka dijawab bot. Teks tetap di kode (`src/lib/chat/hari-tanpa-layanan.ts`); tidak ada UI pengaturan baru.
+   - `/api/chat/ai`: tidak mengeskalasi pada hari itu, termasuk jalur gagal (injeksi prompt, konteks/LLM gagal) -> balasan menyarankan menghubungi kembali pada hari kerja/kanal pengaturan (`reason` = `hari_tanpa_layanan`). Setelah jam tutup pada HARI KERJA perilaku lama tidak berubah.
+   - DB (`0012` #13): `chat_ambil` dan `chat_teruskan` menolak `HARI_TANPA_LAYANAN` (P0001) untuk semua peran (termasuk ambil alih Admin); trigger eskalasi (`chat_sesi_eskalasi_kunjungan`, `chat_pesan_eskalasi_kunjungan`) tidak membuat kunjungan/kotak masuk FO pada hari itu. `chat_selesai` tidak diubah (pemegang chat dari hari kerja tetap dapat menutup). `chat_teruskan` ikut ditolak (tambahan teknis: petugas tujuan tidak bertugas).
+   - `/admin/chat`: tombol Ambil Chat / Ambil Alih / Teruskan dinonaktifkan dengan alasan (banner + `aria-describedby`).
+   - Chat yang menunggu dari hari kerja terakhir dan tidak sempat diambil tetap ditutup `tutup_chat_tertinggal` (ambang 24 jam tidak diubah).
+3. **Rekap layanan untuk Front Office** (*batasnya DIGANTIKAN oleh keputusan "Keterbukaan data antar Front Office" di bawah*): tab "Rekap Petugas Layanan" (`/api/admin/rekap/penanganan` + `/export`, peran `layanan`) kini boleh dilihat FO, **terbatas** pada tahap layanan dari kunjungan yang punya tahap FO dengan `penangan_id` = FO pemanggil (eskalasi asal dirinya). Cakupan ini sudah diizinkan RLS `boleh_penanganan` (`0009`), sehingga dibaca dengan klien pengguna: tanpa service-role, tanpa migrasi, RLS tidak dilonggarkan. Tab memuat catatan bahwa angkanya bukan rekap lengkap layanan. `/admin/performa` tidak berubah (Admin saja). Matriks: `04-RBAC-MATRIX.md` §6.1.
+4. **Disetujui tanpa perubahan kode**:
+   - chat dicatat sebagai kunjungan saat eskalasi (`FO-CHAT-KONTRAK-RPC.md` §7.1);
+   - aksi "kembali ke bot" dihapus (§7.2);
+   - batas tutup otomatis chat 24 jam tanpa aktivitas (`tutup_chat_tertinggal`);
+   - walk-in lama berstatus `terjadwal` dibatalkan (`batal`, bukan `no_show`; `0012` #5);
+   - `total_hadir` rekap harian = pengunjung (kunjungan) berbeda per layanan per hari (`0012` #10);
+   - opsi "Tidak berlaku" pada `tipe_pelaku_usaha` & `skala_usaha` (CHECK dilonggarkan) dan identitas pemohon wajib (diisi "Tidak berlaku" bila kosong) (`0011`);
+   - **pertanyaan terbuka**: tautan walk-in ke akun pengunjung tetap konservatif (`fo_mulai_kunjungan` hanya menerima `p_pengunjung_id` yang punya kunjungan bertanggal hari ini; `0012` #12) sampai ada keputusan lain.
+
+**Dampak DB**: `docs/analysis/DB-CHANGES.md`. **Runbook**: `docs/RUNBOOK_FO_ESKALASI.md`. **Matriks akses**: `docs/analysis/04-RBAC-MATRIX.md` §6.
+
+### Keputusan CEO — keterbukaan data antar Front Office (2026-10-14)
+
+Kata CEO: "role FO itu walaupun petugas FO ada banyak, tapi semua antrian, semua pengunjung, rekap, dll itu terbuka untuk semua FO, tapi nanti di setiap pengunjung ada nama petugas FO yang melayani itu siapa."
+
+1. **Semua FO adalah satu unit layanan**: data FO tidak dipersempit per FO. Menggantikan "FO hanya melihat rekap miliknya" (butir 8 di atas) dan "rekap layanan FO terbatas eskalasi asal dirinya" (butir 3 keputusan sebelumnya).
+2. **Baca saja**: migrasi `202610140013_fo_keterbukaan_data.sql` (BELUM DITERAPKAN) mengganti `boleh_penanganan` sehingga FO aktif membaca semua `penanganan` (tahap `fo` dan `layanan`). Tidak ada hak tulis baru: tabel tetap tanpa policy tulis klien; RPC tetap menolak FO yang bukan pemilik tahap (`BUKAN_PEMILIK`), pengambilan kotak masuk tetap atomik (`SUDAH_DIAMBIL`). Petugas layanan, pengunjung, dan anon tidak berubah.
+3. **Tabel lain tidak diubah**: `kunjungan`, `tiket_antrean`, `pelayanan_oss`/`pelayanan_perizinan` (isi Pendataan, dibutuhkan kolom Pendataan rekap layanan), `petugas` (nama), `chat_sesi` sudah terbuka untuk semua FO sebelumnya. `pengunjung` (profil akun) tetap tidak dibuka untuk FO.
+4. **Nama FO yang melayani** tampil di: Penanganan Saya (riwayat hari ini semua FO + seksi "Sedang ditangani Front Office lain", baca saja), Kotak Masuk FO (FO sebelumnya untuk item dikembalikan), Kelola Kunjungan (kolom Front Office), Rekap FO (sudah ada) dengan filter FO untuk semua FO, tab Rekap Petugas Layanan (kolom Front Office baru, juga di Excel), Antrian (catatan eskalasi "oleh <FO>", sudah ada).
+5. **Audit akses**: tidak menambah pencatatan per-baca (dicatat sebagai pertimbangan, bukan fitur): ekspor Excel tetap tercatat di `audit_log`; pembaca hanya staf aktif ber-sesi; setiap baris memuat nama FO yang melayani. Bila kelak dibutuhkan, opsi ringan: catat pembukaan rekap/riwayat lintas-FO di `audit_log` (keputusan CEO).
+6. **Pertanyaan terbuka**: `/admin/performa` tetap Admin saja (tidak diubah); apakah FO juga perlu melihatnya?
+
+Matriks: `docs/analysis/04-RBAC-MATRIX.md` §6.4. PDP: `docs/KEBIJAKAN_PDP.md`.
+
+### Keputusan CEO — tindak lanjut keterbukaan data antar FO (2026-10-14)
+
+1. **`/admin/performa` tetap Admin saja.** Menjawab pertanyaan terbuka butir 6 di atas: FO tidak diberi akses performa.
+2. **Tanpa audit per-baca antar-FO.** Menjawab butir 5 di atas: tidak ada pencatatan pembukaan rekap/riwayat lintas-FO; ekspor Excel tetap tercatat di `audit_log` (kini juga mencatat `fo_id` bila filter FO dipakai).
+3. **Filter "Front Office yang mengeskalasi"** ditambahkan pada tab Rekap Petugas Layanan (`/admin/rekap`) dan ekspornya, berlaku untuk semua role yang melihat tab (Admin, Front Office, Petugas dalam layanannya). Parameter `fo_id` (uuid, opsional) pada `api/admin/rekap/penanganan[/export]`; FO = FO tahap `fo` terakhir sebelum tahap layanan itu (sama dengan kolom Front Office). Disaring di memori setelah pemetaan (FO berasal dari embed kunjungan), jadi total, ringkasan, dan ekspor konsisten. Opsi filter berasal dari `opsi_fo` pada respons (FO yang muncul pada rentang, sebelum disaring), bukan dari tabel `petugas`, karena Petugas layanan tidak boleh membaca daftar petugas (RLS `petugas_self_read`).
+4. **Nama FO di tab Pendataan Helpdesk OSS, Non OSS, Rekap Per Layanan, dan panel detail tiket** (plus kolom "Front Office" di ekspor Excelnya, tepat setelah "Petugas"). Sumber: tahap `fo` ber-penangan terakhir pada kunjungan tiket itu. Tiket lama tanpa tahap FO tampil em dash. Rekap Per Layanan memakai embed pada kueri tiket yang sama (satu kueri, paginasi dan hitungan tidak berubah); tab OSS/Non OSS dan ekspornya memuat nama FO lewat `src/lib/rekap/foTiket.ts` (kueri terpisah per 100 tiket karena view `v_rekap_pelayanan_*` tidak memuat penanganan; gagal memuat tidak menggagalkan rekap, kolom jadi em dash). `rekap_harian_layanan` dan view tidak diubah; tanpa migrasi. Nama FO mengikuti RLS `penanganan`: sebelum 0013 diterapkan FO hanya melihat tahap miliknya (nama FO lain bisa tampil em dash), tidak bocor.
+5. **Label menu umum**: "Penanganan Saya" diganti "Penanganan" (menu, judul halaman, teks di Scan, matriks RBAC, runbook). Alasan: halaman dilihat Admin dan Front Office, dan memuat juga penanganan FO lain. Entri log lama di atas tetap memakai nama lama sebagai catatan sejarah.

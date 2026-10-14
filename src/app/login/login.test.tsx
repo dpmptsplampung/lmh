@@ -6,16 +6,20 @@ const h = vi.hoisted(() => ({
   signIn: vi.fn(),
   push: vi.fn(),
   petugas: { role: 'petugas', wajib_ganti_sandi: false } as Record<string, unknown> | null,
+  rpc: vi.fn(),
+  signOut: vi.fn(),
+  params: new URLSearchParams(),
 }));
 
 vi.mock('next/image', () => ({ default: () => null }));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: h.push }),
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => h.params,
 }));
 vi.mock('@/lib/supabase/client', () => ({
   createClient: () => ({
-    auth: { signInWithPassword: h.signIn, signInWithOAuth: vi.fn() },
+    auth: { signInWithPassword: h.signIn, signInWithOAuth: vi.fn(), signOut: h.signOut },
+    rpc: h.rpc,
     from: () => ({ select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: h.petugas }) }) }) }),
   }),
 }));
@@ -35,6 +39,9 @@ describe('login staf: username', () => {
   beforeEach(() => {
     h.signIn.mockReset();
     h.push.mockReset();
+    h.rpc.mockReset().mockResolvedValue({ data: { ok: true }, error: null });
+    h.signOut.mockReset().mockResolvedValue({ error: null });
+    h.params = new URLSearchParams();
     h.petugas = { role: 'petugas', wajib_ganti_sandi: false };
   });
   afterEach(cleanup);
@@ -91,5 +98,79 @@ describe('login staf: username', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/auth/lupa-sandi', expect.objectContaining({
       method: 'POST', body: JSON.stringify({ username: 'helpdesk-oss' }),
     }));
+  });
+});
+
+function isiDanMasuk() {
+  const { user, pw } = bukaFormStaf();
+  fireEvent.change(user, { target: { value: 'helpdesk-oss' } });
+  fireEvent.change(pw!, { target: { value: 'rahasia-panjang' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Masuk Operator' }));
+}
+
+describe('login staf: sesi tunggal', () => {
+  beforeEach(() => {
+    h.signIn.mockReset().mockResolvedValue({ data: { user: { id: 'u1' } }, error: null });
+    h.push.mockReset();
+    h.rpc.mockReset().mockResolvedValue({ data: { ok: true }, error: null });
+    h.signOut.mockReset().mockResolvedValue({ error: null });
+    h.params = new URLSearchParams();
+    h.petugas = { role: 'front_office', wajib_ganti_sandi: false };
+  });
+  afterEach(cleanup);
+
+  it('staf: daftarkan_sesi dipanggil sekali sebelum pindah halaman', async () => {
+    isiDanMasuk();
+    await waitFor(() => expect(h.push).toHaveBeenCalledWith('/admin'));
+    expect(h.rpc.mock.calls.filter((c) => c[0] === 'daftarkan_sesi')).toHaveLength(1);
+  });
+
+  it('akun non-staf (tanpa baris petugas): TIDAK memanggil daftarkan_sesi', async () => {
+    h.petugas = null;
+    isiDanMasuk();
+    await waitFor(() => expect(h.push).toHaveBeenCalledWith('/me'));
+    expect(h.rpc).not.toHaveBeenCalled();
+  });
+
+  it('FORBIDDEN dari RPC tidak menampilkan error ke pengguna', async () => {
+    h.rpc.mockResolvedValue({ data: null, error: { message: 'FORBIDDEN: sesi tunggal hanya untuk staf', code: '42501' } });
+    isiDanMasuk();
+    await waitFor(() => expect(h.push).toHaveBeenCalledWith('/admin'));
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('SESI_TANPA_KLAIM: login dibatalkan dengan pesan jelas dan sesi lokal dibersihkan', async () => {
+    h.rpc.mockResolvedValue({ data: null, error: { message: 'SESI_TANPA_KLAIM: JWT tidak memuat', code: '22023' } });
+    isiDanMasuk();
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toMatch(/session_id/);
+    expect(h.push).not.toHaveBeenCalled();
+    expect(h.signOut).toHaveBeenCalledWith({ scope: 'local' });
+  });
+
+  it('kegagalan pendaftaran lain juga tidak diloloskan diam-diam', async () => {
+    h.rpc.mockRejectedValue(new TypeError('fetch failed'));
+    isiDanMasuk();
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toMatch(/tidak dapat didaftarkan/);
+    expect(h.push).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['digantikan', /masuk di perangkat lain/],
+    ['idle', /tidak ada aktivitas/],
+    ['tutup', /Layanan sudah tutup/],
+    ['tidak_terdaftar', /tidak terdaftar/],
+  ])('?alasan=%s menampilkan pesan role=alert dan membuka form operator', (alasan, pola) => {
+    h.params = new URLSearchParams({ alasan });
+    render(<LoginPage />);
+    expect(screen.getByRole('alert').textContent).toMatch(pola);
+    expect(screen.getByLabelText(/Nama pengguna atau email/)).toBeTruthy();
+  });
+
+  it('?alasan tak dikenal diabaikan (tidak ada alert)', () => {
+    h.params = new URLSearchParams({ alasan: '<b>x</b>' });
+    render(<LoginPage />);
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 });

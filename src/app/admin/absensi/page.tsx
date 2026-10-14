@@ -15,6 +15,7 @@ import {
 import PageHeader from '@/components/layout/PageHeader';
 import Pagination from '@/components/Pagination';
 import { createClient } from '@/lib/supabase/client';
+import { mutasiInsert, pesanMutasi } from '@/lib/supabase/mutate';
 import { useToast } from '@/components/Toast';
 import AbsensiWizardModal from '@/components/admin/AbsensiWizardModal';
 
@@ -53,7 +54,8 @@ export default function AbsensiPage() {
   const [totalCount, setTotalCount] = useState(0);
   const [foWizardOpen, setFoWizardOpen] = useState(false);
 
-  const fetchData = useCallback(async () => {
+  // Mengembalikan baris yang dimuat (null = gagal memuat) agar pemanggil dapat memverifikasi hasil mutasi.
+  const fetchData = useCallback(async (): Promise<Absensi[] | null> => {
     try {
       const supabase = createClient();
       
@@ -97,7 +99,10 @@ export default function AbsensiPage() {
          query = query.eq('petugas_id', myPetugasId);
       }
 
-      const { data, count } = await query;
+      const { data, count, error } = await query;
+      // supabase-js tidak melempar: tanpa ini galat dianggap daftar kosong ([]), dan pemanggil (mis. verifikasi
+      // absen pulang) menyimpulkan "tidak tercatat" padahal sebenarnya hanya gagal memuat. Melempar -> null = tak terbukti.
+      if (error) throw error;
       // Handle the case where the join returns array or object due to how supabase types work
       const formattedData = (data || []).map(d => ({
         ...d,
@@ -106,8 +111,10 @@ export default function AbsensiPage() {
       
       setAbsensi(formattedData);
       setTotalCount(count ?? formattedData.length);
+      return formattedData;
     } catch (e) {
       console.error(e);
+      return null;
     } finally {
       setLoading(false);
     }
@@ -156,14 +163,26 @@ export default function AbsensiPage() {
       setActionLoading(true);
       const supabase = createClient();
       // T-7: jam_pulang dari SERVER via RPC catat_pulang() yang menggunakan now() PostgreSQL (I-09)
-      const { error } = await supabase.rpc('catat_pulang', { p_petugas_id: currentUser.id });
-      if (error) throw error;
-      toast('Absen pulang berhasil dicatat', 'success');
+      // mutasiInsert: melempar bila RPC mengembalikan error (mis. 42501 -> pesan "tidak berwenang").
+      await mutasiInsert(supabase.rpc('catat_pulang', { p_petugas_id: currentUser.id }));
+      // SENGAJA idempoten di DB (UPDATE ... WHERE jam_pulang IS NULL) dan SELALU mengembalikan now()
+      // walau 0 baris berubah (belum ada absen hadir hari ini / sudah pulang). Jadi hasil RPC TIDAK
+      // membuktikan jam_pulang tersimpan: buktikan dari data yang dimuat ulang sebelum melapor sukses.
       setLoading(true);
-      await fetchData();
+      const barisBaru = await fetchData();
+      const milikSaya = barisBaru?.find((a) => a.petugas_id === currentUser.id);
+      if (barisBaru && !milikSaya?.jam_pulang) {
+        toast(
+          'Absen pulang tidak tercatat. Pastikan absen hadir hari ini sudah tercatat, lalu coba lagi.',
+          'error',
+        );
+        return;
+      }
+      // barisBaru null = gagal memuat ulang: tak bisa membuktikan, tetapi RPC sendiri tidak error.
+      toast('Absen pulang berhasil dicatat', 'success');
     } catch (e) {
       console.error(e);
-      toast('Gagal mencatat absen pulang', 'error');
+      toast(pesanMutasi(e, 'Gagal mencatat absen pulang'), 'error');
     } finally {
       setActionLoading(false);
     }

@@ -14,6 +14,7 @@ const baseRow: RekapTicketRow = {
   status: 'selesai',
   kunjungan: { nama: 'Budi', asal: 'walk_in', qr_token: null },
   petugas: { nama: 'Andi' },
+  fo_nama: 'Sari FO',
   form_type: 'oss',
   pelayanan_oss: {
     id: 'p-1',
@@ -51,6 +52,17 @@ describe('RekapTiketDetailPanel', () => {
     render(<RekapTiketDetailPanel tiket={baseRow} onClose={() => {}} />);
     expect(screen.getByText(/Usaha A/)).toBeInTheDocument();
     expect(screen.getByText(/PMDN/)).toBeInTheDocument();
+  });
+
+  it('menampilkan nama Front Office; tiket lama tanpa tahap FO tampil em dash', () => {
+    const { unmount } = render(<RekapTiketDetailPanel tiket={baseRow} onClose={() => {}} />);
+    expect(screen.getByText('Front Office')).toBeInTheDocument();
+    expect(screen.getByText('Sari FO')).toBeInTheDocument();
+    unmount();
+    const lama: RekapTicketRow = { ...baseRow, fo_nama: null, petugas: null };
+    render(<RekapTiketDetailPanel tiket={lama} onClose={() => {}} />);
+    const label = screen.getByText('Front Office');
+    expect(label.nextElementSibling?.textContent).toBe('\u2014');
   });
 
   it('calls onClose when X button clicked', () => {

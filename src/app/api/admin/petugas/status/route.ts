@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { audit } from '@/lib/akun/server';
+import { MutasiError, mutasiInsert } from '@/lib/supabase/mutate';
+import { catatMutasiGagal } from '@/app/api/admin/_mutasi';
+import { logServerEvent } from '@/lib/observability/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,7 +27,17 @@ async function tutupAkses(service: NonNullable<ReturnType<typeof getServiceClien
   if (!t?.auth_user_id) return false;
   const { error } = await service.auth.admin.updateUserById(t.auth_user_id, { ban_duration: blokir ? '876000h' : 'none' });
   if (error) { console.error('[admin/petugas/status] ban_duration gagal', error.message); return false; }
-  if (blokir) await service.rpc('akun_akhiri_sesi', { p_auth_user_id: t.auth_user_id });
+  if (blokir) {
+    // Keamanan: sesi aktif yang tidak berhasil diakhiri = akun nonaktif masih bisa dipakai sampai token kedaluwarsa.
+    // Gagal -> false (pemanggil menambahkan peringatan) dan dicatat sebagai error.
+    try {
+      await mutasiInsert(service.rpc('akun_akhiri_sesi', { p_auth_user_id: t.auth_user_id }));
+    } catch (e) {
+      if (!(e instanceof MutasiError)) throw e;
+      catatMutasiGagal('/api/admin/petugas/status', 'admin.petugas.status.akhiri_sesi', e, { petugasId });
+      return false;
+    }
+  }
   return true;
 }
 
@@ -37,6 +50,18 @@ async function getActor(supabase: Awaited<ReturnType<typeof createClient>>) {
     .eq('auth_user_id', user.id)
     .maybeSingle();
   return p && p.aktif !== false ? p : null;
+}
+
+// Galat RPC status akun -> respons ber-pesan baku. Pesan mentah DB tidak dikirim ke klien (bisa memuat nama
+// tabel/konstrain); hanya aturan bisnis yang dikenal dipetakan ke kalimat Indonesia, sisanya 500 + log kode SQLSTATE.
+function responsRpcGagal(error: { message?: string; code?: string }, operation: string) {
+  const pesan = typeof error.message === 'string' ? error.message : '';
+  if (error.code === '42501') return NextResponse.json({ error: 'Anda tidak berwenang mengubah status akun ini' }, { status: 403 });
+  if (error.code === 'P0002') return NextResponse.json({ error: 'Akun petugas tidak ditemukan' }, { status: 404 });
+  if (/Admin aktif terakhir/i.test(pesan)) return NextResponse.json({ error: 'Tidak boleh menonaktifkan Admin aktif terakhir' }, { status: 400 });
+  if (/akun sendiri/i.test(pesan)) return NextResponse.json({ error: 'Tidak boleh menonaktifkan akun sendiri' }, { status: 400 });
+  logServerEvent('error', { operation, route: '/api/admin/petugas/status', asalCode: error.code || undefined });
+  return NextResponse.json({ error: 'Gagal mengubah status akun. Coba lagi.' }, { status: 500 });
 }
 
 export async function POST(request: NextRequest) {
@@ -75,22 +100,40 @@ export async function POST(request: NextRequest) {
       p_alasan: alasan.trim(),
       p_actor: actor.id,
     });
-    if (error) return NextResponse.json({ error: error.message }, { status: error.code === '42501' ? 403 : 400 });
+    if (error) return responsRpcGagal(error, 'admin.petugas.status.rpc');
 
-    // Admin mendapat pemberitahuan (RBA-08).
-    await service.from('notifikasi').insert({
-      kanal: 'email',
-      tujuan_email: null,
-      subjek: '[LMH] Akun petugas dinonaktifkan',
-      body: `Akun petugas ${petugas_id} dinonaktifkan oleh ${actor.role} (id ${actor.id}). Alasan: ${alasan.trim()}`,
-      status: 'pending',
-      idempotency_key: `nonaktif:${petugas_id}:${Date.now()}`,
-      payload: { petugas_id, actor: actor.id, alasan: alasan.trim() },
-    });
+    // Admin mendapat pemberitahuan (RBA-08). Gagal TIDAK membatalkan penonaktifan (sudah terjadi di DB), tetapi
+    // tidak boleh hilang diam-diam: dicatat, masuk audit, dan dikabarkan lewat `peringatan`.
+    let notifOk = true;
+    try {
+      await mutasiInsert(
+        service.from('notifikasi').insert({
+          kanal: 'email',
+          tujuan_email: null,
+          subjek: '[LMH] Akun petugas dinonaktifkan',
+          body: `Akun petugas ${petugas_id} dinonaktifkan oleh ${actor.role} (id ${actor.id}). Alasan: ${alasan.trim()}`,
+          status: 'pending',
+          idempotency_key: `nonaktif:${petugas_id}:${Date.now()}`,
+          payload: { petugas_id, actor: actor.id, alasan: alasan.trim() },
+        }),
+      );
+    } catch (e) {
+      if (!(e instanceof MutasiError)) throw e;
+      notifOk = false;
+      catatMutasiGagal('/api/admin/petugas/status', 'admin.petugas.status.notifikasi', e, { petugasId: petugas_id });
+    }
     // Blokir login di Auth + akhiri semua sesi (akun bersama: perangkat lain ikut keluar).
     const sesi = await tutupAkses(service, petugas_id, true);
-    await audit(service, actor, 'akun_nonaktifkan', petugas_id, { alasan: alasan.trim(), sesi_diakhiri: sesi });
-    return NextResponse.json({ ok: true, ...(sesi ? {} : { peringatan: 'Akun nonaktif, tetapi blokir/sesi Auth gagal; role sudah dicabut.' }) });
+    await audit(service, actor, 'akun_nonaktifkan', petugas_id, {
+      alasan: alasan.trim(),
+      sesi_diakhiri: sesi,
+      ...(notifOk ? {} : { notifikasi_admin_gagal: true }),
+    });
+    const peringatan = [
+      ...(sesi ? [] : ['Akun nonaktif, tetapi blokir/sesi Auth gagal; role sudah dicabut.']),
+      ...(notifOk ? [] : ['Notifikasi ke admin gagal dikirim.']),
+    ].join(' ');
+    return NextResponse.json({ ok: true, ...(peringatan ? { peringatan } : {}) });
   }
 
   // ---- Admin only di bawah ini ----
@@ -103,7 +146,7 @@ export async function POST(request: NextRequest) {
     // Dipanggil lewat service_role (auth.uid() NULL): fungsi DB mengizinkan service_role; admin
     // sudah diverifikasi aktif di atas (getActor).
     const { error } = await service.rpc('petugas_set_aktif', { p_petugas_id: petugas_id });
-    if (error) return NextResponse.json({ error: error.message }, { status: error.code === '42501' ? 403 : 400 });
+    if (error) return responsRpcGagal(error, 'admin.petugas.status.rpc');
     const dibuka = await tutupAkses(service, petugas_id, false);
     await audit(service, actor, 'akun_aktifkan', petugas_id, { blokir_dibuka: dibuka });
     return NextResponse.json({ ok: true, ...(dibuka ? {} : { peringatan: 'Akun aktif, tetapi pembukaan blokir Auth gagal.' }) });

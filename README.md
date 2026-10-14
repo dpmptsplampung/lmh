@@ -14,7 +14,7 @@ Portal pelayanan terpadu DPMPTSP Provinsi Lampung. Dibangun dengan Next.js 16
 | **Investasi** | Gallery dokumen investasi (view-only watermarked PDF), funnel lead investor |
 | **Notifikasi** | Email (Resend) + web-push (VAPID), terpicu dari trigger DB |
 | **Tata Kelola** | Audit log, consent log, anonymisasi pg_cron, dashboard DPO |
-| **PWA** | Offline-first (checkin queue + background sync), installable, WCAG 2.1 AA |
+| **PWA** | Offline-first (antrean pendaftaran walk-in Front Office + background sync), installable, WCAG 2.1 AA |
 
 ## Tech Stack
 
@@ -66,7 +66,7 @@ src/
     api/            # Route Handlers
     auth/           # Callback Google OAuth
     chat/           # Live chat publik + AI
-    checkin/        # Check-in walk-in
+    checkin/        # Halaman informasi check-in (walk-in didaftarkan Front Office)
     gallery/        # Investment Gallery
     login/          # Halaman login
     me/             # Dashboard pengunjung (reservasi, notifikasi)

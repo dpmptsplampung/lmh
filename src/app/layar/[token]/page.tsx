@@ -3,14 +3,18 @@
 // WP-29 / DSP-01..07: Token-gated TV queue display.
 // DSP-07: accessed via /layar/[token] — no login required.
 // DSP-06/I-14: never displays nama or kontak_hp (reads v_layar_antrian).
-// DSP-02: realtime updates via tiket_antrean subscription + polling fallback.
+// DSP-02: realtime updates via siaran antrean:publik + polling fallback.
 // DSP-03: robust reconnection for days-long display.
+// Audit T4: gangguan jaringan BUKAN token invalid — hanya jawaban RPC `false` yang eksplisit.
+// Gangguan → "Menghubungkan ulang…", data terakhir dipertahankan, coba-ulang backoff eksponensial.
 
 import { useEffect, useState, useCallback, use } from 'react';
 import { Loader2, Monitor, Clock, Users, WifiOff } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { getSiteSettings } from '@/lib/site-settings';
 import { APP_NAME } from '@/lib/constants';
+import { backoffMs, denganBatas } from '@/lib/layar/koneksi';
+import { useAntreanFeed } from '@/lib/layar/useAntreanFeed';
 import styles from './layar-token.module.css';
 
 interface LoketStatus {
@@ -20,9 +24,22 @@ interface LoketStatus {
   antre_count: number;
   dilayani_count: number;
   nomor_sedang_dilayani: number | null;
+  // Format 'OS-014' (2 huruf + tanda hubung + 3 digit) — diperlakukan sebagai teks buram.
   nomor_display_dilayani: string | null;
   estimasi_durasi_menit: number;
   estimasi_tunggu_total_menit: number;
+}
+
+type StatusToken = 'memeriksa' | 'valid' | 'tidak_valid' | 'gangguan';
+
+/** Kalimat untuk region live: nomor yang baru dipanggil sejak muat sebelumnya (bukan muat pertama). */
+function susunPengumuman(sebelumnya: LoketStatus[] | null, berikutnya: LoketStatus[]): string {
+  if (!sebelumnya) return '';
+  const lama = new Map(sebelumnya.map(l => [l.layanan_id, l.nomor_display_dilayani]));
+  return berikutnya
+    .filter(l => l.nomor_display_dilayani && lama.get(l.layanan_id) !== l.nomor_display_dilayani)
+    .map(l => `Nomor ${l.nomor_display_dilayani} dipanggil di ${l.layanan_nama}`)
+    .join('. ');
 }
 
 export default function LayarTokenPage({
@@ -32,26 +49,45 @@ export default function LayarTokenPage({
 }) {
   const { token } = use(params);
 
-  const [valid, setValid]           = useState<boolean | null>(null);
-  const [lokets, setLokets]         = useState<LoketStatus[]>([]);
-  const [loading, setLoading]       = useState(true);
-  const [error, setError]           = useState(false);
-  const [updatedAt, setUpdatedAt]   = useState<Date | null>(null);
-  const [clock, setClock]           = useState<Date | null>(null);
+  const [statusToken, setStatusToken] = useState<StatusToken>('memeriksa');
+  const [clock, setClock]             = useState<Date | null>(null);
   const [runningText, setRunningText] = useState('');
+  const [pengumuman, setPengumuman]   = useState('');
 
-  // Validate token on mount
+  // Validasi token. Hanya `data === false` (RPC menjawab eksplisit) yang berarti tidak valid;
+  // error/jaringan/timeout/jawaban tak terduga = gangguan → coba lagi dengan backoff.
   useEffect(() => {
-    async function validateToken() {
-      const supabase = createClient();
-      const { data, error: rpcErr } = await supabase.rpc('validate_layar_token', { p_token: token });
-      if (rpcErr || data === false) {
-        setValid(false);
-      } else {
-        setValid(true);
+    let batal = false;
+    let gagal = 0;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const cek = async () => {
+      let hasil: StatusToken = 'gangguan';
+      try {
+        const supabase = createClient();
+        const { data, error: rpcErr } = await denganBatas(
+          supabase.rpc('validate_layar_token', { p_token: token }),
+        );
+        if (!rpcErr) {
+          if (data === true) hasil = 'valid';
+          else if (data === false) hasil = 'tidak_valid';
+        }
+      } catch {
+        hasil = 'gangguan';
       }
-    }
-    validateToken();
+      if (batal) return;
+      setStatusToken(hasil);
+      if (hasil === 'gangguan') {
+        gagal += 1;
+        timer = setTimeout(() => { void cek(); }, backoffMs(gagal));
+      }
+    };
+    void cek();
+
+    return () => {
+      batal = true;
+      if (timer) clearTimeout(timer);
+    };
   }, [token]);
 
   // Load running text from site_settings (DSP-05)
@@ -61,53 +97,27 @@ export default function LayarTokenPage({
     }).catch(() => {});
   }, []);
 
-  // Fetch queue data
-  const fetchData = useCallback(async () => {
+  const ambil = useCallback(async () => {
     const supabase = createClient();
-    const { data, error: fetchErr } = await supabase
+    const { data, error } = await supabase
       .from('v_layar_antrian')
       .select('*')
       .order('layanan_nama');
-    if (fetchErr) {
-      setError(true);
-      return;
-    }
-    setError(false);
-    setLokets((data ?? []) as LoketStatus[]);
-    setUpdatedAt(new Date());
+    return { data: data as LoketStatus[] | null, error };
   }, []);
 
-  // Subscribe to tiket_antrean changes + polling fallback (DSP-02/03)
-  useEffect(() => {
-    if (valid !== true) return;
+  const saatData = useCallback((sebelumnya: LoketStatus[] | null, berikutnya: LoketStatus[]) => {
+    const kalimat = susunPengumuman(sebelumnya, berikutnya);
+    if (kalimat) setPengumuman(kalimat);
+  }, []);
 
-    let cancelled = false;
-    const supabase = createClient();
-
-    const channel = supabase
-      // Kanal siaran publik dari trigger DB (postgres_changes menghormati RLS;
-      // anon tidak boleh SELECT tiket_antrean).
-      .channel('antrean:publik')
-      .on('broadcast', { event: '*' },
-        () => { void fetchData(); })
-      .subscribe();
-
-    // Initial load
-    (async () => {
-      setLoading(true);
-      await fetchData();
-      if (!cancelled) setLoading(false);
-    })();
-
-    // Polling cadangan 15 dtk — layar tanpa pengawasan
-    const poll = setInterval(() => { void fetchData(); }, 15_000);
-
-    return () => {
-      cancelled = true;
-      clearInterval(poll);
-      void supabase.removeChannel(channel);
-    };
-  }, [valid, token, fetchData]);
+  // Siaran realtime (debounce) + polling + backoff saat gangguan — lihat useAntreanFeed.
+  const { data: lokets, updatedAt, reconnecting } = useAntreanFeed<LoketStatus>({
+    aktif: statusToken === 'valid',
+    ambil,
+    saatData,
+  });
+  const siap = updatedAt !== null;
 
   // Clock tick
   useEffect(() => {
@@ -117,10 +127,10 @@ export default function LayarTokenPage({
 
   // --- Render states ---
 
-  if (valid === null) {
+  if (statusToken === 'memeriksa') {
     return (
       <main className={styles.screen}>
-        <div className={styles.center}>
+        <div className={styles.center} role="status">
           <Loader2 size={40} className={styles.spinner} />
           Memverifikasi akses…
         </div>
@@ -128,13 +138,27 @@ export default function LayarTokenPage({
     );
   }
 
-  if (valid === false) {
+  if (statusToken === 'gangguan') {
+    return (
+      <main className={styles.screen}>
+        <div className={styles.center} role="status">
+          <WifiOff size={40} />
+          <p>Menghubungkan ulang…</p>
+          <p className={styles.centerCatatan}>
+            Akses layar belum dapat diverifikasi karena gangguan koneksi. Mencoba lagi otomatis.
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+  if (statusToken === 'tidak_valid') {
     return (
       <main className={styles.screen}>
         <div className={styles.center}>
           <WifiOff size={40} />
           <p>Token tidak valid atau sudah dicabut.</p>
-          <p style={{ fontSize: '0.875rem', color: '#475569' }}>
+          <p className={styles.centerCatatan}>
             Hubungi Admin untuk mendapatkan URL layar yang baru.
           </p>
         </div>
@@ -147,7 +171,7 @@ export default function LayarTokenPage({
       {/* Header */}
       <header className={styles.header}>
         <div className={styles.brand}>
-          <Monitor size={32} color="#38bdf8" />
+          <Monitor size={32} color="#38bdf8" aria-hidden="true" />
           <div>
             <h1 className={styles.title}>Status Antrean Layanan</h1>
             <p className={styles.subtitle}>{APP_NAME} — diperbarui realtime</p>
@@ -163,6 +187,21 @@ export default function LayarTokenPage({
         )}
       </header>
 
+      {/* Region live untuk pembaca layar: nomor yang baru dipanggil (polite, tidak menyela) */}
+      <div className={styles.srOnly} role="status" aria-live="polite" aria-atomic="true">
+        {pengumuman}
+      </div>
+
+      {/* Gangguan setelah data pernah tampil: data terakhir tetap ditampilkan */}
+      <div role="status" aria-live="polite">
+        {siap && reconnecting && (
+          <div className={styles.reconnectBar}>
+            <WifiOff size={24} aria-hidden="true" />
+            Menghubungkan ulang… menampilkan data terakhir
+          </div>
+        )}
+      </div>
+
       {/* Running text banner (DSP-05) */}
       {runningText && (
         <div className={styles.runningTextBar} aria-live="off">
@@ -171,21 +210,21 @@ export default function LayarTokenPage({
       )}
 
       {/* Body */}
-      {loading && (
-        <div className={styles.center}>
+      {!siap && !reconnecting && (
+        <div className={styles.center} role="status">
           <Loader2 size={32} className={styles.spinner} />
           Memuat status antrean…
         </div>
       )}
 
-      {!loading && error && (
-        <div className={styles.center}>
+      {!siap && reconnecting && (
+        <div className={styles.center} role="status">
           <WifiOff size={32} />
-          Gagal memuat data. Mencoba ulang otomatis…
+          Menghubungkan ulang…
         </div>
       )}
 
-      {!loading && !error && (
+      {siap && (
         <div className={styles.grid}>
           {lokets.map(loket => {
             const kosong = loket.antre_count === 0 && loket.dilayani_count === 0;
@@ -230,11 +269,11 @@ export default function LayarTokenPage({
                 <div className={styles.loketFooter}>
                   {kosong ? (
                     <span className={styles.footerOk}>
-                      <Users size={14} /> Tidak ada antrean — silakan langsung ke loket
+                      <Users size={20} aria-hidden="true" /> Tidak ada antrean — silakan langsung ke loket
                     </span>
                   ) : (
                     <span className={styles.footerWait}>
-                      <Clock size={14} /> Estimasi tunggu ±{Math.round(loket.estimasi_tunggu_total_menit)} menit
+                      <Clock size={20} aria-hidden="true" /> Estimasi tunggu ±{Math.round(loket.estimasi_tunggu_total_menit)} menit
                     </span>
                   )}
                 </div>
@@ -243,8 +282,8 @@ export default function LayarTokenPage({
           })}
 
           {lokets.length === 0 && (
-            <div style={{ gridColumn: '1 / -1', textAlign: 'center', color: '#475569', padding: '48px' }}>
-              <Monitor size={48} style={{ marginBottom: 16, opacity: 0.4 }} />
+            <div className={styles.kosongSemua}>
+              <Monitor size={48} className={styles.kosongIkon} aria-hidden="true" />
               <p>Belum ada layanan aktif hari ini.</p>
             </div>
           )}
@@ -254,10 +293,10 @@ export default function LayarTokenPage({
       {/* Footer */}
       <footer className={styles.footer}>
         <div className={styles.updatedIndicator}>
-          <div className={styles.updatedDot} />
+          <div className={`${styles.updatedDot} ${reconnecting ? styles.updatedDotGangguan : ''}`} />
           <span suppressHydrationWarning>
             {updatedAt
-              ? `Diperbarui ${updatedAt.toLocaleTimeString('id-ID')}`
+              ? `${reconnecting ? 'Data terakhir' : 'Diperbarui'} ${updatedAt.toLocaleTimeString('id-ID')}`
               : 'Menghubungkan…'}
           </span>
         </div>

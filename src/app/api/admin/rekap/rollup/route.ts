@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
+import { MutasiError, mutasiInsert } from '@/lib/supabase/mutate';
+import { catatMutasiGagal } from '@/app/api/admin/_mutasi';
+import { logServerEvent } from '@/lib/observability/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -79,20 +82,32 @@ export async function POST(request: NextRequest) {
   const gagal: string[] = [];
   for (const tgl of dates) {
     const { error } = await admin.rpc('rollup_rekap_harian', { p_tanggal: tgl });
-    if (error) gagal.push(`${tgl}: ${error.message}`);
+    if (error) {
+      // Pesan DB tidak masuk respons/audit (bisa memuat nama objek DB); hanya tanggal + kode SQLSTATE dicatat di log.
+      gagal.push(tgl);
+      logServerEvent('error', { operation: 'admin.rekap.rollup.tanggal', route: '/api/admin/rekap/rollup', tanggal: tgl, asalCode: error.code || undefined });
+    }
   }
 
-  await admin.from('audit_log').insert({
-    actor_id: user.id,
-    actor_role: me.role,
-    aksi: 'rollup_rekap',
-    entitas: 'rekap_harian_layanan',
-    detail: { dari, sampai, tanggal_count: dates.length, gagal },
-  });
+  // best-effort: rollup sudah dijalankan; gagal menulis audit tidak membatalkan hasilnya, tetapi dicatat (tidak ditelan).
+  try {
+    await mutasiInsert(
+      admin.from('audit_log').insert({
+        actor_id: user.id,
+        actor_role: me.role,
+        aksi: 'rollup_rekap',
+        entitas: 'rekap_harian_layanan',
+        detail: { dari, sampai, tanggal_count: dates.length, gagal },
+      }),
+    );
+  } catch (e) {
+    if (!(e instanceof MutasiError)) throw e;
+    catatMutasiGagal('/api/admin/rekap/rollup', 'admin.rekap.rollup.audit', e, { tanggalCount: dates.length });
+  }
 
   if (gagal.length > 0) {
     return NextResponse.json(
-      { error: 'Sebagian tanggal gagal di-rollup', gagal },
+      { error: `Rollup gagal untuk tanggal: ${gagal.join(', ')}. Coba lagi.`, gagal },
       { status: 500 },
     );
   }

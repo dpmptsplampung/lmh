@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { mutasiInsert, pesanMutasi } from '@/lib/supabase/mutate';
 import { z } from 'zod';
+import { catatMutasi } from '@/lib/observability/catat-mutasi';
 import crypto from 'node:crypto';
 
 const MAX_PDF_BYTES = 50 * 1024 * 1024;
@@ -170,24 +172,27 @@ export async function POST(request: NextRequest) {
     halamanGambar.push(pagePath);
   }
 
-  const { error: insertError } = await supabase.from('investment_documents').insert({
-    id: docId,
-    judul: parsed.data.judul,
-    kategori: parsed.data.kategori ?? null,
-    urutan_tampil: parsed.data.urutan_tampil,
-    file_path: rawPath,
-    halaman_gambar: halamanGambar,
-    jumlah_halaman: pngBuffers.length,
-    status: 'aktif',
-    deskripsi: parsed.data.deskripsi ?? null,
-    nilai_investasi: parsed.data.nilai_investasi ?? null,
-    image_url: parsed.data.image_url ?? null,
-  });
-
-  if (insertError) {
+  try {
+    await mutasiInsert(
+      supabase.from('investment_documents').insert({
+        id: docId,
+        judul: parsed.data.judul,
+        kategori: parsed.data.kategori ?? null,
+        urutan_tampil: parsed.data.urutan_tampil,
+        file_path: rawPath,
+        halaman_gambar: halamanGambar,
+        jumlah_halaman: pngBuffers.length,
+        status: 'aktif',
+        deskripsi: parsed.data.deskripsi ?? null,
+        nilai_investasi: parsed.data.nilai_investasi ?? null,
+        image_url: parsed.data.image_url ?? null,
+      }),
+    );
+  } catch (e) {
+    catatMutasi('error', 'investment_docs.upload.insert', '/api/investment-docs/upload', e, { docId });
     await cleanupStorage(supabase, uploadedPaths);
     return NextResponse.json(
-      { error: 'Failed to insert document row', details: String(insertError) },
+      { error: 'Failed to insert document row', details: pesanMutasi(e) },
       { status: 500 },
     );
   }

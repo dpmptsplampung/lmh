@@ -1,464 +1,73 @@
-'use client';
-
-import { useState, useEffect } from 'react';
+// Halaman /checkin = INFORMASI, tidak menulis ke database (K3, audit T3).
+// Pendaftaran walk-in dan check-in QR hanya dilakukan Front Office (/admin/fo/daftar, /admin/scan); pengunjung
+// cukup datang ke meja Front Office. Server component statis: tanpa sign-in anonim, tanpa akses Supabase.
+import type { Metadata } from 'next';
 import Link from 'next/link';
-import {
-  ClipboardCheck,
-  ArrowLeft,
-  CheckCircle2,
-  Loader2,
-  Send,
-  LogIn,
-  RefreshCw,
-} from 'lucide-react';
-import { createClient } from '@/lib/supabase/client';
-import QRCodeDisplay from '@/components/QRCode';
+import { ArrowLeft, CalendarCheck, ClipboardCheck, Users } from 'lucide-react';
 import { APP_NAME } from '@/lib/constants';
-import { enqueueAction } from '@/lib/offline/queue';
-import { replayQueue } from '@/lib/offline/replay';
-import { isLayananTutupError, PESAN_LAYANAN_TUTUP, pesanCheckinDitolak } from '@/lib/offline/tutup';
 import styles from './checkin.module.css';
 
-interface FormData {
-  nama: string;
-  keperluan: string;
-  layanan_id: string;
-}
-
-type AuthState = 'loading' | 'authed' | 'anon-disabled';
-
-const CONSENT_VERSION = '1.0';
-const CONSENT_TEXT = 'Saya setuju data saya diproses sesuai Kebijakan Privasi.';
+export const metadata: Metadata = {
+  title: 'Check-in Kunjungan',
+  description: `Cara check-in kunjungan di ${APP_NAME}: walk-in langsung ke Front Office, atau tunjukkan QR reservasi.`,
+};
 
 export default function CheckinPage() {
-  const [authState, setAuthState] = useState<AuthState>('loading');
-  const [form, setForm] = useState<FormData>({
-    nama: '',
-    keperluan: '',
-    layanan_id: '',
-  });
-  const [layananOptions, setLayananOptions] = useState<{ id: string; nama: string; status_tampilan?: string; punya_antrean?: boolean }[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
-  const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
-  const [loadingLayanan, setLoadingLayanan] = useState(true);
-  // I8: PDP consent — required before submit
-  const [consentGiven, setConsentGiven] = useState(false);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  // Walk-in online: qr_token digenerate di klien agar bisa ditampilkan tanpa SELECT
-  // (SELECT row visit mungkin tertahan RLS untuk anon).
-  const [successToken, setSuccessToken] = useState<string | null>(null);
-  const [queuePos, setQueuePos] = useState<{ posisi: number; total_menunggu: number } | null>(null);
-
-  // Auth gate: require a user (Google or anon) before allowing INSERT.
-  // Final baseline RLS requires authenticated, rate-limited walk-in inserts.
-  // I8: also capture user id for consent_log.subjek_ref (returned, not set here,
-  // to avoid setState-in-effect lint violation).
-  const runAuth = async (): Promise<{ state: AuthState; userId: string | null }> => {
-    const supabase = createClient();
-    const { data: userData } = await supabase.auth.getUser();
-    if (userData?.user) {
-      return { state: 'authed' as const, userId: userData.user.id };
-    }
-    // No user — attempt anon sign-in (must be enabled in Dashboard).
-    try {
-      const { data: anonData, error: anonError } =
-        await supabase.auth.signInAnonymously();
-      if (anonError || !anonData?.user) {
-        return { state: 'anon-disabled' as const, userId: null };
-      }
-      return { state: 'authed' as const, userId: anonData.user.id };
-    } catch {
-      return { state: 'anon-disabled' as const, userId: null };
-    }
-  };
-
-  useEffect(() => {
-    let active = true;
-    runAuth().then((result) => {
-      if (!active) return;
-      setAuthState(result.state);
-      // I8: capture user id for consent_log.subjek_ref
-      setCurrentUserId(result.userId);
-    });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const handleRetry = () => {
-    setAuthState('loading');
-    runAuth().then((result) => {
-      setAuthState(result.state);
-      setCurrentUserId(result.userId);
-    });
-  };
-
-  // Load layanan on mount (only once authed)
-  useEffect(() => {
-    if (authState !== 'authed') return;
-    async function loadLayanan() {
-      try {
-        const supabase = createClient();
-        const { data, error: fetchError } = await supabase
-          .from('v_layanan_publik')
-          .select('id, nama, status_tampilan, punya_antrean')
-          .neq('tipe', 'modul_publik')
-          .order('nama');
-
-        if (fetchError) throw fetchError;
-        setLayananOptions((data || []).filter((l) => l.punya_antrean !== false));
-      } catch {
-        setLayananOptions([]);
-      } finally {
-        setLoadingLayanan(false);
-      }
-    }
-    loadLayanan();
-  }, [authState]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-
-    if (!form.nama.trim()) {
-      setError('Nama wajib diisi');
-      return;
-    }
-    if (!form.layanan_id) {
-      setError('Pilih layanan tujuan');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
-
-      if (isOffline) {
-        await enqueueAction({
-          type: 'checkin',
-          payload: {
-            nama: form.nama.trim(),
-            layanan_id: form.layanan_id,
-            keperluan: form.keperluan.trim() || undefined,
-            consent_given: consentGiven,
-            versi_kebijakan: CONSENT_VERSION,
-          },
-          owner_user_id: currentUserId,
-        });
-        if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.ready
-            .then((reg) => {
-              if ('sync' in reg) {
-                (reg as ServiceWorkerRegistration & { sync: { register: (tag: string) => Promise<void> } }).sync.register('checkin-sync');
-              }
-            })
-            .catch(() => {
-              // background sync not supported — replay on next 'online' event
-            });
-        }
-        setSuccess(true);
-        return;
-      }
-
-      const supabase = createClient();
-
-      // I8: Record PDP consent BEFORE inserting visit (only when user asserted consent).
-      // K-2: Await and check error — blocks visit insert if consent fails.
-      // subjek_ref = auth user id (RLS ownership policy).
-      if (currentUserId && consentGiven) {
-        const { error: consentError } = await supabase.from('consent_log').insert({
-          subjek_ref: currentUserId,
-          tujuan: 'checkin_data',
-          disetujui: true,
-          versi_kebijakan: CONSENT_VERSION,
-        });
-        if (consentError) {
-          setError('Gagal mencatat persetujuan data. Silakan coba lagi.');
-          setLoading(false);
-          return;
-        }
-      }
-
-      const qrToken = crypto.randomUUID();
-      const { error: insertError } = await supabase
-        .from('visit')
-        .insert({
-          asal: 'walk_in',
-          nama: form.nama.trim(),
-          keperluan: form.keperluan.trim() || null,
-          layanan_id: form.layanan_id,
-          tujuan: 'loket',
-          status: 'menunggu',
-          waktu_masuk: new Date().toISOString(),
-          qr_token: qrToken,
-        });
-
-      if (insertError) throw insertError;
-      setSuccessToken(qrToken);
-      setQueuePos(null);
-      // Defensif: fungsi rpc mungkin belum tersedia — sembunyikan blok posisi bila gagal.
-      try {
-        const { data: pos } = await supabase
-          .rpc('get_queue_position', { p_qr_token: qrToken })
-          .maybeSingle();
-        if (
-          pos &&
-          typeof (pos as { posisi?: unknown }).posisi === 'number' &&
-          typeof (pos as { total_menunggu?: unknown }).total_menunggu === 'number'
-        ) {
-          setQueuePos(pos as { posisi: number; total_menunggu: number });
-        }
-      } catch {
-        // posisi antrean opsional — abaikan
-      }
-      setSuccess(true);
-    } catch (err) {
-      const raw = (err as { message?: string } | null)?.message ?? '';
-      setError(
-        isLayananTutupError(err)
-          ? PESAN_LAYANAN_TUTUP
-          : raw.includes('tidak beroperasi')
-            ? 'Layanan tidak beroperasi hari ini (libur/di luar jadwal).'
-            : 'Gagal menyimpan data. Silakan coba lagi.',
-      );
-      console.error('Check-in error:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // I9: replay queued actions when connection is restored.
-  useEffect(() => {
-    const handleOnline = () => {
-      replayQueue()
-        .then((r) => {
-          // Check-in offline yang ditolak (layanan tutup) tidak boleh hilang diam-diam.
-          if (r.ditolak) setNotice(pesanCheckinDitolak(r.ditolak));
-        })
-        .catch(() => {
-          // non-fatal — will retry on next online event
-        });
-    };
-    window.addEventListener('online', handleOnline);
-    return () => window.removeEventListener('online', handleOnline);
-  }, []);
-
-  const handleReset = () => {
-    setForm({ nama: '', keperluan: '', layanan_id: '' });
-    setSuccess(false);
-    setError('');
-    setSuccessToken(null);
-    setQueuePos(null);
-    setConsentGiven(false); // K-4: reset consent for next visitor (PDP compliance)
-  };
-
   return (
     <div className={styles.checkinPage}>
       <div className={styles.checkinGlow} />
       <div className={styles.checkinCard}>
-        {/* Header */}
         <div className={styles.checkinHeader}>
           <div className={styles.checkinIcon}>
-            <ClipboardCheck size={28} />
+            <ClipboardCheck size={28} aria-hidden="true" />
           </div>
           <h1 className={styles.checkinTitle}>Check-in Kunjungan</h1>
-          <p className={styles.checkinSubtitle}>
-            Selamat datang di {APP_NAME}
-          </p>
+          <p className={styles.checkinSubtitle}>Selamat datang di {APP_NAME}</p>
         </div>
 
-        {/* Body */}
         <div className={styles.checkinBody}>
-          {notice && (
-            <div className="form-error" role="status" style={{ marginBottom: 'var(--space-4)' }}>
-              {notice}
-            </div>
-          )}
-          {authState === 'loading' ? (
-            <div
-              className="form-hint"
-              style={{ textAlign: 'center', padding: '2rem 0' }}
-              role="status"
-              aria-live="polite"
-            >
-              <Loader2 size={24} className="animate-pulse" />
-              <div style={{ marginTop: '0.5rem' }}>Memuat...</div>
-            </div>
-          ) : authState === 'anon-disabled' ? (
-            <div style={{ textAlign: 'center', padding: '1rem 0' }} role="alert">
-              <p className="form-hint" style={{ marginBottom: '1rem' }}>
-                Silakan login atau coba lagi nanti.
-              </p>
-              <Link
-                href="/login"
-                className="btn btn--primary btn--lg"
-                style={{ width: '100%', marginBottom: '0.75rem' }}
-              >
-                <LogIn size={20} />
-                Login dengan Google
-              </Link>
-              <button
-                type="button"
-                className="btn btn--lg"
-                style={{ width: '100%' }}
-                onClick={handleRetry}
-              >
-                <RefreshCw size={20} />
-                Coba lagi
-              </button>
-            </div>
-          ) : success ? (
-            <div className={styles.successState}>
-              <div className={styles.successIcon}>
-                <CheckCircle2 size={36} />
+          <div className={styles.infoList}>
+            <section className={styles.infoItem} aria-labelledby="info-walkin">
+              <span className={styles.infoIcon} aria-hidden="true">
+                <Users size={22} />
+              </span>
+              <div>
+                <h2 id="info-walkin" className={styles.infoTitle}>
+                  Datang langsung (walk-in)
+                </h2>
+                <p className={styles.infoText}>
+                  Silakan menuju meja Front Office. Petugas akan mencatat kedatangan Anda dan melayani Anda;
+                  bila perlu, Anda diarahkan ke petugas layanan yang sesuai. Anda tidak perlu mengisi
+                  formulir sendiri.
+                </p>
               </div>
-              <h2 className={styles.successTitle}>Check-in Berhasil!</h2>
-              <p className={styles.successDescription}>
-                {typeof navigator !== 'undefined' && navigator.onLine === false
-                  ? 'Checkin Anda tersimpan offline dan akan disinkronkan saat online kembali. Silakan menunggu, petugas akan segera melayani Anda.'
-                  : 'Terima kasih telah mendaftar. Silakan menunggu, petugas akan segera melayani Anda.'}
-              </p>
-              {successToken && (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-6)' }}>
-                  <QRCodeDisplay value={successToken} size={180} />
-                  <p style={{ fontSize: 'var(--text-xs)', fontFamily: 'monospace', wordBreak: 'break-all', color: 'var(--text-tertiary)' }}>
-                    {successToken}
-                  </p>
-                  <p className="form-hint" style={{ textAlign: 'center', lineHeight: 1.6 }}>
-                    Simpan atau tunjukkan QR ini — dipakai petugas dan untuk mengisi Survei
-                    Kepuasan (SKM) setelah layanan selesai melalui tautan{' '}
-                    <span style={{ fontFamily: 'monospace' }}>/skm?token={successToken}</span>
-                  </p>
-                  {queuePos && (
-                    <p role="status" style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--color-primary-700)' }}>
-                      Posisi antrean Anda: {queuePos.posisi} dari {queuePos.total_menunggu} menunggu
-                    </p>
-                  )}
-                </div>
-              )}
-              <button
-                className="btn btn--primary btn--lg"
-                onClick={handleReset}
-                style={{ width: '100%' }}
-              >
-                Check-in Baru
-              </button>
-            </div>
-          ) : (
-            <form className={styles.checkinForm} onSubmit={handleSubmit}>
-              <div className="form-group">
-                <label className="form-label form-label--required" htmlFor="nama">
-                  Nama Lengkap
-                </label>
-                <input
-                  id="nama"
-                  type="text"
-                  className="form-input"
-                  placeholder="Masukkan nama lengkap Anda"
-                  value={form.nama}
-                  onChange={(e) => setForm({ ...form, nama: e.target.value })}
-                  autoComplete="name"
-                />
+            </section>
+
+            <section className={styles.infoItem} aria-labelledby="info-reservasi">
+              <span className={styles.infoIcon} aria-hidden="true">
+                <CalendarCheck size={22} />
+              </span>
+              <div>
+                <h2 id="info-reservasi" className={styles.infoTitle}>
+                  Sudah punya reservasi?
+                </h2>
+                <p className={styles.infoText}>
+                  Tunjukkan QR reservasi Anda kepada petugas Front Office untuk dipindai. QR tersedia di
+                  halaman reservasi akun Anda.
+                </p>
+                <Link href="/me/reservasi" className="btn btn--primary btn--sm">
+                  Lihat QR Reservasi
+                </Link>
               </div>
+            </section>
+          </div>
 
-              <div className="form-group">
-                <label className="form-label form-label--required" htmlFor="layanan">
-                  Layanan Tujuan
-                </label>
-                {!loadingLayanan && layananOptions.length === 0 ? (
-                  <p className="form-hint" style={{ color: 'var(--color-danger-600)' }}>
-                    Gagal memuat layanan. Coba refresh halaman.
-                  </p>
-                ) : (
-                  <select
-                    id="layanan"
-                    className="form-select"
-                    value={form.layanan_id}
-                    onChange={(e) => setForm({ ...form, layanan_id: e.target.value })}
-                    disabled={loadingLayanan}
-                  >
-                    <option value="">— Pilih layanan —</option>
-                    {layananOptions.map((l) => (
-                      <option key={l.id} value={l.id} disabled={l.status_tampilan === 'coming_soon'}>
-                        {l.nama}{l.status_tampilan === 'coming_soon' ? ' (Segera hadir)' : ''}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </div>
-
-              <div className="form-group">
-                <label className="form-label" htmlFor="keperluan">
-                  Keperluan
-                </label>
-                <textarea
-                  id="keperluan"
-                  className="form-textarea"
-                  placeholder="Jelaskan secara singkat keperluan Anda (opsional)"
-                  value={form.keperluan}
-                  onChange={(e) => setForm({ ...form, keperluan: e.target.value })}
-                  rows={3}
-                />
-                <span className="form-hint">
-                  Opsional — membantu petugas mempersiapkan layanan
-                </span>
-              </div>
-
-              {error && (
-                <div className="form-error" role="alert">
-                  {error}
-                </div>
-              )}
-
-              {/* I8: PDP consent checkbox — required */}
-              <div className="form-group" style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)' }}>
-                <input
-                  id="consent"
-                  type="checkbox"
-                  checked={consentGiven}
-                  onChange={(e) => setConsentGiven(e.target.checked)}
-                  style={{ marginTop: '4px', width: '18px', height: '18px', cursor: 'pointer', flexShrink: 0 }}
-                  required
-                />
-                <label
-                  htmlFor="consent"
-                  style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', cursor: 'pointer', lineHeight: 1.5 }}
-                >
-                  {CONSENT_TEXT}{' '}
-                  <Link
-                    href="/kebijakan-privasi"
-                    style={{ color: 'var(--color-primary-600)', textDecoration: 'underline' }}
-                  >
-                    Baca kebijakan
-                  </Link>
-                </label>
-              </div>
-
-              <button
-                type="submit"
-                className={`btn btn--primary btn--lg ${styles.checkinSubmit}`}
-                disabled={loading || layananOptions.length === 0 || !consentGiven}
-                style={{ width: '100%' }}
-              >
-                {loading ? (
-                  <>
-                    <Loader2 size={20} className="animate-pulse" />
-                    Memproses...
-                  </>
-                ) : (
-                  <>
-                    <Send size={20} />
-                    Kirim Check-in
-                  </>
-                )}
-              </button>
-            </form>
-          )}
+          <p className={styles.infoFootnote}>
+            Belum punya reservasi dan ingin datang di hari lain? Buat reservasi dari halaman yang sama.
+          </p>
 
           <Link href="/" className={styles.backLink}>
-            <ArrowLeft size={16} />
+            <ArrowLeft size={16} aria-hidden="true" />
             Kembali ke halaman utama
           </Link>
         </div>

@@ -1,0 +1,55 @@
+-- 202610130002_faq_petugas_hanya_petugas.sql
+-- Menutup celah RLS FAQ: policy faq_petugas_all hanya berlaku untuk peran `petugas`.
+-- Keputusan CEO: petugas layanan hanya mengelola FAQ layanannya; Front Office hanya FAQ umum
+-- (layanan_id IS NULL); Admin semua baris. Pendamping 202610130001_faq_umum.sql.
+--
+-- Masalah (terbukti dari kode):
+--   Definisi lama faq_petugas_all (202607280003_faq_petugas_scope.sql:5-7):
+--     USING (layanan_id = public.get_my_layanan_id()) WITH CHECK (layanan_id = public.get_my_layanan_id())
+--   TIDAK memeriksa peran. get_my_layanan_id() (definisi terbaru: 202610080001_rbac_tahap0_keamanan.sql:88-97)
+--   mengembalikan petugas.layanan_id untuk petugas AKTIF dengan peran APA PUN (admin/petugas/front_office);
+--   get_my_role() (definisi terbaru: 202607290004_petugas_aktif.sql:15-22) mengembalikan petugas.role untuk
+--   petugas aktif, NULL bila nonaktif/non-staf. Akibatnya Front Office yang baris `petugas`-nya masih punya
+--   layanan_id tetap lolos faq_petugas_all untuk FAQ layanannya. Bersama faq_fo_umum (202610130001), FO bahkan
+--   dapat MEMINDAHKAN baris antara FAQ umum dan FAQ layanan: UPDATE ... SET layanan_id = NULL pada baris
+--   layanannya lolos USING faq_petugas_all (baris lama) dan lolos WITH CHECK faq_fo_umum (baris baru), dan
+--   sebaliknya (baris umum lolos USING faq_fo_umum, baris baru ber-layanan lolos WITH CHECK faq_petugas_all).
+--   Penjaga di API (mengosongkan layanan_id saat peran menjadi FO/admin) tidak cukup: policy harus kuat sendiri.
+--
+-- Perbaikan: faq_petugas_all dibuat ulang dengan nama, FOR ALL, dan TO authenticated yang SAMA, kini
+--   USING      (layanan_id = public.get_my_layanan_id() AND public.get_my_role() = 'petugas')
+--   WITH CHECK (layanan_id = public.get_my_layanan_id() AND public.get_my_role() = 'petugas')
+--
+-- Tabel kebenaran (policy PERMISSIVE digabung dengan OR; USING = baris lama, WITH CHECK = baris baru):
+--   Peran (aktif)      faq_admin_all    faq_petugas_all (baru)           faq_fo_umum
+--   admin              lolos semua      tidak (peran bukan petugas)      tidak (peran bukan FO)
+--   petugas + layanan  tidak            hanya baris layanannya (spt dulu) tidak
+--   petugas tanpa lyn  tidak            tidak (NULL = NULL bernilai NULL) tidak
+--   front_office       tidak            TIDAK LAGI (peran bukan petugas) hanya baris layanan_id IS NULL
+--   nonaktif/non-staf  tidak            tidak (get_my_role() NULL)       tidak
+--   -> FO tidak punya jalur ke baris ber-layanan (USING maupun WITH CHECK) dan tidak dapat memindahkan baris:
+--      UPDATE baris umum -> layanan: baris baru gagal WITH CHECK faq_fo_umum (layanan_id bukan NULL) dan gagal
+--      faq_petugas_all/faq_admin_all (peran). UPDATE baris layanan -> umum: baris lama gagal USING semua policy.
+--   faq_public_read (SELECT, aktif = true) tidak berubah dan tidak memberi hak tulis.
+-- Perilaku petugas biasa (peran 'petugas' aktif dengan layanan) identik dengan sebelumnya.
+--
+-- Hanya policy ini yang disentuh: faq_admin_all, faq_public_read, faq_fo_umum, kolom, fungsi, dan data TIDAK
+-- diubah. Tidak ada policy/fungsi lain yang bergantung pada nama faq_petugas_all (sudah di-grep: hanya
+-- dokumen/test). Pola serupa (get_my_layanan_id() tanpa peran) pada tabel lain di luar cakupan migrasi ini.
+--
+-- URUTAN PENERAPAN (wajib): 202610130001_faq_umum.sql -> 202610130002 (berkas ini) -> BARU deploy kode UI FO
+-- ("Kelola FAQ" untuk front_office di src/lib/admin-nav.ts). Berkas ini sebenarnya tidak bergantung pada
+-- 202610130001 secara sintaks, tetapi keduanya HARUS terpasang sebelum kode UI FO di-deploy; bila kode lebih
+-- dulu, FO yang menyimpan FAQ umum gagal (INSERT layanan_id NULL melanggar NOT NULL), dan tanpa berkas ini FO
+-- ber-layanan masih dapat menulis FAQ layanannya.
+--
+-- PENERAPAN: mengubah policy, jadi WAJIB mode atomik (satu transaksi). Dry-run dulu:
+--   node scripts/apply-migration.mjs supabase/migrations/202610130002_faq_petugas_hanya_petugas.sql --atomic --dry-run
+--   node scripts/apply-migration.mjs supabase/migrations/202610130002_faq_petugas_hanya_petugas.sql --atomic
+-- Idempoten (aman dijalankan dua kali). Sentuh produksi hanya setelah konfirmasi CEO (docs/ATURAN_MIGRASI.md).
+-- Rollback: docs/rollback-faq-petugas-hanya-petugas-202610130002.sql (memulihkan definisi 202607280003).
+
+DROP POLICY IF EXISTS faq_petugas_all ON public.faq_knowledge_base;
+CREATE POLICY faq_petugas_all ON public.faq_knowledge_base FOR ALL TO authenticated
+  USING (layanan_id = public.get_my_layanan_id() AND public.get_my_role() = 'petugas')
+  WITH CHECK (layanan_id = public.get_my_layanan_id() AND public.get_my_role() = 'petugas');

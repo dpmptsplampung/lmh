@@ -7,19 +7,34 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { AlertCircle, CheckCircle, Loader2, Shield, Lock, User, ArrowLeft } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { resolveLoginEmail, normalizeUsername, PESAN_LOGIN_GAGAL } from '@/lib/akun/login';
+import {
+  apakahPeranStaf,
+  daftarkanSesiStaf,
+  keluarDariSesi,
+  parseAlasanSesi,
+  PESAN_ALASAN_SESI,
+  PESAN_SESI_GAGAL_DAFTAR,
+  PESAN_SESI_TANPA_KLAIM,
+} from '@/lib/sesi-staf';
 import styles from './login.module.css';
 
 function LoginContent() {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [isAdminLogin, setIsAdminLogin] = useState(false);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  // Datang dari logout otomatis sesi staf (?alasan=...): tampilkan penjelasan dan langsung buka form operator.
+  const alasanSesi = parseAlasanSesi(searchParams.get('alasan'));
+  const [isAdminLogin, setIsAdminLogin] = useState(alasanSesi !== null);
   const [lupa, setLupa] = useState(false);
   const [lupaInfo, setLupaInfo] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const error = searchParams.get('error') === 'auth' ? 'Gagal masuk. Silakan coba lagi.' : errorMessage;
+  const galatUrl = searchParams.get('error');
+  const error = errorMessage
+    || (galatUrl === 'auth' ? 'Gagal masuk. Silakan coba lagi.' : '')
+    || (galatUrl === 'sesi' ? PESAN_SESI_GAGAL_DAFTAR : '')
+    || (alasanSesi ? PESAN_ALASAN_SESI[alasanSesi] : '');
 
   // Tujuan setelah login (mis. ?next=/chat dari halaman yang butuh login)
   const rawNext = searchParams.get('next');
@@ -82,6 +97,18 @@ function LoginContent() {
         .select('role, wajib_ganti_sandi')
         .eq('auth_user_id', data.user.id)
         .maybeSingle();
+
+      // Staf: daftarkan sesi tunggal SEKALI (menimpa sesi perangkat lain). Pengunjung/mitra tidak memanggilnya.
+      // Gagal = login dibatalkan dengan pesan jelas, tidak diloloskan diam-diam.
+      if (petugas && apakahPeranStaf(petugas.role)) {
+        const daftar = await daftarkanSesiStaf(supabase);
+        if (daftar.status === 'gagal') {
+          await keluarDariSesi(supabase, { akhiri: false });
+          setErrorMessage(daftar.kode === 'tanpa_klaim' ? PESAN_SESI_TANPA_KLAIM : PESAN_SESI_GAGAL_DAFTAR);
+          setLoading(false);
+          return;
+        }
+      }
 
       if (petugas?.wajib_ganti_sandi) {
         router.push('/admin/profil?ganti=1');

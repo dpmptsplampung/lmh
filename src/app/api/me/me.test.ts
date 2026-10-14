@@ -1,6 +1,6 @@
 // @vitest-environment node
 // Tahap 2: profil sendiri (PATCH lewat RPC), ubah sandi (verifikasi sandi lama), kirim ulang verifikasi.
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn() }));
 vi.mock('@supabase/supabase-js', () => ({ createClient: vi.fn() }));
@@ -18,7 +18,13 @@ const req = (body?: unknown) =>
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body),
   }) as unknown as NextRequest;
 
-async function setup(o: { user?: unknown; me?: unknown; oldPwError?: boolean; jatah?: number } = {}) {
+async function setup(
+  o: {
+    user?: unknown; me?: unknown; oldPwError?: boolean; jatah?: number;
+    // Mutasi (audit T2d): hasil UPDATE petugas.wajib_ganti_sandi (.select('id')); [] = 0 baris tanpa error.
+    flagError?: { message: string; code?: string }; flagRows?: unknown[];
+  } = {},
+) {
   process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://supabase.local';
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'anon';
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'svc';
@@ -37,6 +43,7 @@ async function setup(o: { user?: unknown; me?: unknown; oldPwError?: boolean; ja
   const signIn = vi.fn().mockResolvedValue({ error: o.oldPwError ? { message: 'bad' } : null });
   const upserts: unknown[] = [];
   const updates: unknown[] = [];
+  const inserts: { v: unknown }[] = [];
   const sbMod = await import('@supabase/supabase-js');
   let n = 0;
   (sbMod.createClient as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => {
@@ -49,16 +56,26 @@ async function setup(o: { user?: unknown; me?: unknown; oldPwError?: boolean; ja
         Object.assign(c, {
           select: self, eq: self, gte: self, is: self,
           then: (r: (v: unknown) => unknown) => Promise.resolve({ count: o.jatah ?? 0, error: null }).then(r),
-          insert: async () => ({ error: null }),
+          insert: async (v: unknown) => { inserts.push({ v }); return { error: null }; },
           upsert: async (v: unknown) => { upserts.push(v); return { error: null }; },
-          update: (v: unknown) => { updates.push(v); return { eq: async () => ({ error: null }) }; },
+          // Route mengakhiri UPDATE dengan .select('id') agar baris terdampak terlihat (T2d).
+          update: (v: unknown) => {
+            updates.push(v);
+            return {
+              eq: () => ({
+                select: async () => (o.flagError
+                  ? { data: null, error: o.flagError }
+                  : { data: o.flagRows ?? [{ id: 'p-1' }], error: null }),
+              }),
+            };
+          },
         });
         return c;
       },
     };
   });
   void n;
-  return { rpc, signOut, updateUserById, signIn, upserts, updates };
+  return { rpc, signOut, updateUserById, signIn, upserts, updates, inserts };
 }
 
 describe('/api/me/profil', () => {
@@ -129,6 +146,62 @@ describe('POST /api/me/sandi', () => {
     const res = await (await import('./sandi/route')).POST(req({ sandi_lama: 'lama-lama-1', sandi_baru: 'baru-baru-123' }));
     expect(res.status).toBe(429);
     expect(s.signIn).not.toHaveBeenCalled();
+  });
+
+  // Audit T2d (No 105): sandi SUDAH berubah (updateUserById berhasil) saat flag wajib_ganti_sandi dibersihkan. Bila
+  // pembersihan gagal / 0 baris, jangan lapor sukses (pengguna tetap dipaksa ganti sandi tanpa penjelasan): 500 dengan
+  // pesan yang jujur bahwa sandi sudah berubah; langkah lanjutan (keluarkan perangkat, audit) tetap dijalankan.
+  describe('pembersihan flag wajib_ganti_sandi dicek (audit T2d)', () => {
+    let errSpy: ReturnType<typeof vi.spyOn>;
+    beforeEach(() => {
+      vi.stubGlobal('fetch', vi.fn(async () => new Response('{}')));
+      errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    });
+    afterEach(() => {
+      errSpy.mockRestore();
+      vi.unstubAllGlobals();
+    });
+    const log = () =>
+      errSpy.mock.calls
+        .map((c: unknown[]) => { try { return JSON.parse(String(c[0])) as Record<string, unknown>; } catch { return null; } })
+        .find((e: Record<string, unknown> | null) => e?.operation === 'me.sandi.flag');
+    const body = { sandi_lama: 'lama-lama-1', sandi_baru: 'baru-baru-123', keluarkan_perangkat_lain: true };
+
+    it('UPDATE flag error: 500 dengan pesan jujur, dicatat dengan kode; keluarkan-perangkat + audit tetap jalan', async () => {
+      const s = await setup({ flagError: { message: 'connection reset secret-xyz', code: '08006' } });
+      const res = await (await import('./sandi/route')).POST(req(body));
+
+      expect(res.status).toBe(500);
+      const resBody = await res.json();
+      expect(resBody.error).toMatch(/sandi sudah berubah/i);
+      // Kode mesin untuk UI: sandi baru SUDAH berlaku (jangan suruh "masuk dengan sandi baru": pengguna masih login).
+      expect(resBody.kode).toBe('SANDI_BERUBAH_FLAG_GAGAL');
+      expect(resBody.error).not.toMatch(/masuk dengan sandi baru/i);
+      expect(s.updateUserById).toHaveBeenCalled();
+      expect(s.signOut).toHaveBeenCalledWith({ scope: 'others' });
+      const audit = s.inserts.map((i) => i.v as Record<string, unknown>).find((v) => v.aksi === 'akun_ganti_sandi_sendiri');
+      expect(audit).toBeTruthy();
+      expect((audit!.detail as Record<string, unknown>).wajib_ganti_sandi_dibersihkan).toBe(false);
+      expect(log()).toMatchObject({ kode: 'database', asalCode: '08006' });
+      expect(JSON.stringify(log())).not.toContain('secret-xyz');
+    });
+
+    it('UPDATE flag 0 baris (tanpa error): tetap 500, bukan sukses palsu', async () => {
+      await setup({ flagRows: [] });
+      const res = await (await import('./sandi/route')).POST(req(body));
+      expect(res.status).toBe(500);
+      expect((await res.json()).kode).toBe('SANDI_BERUBAH_FLAG_GAGAL');
+      expect(log()).toMatchObject({ kode: 'tidak_ada_baris' });
+    });
+
+    it('berhasil: audit tanpa field tambahan dan respons 200 {ok:true} tidak berubah', async () => {
+      const s = await setup();
+      const res = await (await import('./sandi/route')).POST(req(body));
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ ok: true });
+      const audit = s.inserts.map((i) => i.v as Record<string, unknown>).find((v) => v.aksi === 'akun_ganti_sandi_sendiri');
+      expect(audit!.detail).toEqual({ perangkat_lain_dikeluarkan: true });
+    });
   });
 });
 

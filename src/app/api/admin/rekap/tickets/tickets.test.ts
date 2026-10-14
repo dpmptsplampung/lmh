@@ -106,4 +106,34 @@ describe('GET /api/admin/rekap/tickets', () => {
     const res = await GET(new NextRequest(url));
     expect(res.status).toBe(422);
   });
+
+  it('memuat nama FO dari tahap FO kunjungan tiket (tahap FO terakhir); tiket lama tanpa tahap FO -> null; embed mentah tidak bocor', async () => {
+    const mock = buildMock({
+      role: 'admin',
+      layananId: null,
+      rows: [
+        {
+          id: 't-baru', nomor_display: 'A-001',
+          kunjungan: { nama: 'Budi', asal: 'walk_in', qr_token: null, tahap_fo: [
+            { tahap_ke: 1, peran_tahap: 'fo', penangan_id: 'fo-a', petugas: { nama: 'Ani FO' } },
+            { tahap_ke: 2, peran_tahap: 'layanan', penangan_id: 'p-1', petugas: { nama: 'Rina' } },
+            { tahap_ke: 3, peran_tahap: 'fo', penangan_id: 'fo-b', petugas: [{ nama: 'Bayu FO' }] },
+          ] },
+        },
+        { id: 't-lama', nomor_display: 'A-000', kunjungan: { nama: 'Siti', asal: 'walk_in', qr_token: null, tahap_fo: [] } },
+        { id: 't-tanpa', nomor_display: 'A-002', kunjungan: null },
+      ] as unknown as { id: string; nomor_display: string }[],
+    });
+    (createClient as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(mock);
+    const res = await GET(new NextRequest('http://localhost/api/admin/rekap/tickets?page=1&page_size=10'));
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.total).toBe(3);
+    expect(body.rows.map((r: { fo_nama: string | null }) => r.fo_nama)).toEqual(['Bayu FO', null, null]);
+    expect(body.rows[0].kunjungan).toEqual({ nama: 'Budi', asal: 'walk_in', qr_token: null });
+    expect(JSON.stringify(body)).not.toContain('tahap_fo');
+    // select tiket memuat embed tahap FO lewat kunjungan (satu kueri, tanpa N+1); paginasi tetap lewat range().
+    const selectDariTiket = mock.from.mock.results.find((x) => x.value?.select && x.value.select.mock?.calls?.[0]?.[0]?.includes?.('tahap_fo'));
+    expect(selectDariTiket).toBeDefined();
+  });
 });

@@ -37,7 +37,7 @@ Test ada di samping source (`*.test.ts(x)`) dan di `supabase/migrations/*.test.t
 - Pengunjung memakai anon sign-in Supabase (RLS `pengunjung_id = auth.uid()`); mitra/UMKM memakai magic-link. Akun mitra = individual (`docs/KEBIJAKAN_AKUN_MITRA.md`).
 - Supabase client: `src/lib/supabase/{client,server,service}.ts`. `service.ts` = service-role (server-only; jangan dipakai di client). Env divalidasi zod di `src/lib/env/{server,client}.ts`, dipanggil dari `src/instrumentation.ts` saat start (placeholder value ditolak).
 **Domain (halaman di `src/app/*`, API di `src/app/api/*`)**
-- Pelayanan/antrean: `checkin`, `admin/{kunjungan,scan,antrian,absensi}`, `layar/[token]` & `layar-antrian` (layar TV bertoken), `me/reservasi`. Model data "Visit Spine": tabel `kunjungan` + `tiket_antrean` (dual-write dari `visit` lama sampai WP-24 yang masih diblokir). Penomoran antrean atomik di DB (RPC/counter), absensi petugas jadi gerbang antrean, jadwal harian dibekukan. Helper: `src/lib/pelayanan.ts`, `lib/types/pelayanan.ts`, `lib/hooks/useRealtimeRefetch.ts` (Supabase Realtime), `components/{WalkinWizard,EstimasiAntrean}`, `components/admin/*Wizard*`.
+- Pelayanan/antrean: `checkin`, `admin/{kunjungan,scan,antrian,absensi}`, `layar/[token]` & `layar-antrian` (layar TV bertoken), `me/reservasi`. Model data "Visit Spine": tabel `kunjungan` + `tiket_antrean` (dual-write dari `visit` lama di produksi; WP-24 sudah ditulis sebagai migrasi `202610140007`/`0008` tetapi BELUM diterapkan, lihat `docs/MIGRATIONS.md`). Penomoran antrean atomik di DB (RPC/counter), absensi petugas jadi gerbang antrean, jadwal harian dibekukan. Helper: `src/lib/pelayanan.ts`, `lib/types/pelayanan.ts`, `lib/hooks/useRealtimeRefetch.ts` (Supabase Realtime), `components/{WalkinWizard,EstimasiAntrean}`, `components/admin/*Wizard*`.
 - Chat & bot: `chat`, `admin/chat/*`, `api/chat/{ai,messages,sesi}`. `api/chat/ai/route.ts` = RAG (FAQ + `dokumen_peraturan` via pgvector 3072-dim & FTS) dengan `lib/gemini.ts`, rantai LLM multi-vendor + circuit breaker + kuota harian di `lib/llm/registry.ts` (env `LLM_CHAT_PROVIDERS` format `provider:model,...`), redaksi PII/deteksi prompt-injection di `lib/pii.ts`, eskalasi otomatis ke petugas. Embedding admin: `api/admin/{faq,dokumen}/embed`.
 - Rekap harian: `admin/rekap`, `api/admin/rekap/*`, logika di `src/lib/rekap/` (query, rows, schemas zod, ExcelJS export). IKM/SKM: `skm`, `transparansi`, `lib/ikm.ts`. Pengaduan (`pengaduan`, `api/pengaduan`), `standar-pelayanan`, UMKM marketplace (`umkm`, `api/umkm`), investasi/gallery/`peta-potensi` (PDF di-render jadi PNG ber-watermark: `api/investment-docs/*`, `canvas`/`pdfjs-dist`/`sharp`), konten landing via CMS registry (`lib/site-settings.ts`).
 - Notifikasi: trigger DB → `api/notif/{send,retry}` dipanggil cron (header `Authorization: Bearer $CRON_SECRET`); Resend (`lib/email-html.ts`) + web-push (`public/sw-push.js`). PWA offline: `public/sw.js`, `lib/offline/{queue,replay}.ts` (IndexedDB queue + replay check-in).
@@ -58,7 +58,7 @@ Pola umum: halaman (`page.tsx`) adalah **client component besar yang berisi logi
 |---|---|---|
 | `/` | landing (konten dari `landing_content`/`site_settings`) | `lib/site-settings` |
 | `/login`, `/auth/callback` | login Google OAuth/magic-link/anon | Supabase Auth |
-| `/checkin` | check-in walk-in + reservasi, QR | `api/checkin`, `WalkinWizard`, `lib/offline/*` |
+| `/checkin` | halaman informasi statis (walk-in & scan QR dilakukan Front Office: `/admin/fo/daftar`, `/admin/scan`; `api/checkin` dihapus, RPC `fo_mulai_kunjungan`) | `WalkinWizard` (dipakai FO), `lib/offline/*` |
 | `/me`, `/me/reservasi`, `/me/notifications` | dashboard pengunjung | `kunjungan`, `notifikasi` |
 | `/chat` | live chat + AI | `api/chat/{ai,messages,sesi}`, tabel `chat_*` |
 | `/skm`, `/transparansi` | survei kepuasan, IKM publik | `api/skm/submit`, `lib/ikm`, `IkmPanel` |
@@ -73,7 +73,7 @@ Pola umum: halaman (`page.tsx`) adalah **client component besar yang berisi logi
 **API route handlers** (`src/app/api/**/route.ts`, tiap route punya `*.test.ts` di sebelahnya; kebanyakan `force-dynamic`, validasi zod, service-role bila perlu):
 - `admin/`: `dokumen/embed`, `faq/embed`, `layar`, `pelayanan/[tiketId]`, `pengaduan`, `petugas/{invite,status}`, `rekap/{export,layanan-options,rollup,tickets}`
 - `chat/`: `ai` (RAG), `ai/draft` (draft balasan untuk petugas), `messages`, `sesi`
-- publik: `checkin`, `skm/submit`, `pengaduan`, `pengaduan/lacak`, `umkm/{inquiry,inquiry/[id],request-edit-link}`, `investasi/lead[/id]`
+- publik: `skm/submit`, `pengaduan`, `pengaduan/lacak`, `umkm/{inquiry,inquiry/[id],request-edit-link}`, `investasi/lead[/id]`
 - `investment-docs/`: `upload`, `[id]`, `page-image`, `public-view`, `signed-url`
 - `notif/{send,retry}` (cron, `CRON_SECRET`) · `health/{live,ready,error}` (logika di `health.ts`)
 

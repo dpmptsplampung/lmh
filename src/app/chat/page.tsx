@@ -12,9 +12,12 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { LAYANAN_LIST } from '@/lib/constants';
+import { MutasiError, mutasiInsert, pesanMutasi } from '@/lib/supabase/mutate';
+import ErrorRetry from '@/components/ErrorRetry';
 import styles from './chat.module.css';
 import ui from './chat-ui.module.css';
+import { JENIS_PENUTUP_SURVEI } from '@/lib/chat-staf';
+import { muatInfoHariLayanan, teksPemberitahuanChat, type InfoHariLayanan } from '@/lib/chat/hari-tanpa-layanan';
 import { mergeMessages, petugasLabel, rtFromStatus, senderLabel, useFallbackPoll, useOnSubscribed, waktuLabel, type ChatMsg, type RtState } from './merge';
 import '@chatscope/chat-ui-kit-styles/dist/default/styles.min.css';
 import {
@@ -40,7 +43,27 @@ interface FAQ {
   id: string;
   pertanyaan: string;
   jawaban: string;
+  /** NULL = FAQ umum (berlaku untuk semua layanan). */
+  layanan_id: string | null;
+  urutan: number | null;
 }
+
+// id layanan dimasukkan ke string filter PostgREST (`.or(...)`), jadi HARUS berbentuk UUID:
+// nilai dari localStorage bisa dirusak pengguna (mis. "x),aktif.eq.false,(y") dan melebarkan filter.
+const POLA_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// FAQ layanan terpilih lebih dulu, lalu FAQ umum; di dalam tiap kelompok menurut `urutan`
+// (sort stabil: yang `urutan`-nya sama tetap dalam urutan dari database).
+function urutkanFaq(daftar: FAQ[], layananId: string): FAQ[] {
+  const kelompok = (f: FAQ) => (f.layanan_id === layananId ? 0 : 1);
+  return [...daftar].sort((a, b) => kelompok(a) - kelompok(b) || (a.urutan ?? 0) - (b.urutan ?? 0));
+}
+
+const PESAN_CONSENT_GAGAL =
+  'Sesi chat belum dimulai karena persetujuan Anda belum tersimpan. Silakan coba lagi.';
+const PESAN_CONSENT_JARINGAN = `${PESAN_CONSENT_GAGAL} Periksa juga koneksi internet Anda.`;
+const PESAN_AKUN_TAK_DIKENALI =
+  'Akun Anda tidak dapat dikenali, sehingga persetujuan belum tercatat dan sesi chat belum dimulai. Muat ulang halaman lalu coba lagi.';
 
 const AI_SLOW_MS = 20000; // tampilkan "masih diproses"
 const AI_TIMEOUT_MS = 65000; // server maxDuration 60 dtk
@@ -66,6 +89,8 @@ const getOnline = () => navigator.onLine !== false;
 export default function PublicChatPage() {
   const [layananList, setLayananList] = useState<Layanan[]>([]);
   const [loadingLayanan, setLoadingLayanan] = useState(true);
+  // T7: gagal memuat daftar layanan = error yang jelas + Coba lagi, BUKAN daftar cadangan palsu.
+  const [layananError, setLayananError] = useState(false);
 
   // Auth States
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
@@ -90,8 +115,34 @@ export default function PublicChatPage() {
   const [lewatJamTutup] = useState(
     () => Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jakarta', hour: '2-digit', hourCycle: 'h23' }).format(new Date())) >= 16,
   );
+  // Hari tanpa pelayanan (Sabtu/Minggu/hari_libur; keputusan CEO 2026-10-14): live chat dengan petugas tidak tersedia,
+  // pengunjung hanya bertanya kepada bot. DB menegakkan (chat_ambil menolak, eskalasi tidak mencatat kunjungan) dan
+  // /api/chat/ai tidak mengeskalasi; halaman ini memberi tahu dengan jelas. Dinilai sekali saat halaman dibuka.
+  const [infoHari, setInfoHari] = useState<InfoHariLayanan | null>(null);
+  const tanpaLayanan = !!infoHari?.alasan;
+  const tanpaLayananRef = useRef(false);
+  useEffect(() => {
+    tanpaLayananRef.current = tanpaLayanan;
+  }, [tanpaLayanan]);
+  useEffect(() => {
+    let batal = false;
+    Promise.resolve()
+      .then(() => muatInfoHariLayanan(createClient()))
+      .then((info) => {
+        if (!batal) setInfoHari(info);
+      })
+      .catch(() => {
+        /* gagal menilai hari: perilaku hari kerja; DB tetap penegak */
+      });
+    return () => {
+      batal = true;
+    };
+  }, []);
   const [sesiStatus, setSesiStatus] = useState<'bot' | 'eskalasi' | 'aktif' | 'selesai'>('bot');
   const [faqs, setFaqs] = useState<FAQ[]>([]);
+  // S14: gagal memuat FAQ tidak boleh tampil sebagai daftar kosong senyap.
+  const [faqMemuat, setFaqMemuat] = useState(false);
+  const [faqError, setFaqError] = useState(false);
   const [isBotTyping, setIsBotTyping] = useState(false);
   // Penghitung kiriman yang menunggu bot, supaya kiriman beruntun tidak saling mematikan indikator.
   const typingCount = useRef(0);
@@ -102,6 +153,8 @@ export default function PublicChatPage() {
 
   // I8: PDP consent — required before starting chat session
   const [consentGiven, setConsentGiven] = useState(false);
+  // S1: pencatatan consent_log yang gagal MEMBLOKIR pembuatan sesi (pesan tampil bersama Coba lagi).
+  const [consentError, setConsentError] = useState('');
 
   // Offline detection: pesan TIDAK boleh disimpan ke sesi palsu — tampilkan
   // banner jujur + nonaktifkan input selama offline.
@@ -137,7 +190,7 @@ export default function PublicChatPage() {
               user.email?.split('@')[0] ||
               'Pengunjung Anonim';
             const provider = user.is_anonymous ? 'anonymous' : 'google';
-            const { data: inserted } = await supabase
+            const { data: inserted, error: insertError } = await supabase
               .from('pengunjung')
               .insert({
                 auth_user_id: user.id,
@@ -147,6 +200,8 @@ export default function PublicChatPage() {
               })
               .select('id, nama')
               .single();
+            // Gagal -> profil tetap kosong dan nama jatuh ke fallback di bawah; cukup dicatat.
+            if (insertError) console.error('[chat] gagal membuat profil pengunjung', insertError);
             profile = inserted;
           }
 
@@ -173,25 +228,30 @@ export default function PublicChatPage() {
     checkUser();
   }, []);
 
-  // Fetch FAQ knowledge base for selected service
+  // Muat FAQ untuk chip "FAQ Cepat": FAQ layanan terpilih + FAQ umum (layanan_id NULL).
+  // supabase-js tidak melempar (kegagalan = `{ error }`), jadi `error` diperiksa eksplisit;
+  // blok `catch` hanya jaring pengaman (mis. createClient() gagal). Gagal -> faqError (pesan +
+  // Coba lagi), TIDAK ada daftar FAQ cadangan.
   const fetchFAQs = useCallback(async (layananId: string) => {
+    setFaqMemuat(true);
     try {
+      if (!POLA_UUID.test(layananId)) throw new Error('id layanan bukan UUID');
       const supabase = createClient();
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('faq_knowledge_base')
-        .select('id, pertanyaan, jawaban')
-        .eq('layanan_id', layananId)
+        .select('id, pertanyaan, jawaban, layanan_id, urutan')
+        .or(`layanan_id.eq.${layananId},layanan_id.is.null`)
         .eq('aktif', true)
         .order('urutan', { ascending: true });
+      if (error) throw error;
 
-      setFaqs(data || []);
+      setFaqs(urutkanFaq((data ?? []) as FAQ[], layananId));
+      setFaqError(false);
     } catch {
-      // Fallback FAQs if database table doesn't exist yet or is empty
-      setFaqs([
-        { id: 'f1', pertanyaan: 'Apa saja syarat membuat NIB?', jawaban: 'Syarat utama pembuatan Nomor Induk Berusaha (NIB) adalah:\n1. KTP pemilik usaha\n2. NPWP pemilik usaha (opsional)\n3. Deskripsi kegiatan usaha.\n\nSemua proses dapat diakses online melalui sistem OSS RBA.' },
-        { id: 'f2', pertanyaan: 'Berapa biaya pengurusan sertifikat Halal?', jawaban: 'Pengurusan sertifikat Halal dengan skema Self Declare untuk UMK mikro/kecil adalah GRATIS (tidak dipungut biaya) melalui program Sehati.' },
-        { id: 'f3', pertanyaan: 'Bagaimana cara mendaftar BPJS Kesehatan?', jawaban: 'Pendaftaran BPJS Kesehatan Mandiri memerlukan:\n1. Kartu Keluarga (KK)\n2. KTP seluruh anggota keluarga\n3. Buku Rekening bank yang bekerja sama untuk autodebet.' },
-      ]);
+      setFaqs([]);
+      setFaqError(true);
+    } finally {
+      setFaqMemuat(false);
     }
   }, []);
 
@@ -228,7 +288,8 @@ export default function PublicChatPage() {
           setIsSessionActive(true);
           setConsentGiven(true);
 
-          await fetchFAQs(savedLayananId);
+          // FAQ menurut layanan milik SESI (sumber kebenaran), bukan nilai localStorage.
+          await fetchFAQs(sessionData.layanan_id ?? savedLayananId);
 
         } catch (e) {
           console.error('Error restoring session:', e);
@@ -242,8 +303,12 @@ export default function PublicChatPage() {
     }
   }, [isCheckingAuth, fetchFAQs]);
 
-  // Load layanan
+  // Load layanan. Gagal -> layananError (ErrorRetry); TIDAK ada daftar cadangan: id palsu
+  // pasti gagal saat sesi dibuat dan membuat pengunjung menyalahkan koneksi internetnya (audit T7).
+  // `layananMuatKe` dinaikkan oleh tombol Coba lagi untuk memuat ulang.
+  const [layananMuatKe, setLayananMuatKe] = useState(0);
   useEffect(() => {
+    let batal = false;
     async function loadLayanan() {
       try {
         const supabase = createClient();
@@ -254,21 +319,27 @@ export default function PublicChatPage() {
           .order('nama');
 
         if (error) throw error;
+        if (batal) return;
         setLayananList((data || []).filter((l) => l.punya_chat !== false));
+        setLayananError(false);
       } catch {
-        setLayananList(
-          LAYANAN_LIST.map((nama, i) => ({
-            id: `fallback-${i}`,
-            nama,
-            chatbot_aktif: true,
-          }))
-        );
+        if (batal) return;
+        setLayananList([]);
+        setLayananError(true);
       } finally {
-        setLoadingLayanan(false);
+        if (!batal) setLoadingLayanan(false);
       }
     }
     loadLayanan();
-  }, []);
+    return () => {
+      batal = true;
+    };
+  }, [layananMuatKe]);
+
+  const handleRetryLayanan = () => {
+    setLoadingLayanan(true);
+    setLayananMuatKe((n) => n + 1);
+  };
   // Pre-select service from URL parameter (e.g. ?layanan=Bank+Lampung)
   useEffect(() => {
     if (layananList.length === 0) return;
@@ -362,43 +433,56 @@ export default function PublicChatPage() {
   // Auto-scroll ke pesan baru ditangani chatscope MessageList: hanya bila pengguna
   // sedang di dasar (tidak menyeret yang sedang membaca pesan lama).
 
-  const handleStartSession = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Mulai sesi: (1) catat consent PDP, (2) baru buat chat_sesi. Dipanggil dari submit formulir
+  // dan dari tombol "Coba lagi" pada pesan consent gagal (mengulang pencatatan lalu melanjutkan).
+  const mulaiSesi = async () => {
     if (!selectedLayananId) return;
     if (!isOnline) {
       setSetupError(OFFLINE_BANNER_TEXT);
       return;
     }
+    // I8: consent wajib ditegaskan lewat kotak centang sebelum apa pun dicatat/dibuat.
+    if (!consentGiven) return;
 
     setLoadingSetup(true);
     setSetupError('');
-    await fetchFAQs(selectedLayananId);
+    setConsentError('');
 
     const nama = visitorName.trim() || 'Pengunjung';
     const selectedLayanan = layananList.find((l) => l.id === selectedLayananId);
+    // Hari tanpa pelayanan: layanan tanpa bot hanya bisa dilayani petugas -> tidak ada yang menjawab hari ini.
+    if (tanpaLayanan && selectedLayanan && !selectedLayanan.chatbot_aktif) {
+      setSetupError(
+        `${selectedLayanan.nama} hanya dilayani petugas dan tidak tersedia hari ini. Pilih layanan lain yang memiliki asisten virtual, atau hubungi kami kembali pada hari kerja.`,
+      );
+      setLoadingSetup(false);
+      return;
+    }
 
     try {
       const supabase = createClient();
 
-      // I8: Record PDP consent only when user asserted consent checkbox.
-      // subjek_ref must bind to auth.uid or owned pengunjung row (RLS).
-      if (!consentGiven) {
-        setLoadingSetup(false);
-        return;
-      }
+      // S1/K11: pencatatan consent MEMBLOKIR. subjek_ref harus terikat ke auth.uid atau baris
+      // pengunjung milik user (RLS). Gagal (error, ditolak RLS, jaringan) atau akun tak dikenali
+      // -> sesi TIDAK dibuat; pengunjung diberi tahu dan bisa mengulang. Acuan: checkin K-2.
       const authUserId = (await supabase.auth.getUser()).data?.user?.id;
       const consentRef = pengunjungId ?? authUserId;
-      if (consentRef) {
-        try {
-          await supabase.from('consent_log').insert({
+      if (!consentRef) {
+        setConsentError(PESAN_AKUN_TAK_DIKENALI);
+        return;
+      }
+      try {
+        await mutasiInsert(
+          supabase.from('consent_log').insert({
             subjek_ref: consentRef,
             tujuan: 'chat_followup',
             disetujui: true,
             versi_kebijakan: CONSENT_VERSION,
-          });
-        } catch {
-          // Consent logging is best-effort: don't block the session if it fails.
-        }
+          }),
+        );
+      } catch (e) {
+        setConsentError(e instanceof MutasiError && e.kode === 'jaringan' ? PESAN_CONSENT_JARINGAN : PESAN_CONSENT_GAGAL);
+        return;
       }
 
       // K2: sertakan pengunjung_id agar RLS chat_sesi_owner_insert menerima
@@ -420,14 +504,12 @@ export default function PublicChatPage() {
         insertPayload.pengunjung_id = pengunjungId;
       }
 
-      // Create session in database
-      const { data: session, error } = await supabase
-        .from('chat_sesi')
-        .insert(insertPayload)
-        .select()
-        .single();
-
-      if (error) throw error;
+      // Create session in database. mutasiInsert melempar MutasiError (jaringan/ditolak/database)
+      // sehingga pesan gagal menyebut penyebab sebenarnya, bukan selalu "koneksi internet".
+      const [session] = await mutasiInsert<{ id: string; status: 'bot' | 'eskalasi' | 'aktif' | 'selesai' }>(
+        supabase.from('chat_sesi').insert(insertPayload).select().single(),
+      );
+      if (!session) throw new MutasiError('database');
 
       setSesiId(session.id);
       setSesiLayananId(selectedLayananId);
@@ -439,9 +521,10 @@ export default function PublicChatPage() {
 
       // Welcome Message
       const welcomeText = `Halo Bapak/Ibu ${nama}.\nSelamat datang di layanan Live Chat ${selectedLayanan?.nama || 'DPMPTSP'}.\n` +
-        (selectedLayanan?.chatbot_aktif 
+        (selectedLayanan?.chatbot_aktif
           ? 'Saya adalah asisten virtual (bot) yang siap menjawab pertanyaan Anda secara otomatis. Silakan pilih salah satu menu FAQ di bawah atau ketik langsung pertanyaan Anda.'
-          : 'Layanan chatbot FAQ saat ini nonaktif. Kami sedang menghubungkan Anda ke petugas operasional. Mohon tunggu...');
+          : 'Layanan chatbot FAQ saat ini nonaktif. Kami sedang menghubungkan Anda ke petugas operasional. Mohon tunggu...') +
+        (infoHari?.alasan ? `\n${teksPemberitahuanChat(infoHari)}` : '');
 
       setMessages([
         {
@@ -454,14 +537,20 @@ export default function PublicChatPage() {
       ]);
 
       setIsSessionActive(true);
-    } catch {
-      // Offline jujur: JANGAN buat sesi palsu. Jika sesi gagal dibuat (umumnya
-      // karena jaringan), beri tahu pengguna dan suruh coba lagi — pesan tidak
-      // akan diterima petugas bila tidak tersimpan di database.
-      setSetupError('Gagal memulai sesi chat. Periksa koneksi internet Anda lalu coba lagi.');
+      // FAQ dimuat setelah sesi benar-benar ada (tidak ada gunanya bila consent/sesi gagal).
+      void fetchFAQs(selectedLayananId);
+    } catch (e) {
+      // Offline jujur: JANGAN buat sesi palsu. Pesan tidak akan diterima petugas bila tidak
+      // tersimpan di database. Penyebab dibedakan (jaringan / ditolak / database).
+      setSetupError(`Gagal memulai sesi chat. ${pesanMutasi(e, 'Silakan coba lagi beberapa saat.')}`);
+    } finally {
+      setLoadingSetup(false);
     }
+  };
 
-    setLoadingSetup(false);
+  const handleStartSession = (e: React.FormEvent) => {
+    e.preventDefault();
+    void mulaiSesi();
   };
 
   const notice = (isi: string, transient = false): Message => ({
@@ -531,8 +620,10 @@ export default function PublicChatPage() {
           ...prev,
           notice(
             ctrl.signal.aborted
-              ? 'Asisten virtual belum menjawab. Jika jawaban belum muncul, tekan "Hubungkan ke Petugas".'
-              : 'Maaf, asisten virtual sedang tidak tersedia. Silakan coba lagi beberapa saat.',
+              ? tanpaLayananRef.current
+                ? 'Asisten virtual belum menjawab. Jika jawaban belum muncul, kirim ulang pertanyaan Anda beberapa saat lagi.'
+                : 'Asisten virtual belum menjawab. Jika jawaban belum muncul, tekan "Hubungkan ke Petugas".'
+              :'Maaf, asisten virtual sedang tidak tersedia. Silakan coba lagi beberapa saat.',
           ),
         ]);
         // Server bisa saja sudah menyimpan balasan/eskalasi: ambil kebenarannya.
@@ -567,13 +658,16 @@ export default function PublicChatPage() {
 
   // Simpan pesan lalu (mode bot) minta jawaban AI. Indikator "mengetik" langsung
   // tampil begitu pesan dikirim, tidak menunggu simpan selesai.
+  // Mode bot: sesi 'bot', ATAU sesi 'eskalasi' pada hari tanpa pelayanan (tidak ada petugas yang akan mengambil;
+  // bot menjawab tanpa eskalasi). Sesi 'aktif' (dipegang petugas) tidak pernah dijawab bot.
+  const modeBot = (status: typeof sesiStatus, tanpa: boolean) => status === 'bot' || (status === 'eskalasi' && tanpa);
   const sendAndAsk = async (msg: Message) => {
-    const botMode = sesiStatusRef.current === 'bot';
+    const botMode = modeBot(sesiStatusRef.current, tanpaLayananRef.current);
     if (botMode) bumpTyping(1);
     try {
       const saved = await postPesan(msg);
       // AI hanya dipanggil saat sesi benar-benar mode bot.
-      if (saved && sesiStatusRef.current === 'bot') await askAI(msg.isi);
+      if (saved && modeBot(sesiStatusRef.current, tanpaLayananRef.current)) await askAI(msg.isi);
     } finally {
       if (botMode) bumpTyping(-1);
     }
@@ -585,7 +679,7 @@ export default function PublicChatPage() {
   };
 
   const handleEscalateManual = async () => {
-    if (!sesiId || sesiStatus !== 'bot') return;
+    if (!sesiId || sesiStatus !== 'bot' || tanpaLayanan) return;
 
     // Eskalasi manual: kirim sebagai pertanyaan ke AI route — server akan
     // menandai sesi eskalasi + menyiarkan pesan bot. (Pengunjung tidak boleh
@@ -638,6 +732,15 @@ export default function PublicChatPage() {
                 {PII_DISCLAIMER}
               </p>
             </div>
+
+            {infoHari?.alasan && (
+              <div role="note" data-testid="chat-hari-tanpa-layanan" className={styles.hariTanpaLayanan}>
+                <AlertCircle size={16} aria-hidden="true" style={{ flexShrink: 0, marginTop: 2 }} />
+                <span>
+                  <strong>Live chat dengan petugas tidak tersedia hari ini.</strong> {teksPemberitahuanChat(infoHari)}
+                </span>
+              </div>
+            )}
 
             {!isOnline && (
               <div
@@ -712,16 +815,34 @@ export default function PublicChatPage() {
                   className="form-select"
                   value={selectedLayananId}
                   onChange={(e) => setSelectedLayananId(e.target.value)}
-                  disabled={loadingLayanan}
+                  disabled={loadingLayanan || layananError}
                   required
                 >
-                  <option value="">— Pilih layanan tujuan —</option>
-                  {layananList.map((layanan) => (
-                    <option key={layanan.id} value={layanan.id} disabled={layanan.status_tampilan === 'coming_soon'}>
-                      {layanan.nama}{layanan.status_tampilan === 'coming_soon' ? ' (Segera hadir)' : ''}
-                    </option>
-                  ))}
+                  <option value="">{layananError ? '— Layanan belum dapat dimuat —' : '— Pilih layanan tujuan —'}</option>
+                  {layananList.map((layanan) => {
+                    // Hari tanpa pelayanan: layanan tanpa bot (hanya petugas) tidak dapat dilayani hari ini.
+                    const tanpaBotHariIni = tanpaLayanan && !layanan.chatbot_aktif;
+                    return (
+                      <option
+                        key={layanan.id}
+                        value={layanan.id}
+                        disabled={layanan.status_tampilan === 'coming_soon' || tanpaBotHariIni}
+                      >
+                        {layanan.nama}
+                        {layanan.status_tampilan === 'coming_soon' ? ' (Segera hadir)' : ''}
+                        {tanpaBotHariIni && layanan.status_tampilan !== 'coming_soon' ? ' (hanya petugas, tidak tersedia hari ini)' : ''}
+                      </option>
+                    );
+                  })}
                 </select>
+                {layananError && (
+                  <ErrorRetry
+                    judul="Daftar layanan belum dapat dimuat"
+                    pesan="Anda belum dapat memilih layanan tujuan chat. Tekan Coba lagi untuk memuat ulang daftar layanan."
+                    onRetry={handleRetryLayanan}
+                    memuat={loadingLayanan}
+                  />
+                )}
               </div>
 
               {/* I8: PDP consent checkbox — required */}
@@ -730,7 +851,10 @@ export default function PublicChatPage() {
                   id="chatConsent"
                   type="checkbox"
                   checked={consentGiven}
-                  onChange={(e) => setConsentGiven(e.target.checked)}
+                  onChange={(e) => {
+                    setConsentGiven(e.target.checked);
+                    setConsentError('');
+                  }}
                   style={{ marginTop: '4px', width: '18px', height: '18px', cursor: 'pointer', flexShrink: 0 }}
                   required
                 />
@@ -748,11 +872,20 @@ export default function PublicChatPage() {
                 </label>
               </div>
 
+              {consentError && (
+                <ErrorRetry
+                  judul="Persetujuan belum tercatat"
+                  pesan={consentError}
+                  onRetry={() => void mulaiSesi()}
+                  memuat={loadingSetup}
+                />
+              )}
+
               <button
                 type="submit"
                 className="btn btn--primary btn--lg"
                 style={{ width: '100%', marginTop: 'var(--space-2)' }}
-                disabled={loadingSetup || loadingLayanan || !isLoggedIn || !consentGiven || !isOnline}
+                disabled={loadingSetup || loadingLayanan || layananError || !isLoggedIn || !consentGiven || !isOnline}
               >
                 {loadingSetup ? (
                   <><Loader2 size={20} className="animate-pulse" /> Memulai Sesi...</>
@@ -774,18 +907,26 @@ export default function PublicChatPage() {
               {sesiStatus === 'bot' && (
                 <>
                   <Bot size={14} />
-                  <span>Mode Chatbot FAQ Aktif</span>
-                  <button 
-                    type="button" 
-                    className="btn btn--secondary btn--sm" 
-                    style={{ marginLeft: 'auto', padding: 'var(--space-1) var(--space-2)', fontSize: '10px' }}
-                    onClick={handleEscalateManual}
-                  >
-                    Hubungkan ke Petugas
-                  </button>
+                  <span>{tanpaLayanan ? 'Mode Chatbot FAQ — petugas tidak bertugas hari ini' : 'Mode Chatbot FAQ Aktif'}</span>
+                  {!tanpaLayanan && (
+                    <button
+                      type="button"
+                      className="btn btn--secondary btn--sm"
+                      style={{ marginLeft: 'auto', padding: 'var(--space-1) var(--space-2)', fontSize: '10px' }}
+                      onClick={handleEscalateManual}
+                    >
+                      Hubungkan ke Petugas
+                    </button>
+                  )}
                 </>
               )}
-              {sesiStatus === 'eskalasi' && (
+              {sesiStatus === 'eskalasi' && tanpaLayanan && (
+                <>
+                  <Bot size={14} />
+                  <span>Petugas tidak bertugas hari ini — pertanyaan Anda dijawab asisten virtual.</span>
+                </>
+              )}
+              {sesiStatus === 'eskalasi' && !tanpaLayanan && (
                 <>
                   <Loader2 size={12} className="animate-pulse" />
                   <span>Menghubungkan ke petugas operasional loket... Mohon tunggu.</span>
@@ -805,8 +946,14 @@ export default function PublicChatPage() {
               )}
             </div>
 
-            {lewatJamTutup && (
-              <p role="note" style={{ margin: 0, padding: 'var(--space-2) var(--space-4)', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
+            {infoHari?.alasan && (
+              <div role="note" data-testid="chat-hari-tanpa-layanan" className={styles.hariTanpaLayananBar}>
+                <AlertCircle size={14} aria-hidden="true" style={{ flexShrink: 0, marginTop: 2 }} />
+                <span>{teksPemberitahuanChat(infoHari)}</span>
+              </div>
+            )}
+            {lewatJamTutup && !infoHari?.alasan && (
+              <p role="note"style={{ margin: 0, padding: 'var(--space-2) var(--space-4)', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
                 Layanan sudah tutup pukul 16.00 WIB. Bot tetap dapat menjawab; petugas melayani lagi pada jam kerja berikutnya.
               </p>
             )}
@@ -843,6 +990,13 @@ export default function PublicChatPage() {
                       {PII_DISCLAIMER}
                     </div>
                     {messages.map((msg) => (
+                      msg.jenis_jawaban === JENIS_PENUTUP_SURVEI ? (
+                        // Pesan penutup dari RPC chat_selesai: tempat tautan survei (Tahap E mengisinya; tanpa URL di sini).
+                        <div key={msg.id} role="note" className={styles.penutupSurvei} data-testid="penutup-survei">
+                          <span className={styles.penutupSurveiJudul}>Survei kepuasan layanan</span>
+                          {msg.isi}
+                        </div>
+                      ) : (
                       <ChatMessage
                         // client_uuid stabil dari optimistic -> pesan server: tidak remount/berkedip.
                         key={msg.client_uuid ?? msg.id}
@@ -870,10 +1024,23 @@ export default function PublicChatPage() {
                           </ChatMessage.Footer>
                         )}
                       </ChatMessage>
+                      )
                     ))}
                     
+                    {/* S14: FAQ gagal dimuat -> pesan jelas + Coba lagi (bukan daftar kosong senyap) */}
+                    {modeBot(sesiStatus, tanpaLayanan) && faqError && (
+                      <div className={styles.faqError}>
+                        <ErrorRetry
+                          judul="FAQ belum dapat dimuat"
+                          pesan="Pertanyaan cepat tidak tersedia untuk sementara. Anda tetap dapat mengetik pertanyaan langsung."
+                          onRetry={() => void fetchFAQs(sesiLayananId ?? selectedLayananId)}
+                          memuat={faqMemuat}
+                        />
+                      </div>
+                    )}
+
                     {/* Quick FAQ Chips embedded in MessageList as custom component if active */}
-                    {sesiStatus === 'bot' && faqs.length > 0 && (
+                    {modeBot(sesiStatus, tanpaLayanan) && !faqError && faqs.length > 0 && (
                       <div className={styles.quickFaqSection} style={{ marginTop: 'var(--space-4)', marginBottom: 'var(--space-2)' }}>
                         <span className={styles.quickFaqTitle}>FAQ Cepat:</span>
                         <div className={styles.quickFaqGrid}>
