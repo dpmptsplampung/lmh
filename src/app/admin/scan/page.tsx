@@ -541,7 +541,7 @@ export default function AdminScanPage() {
                   <h3 className={styles.judulHasil}>Check-in Berhasil</h3>
                   <p className={styles.teksHasil}>
                     {hasilCheckin?.nama ?? result?.nama} sudah tercatat hadir dan kini Anda layani. Membuka halaman
-                    Penanganan Saya…
+                    Penanganan…
                   </p>
                 </div>
               )}

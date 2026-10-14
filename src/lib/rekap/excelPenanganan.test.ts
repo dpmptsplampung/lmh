@@ -10,7 +10,7 @@ function baris(s: Partial<RekapPenangananRow> = {}): RekapPenangananRow {
     topik: 'Informasi umum', catatan: 'Sudah dijelaskan', batal_karena: null,
     mulai_at: '2026-10-12T02:00:00Z', selesai_at: '2026-10-12T02:10:00Z', created_at: '2026-10-12T02:00:00Z',
     tanggal: '2026-10-12', durasi_menit: 10, pengunjung_nama: 'Budi', pengunjung_instansi: 'CV Maju', tiket: null,
-    fo_nama: 'Sari Wulandari',
+    fo_nama: 'Sari Wulandari', fo_id: 'fo-1',
     ...s,
   };
 }

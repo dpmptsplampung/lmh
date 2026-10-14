@@ -5,6 +5,9 @@ import {
   kunciHasil,
   mapRawPenangananRow,
   namaFoSebelum,
+  foSebelum,
+  daftarOpsiFo,
+  saringFo,
   ringkasPenanganan,
   tentukanCakupan,
   type RekapPenangananRow,
@@ -18,7 +21,7 @@ function baris(sebagian: Partial<RekapPenangananRow> = {}): RekapPenangananRow {
     topik: 'Informasi umum', catatan: 'ok', batal_karena: null,
     mulai_at: '2026-10-12T02:00:00Z', selesai_at: '2026-10-12T02:10:00Z', created_at: '2026-10-12T02:00:00Z',
     tanggal: '2026-10-12', durasi_menit: 10, pengunjung_nama: 'Budi', pengunjung_instansi: 'CV Maju', tiket: null,
-    fo_nama: 'Sari',
+    fo_nama: 'Sari', fo_id: 'fo-1',
     ...sebagian,
   };
 }
@@ -113,6 +116,35 @@ describe('mapRawPenangananRow', () => {
     expect(r.fo_nama).toBeNull();
     expect(namaFoSebelum(null, 3)).toBeNull();
     expect(namaFoSebelum([{ tahap_ke: 1, peran_tahap: 'fo', penangan_id: null, petugas: null }], 3)).toBeNull();
+  });
+
+  it('fo_id ikut dipetakan: peran fo = penangan; peran layanan = FO tahap fo sebelumnya; null bila tak diketahui', () => {
+    const fo = mapRawPenangananRow({ id: 'p', kunjungan_id: 'k', tahap_ke: 1, peran_tahap: 'fo', penangan_id: 'fo-a', saluran: 'walk_in', status: 'selesai', created_at: '2026-10-12T00:00:00Z', petugas: { nama: 'Sari' } });
+    expect(fo.fo_id).toBe('fo-a');
+    const lyn = mapRawPenangananRow({
+      id: 'p2', kunjungan_id: 'k', tahap_ke: 2, peran_tahap: 'layanan', saluran: 'walk_in', status: 'selesai', created_at: '2026-10-12T00:00:00Z',
+      kunjungan: { nama: 'A', tahap_fo: [{ tahap_ke: 1, peran_tahap: 'fo', penangan_id: 'fo-a', petugas: { nama: 'Ani' } }] },
+    });
+    expect([lyn.fo_id, lyn.fo_nama]).toEqual(['fo-a', 'Ani']);
+    const tanpa = mapRawPenangananRow({ id: 'p3', kunjungan_id: 'k', tahap_ke: 1, peran_tahap: 'layanan', saluran: 'chat', status: 'berjalan', created_at: '2026-10-12T00:00:00Z' });
+    expect([tanpa.fo_id, tanpa.fo_nama]).toEqual([null, null]);
+  });
+
+  it('foSebelum(Infinity) = FO terakhir pada kunjungan; daftarOpsiFo unik + urut nama; saringFo', () => {
+    const tahap = [
+      { tahap_ke: 1, peran_tahap: 'fo', penangan_id: 'fo-a', petugas: { nama: 'Ani' } },
+      { tahap_ke: 4, peran_tahap: 'fo', penangan_id: 'fo-b', petugas: { nama: 'Bayu' } },
+    ];
+    expect(foSebelum(tahap, Infinity)).toEqual({ id: 'fo-b', nama: 'Bayu' });
+    expect(foSebelum(tahap, 4)).toEqual({ id: 'fo-a', nama: 'Ani' });
+    const rows = [
+      { fo_id: 'fo-b', fo_nama: 'Bayu' }, { fo_id: 'fo-a', fo_nama: 'Ani' }, { fo_id: 'fo-b', fo_nama: 'Bayu' }, { fo_id: null, fo_nama: null },
+    ];
+    expect(daftarOpsiFo(rows)).toEqual([{ id: 'fo-a', nama: 'Ani' }, { id: 'fo-b', nama: 'Bayu' }]);
+    expect(saringFo(rows, 'fo-b')).toHaveLength(2);
+    expect(saringFo(rows, null)).toHaveLength(4);
+    expect(saringFo(rows, undefined)).toHaveLength(4);
+    expect(saringFo(rows, 'tidak-ada')).toEqual([]);
   });
 
   it('tahap belum mulai/selesai: tanggal kosong dan durasi null', () => {

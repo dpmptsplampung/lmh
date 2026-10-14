@@ -31,6 +31,8 @@ export interface RekapPenangananRow {
    * tahap ini pada kunjungan yang sama (null bila tidak ada, mis. chat diambil langsung petugas).
    */
   fo_nama: string | null;
+  /** ID petugas FO di balik fo_nama (dasar filter "Front Office yang mengeskalasi"); null bila FO tidak diketahui. */
+  fo_id: string | null;
   status: string;
   hasil: string | null;
   topik: string | null;
@@ -119,22 +121,27 @@ interface TahapFoEmbed {
 }
 
 /**
- * Nama Front Office yang melayani kunjungan sebelum tahap ini: tahap 'fo' ber-penangan dengan tahap_ke terbesar yang
+ * Front Office yang melayani kunjungan sebelum tahap ini: tahap 'fo' ber-penangan dengan tahap_ke terbesar yang
  * lebih kecil dari tahap ini (FO yang mengeskalasi / meneruskan; bila pengunjung dikembalikan lalu diambil FO lain,
  * FO terakhir sebelum tahap ini). Tanpa tahap FO sebelumnya (mis. chat diambil langsung petugas) -> null.
+ * `tahapKe = Infinity` berarti "FO terakhir pada kunjungan" (dipakai rekap per tiket).
  */
-export function namaFoSebelum(tahapKunjungan: unknown, tahapKe: number): string | null {
+export function foSebelum(tahapKunjungan: unknown, tahapKe: number): { id: string; nama: string } | null {
   const daftar = (Array.isArray(tahapKunjungan) ? tahapKunjungan : tahapKunjungan ? [tahapKunjungan] : []) as TahapFoEmbed[];
-  let terpilih: { ke: number; nama: string } | null = null;
+  let terpilih: { ke: number; id: string; nama: string } | null = null;
   for (const t of daftar) {
     if (t?.peran_tahap !== 'fo' || !t.penangan_id) continue;
     const ke = Number(t.tahap_ke);
     if (!Number.isFinite(ke) || ke >= tahapKe) continue;
     const nama = satu<{ nama?: string }>(t.petugas)?.nama;
     if (!nama) continue;
-    if (!terpilih || ke > terpilih.ke) terpilih = { ke, nama };
+    if (!terpilih || ke > terpilih.ke) terpilih = { ke, id: t.penangan_id, nama };
   }
-  return terpilih?.nama ?? null;
+  return terpilih ? { id: terpilih.id, nama: terpilih.nama } : null;
+}
+
+export function namaFoSebelum(tahapKunjungan: unknown, tahapKe: number): string | null {
+  return foSebelum(tahapKunjungan, tahapKe)?.nama ?? null;
 }
 
 export function mapRawPenangananRow(r: Record<string, unknown>): RekapPenangananRow {
@@ -159,6 +166,11 @@ export function mapRawPenangananRow(r: Record<string, unknown>): RekapPenanganan
   const selesai = (r.selesai_at as string | null) ?? null;
   const peran = r.peran_tahap as PeranTahap;
   const tahapKe = Number(r.tahap_ke);
+  // peran 'fo': FO = penangan tahap itu sendiri; peran 'layanan': FO tahap 'fo' terakhir sebelum tahap ini.
+  const penanganId = (r.penangan_id as string | null) ?? null;
+  const fo = peran === 'fo'
+    ? (penanganId && petugas?.nama ? { id: penanganId, nama: petugas.nama } : null)
+    : foSebelum(kunjungan?.tahap_fo, tahapKe);
   return {
     id: r.id as string,
     kunjungan_id: r.kunjungan_id as string,
@@ -169,7 +181,8 @@ export function mapRawPenangananRow(r: Record<string, unknown>): RekapPenanganan
     saluran: r.saluran as string,
     penangan_id: (r.penangan_id as string | null) ?? null,
     penangan_nama: petugas?.nama ?? null,
-    fo_nama: peran === 'fo' ? (petugas?.nama ?? null) : namaFoSebelum(kunjungan?.tahap_fo, tahapKe),
+    fo_nama: peran === 'fo' ? (petugas?.nama ?? null) : (fo?.nama ?? null),
+    fo_id: fo?.id ?? null,
     status: r.status as string,
     hasil: (r.hasil as string | null) ?? null,
     topik: (r.topik as string | null) ?? null,
@@ -184,6 +197,27 @@ export function mapRawPenangananRow(r: Record<string, unknown>): RekapPenanganan
     pengunjung_instansi: kunjungan?.asal_instansi ?? null,
     tiket,
   };
+}
+
+export interface OpsiFo {
+  id: string;
+  nama: string;
+}
+
+/** Daftar FO unik (urut nama) yang muncul pada baris; dasar opsi filter "Front Office yang mengeskalasi". */
+export function daftarOpsiFo(rows: Pick<RekapPenangananRow, 'fo_id' | 'fo_nama'>[]): OpsiFo[] {
+  const peta = new Map<string, string>();
+  for (const r of rows) {
+    if (r.fo_id && r.fo_nama && !peta.has(r.fo_id)) peta.set(r.fo_id, r.fo_nama);
+  }
+  return [...peta.entries()]
+    .map(([id, nama]) => ({ id, nama }))
+    .sort((a, b) => a.nama.localeCompare(b.nama) || a.id.localeCompare(b.id));
+}
+
+/** Saring ke satu FO yang mengeskalasi/melayani (null = semua). Dilakukan di memori: FO berasal dari embed kunjungan. */
+export function saringFo<T extends Pick<RekapPenangananRow, 'fo_id'>>(rows: T[], foId: string | null | undefined): T[] {
+  return foId ? rows.filter((r) => r.fo_id === foId) : rows;
 }
 
 // ---------------------------------------------------------------------------

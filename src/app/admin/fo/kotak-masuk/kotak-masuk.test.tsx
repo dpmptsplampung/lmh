@@ -131,7 +131,7 @@ describe('Kotak Masuk FO', () => {
     expect(screen.queryByText(/Dikembalikan/)).toBeNull();
   });
 
-  it('Ambil memanggil fo_ambil_dari_kotak_masuk lalu lanjut ke Penanganan Saya', async () => {
+  it('Ambil memanggil fo_ambil_dari_kotak_masuk lalu lanjut ke Penanganan', async () => {
     siapkan([barisKotak()]);
     m.h.rpc = () => ({ data: { ok: true, sudah_milik_anda: false, penanganan_id: 'pn-1', kunjungan_id: 'k-1' }, error: null });
     render(<KotakMasukFoPage />);

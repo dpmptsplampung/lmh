@@ -23,7 +23,7 @@ export const ADMIN_NAV: AdminNavEntry[] = [
   // Alur Front Office (Tahap B): FO melayani dulu, mengeskalasi ke petugas layanan bila perlu.
   // Halaman /admin/fo/* hanya untuk FO dan Admin (Admin sebagai pengganti FO, kontrak RPC §8).
   { label: 'Kotak Masuk FO', href: '/admin/fo/kotak-masuk', iconKey: 'kotakMasuk', roles: ['admin', 'front_office'] },
-  { label: 'Penanganan Saya', href: '/admin/fo/penanganan', iconKey: 'penanganan', roles: ['admin', 'front_office'] },
+  { label: 'Penanganan', href: '/admin/fo/penanganan', iconKey: 'penanganan', roles: ['admin', 'front_office'] },
   { label: 'Daftar FO', href: '/admin/fo/daftar', iconKey: 'daftarFo', roles: ['admin', 'front_office'] },
   { label: 'Antrian', href: '/admin/antrian', iconKey: 'antrian', roles: ['admin', 'petugas', 'front_office'] },
   { label: 'Absensi', href: '/admin/absensi', iconKey: 'absensi', roles: ['admin', 'petugas', 'front_office'] },

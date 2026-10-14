@@ -11,6 +11,7 @@ import {
   type RekapUmumRow,
 } from '@/lib/rekap/excel';
 import { mapRawTicketRow } from '@/lib/rekap/rows';
+import { tambahNamaFo } from '@/lib/rekap/foTiket';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -93,7 +94,10 @@ export async function GET(request: NextRequest) {
       truncated = fetched.truncated;
     } else {
       // Views use security_invoker=true: existing grants/RLS determine row scope.
-      rows = await fetchTabRows(supabase, tab, dari, sampai) as unknown as RekapUmumRow[] | RekapOssRow[] | RekapPerizinanRow[];
+      const dasar = await fetchTabRows(supabase, tab, dari, sampai);
+      // Tab OSS/Non OSS: tambah kolom Front Office dari tahap FO pada kunjungan tiket (gagal -> '—', tidak menggagalkan ekspor).
+      rows = (tab === 'umum' ? dasar : await tambahNamaFo(supabase, dasar as unknown as { tiket_id?: string | null }[])) as unknown as
+        RekapUmumRow[] | RekapOssRow[] | RekapPerizinanRow[];
     }
   } catch (error) {
     console.error('[api/admin/rekap/export] gagal memuat rekap:', error);

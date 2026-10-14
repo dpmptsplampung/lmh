@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
+import ExcelJS from 'exceljs';
 import { GET } from './route';
 
 vi.mock('@/lib/supabase/server', () => ({
@@ -157,4 +158,68 @@ describe('GET /api/admin/rekap/export', () => {
     expect(mock.from).toHaveBeenCalledWith('tiket_antrean');
   });
 
+  it.each([
+    ['oss', 'v_rekap_pelayanan_oss', 'Helpdesk OSS'],
+    ['perizinan', 'v_rekap_pelayanan_perizinan', 'Non OSS'],
+  ] as const)('tab=%s: kolom Front Office dari tahap FO kunjungan tiket; tiket lama tanpa tahap FO tampil em dash', async (tab, source, sheet) => {
+    const viewRows = [
+      { id: 'v1', tiket_id: 't-baru', nomor_display: 'OS-001', tanggal: '2026-09-02', nama_pemohon: 'Budi', nama_petugas: 'Rina', status_draft: 'final' },
+      { id: 'v2', tiket_id: 't-lama', nomor_display: 'OS-002', tanggal: '2026-09-02', nama_pemohon: 'Siti', nama_petugas: 'Rina', status_draft: 'final' },
+    ];
+    const tiketRows = [
+      { id: 't-baru', kunjungan: { tahap_fo: [
+        { tahap_ke: 1, peran_tahap: 'fo', penangan_id: 'fo-a', petugas: { nama: 'Ani FO' } },
+        { tahap_ke: 2, peran_tahap: 'layanan', penangan_id: 'p-1', petugas: { nama: 'Rina' } },
+      ] } },
+      { id: 't-lama', kunjungan: { tahap_fo: [] } },
+    ];
+    const inFn = vi.fn();
+    const viewBuilder: Record<string, unknown> = {};
+    for (const m of ['select', 'gte', 'lte', 'order']) viewBuilder[m] = () => viewBuilder;
+    viewBuilder.then = (res: (v: unknown) => unknown) => res({ data: viewRows, error: null });
+    const tiketBuilder: Record<string, unknown> = {};
+    tiketBuilder.select = () => tiketBuilder;
+    tiketBuilder.in = (...a: unknown[]) => { inFn(...a); return Promise.resolve({ data: tiketRows, error: null }); };
+    const maybeSingle = vi.fn().mockResolvedValue({ data: { id: 'p-1', role: 'admin', layanan_id: null, aktif: true }, error: null });
+    (createClient as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'u-1' } }, error: null }) },
+      from: (t: string) => {
+        if (t === 'petugas') return { select: () => ({ eq: () => ({ maybeSingle }) }) };
+        if (t === 'tiket_antrean') return tiketBuilder;
+        if (t === source) return viewBuilder;
+        throw new Error('tabel tak terduga ' + t);
+      },
+    });
+    const res = await GET(new NextRequest(`http://localhost/api/admin/rekap/export?tab=${tab}&dari=2026-09-01&sampai=2026-09-30`));
+    expect(res.status).toBe(200);
+    expect(inFn).toHaveBeenCalledWith('id', ['t-baru', 't-lama']);
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(Buffer.from(await res.arrayBuffer()) as unknown as ArrayBuffer);
+    const ws = wb.getWorksheet(sheet)!;
+    const header = (ws.getRow(1).values as unknown[]).slice(1) as string[];
+    const kolom = header.indexOf('Front Office') + 1;
+    expect(kolom).toBe(header.indexOf('Petugas') + 2);
+    expect([ws.getRow(2).getCell(kolom).value, ws.getRow(3).getCell(kolom).value]).toEqual(['Ani FO', '—']);
+  });
+
+  it('tab=oss: gagal memuat FO tidak menggagalkan ekspor (kolom FO em dash)', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const viewBuilder: Record<string, unknown> = {};
+    for (const m of ['select', 'gte', 'lte', 'order']) viewBuilder[m] = () => viewBuilder;
+    viewBuilder.then = (res: (v: unknown) => unknown) => res({ data: [{ id: 'v1', tiket_id: 't-1', nomor_display: 'OS-001', nama_petugas: 'Rina' }], error: null });
+    const tiketBuilder: Record<string, unknown> = { select: () => tiketBuilder, in: () => Promise.resolve({ data: null, error: { message: 'rls' } }) };
+    const maybeSingle = vi.fn().mockResolvedValue({ data: { id: 'p-1', role: 'admin', layanan_id: null, aktif: true }, error: null });
+    (createClient as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'u-1' } }, error: null }) },
+      from: (t: string) => (t === 'petugas' ? { select: () => ({ eq: () => ({ maybeSingle }) }) } : t === 'tiket_antrean' ? tiketBuilder : viewBuilder),
+    });
+    const res = await GET(new NextRequest('http://localhost/api/admin/rekap/export?tab=oss'));
+    expect(res.status).toBe(200);
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(Buffer.from(await res.arrayBuffer()) as unknown as ArrayBuffer);
+    const ws = wb.getWorksheet('Helpdesk OSS')!;
+    const header = (ws.getRow(1).values as unknown[]).slice(1) as string[];
+    expect(ws.getRow(2).getCell(header.indexOf('Front Office') + 1).value).toBe('—');
+    errorSpy.mockRestore();
+  });
 });

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react';
 import RekapLayananTable from './RekapLayananTable';
 
 const mockFetch = vi.fn();
@@ -28,6 +28,7 @@ const sampleRow = {
   status: 'selesai',
   kunjungan: { nama: 'Budi', asal: 'walk_in', qr_token: null },
   petugas: { nama: 'Andi' },
+  fo_nama: 'Sari FO',
   form_type: null,
   pelayanan_oss: null,
   pelayanan_perizinan: null,
@@ -68,6 +69,18 @@ describe('RekapLayananTable', () => {
     });
     expect(screen.getByText(/Budi/)).toBeInTheDocument();
     expect(screen.getByText(/Andi/)).toBeInTheDocument();
+  });
+
+  it('kolom Front Office menampilkan nama FO; tiket lama tanpa tahap FO = em dash', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ total: 2, rows: [sampleRow, { ...sampleRow, id: 't-2', nomor_display: 'A-002', fo_nama: null }] }),
+    });
+    render(<RekapLayananTable isPetugas={false} initialLayananId={null} options={[]} />);
+    expect(await screen.findByRole('columnheader', { name: 'Front Office' })).toBeInTheDocument();
+    expect(screen.getByText('Sari FO')).toBeInTheDocument();
+    const baris = screen.getByText('A-002').closest('tr')!;
+    expect(within(baris).getAllByRole('cell').map((c) => c.textContent)).toContain('\u2014');
   });
 
   it('disables export when no rows', async () => {

@@ -23,7 +23,7 @@ export function buildTicketsQuery(
       `
       id, nomor_display, tanggal, status,
       waktu_terbit, waktu_mulai_layan, waktu_selesai,
-      kunjungan:kunjungan_id(nama, asal, qr_token),
+      kunjungan:kunjungan_id(nama, asal, qr_token, tahap_fo:penanganan!kunjungan_id(tahap_ke, peran_tahap, penangan_id, petugas:penangan_id(nama))),
       petugas:dilayani_oleh(nama),
       pelayanan_oss(*),
       pelayanan_perizinan(*)

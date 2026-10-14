@@ -55,6 +55,8 @@ export const penangananQuerySchema = z
   .object({
     peran: peranSchema,
     petugas_id: uuidSchema,
+    /** Front Office yang mengeskalasi/melayani (opsional; semua role yang boleh melihat rekap). */
+    fo_id: uuidSchema,
     layanan_id: uuidSchema,
     ...dateRangeBase,
     page: z.coerce.number().int().min(0).default(0),
@@ -66,6 +68,7 @@ export const penangananExportQuerySchema = z
   .object({
     peran: peranSchema,
     petugas_id: uuidSchema,
+    fo_id: uuidSchema,
     layanan_id: uuidSchema,
     ...dateRangeBase,
   })

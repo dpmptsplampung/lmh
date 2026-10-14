@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// Penanganan Saya (FO, Tahap B): daftar tahap FO `berjalan` + riwayat hari ini WIB, form selesai (topik + catatan wajib,
+// Penanganan (FO, Tahap B): daftar tahap FO `berjalan` + riwayat hari ini WIB, form selesai (topik + catatan wajib,
 // penghitung), dialog eskalasi (pra-pilih layanan saran, nomor tiket, peringatan petugas_hadir=false), a11y dialog.
 // Kontrak: docs/analysis/FO-ESKALASI-KONTRAK-RPC.md §2.4, §2.5, §6.2.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -74,7 +74,7 @@ async function bukaFormSelesai() {
   return screen.findByRole('form', { name: /Selesaikan penanganan Budi Santoso/ });
 }
 
-describe('Penanganan Saya: memuat data', () => {
+describe('Penanganan: memuat data', () => {
   it('menampilkan penanganan berjalan milik saya (hanya tahap FO) dan memasang realtime', async () => {
     siapkan();
     render(<PenangananFoPage />);
@@ -174,7 +174,7 @@ describe('Penanganan Saya: memuat data', () => {
   });
 });
 
-describe('Penanganan Saya: form selesai (fo_selesai)', () => {
+describe('Penanganan: form selesai (fo_selesai)', () => {
   it('topik dan catatan wajib: submit kosong menolak tanpa memanggil RPC, dengan pesan terhubung ke isian', async () => {
     siapkan();
     render(<PenangananFoPage />);
@@ -287,7 +287,7 @@ describe('Penanganan Saya: form selesai (fo_selesai)', () => {
   });
 });
 
-describe('Penanganan Saya: dialog eskalasi (fo_eskalasi)', () => {
+describe('Penanganan: dialog eskalasi (fo_eskalasi)', () => {
   const bukaDialog = async () => {
     const pemicu = await screen.findByRole('button', { name: 'Eskalasi Budi Santoso ke layanan' });
     pemicu.focus();

@@ -41,6 +41,8 @@ export interface RekapTicketRow {
   status: string;
   kunjungan: { nama: string; asal: string; qr_token: string | null } | null;
   petugas: { nama: string } | null;
+  /** Front Office yang melayani/mengeskalasi (tahap FO terakhir pada kunjungan); null untuk tiket lama tanpa tahap FO. */
+  fo_nama: string | null;
   form_type: 'oss' | 'perizinan' | null;
   pelayanan_oss: RekapPelayananOss | null;
   pelayanan_perizinan: RekapPelayananPerizin | null;
@@ -71,6 +73,8 @@ export interface RekapOssRow {
   tindak_lanjut: string;
   uraian_solusi: string;
   nama_petugas: string;
+  /** Front Office dari tahap FO pada kunjungan tiket (ditambahkan route ekspor; null/kosong = '—'). */
+  fo_nama?: string | null;
   status_draft: string;
 }
 
@@ -87,6 +91,7 @@ export interface RekapPerizinanRow {
   tindak_lanjut: string;
   catatan_petugas: string | null;
   nama_petugas: string;
+  fo_nama?: string | null;
   status_draft: string;
 }
 
@@ -98,6 +103,7 @@ const LAYANAN_COLUMNS: Column[] = [
   { header: 'Nama Pengunjung', key: 'kunjungan_nama' },
   { header: 'Asal', key: 'asal' },
   { header: 'Petugas', key: 'petugas_nama' },
+  { header: 'Front Office', key: 'fo_nama' },
   { header: 'Waktu Mulai', key: 'mulai' },
   { header: 'Waktu Selesai', key: 'selesai' },
   { header: 'Durasi (mnt)', key: 'durasi' },
@@ -145,6 +151,7 @@ const OSS_COLUMNS: Column[] = [
   { header: 'Tindakan', key: 'tindak_lanjut' },
   { header: 'Uraian Solusi', key: 'uraian_solusi' },
   { header: 'Petugas', key: 'nama_petugas' },
+  { header: 'Front Office', key: 'fo_nama' },
   { header: 'Status', key: 'status_draft' },
 ];
 
@@ -161,6 +168,7 @@ const PERIZINAN_COLUMNS: Column[] = [
   { header: 'Tindak Lanjut', key: 'tindak_lanjut' },
   { header: 'Catatan Petugas', key: 'catatan_petugas' },
   { header: 'Petugas', key: 'nama_petugas' },
+  { header: 'Front Office', key: 'fo_nama' },
   { header: 'Status', key: 'status_draft' },
 ];
 
@@ -178,7 +186,7 @@ function rowToLayananCells(r: RekapTicketRow): Record<string, CellValue> {
   return {
     tanggal: formatTanggalId(r.tanggal), nomor_display: r.nomor_display,
     kunjungan_nama: r.kunjungan?.nama ?? '', asal: r.kunjungan?.asal ?? '',
-    petugas_nama: r.petugas?.nama ?? '', mulai: formatWaktuId(r.waktu_mulai_layan),
+    petugas_nama: r.petugas?.nama ?? '', fo_nama: namaFoSel(r.fo_nama), mulai: formatWaktuId(r.waktu_mulai_layan),
     selesai: formatWaktuId(r.waktu_selesai), durasi: durasi ?? '', form_type: r.form_type ?? '',
     oss_nama_pemohon: o?.nama_pemohon ?? '', oss_nama_usaha: o?.nama_usaha ?? '',
     oss_tipe: o?.tipe_pelaku_usaha ?? '', oss_status_pm: o?.status_penanaman_modal ?? '',
@@ -201,8 +209,16 @@ function rowToUmumCells(r: RekapUmumRow): Record<string, CellValue> {
   };
 }
 
+// Nama FO dinetralkan dari formula injection; tiket lama tanpa tahap FO tampil '—'.
+function namaFoSel(v: string | null | undefined): string {
+  const s = v?.trim();
+  if (!s) return '—';
+  return /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
+}
+
 function cellsFromRow(row: Record<string, unknown>, columns: Column[]): Record<string, CellValue> {
   return Object.fromEntries(columns.map(({ key }) => {
+    if (key === 'fo_nama') return [key, namaFoSel(row[key] as string | null | undefined)];
     const value = row[key];
     return [key, typeof value === 'number' || typeof value === 'string' ? value : ''];
   }));

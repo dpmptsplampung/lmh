@@ -1,5 +1,19 @@
 import { describe, it, expect } from 'vitest';
-import { ticketsQuerySchema, exportQuerySchema } from './schemas';
+import { ticketsQuerySchema, exportQuerySchema, penangananQuerySchema, penangananExportQuerySchema } from './schemas';
+
+describe('rekap schemas: fo_id (filter Front Office yang mengeskalasi)', () => {
+  const UUID = '550e8400-e29b-41d4-a716-446655440000';
+  it('penangananQuerySchema: fo_id opsional bertipe uuid', () => {
+    expect(penangananQuerySchema.parse({}).fo_id).toBeUndefined();
+    expect(penangananQuerySchema.parse({ fo_id: UUID, peran: 'layanan' }).fo_id).toBe(UUID);
+    expect(penangananQuerySchema.safeParse({ fo_id: 'bukan-uuid' }).success).toBe(false);
+  });
+  it('penangananExportQuerySchema: fo_id diterima (strict tetap menolak kunci lain)', () => {
+    expect(penangananExportQuerySchema.parse({ fo_id: UUID }).fo_id).toBe(UUID);
+    expect(penangananExportQuerySchema.safeParse({ fo_id: 'x' }).success).toBe(false);
+    expect(penangananExportQuerySchema.safeParse({ fo_idd: UUID }).success).toBe(false);
+  });
+});
 
 describe('rekap schemas', () => {
   describe('ticketsQuerySchema', () => {

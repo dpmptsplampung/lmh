@@ -5,8 +5,10 @@ import { penangananQuerySchema } from '@/lib/rekap/schemas';
 import { fetchAllPages } from '@/lib/rekap/exportAll';
 import {
   buildPenangananQuery,
+  daftarOpsiFo,
   mapRawPenangananRow,
   ringkasPenanganan,
+  saringFo,
   tentukanCakupan,
 } from '@/lib/rekap/penanganan';
 
@@ -43,13 +45,17 @@ export async function GET(request: NextRequest) {
         to,
       }),
     );
-    const semua = mentah.map((r) => mapRawPenangananRow(r as unknown as Record<string, unknown>));
+    const dasar = mentah.map((r) => mapRawPenangananRow(r as unknown as Record<string, unknown>));
+    // Filter FO yang mengeskalasi berlaku sesudah pemetaan (FO berasal dari embed kunjungan); opsi FO dihitung dari
+    // data sebelum disaring agar daftar tidak menyusut saat satu FO dipilih.
+    const semua = saringFo(dasar, q.fo_id);
     const awal = q.page * q.page_size;
     return NextResponse.json({
       total: semua.length,
       truncated,
       // Admin dan Front Office melihat semua (keputusan CEO 2026-10-14); UI menampilkan filter penangan untuk keduanya.
       peran_saya: staf.me.role,
+      opsi_fo: daftarOpsiFo(dasar),
       ringkasan: ringkasPenanganan(semua),
       rows: semua.slice(awal, awal + q.page_size),
     });

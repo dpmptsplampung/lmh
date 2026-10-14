@@ -18,7 +18,7 @@ import {
   labelHasilTahap,
   labelSaluran,
 } from '@/lib/rekap/format';
-import type { PeranTahap, RekapPenangananRow, RingkasanPenanganan } from '@/lib/rekap/penanganan';
+import type { OpsiFo, PeranTahap, RekapPenangananRow, RingkasanPenanganan } from '@/lib/rekap/penanganan';
 
 const PAGE_SIZE = 25;
 
@@ -45,6 +45,8 @@ interface Respons {
   total: number;
   truncated: boolean;
   peran_saya: string;
+  /** FO yang muncul pada rentang (sebelum filter FO); sumber opsi filter "Front Office yang mengeskalasi". */
+  opsi_fo?: OpsiFo[];
   ringkasan: RingkasanPenanganan;
   rows: RekapPenangananRow[];
 }
@@ -57,6 +59,7 @@ export default function RekapPenangananTable({ peran, isPetugas = false, initial
   const [dari, setDari] = useState(() => addDaysWIB(-6));
   const [sampai, setSampai] = useState(() => todayWIB());
   const [petugasId, setPetugasId] = useState('');
+  const [foId, setFoId] = useState('');
   const [layananId, setLayananId] = useState(initialLayananId ?? '');
   const [page, setPage] = useState(0);
   const [data, setData] = useState<Respons | null>(null);
@@ -72,9 +75,11 @@ export default function RekapPenangananTable({ peran, isPetugas = false, initial
       const p = new URLSearchParams({ peran, dari, sampai, ...tambah });
       if (petugasId) p.set('petugas_id', petugasId);
       if (layananId && peran === 'layanan') p.set('layanan_id', layananId);
+      // Filter FO yang mengeskalasi hanya untuk rekap petugas layanan (rekap FO sudah punya filter Front Office).
+      if (foId && peran === 'layanan') p.set('fo_id', foId);
       return p;
     },
-    [peran, dari, sampai, petugasId, layananId],
+    [peran, dari, sampai, petugasId, layananId, foId],
   );
 
   const muat = useCallback(async () => {
@@ -158,6 +163,12 @@ export default function RekapPenangananTable({ peran, isPetugas = false, initial
   };
 
   const labelPenangan = peran === 'fo' ? 'Front Office' : 'Petugas';
+  // Opsi dari data respons (berlaku untuk semua role, termasuk Petugas yang tidak boleh membaca daftar petugas).
+  // FO terpilih yang tak muncul pada rentang baru tetap ditampilkan agar pilihan tidak hilang diam-diam.
+  const opsiFo: OpsiFo[] = data?.opsi_fo ?? [];
+  const opsiFoTampil = foId && !opsiFo.some((o) => o.id === foId)
+    ? [...opsiFo, { id: foId, nama: '(FO terpilih, tidak ada pada rentang ini)' }]
+    : opsiFo;
   const ringkasan = data?.ringkasan;
   const kosong = !loading && !error && data != null && data.total === 0;
 
@@ -202,6 +213,16 @@ export default function RekapPenangananTable({ peran, isPetugas = false, initial
               {opsiPetugas.map((p) => (
                 <option key={p.id} value={p.id}>{p.nama}{p.aktif ? '' : ' (nonaktif)'}</option>
               ))}
+            </select>
+          </div>
+        )}
+        {peran === 'layanan' && (
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label" htmlFor={`${idAwal}-fo`}>Front Office yang mengeskalasi</label>
+            <select id={`${idAwal}-fo`} className="form-input" style={sel} value={foId}
+              onChange={(e) => { setFoId(e.target.value); setPage(0); }}>
+              <option value="">Semua</option>
+              {opsiFoTampil.map((o) => <option key={o.id} value={o.id}>{o.nama}</option>)}
             </select>
           </div>
         )}

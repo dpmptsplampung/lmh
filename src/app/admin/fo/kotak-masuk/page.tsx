@@ -4,7 +4,7 @@
 // Daftar penanganan tahap FO berstatus `menunggu`: pengunjung yang DIKEMBALIKAN petugas layanan ke FO dan chat
 // ber-eskalasi yang belum diambil (Tahap C). Item berkanal chat TIDAK memakai fo_ambil_dari_kotak_masuk (DB menolak
 // dengan SALURAN_CHAT): diambil lewat chat_ambil di halaman Live Chat (/admin/chat?sesi=...), maka hanya ditautkan. FO mana pun boleh mengambil; pengambilan atomik di DB (fo_ambil_dari_kotak_masuk):
-// yang kalah balapan menerima SUDAH_DIAMBIL -> pesan ramah + daftar dimuat ulang. Berhasil -> lanjut ke Penanganan Saya.
+// yang kalah balapan menerima SUDAH_DIAMBIL -> pesan ramah + daftar dimuat ulang. Berhasil -> lanjut ke Penanganan.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';

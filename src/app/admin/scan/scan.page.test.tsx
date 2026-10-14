@@ -164,7 +164,7 @@ describe('Scan QR: pratinjau reservasi (baca kunjungan, bukan visit)', () => {
 });
 
 describe('Scan QR: check-in (fo_checkin_reservasi)', () => {
-  it('check-in memanggil RPC dengan qr_token, tidak menulis tabel apa pun, lalu lanjut ke Penanganan Saya', async () => {
+  it('check-in memanggil RPC dengan qr_token, tidak menulis tabel apa pun, lalu lanjut ke Penanganan', async () => {
     m.h.rpc = () => ({ data: hasilCheckin, error: null });
     await pindaiManual();
     fireEvent.click(await tombolCheckin());

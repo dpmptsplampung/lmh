@@ -150,6 +150,51 @@ describe('RekapPenangananTable', () => {
     expect(screen.getByLabelText('Layanan')).toBeInTheDocument();
   });
 
+  // Keputusan CEO 2026-10-14: filter "Front Office yang mengeskalasi" untuk semua role yang melihat rekap layanan.
+  it.each(['admin', 'front_office', 'petugas'])('peran layanan (%s): filter FO yang mengeskalasi dari opsi_fo respons; memilih mengirim fo_id', async (role) => {
+    jawab({
+      total: 1, truncated: false, peran_saya: role, ringkasan, rows: [baris('9', { peran_tahap: 'layanan', layanan_id: 'l1', fo_nama: 'Ani', fo_id: 'fo-a' })],
+      opsi_fo: [{ id: 'fo-a', nama: 'Ani' }, { id: 'fo-b', nama: 'Bayu' }],
+    });
+    render(<RekapPenangananTable peran="layanan" isPetugas={role === 'petugas'} initialLayananId={role === 'petugas' ? 'l1' : null}
+      layananOptions={[{ id: 'l1', nama: 'Helpdesk OSS' }]} />);
+    const pilih = await screen.findByLabelText('Front Office yang mengeskalasi');
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Bayu' })).toBeInTheDocument());
+    expect(String(mockFetch.mock.calls[0][0])).not.toContain('fo_id');
+    fireEvent.change(pilih, { target: { value: 'fo-b' } });
+    await waitFor(() => expect(mockFetch.mock.calls.some((c) => String(c[0]).includes('fo_id=fo-b'))).toBe(true));
+    expect(String(mockFetch.mock.calls.at(-1)?.[0])).toContain('page=0');
+  });
+
+  it('ekspor ikut meneruskan fo_id terpilih', async () => {
+    jawab({
+      total: 1, truncated: false, peran_saya: 'admin', ringkasan, rows: [baris('9', { peran_tahap: 'layanan', fo_id: 'fo-a' })],
+      opsi_fo: [{ id: 'fo-a', nama: 'Ani' }],
+    });
+    URL.createObjectURL = vi.fn(() => 'blob:x');
+    URL.revokeObjectURL = vi.fn();
+    render(<RekapPenangananTable peran="layanan" layananOptions={[]} />);
+    const pilih = await screen.findByLabelText('Front Office yang mengeskalasi');
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Ani' })).toBeInTheDocument());
+    fireEvent.change(pilih, { target: { value: 'fo-a' } });
+    await waitFor(() => expect(mockFetch.mock.calls.some((c) => String(c[0]).includes('fo_id=fo-a'))).toBe(true));
+    await waitFor(() => expect(screen.getByRole('button', { name: /download excel/i })).not.toBeDisabled());
+    fireEvent.click(screen.getByRole('button', { name: /download excel/i }));
+    await waitFor(() => expect(mockFetch.mock.calls.some((c) => String(c[0]).includes('/penanganan/export?') && String(c[0]).includes('fo_id=fo-a'))).toBe(true));
+  });
+
+  it('filter FO yang mengeskalasi: awal Semua; rekap FO tidak punya filter ini', async () => {
+    jawab({ total: 0, truncated: false, peran_saya: 'admin', ringkasan: { ...ringkasan, total: 0, per_topik: [], per_penangan_hari: [] }, rows: [], opsi_fo: [] });
+    render(<RekapPenangananTable peran="layanan" layananOptions={[]} />);
+    const pilih = await screen.findByLabelText('Front Office yang mengeskalasi') as HTMLSelectElement;
+    expect(pilih.value).toBe('');
+    cleanup();
+    jawab({ total: 0, truncated: false, peran_saya: 'admin', ringkasan, rows: [] });
+    render(<RekapPenangananTable peran="fo" />);
+    await screen.findByText(/tidak ada penanganan/i);
+    expect(screen.queryByLabelText('Front Office yang mengeskalasi')).not.toBeInTheDocument();
+  });
+
   it('peringatan bila data terpotong 50.000 baris', async () => {
     jawab({ total: 1, truncated: true, peran_saya: 'admin', ringkasan, rows: [baris('1')] });
     render(<RekapPenangananTable peran="fo" />);

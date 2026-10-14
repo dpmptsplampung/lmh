@@ -1,6 +1,6 @@
 'use client';
 
-// Penanganan Saya (Front Office; Tahap B, kontrak docs/analysis/FO-ESKALASI-KONTRAK-RPC.md §6.2, §2.4, §2.5).
+// Penanganan (Front Office; Tahap B, kontrak docs/analysis/FO-ESKALASI-KONTRAK-RPC.md §6.2, §2.4, §2.5).
 // Menampilkan tahap FO yang sedang saya pegang (status `berjalan`), tahap FO yang sedang dipegang FO lain (baca saja),
 // dan riwayat hari ini (WIB) SEMUA Front Office dengan nama FO yang melayani (keputusan CEO 2026-10-14: keterbukaan
 // data antar FO; RLS migrasi 202610140013). Tombol aksi hanya untuk milik sendiri; DB tetap menolak BUKAN_PEMILIK.
@@ -271,7 +271,7 @@ export default function PenangananFoPage() {
   return (
     <>
       <PageHeader
-        title="Penanganan Saya"
+        title="Penanganan"
         description="Pengunjung yang sedang Anda tangani sebagai Front Office, yang sedang ditangani Front Office lain, dan riwayat hari ini semua Front Office."
       />
       <div className={styles.halaman}>

@@ -170,6 +170,52 @@ describe('GET /api/admin/rekap/penanganan', () => {
     expect(besok.rows[0].tanggal).toBe('2026-10-13');
   });
 
+  // Keputusan CEO 2026-10-14: filter "Front Office yang mengeskalasi" untuk semua role yang melihat rekap layanan.
+  describe('filter fo_id (Front Office yang mengeskalasi)', () => {
+    const FO_A = '550e8400-e29b-41d4-a716-446655440010';
+    const FO_B = '550e8400-e29b-41d4-a716-446655440011';
+    const lyn = (id: string, foId: string | null, foNama: string): Baris => tahap(id, {
+      peran_tahap: 'layanan', tahap_ke: 2, layanan_id: 'lyn-oss', penangan_id: 'p-ptg', petugas: { nama: 'Rina' },
+      layanan: { nama: 'Helpdesk OSS' },
+      kunjungan: {
+        nama: 'Andi', asal_instansi: null,
+        tahap_fo: foId ? [{ tahap_ke: 1, peran_tahap: 'fo', penangan_id: foId, petugas: { nama: foNama } }] : [],
+      },
+    });
+    const data = () => [lyn('a1', FO_A, 'Ani'), lyn('a2', FO_A, 'Ani'), lyn('b1', FO_B, 'Bayu'), lyn('x1', null, '')];
+
+    for (const role of ['admin', 'front_office'] as const) {
+      it(`${role}: fo_id menyaring baris, ringkasan, dan total; opsi_fo tetap lengkap`, async () => {
+        pasang(buatHRekap({ role, penanganan: data() }));
+        const body = await (await get(`&peran=layanan&fo_id=${FO_A}`)).json();
+        expect(body.rows.map((r: { id: string }) => r.id)).toEqual(['a1', 'a2']);
+        expect(body.total).toBe(2);
+        expect(body.ringkasan.total).toBe(2);
+        expect(body.opsi_fo).toEqual([{ id: FO_A, nama: 'Ani' }, { id: FO_B, nama: 'Bayu' }]);
+      });
+    }
+
+    it('Petugas: filter FO berlaku di dalam layanannya sendiri', async () => {
+      pasang(buatHRekap({ role: 'petugas', layananId: 'lyn-oss', penanganan: data() }));
+      const res = await get(`&peran=layanan&fo_id=${FO_B}`);
+      expect(res.status).toBe(200);
+      expect((await res.json()).rows.map((r: { id: string }) => r.id)).toEqual(['b1']);
+    });
+
+    it('tanpa fo_id: semua baris termasuk tiket tanpa tahap FO; opsi_fo hanya FO yang dikenal', async () => {
+      pasang(buatHRekap({ penanganan: data() }));
+      const body = await (await get('&peran=layanan')).json();
+      expect(body.total).toBe(4);
+      expect(body.rows.find((r: { id: string }) => r.id === 'x1').fo_id).toBeNull();
+      expect(body.opsi_fo).toHaveLength(2);
+    });
+
+    it('422 untuk fo_id yang bukan UUID', async () => {
+      pasang(buatHRekap());
+      expect((await get('&peran=layanan&fo_id=bukan-uuid')).status).toBe(422);
+    });
+  });
+
   it('422 untuk rentang terbalik dan parameter tidak valid', async () => {
     pasang(buatHRekap());
     const a = await GET(new NextRequest('http://localhost/api/admin/rekap/penanganan?dari=2026-10-13&sampai=2026-10-12'));

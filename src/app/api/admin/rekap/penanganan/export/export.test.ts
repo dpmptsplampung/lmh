@@ -137,6 +137,29 @@ describe('GET /api/admin/rekap/penanganan/export', () => {
     expect(auditInsert.mock.calls[0][0].detail).not.toHaveProperty('eskalasi_fo_id');
   });
 
+  it('fo_id: ekspor rekap layanan hanya baris FO yang dipilih (semua role); audit mencatat fo_id; 422 bila bukan UUID', async () => {
+    const FO_A = '550e8400-e29b-41d4-a716-446655440010';
+    const lyn = (id: string, foId: string, foNama: string): Baris =>
+      tahap(id, {
+        peran_tahap: 'layanan', tahap_ke: 2, layanan_id: 'lyn-oss', penangan_id: 'ptg-1', layanan: { nama: 'Helpdesk OSS' },
+        petugas: { nama: 'Rina' }, tiket: null,
+        kunjungan: { nama: 'Budi', asal_instansi: 'CV', tahap_fo: [{ tahap_ke: 1, penangan_id: foId, peran_tahap: 'fo', petugas: { nama: foNama } }] },
+      });
+    const data = [lyn('a', FO_A, 'Ani'), lyn('b', 'fo-lain', 'Bayu'), lyn('c', FO_A, 'Ani')];
+    pasang(buatHRekap({ role: 'front_office', penanganan: data }));
+    const res = await get(`&peran=layanan&fo_id=${FO_A}`);
+    expect(res.status).toBe(200);
+    const ws = await bacaSheet(res, 'Rekap Petugas Layanan');
+    expect(ws.rowCount).toBe(3); // header + 2 baris milik FO Ani
+    expect(auditInsert).toHaveBeenCalledWith(expect.objectContaining({
+      detail: expect.objectContaining({ fo_id: FO_A, total_rows: 2 }),
+    }));
+    pasang(buatHRekap({ role: 'petugas', layananId: 'lyn-oss', penanganan: data }));
+    const ptg = await get(`&peran=layanan&fo_id=${FO_A}`);
+    expect((await bacaSheet(ptg, 'Rekap Petugas Layanan')).rowCount).toBe(3);
+    expect((await get('&peran=layanan&fo_id=bukan-uuid')).status).toBe(422);
+  });
+
   it('galat DB -> 500 tanpa berkas', async () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     pasang(buatHRekap({ galatPenanganan: true }));

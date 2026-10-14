@@ -9,6 +9,7 @@ import {
   buildPenangananQuery,
   mapRawPenangananRow,
   ringkasPenanganan,
+  saringFo,
   tentukanCakupan,
 } from '@/lib/rekap/penanganan';
 
@@ -53,7 +54,10 @@ export async function GET(request: NextRequest) {
         to,
       }),
     );
-    rows = hasil.rows.map((r) => mapRawPenangananRow(r as unknown as Record<string, unknown>));
+    rows = saringFo(
+      hasil.rows.map((r) => mapRawPenangananRow(r as unknown as Record<string, unknown>)),
+      q.fo_id,
+    );
     truncated = hasil.truncated;
   } catch (error) {
     console.error('[api/admin/rekap/penanganan/export] gagal memuat rekap:', error);
@@ -70,7 +74,7 @@ export async function GET(request: NextRequest) {
     entitas: q.peran === 'fo' ? 'rekap_penanganan_fo' : 'rekap_penanganan_layanan',
     detail: {
       peran: q.peran, dari: q.dari, sampai: q.sampai,
-      petugas_id: cakupan.penanganId, layanan_id: cakupan.layananId,
+      petugas_id: cakupan.penanganId, fo_id: q.fo_id ?? null, layanan_id: cakupan.layananId,
       total_rows: rows.length, truncated,
     },
   })) ?? { error: { message: 'service client tidak tersedia' } };
