@@ -3,7 +3,9 @@
 // Menyentuh DB produksi lewat DIRECT_URL di .env.local walau semuanya di-rollback: jalankan di LUAR jam layanan (skrip
 // menolak Senin-Jumat 07:00-16:59 WIB kecuali --paksa) dan hanya atas konfirmasi CEO. Migrasi yang diterapkan di dalam
 // transaksi mengunci tabel (ALTER TABLE layanan/kunjungan/tiket_antrean/...) sampai ROLLBACK.
-// BELUM PERNAH DIJALANKAN oleh penulisnya (ditulis 2026-10-14 pada jam layanan).
+// Dijalankan 2026-10-14 ±17:46 WIB (di luar jam layanan, ROLLBACK): 60 lolos, 0 gagal; baris SEBELUM == SESUDAH.
+// Run pertama (49/11) gagal karena fixture: eskalasi bot->eskalasi sebagai pemilik tabel tanpa JWT (kini service_role
+// seperti route AI) dan uji #12 memakai pengunjung yang sudah punya kunjungan online hari ini (kini visitor2).
 //
 // Pakai (DB produksi saat ini: 202610140001 sudah ada, 0002..0012 belum):
 //   node scripts/test-perbaikan-review.mjs \
@@ -84,6 +86,9 @@ const info = (t) => console.log(`INFO   ${t}`);
 let spN = 0;
 const POSTGRES = { dbRole: null, claims: null };
 const ANON = { dbRole: 'anon', claims: { role: 'anon' } };
+// Route AI (/api/chat/ai, klien service-role) yang menaikkan sesi bot -> eskalasi; pemilik tabel tanpa JWT ditolak
+// guard_chat_sesi_staff_columns ('Pengunjung tidak boleh mengubah status sesi chat'), sama seperti test-chat-online.mjs.
+const SERVICE = { dbRole: 'service_role', claims: { role: 'service_role' } };
 const asUser = (uid, extra = {}) => ({ dbRole: 'authenticated', claims: { sub: uid, role: 'authenticated', ...extra } });
 
 async function setActor(a) {
@@ -144,7 +149,7 @@ const PAYLOAD_OSS = {
 const F = {};
 async function buatFixture() {
   const ids = {};
-  for (const k of ['visitor', 'admin', 'fo', 'petA', 'petO', 'petO2']) ids[k] = randomUUID();
+  for (const k of ['visitor', 'visitor2', 'admin', 'fo', 'petA', 'petO', 'petO2']) ids[k] = randomUUID();
   F.uid = ids;
   for (const [k, uid] of Object.entries(ids)) {
     const r = await pgq(`INSERT INTO auth.users (id, aud, role, email, is_anonymous) VALUES ($1,'authenticated','authenticated',$2,false)`,
@@ -173,6 +178,12 @@ async function buatFixture() {
     VALUES ($1,'ZZ visitor','081234567890','ZZ Instansi','Umum','zz-r12-visitor@example.invalid') RETURNING id`, [ids.visitor]);
   if (!v.ok) throw new Error(`fixture pengunjung: ${v.msg}`);
   F.p_visitor = v.rows[0].id;
+  // Pengunjung kedua TANPA sesi chat: sesi eskalasi visitor (fixture #11/#13) mencatat kunjungan online hari ini
+  // (chat_buat_kunjungan), sehingga visitor tidak bisa dipakai untuk uji #12 "tanpa kunjungan hari ini".
+  const v2 = await pgq(`INSERT INTO public.pengunjung (auth_user_id, nama, no_hp, asal_instansi, kategori, email)
+    VALUES ($1,'ZZ visitor2','081234567891','ZZ Instansi','Umum','zz-r12-visitor2@example.invalid') RETURNING id`, [ids.visitor2]);
+  if (!v2.ok) throw new Error(`fixture pengunjung2: ${v2.msg}`);
+  F.p_visitor2 = v2.rows[0].id;
   F.act = Object.fromEntries(Object.entries(ids).map(([k, u]) => [k, asUser(u)]));
   F.hariIni = (await satu(`SELECT to_char((now() AT TIME ZONE 'Asia/Jakarta')::date,'YYYY-MM-DD') AS d`)).d;
   F.kemarin = (await satu(`SELECT to_char((now() AT TIME ZONE 'Asia/Jakarta')::date - 1,'YYYY-MM-DD') AS d`)).d;
@@ -191,7 +202,10 @@ async function siapkanLama() {
       VALUES ($1,$2,'ZZ R12','bot') RETURNING id`, [F.A, F.p_visitor]);
     const sid = r.rows[0].id;
     await pgq(`INSERT INTO public.chat_pesan (sesi_id, pengirim, isi) VALUES ($1,'pengunjung','ZZ halo')`, [sid]);
-    if (status !== 'bot') await pgq(`UPDATE public.chat_sesi SET status='eskalasi' WHERE id=$1`, [sid]);
+    if (status !== 'bot') {
+      const u = await run(SERVICE, `UPDATE public.chat_sesi SET status='eskalasi' WHERE id=$1 AND status='bot'`, [sid]);
+      if (!u.ok || u.n !== 1) throw new Error(`fixture eskalasi sesi lama: ${sebut(u)}`);
+    }
     return sid;
   };
   F.chatTua = await sesi('eskalasi');
@@ -369,12 +383,12 @@ async function fasePasca(adaApply) {
       const a2 = hasil(await mulaiKunjungan(F.act.fo, { crid }));
       cek('idempoten berurutan: sudah_ada (jalur ON CONFLICT hanya teruji pada konkurensi sejati)', a2?.sudah_ada === true && a2.kunjungan_id === a1?.kunjungan_id);
       cek('#12 pengunjung tanpa kunjungan hari ini: DATA_TIDAK_VALID',
-        galat(await mulaiKunjungan(F.act.fo, { pengunjung: F.p_visitor }), '22023', /DATA_TIDAK_VALID/));
+        galat(await mulaiKunjungan(F.act.fo, { pengunjung: F.p_visitor2 }), '22023', /DATA_TIDAK_VALID/));
       cek('#12 pengunjung tak ada: NOT_FOUND', galat(await mulaiKunjungan(F.act.fo, { pengunjung: randomUUID() }), 'P0002', /NOT_FOUND/));
       await pgq(`INSERT INTO public.kunjungan (pengunjung_id, nama, asal, qr_token, tanggal, status, tujuan)
-        VALUES ($1,'ZZ Resv','reservasi',$2,$3::date,'batal','loket')`, [F.p_visitor, randomUUID().replace(/-/g, ''), F.hariIni]);
-      const ok = await mulaiKunjungan(F.act.fo, { pengunjung: F.p_visitor });
-      cek('#12 pengunjung dengan kunjungan/reservasi hari ini: tertaut', ok.ok && (await kunj(hasil(ok).kunjungan_id)).pengunjung_id === F.p_visitor, sebut(ok));
+        VALUES ($1,'ZZ Resv','reservasi',$2,$3::date,'batal','loket')`, [F.p_visitor2, randomUUID().replace(/-/g, ''), F.hariIni]);
+      const ok = await mulaiKunjungan(F.act.fo, { pengunjung: F.p_visitor2 });
+      cek('#12 pengunjung dengan kunjungan/reservasi hari ini: tertaut', ok.ok && (await kunj(hasil(ok).kunjungan_id)).pengunjung_id === F.p_visitor2, sebut(ok));
     });
   });
 
@@ -438,7 +452,8 @@ async function fasePasca(adaApply) {
       await pgq(`INSERT INTO public.chat_pesan (sesi_id, pengirim, isi) VALUES ($1,'pengunjung','ZZ halo')`, [r.rows[0].id]);
       return r.rows[0].id;
     };
-    const eskalasi = (sid) => pgq(`UPDATE public.chat_sesi SET status='eskalasi' WHERE id=$1 AND status='bot'`, [sid]);
+    // Seperti route AI (service-role); pemilik tabel tanpa JWT ditolak guard_chat_sesi_staff_columns.
+    const eskalasi = (sid) => run(SERVICE, `UPDATE public.chat_sesi SET status='eskalasi' WHERE id=$1 AND status='bot'`, [sid]);
     const jumlahTahap = async (sid) => (await satu(`SELECT count(*)::int AS n FROM public.penanganan WHERE chat_sesi_id=$1`, [sid])).n;
 
     if (!asli) {

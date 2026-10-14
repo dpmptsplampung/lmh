@@ -249,17 +249,17 @@ const mvBaris = async () => (await pgq(`SELECT layanan_id::text, jam_slot, avg_d
 // ---------- snapshot katalog (fungsi, policy, trigger + status aktif, kolom, constraint, indeks, view/MV, hak, cron) ----------
 async function snapshot() {
   const m = new Map();
-  const tambah = async (awalan, sql) => { for (const r of (await pgq(sql)).rows) m.set(`${awalan}:${r.k}`, r.v); };
+  const tambah = async (awalan, sql) => { const q = await pgq(sql); if (!q.ok) throw new Error(`snapshot ${awalan}: ${q.code} ${q.msg}`); for (const r of q.rows) m.set(`${awalan}:${r.k}`, r.v); };
   await tambah('fn', `SELECT p.proname||'('||pg_get_function_identity_arguments(p.oid)||')' AS k,
       md5(regexp_replace(pg_get_functiondef(p.oid),'[[:space:]]+','','g'))||' '||coalesce((SELECT string_agg(x, ',' ORDER BY x) FROM unnest(p.proacl::text[]) x), 'null') AS v
     FROM pg_proc p WHERE p.pronamespace='public'::regnamespace AND p.prokind='f'`);
   await tambah('policy', `SELECT tablename||'.'||policyname AS k, cmd||' '||roles::text||' '||md5(coalesce(qual,'')||'|'||coalesce(with_check,'')) AS v FROM pg_policies WHERE schemaname='public'`);
-  await tambah('trigger', `SELECT c.relname||'.'||t.tgname AS k, md5(pg_get_triggerdef(t.oid))||' '||t.tgenabled AS v
+  await tambah('trigger', `SELECT c.relname||'.'||t.tgname AS k, md5(pg_get_triggerdef(t.oid))||' '||t.tgenabled::text AS v
     FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid WHERE c.relnamespace='public'::regnamespace AND NOT t.tgisinternal`);
   await tambah('col', `SELECT table_name||'.'||column_name AS k, data_type||' '||is_nullable AS v FROM information_schema.columns WHERE table_schema='public'`);
   await tambah('con', `SELECT conrelid::regclass::text||'.'||conname AS k, md5(pg_get_constraintdef(oid)) AS v FROM pg_constraint WHERE connamespace='public'::regnamespace`);
   await tambah('idx', `SELECT tablename||'.'||indexname AS k, md5(indexdef) AS v FROM pg_indexes WHERE schemaname='public'`);
-  await tambah('rel', `SELECT c.relname AS k, c.relkind||' '||coalesce((SELECT string_agg(x, ',' ORDER BY x) FROM unnest(c.relacl::text[]) x),'null')
+  await tambah('rel', `SELECT c.relname AS k, c.relkind::text||' '||coalesce((SELECT string_agg(x, ',' ORDER BY x) FROM unnest(c.relacl::text[]) x),'null')
       ||' '||coalesce(md5(CASE WHEN c.relkind IN ('v','m') THEN pg_get_viewdef(c.oid) END),'-')||' '||coalesce(md5(obj_description(c.oid,'pg_class')),'-') AS v
     FROM pg_class c WHERE c.relnamespace='public'::regnamespace AND c.relkind IN ('r','v','m')`);
   await tambah('cron', `SELECT jobname AS k, schedule||' '||command||' '||active AS v FROM cron.job`);
@@ -648,7 +648,7 @@ try {
     });
   }
 } catch (e) {
-  console.error('ERROR tak terduga:', e.message);
+  console.error('ERROR tak terduga:', e.stack);
   kodeKeluar = 2;
 } finally {
   try { await c.query('RESET ROLE'); } catch { /* abaikan */ }
