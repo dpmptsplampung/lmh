@@ -28,6 +28,7 @@ export async function GET() {
       options: [],
       default_layanan_id: me.layanan_id,
       is_petugas: true,
+      role: me.role,
     });
   }
 
@@ -53,5 +54,6 @@ export async function GET() {
     options,
     default_layanan_id: null,
     is_petugas: false,
+    role: me.role,
   });
 }

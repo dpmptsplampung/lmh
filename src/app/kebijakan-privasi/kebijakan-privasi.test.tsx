@@ -5,10 +5,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import KebijakanPrivasiPage from './page';
 
-const CHECKIN_SOURCE = readFileSync(
-  join(process.cwd(), 'src/app/checkin/page.tsx'),
-  'utf8',
-);
+// /checkin kini halaman informasi tanpa consent (K3); consent PDP pengunjung ada di reservasi dan chat.
+const RESERVASI_SOURCE = readFileSync(join(process.cwd(), 'src/app/me/reservasi/page.tsx'), 'utf8');
 const CHAT_SOURCE = readFileSync(join(process.cwd(), 'src/app/chat/page.tsx'), 'utf8');
 
 function consentVersionFrom(source: string): string {
@@ -42,8 +40,8 @@ describe('kebijakan-privasi page', () => {
     expect(body).not.toMatch(/\[nama\]/i);
   });
 
-  it('version matches CONSENT_VERSION used by checkin and chat', () => {
-    const version = consentVersionFrom(CHECKIN_SOURCE);
+  it('version matches CONSENT_VERSION used by reservasi and chat', () => {
+    const version = consentVersionFrom(RESERVASI_SOURCE);
     expect(consentVersionFrom(CHAT_SOURCE)).toBe(version);
 
     render(<KebijakanPrivasiPage />);
@@ -51,8 +49,8 @@ describe('kebijakan-privasi page', () => {
     expect(body).toContain(version);
   });
 
-  it('is linked from checkin and chat consent flows', () => {
-    expect(CHECKIN_SOURCE).toContain('href="/kebijakan-privasi"');
+  it('is linked from reservasi and chat consent flows', () => {
+    expect(RESERVASI_SOURCE).toContain('href="/kebijakan-privasi"');
     expect(CHAT_SOURCE).toContain('href="/kebijakan-privasi"');
   });
 });

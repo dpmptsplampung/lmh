@@ -45,9 +45,8 @@ interface Reservasi {
   id: string;
   tujuan: string;
   nama_yang_ditemui: string | null;
-  tanggal_rencana: string;
+  tanggal: string;
   jam_rencana: string | null;
-  keperluan: string | null;
   qr_token: string;
   status: string;
   layanan?: { nama: string } | null;
@@ -99,25 +98,47 @@ export default function MeDashboard() {
         });
       }
 
-      // Load active reservations
-      const { data: reservasi } = await supabase
-        .from('visit')
-        .select('id, tujuan, nama_yang_ditemui, tanggal_rencana, jam_rencana, keperluan, qr_token, status, layanan(nama)')
-        .eq('pengunjung_id', pengunjung?.id || '')
-        .eq('asal', 'reservasi')
-        .in('status', ['terjadwal', 'menunggu', 'dilayani'])
-        .order('tanggal_rencana', { ascending: true });
+      // Reservasi aktif = baris `kunjungan` (bukan `visit`; kontrak FO §6.6). Filter pengunjung_id eksplisit
+      // karena staf yang membuka /me lolos RLS baca semua kunjungan.
+      let normalized: Reservasi[] = [];
+      if (pengunjung?.id) {
+        const { data: reservasi, error: reservasiError } = await supabase
+          .from('kunjungan')
+          .select('id, tujuan, nama_yang_ditemui, tanggal, jam_rencana, qr_token, status, layanan_saran_id')
+          .eq('pengunjung_id', pengunjung.id)
+          .eq('asal', 'reservasi')
+          .in('status', ['terjadwal', 'menunggu', 'dilayani'])
+          .order('tanggal', { ascending: true });
+        if (reservasiError) throw reservasiError;
 
-      const normalized: Reservasi[] = (reservasi || []).map((r) => ({
-        ...r,
-        layanan: Array.isArray(r.layanan) ? r.layanan[0] || null : r.layanan,
-      }));
+        // Nama layanan saran: kunjungan hanya menyimpan id (bukan tiket), jadi dicari terpisah.
+        const idLayanan = (reservasi ?? [])
+          .map((r) => r.layanan_saran_id as string | null)
+          .filter((id, i, semua): id is string => !!id && semua.indexOf(id) === i);
+        const namaLayanan: Record<string, string> = {};
+        if (idLayanan.length > 0) {
+          const { data: layananRows } = await supabase.from('v_layanan_publik').select('id, nama').in('id', idLayanan);
+          (layananRows ?? []).forEach((l) => {
+            if (l.id && l.nama) namaLayanan[l.id as string] = l.nama as string;
+          });
+        }
+        normalized = (reservasi ?? []).map((r) => ({
+          id: r.id,
+          tujuan: r.tujuan ?? 'loket',
+          nama_yang_ditemui: r.nama_yang_ditemui,
+          tanggal: r.tanggal,
+          jam_rencana: r.jam_rencana,
+          qr_token: r.qr_token,
+          status: r.status,
+          layanan: r.layanan_saran_id && namaLayanan[r.layanan_saran_id] ? { nama: namaLayanan[r.layanan_saran_id] } : null,
+        }));
+      }
       setReservasiList(normalized);
 
       // Find today's active visit (menunggu/dilayani) for queue position
       const today = todayWIB();
       const todayActive = normalized.find(
-        (r) => r.tanggal_rencana === today && (r.status === 'menunggu' || r.status === 'dilayani'),
+        (r) => r.tanggal === today && (r.status === 'menunggu' || r.status === 'dilayani'),
       );
 
       if (todayActive) {
@@ -173,10 +194,10 @@ export default function MeDashboard() {
     });
 
   const upcomingReservasi = reservasiList.filter(
-    r => r.status === 'terjadwal' && r.tanggal_rencana >= todayWIB()
+    r => r.status === 'terjadwal' && r.tanggal >= todayWIB()
   );
   const todayReservasi = reservasiList.filter(
-    r => r.tanggal_rencana === todayWIB() && (r.status === 'menunggu' || r.status === 'dilayani')
+    r => r.tanggal === todayWIB() && (r.status === 'menunggu' || r.status === 'dilayani')
   );
 
   if (loading) {
@@ -311,7 +332,7 @@ export default function MeDashboard() {
                       </div>
                       <div className={styles.reservasiMeta}>
                         <Calendar size={14} className={styles.reservasiMetaIcon} />
-                        {formatDate(r.tanggal_rencana)}
+                        {formatDate(r.tanggal)}
                       </div>
                       {r.jam_rencana && (
                         <div className={styles.reservasiMeta}>

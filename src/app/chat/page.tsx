@@ -16,6 +16,7 @@ import { MutasiError, mutasiInsert, pesanMutasi } from '@/lib/supabase/mutate';
 import ErrorRetry from '@/components/ErrorRetry';
 import styles from './chat.module.css';
 import ui from './chat-ui.module.css';
+import { JENIS_PENUTUP_SURVEI } from '@/lib/chat-staf';
 import { mergeMessages, petugasLabel, rtFromStatus, senderLabel, useFallbackPoll, useOnSubscribed, waktuLabel, type ChatMsg, type RtState } from './merge';
 import '@chatscope/chat-ui-kit-styles/dist/default/styles.min.css';
 import {
@@ -918,6 +919,13 @@ export default function PublicChatPage() {
                       {PII_DISCLAIMER}
                     </div>
                     {messages.map((msg) => (
+                      msg.jenis_jawaban === JENIS_PENUTUP_SURVEI ? (
+                        // Pesan penutup dari RPC chat_selesai: tempat tautan survei (Tahap E mengisinya; tanpa URL di sini).
+                        <div key={msg.id} role="note" className={styles.penutupSurvei} data-testid="penutup-survei">
+                          <span className={styles.penutupSurveiJudul}>Survei kepuasan layanan</span>
+                          {msg.isi}
+                        </div>
+                      ) : (
                       <ChatMessage
                         // client_uuid stabil dari optimistic -> pesan server: tidak remount/berkedip.
                         key={msg.client_uuid ?? msg.id}
@@ -945,6 +953,7 @@ export default function PublicChatPage() {
                           </ChatMessage.Footer>
                         )}
                       </ChatMessage>
+                      )
                     ))}
                     
                     {/* S14: FAQ gagal dimuat -> pesan jelas + Coba lagi (bukan daftar kosong senyap) */}

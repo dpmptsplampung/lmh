@@ -4,7 +4,7 @@ import { json, requireStaf } from '@/lib/akun/server';
 export const dynamic = 'force-dynamic';
 
 const KOLOM_LAYANAN =
-  'id, nama, tipe, aktif, penyerta, status_tampilan, tampil_di_layar, punya_antrean, punya_chat, chatbot_aktif, nomor_loket, prefiks_antrean';
+  'id, nama, tipe, aktif, penyerta, status_tampilan, tampil_di_layar, punya_antrean, punya_chat, chatbot_aktif, nomor_loket, prefiks_antrean, form_pendataan';
 
 // GET daftar layanan untuk halaman Kelola Layanan. Admin: kelola; Front Office: hanya lihat. Petugas: ditolak.
 export async function GET() {

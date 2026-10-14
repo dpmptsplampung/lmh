@@ -1,11 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import {
   determineFormType,
+  formPendataanLayanan,
   isLayananPendataan,
   canAccessPelayananStaff,
   bolehMulaiTiket,
   bolehSelesaikanTiket,
   bolehAmbilAlihTiket,
+  bolehKembalikanTiket,
+  bolehAlihkanTiket,
+  tiketHasilEskalasi,
   kodeGalatAntrean,
   kodeGalatDariError,
   PESAN_GALAT_ANTREAN,
@@ -115,6 +119,53 @@ describe('kepemilikan tiket (migrasi 202610140002)', () => {
     expect(kodeGalatAntrean(undefined)).toBeNull();
   });
 
+  describe('alur eskalasi FO (B4)', () => {
+    const adm = { id: 'p-admin', role: 'admin', layanan_id: null };
+    const pa = { id: 'p-a', role: 'petugas', layanan_id: 'l-1' };
+    const foStaf = { id: 'p-fo', role: 'front_office', layanan_id: null };
+    const tiket = (o: Record<string, unknown> = {}) => ({
+      status: 'dilayani', dilayani_oleh: 'p-a', layanan_id: 'l-1', penanganan_asal_id: 'pn-1', ...o,
+    });
+
+    it('tiketHasilEskalasi: ada penanganan_asal_id', () => {
+      expect(tiketHasilEskalasi({ penanganan_asal_id: 'pn-1' })).toBe(true);
+      expect(tiketHasilEskalasi({ penanganan_asal_id: null })).toBe(false);
+      expect(tiketHasilEskalasi({})).toBe(false);
+    });
+
+    it('bolehKembalikanTiket: hanya pemilik tiket eskalasi yang sedang dilayani', () => {
+      expect(bolehKembalikanTiket(pa, tiket())).toBe(true);
+      expect(bolehKembalikanTiket({ ...adm, id: 'p-a', role: 'admin' }, tiket())).toBe(true); // Admin pemilik
+      expect(bolehKembalikanTiket(adm, tiket())).toBe(false); // bukan pemilik
+      expect(bolehKembalikanTiket(foStaf, tiket({ dilayani_oleh: 'p-fo' }))).toBe(false);
+      expect(bolehKembalikanTiket(pa, tiket({ penanganan_asal_id: null }))).toBe(false); // tiket lama
+      expect(bolehKembalikanTiket(pa, tiket({ status: 'menunggu' }))).toBe(false);
+      expect(bolehKembalikanTiket(pa, tiket({ status: 'selesai' }))).toBe(false);
+      expect(bolehKembalikanTiket(null, tiket())).toBe(false);
+    });
+
+    it('bolehAlihkanTiket: hanya Admin, tiket eskalasi menunggu atau dilayani', () => {
+      expect(bolehAlihkanTiket(adm, tiket({ status: 'menunggu', dilayani_oleh: null }))).toBe(true);
+      expect(bolehAlihkanTiket(adm, tiket())).toBe(true);
+      expect(bolehAlihkanTiket(adm, tiket({ penanganan_asal_id: null }))).toBe(false);
+      expect(bolehAlihkanTiket(adm, tiket({ status: 'selesai' }))).toBe(false);
+      expect(bolehAlihkanTiket(adm, tiket({ status: 'dikembalikan' }))).toBe(false);
+      expect(bolehAlihkanTiket(adm, tiket({ status: 'dialihkan' }))).toBe(false);
+      expect(bolehAlihkanTiket(pa, tiket())).toBe(false);
+      expect(bolehAlihkanTiket(foStaf, tiket())).toBe(false);
+      expect(bolehAlihkanTiket(null, tiket())).toBe(false);
+    });
+
+    it.each([
+      'TOPIK_WAJIB', 'TOPIK_TIDAK_VALID', 'CATATAN_WAJIB', 'CATATAN_TERLALU_PANJANG', 'TIKET_LAMA', 'LAYANAN_SAMA', 'LAYANAN_TIDAK_VALID',
+    ] as const)('kode galat baru %s dikenali dan punya pesan Indonesia', (kode) => {
+      expect(kodeGalatAntrean(`${kode}: detail teknis`)).toBe(kode);
+      expect(kodeGalatDariError(new MutasiError('database', { asal: { message: `${kode}: x`, code: '22023' } }))).toBe(kode);
+      expect(PESAN_GALAT_ANTREAN[kode].length).toBeGreaterThan(10);
+      expect(PESAN_GALAT_ANTREAN[kode]).not.toContain(kode);
+    });
+  });
+
   it('kodeGalatDariError: dari MutasiError.asal maupun objek error PostgREST', () => {
     const e = new MutasiError('database', { asal: { message: 'SUDAH_DIAMBIL: tiket sudah ditangani petugas lain', code: 'P0001' } });
     expect(kodeGalatDariError(e)).toBe('SUDAH_DIAMBIL');
@@ -122,5 +173,31 @@ describe('kepemilikan tiket (migrasi 202610140002)', () => {
     expect(kodeGalatDariError(new MutasiError('tidak_ada_baris'))).toBeNull();
     expect(kodeGalatDariError(null)).toBeNull();
     expect(PESAN_GALAT_ANTREAN.SUDAH_DIAMBIL).toBe('Tiket ini sudah ditangani petugas lain.');
+  });
+});
+
+describe('formPendataanLayanan (kolom DB layanan.form_pendataan, migrasi 202610140012)', () => {
+  it('kolom DB menang atas nama, termasuk null eksplisit', () => {
+    expect(formPendataanLayanan({ nama: 'Layanan Khusus', form_pendataan: 'oss' })).toBe('oss');
+    expect(formPendataanLayanan({ nama: 'Helpdesk OSS', form_pendataan: 'perizinan' })).toBe('perizinan');
+    expect(formPendataanLayanan({ nama: 'Helpdesk OSS', form_pendataan: null })).toBeNull();
+    expect(formPendataanLayanan({ nama: 'Helpdesk OSS', form_pendataan: 'lain' })).toBeNull();
+  });
+
+  it('kolom tidak ter-select (undefined) -> deteksi nama lama; tanpa layanan -> null', () => {
+    expect(formPendataanLayanan({ nama: 'Helpdesk OSS' })).toBe('oss');
+    expect(formPendataanLayanan({ nama: 'Non OSS (SiCantik Lampung)' })).toBe('perizinan');
+    expect(formPendataanLayanan({ nama: 'BPJS Kesehatan' })).toBeNull();
+    expect(formPendataanLayanan(null)).toBeNull();
+    expect(formPendataanLayanan(undefined)).toBeNull();
+  });
+});
+
+describe('kode galat perbaikan review (202610140012)', () => {
+  it('BUKAN_HARI_INI / LAYANAN_TIDAK_BUKA / LAYANAN_TUTUP dikenali dan punya pesan', () => {
+    for (const k of ['BUKAN_HARI_INI', 'LAYANAN_TIDAK_BUKA', 'LAYANAN_TUTUP'] as const) {
+      expect(kodeGalatAntrean(`${k}: x`)).toBe(k);
+      expect(PESAN_GALAT_ANTREAN[k]).toBeTruthy();
+    }
   });
 });

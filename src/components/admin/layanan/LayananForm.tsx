@@ -18,13 +18,24 @@ export interface LayananRow {
   chatbot_aktif: boolean;
   nomor_loket: string | null;
   prefiks_antrean: string | null;
+  /** Formulir Pendataan wajib saat menyelesaikan tiket (migrasi 202610140012). */
+  form_pendataan?: FormPendataan | null;
 }
+
+export type FormPendataan = 'oss' | 'perizinan';
+
+export const FORM_PENDATAAN_LABEL: Record<FormPendataan, string> = {
+  oss: 'OSS (Helpdesk OSS)',
+  perizinan: 'Perizinan (Non OSS)',
+};
 
 export const STATUS_LABEL: Record<StatusTampilan, string> = {
   aktif: 'Tampil',
   coming_soon: 'Segera hadir',
   nonaktif: 'Disembunyikan',
 };
+
+const PESAN_PREFIKS = 'Prefiks antrean harus tepat 2 huruf (A-Z), atau dikosongkan agar dibuat otomatis';
 
 /** Form ubah layanan (Admin). Hanya mengirim field yang berubah; ganti nama butuh konfirmasi. */
 export default function LayananForm({
@@ -43,7 +54,9 @@ export default function LayananForm({
   const [layar, setLayar] = useState(layanan.tampil_di_layar);
   const [antrean, setAntrean] = useState(layanan.punya_antrean);
   const [chat, setChat] = useState(layanan.punya_chat);
+  const [form, setForm] = useState<string>(layanan.form_pendataan ?? '');
   const [localError, setLocalError] = useState('');
+  const [galatPrefiksLokal, setGalatPrefiksLokal] = useState('');
   const [konfirmasiNama, setKonfirmasiNama] = useState(false);
 
   const kirim = () => {
@@ -55,6 +68,7 @@ export default function LayananForm({
     if (layar !== layanan.tampil_di_layar) patch.tampil_di_layar = layar;
     if (antrean !== layanan.punya_antrean) patch.punya_antrean = antrean;
     if (chat !== layanan.punya_chat) patch.punya_chat = chat;
+    if ((form || null) !== (layanan.form_pendataan ?? null)) patch.form_pendataan = form || null;
     if (Object.keys(patch).length === 0) {
       setLocalError('Tidak ada perubahan.');
       return;
@@ -69,8 +83,10 @@ export default function LayananForm({
       setLocalError('Nama layanan minimal 2 karakter.');
       return;
     }
-    if (prefiks && !/^[A-Za-z]{1,3}$/.test(prefiks.trim())) {
-      setLocalError('Prefiks 1-3 huruf.');
+    setGalatPrefiksLokal('');
+    // Hanya yang DIUBAH yang divalidasi (nilai lama yang tidak disentuh tidak memblokir perubahan lain).
+    if (prefiks !== (layanan.prefiks_antrean ?? '') && prefiks && !/^[A-Z]{2}$/.test(prefiks)) {
+      setGalatPrefiksLokal(PESAN_PREFIKS);
       return;
     }
     if (nama.trim() !== layanan.nama && !konfirmasiNama) {
@@ -80,7 +96,10 @@ export default function LayananForm({
     kirim();
   };
 
-  const msg = localError || error;
+  // Galat prefiks (validasi lokal, 409 bentrok, 422/400 format dari server) tampil di bawah isian prefiks, bukan di atas form.
+  const galatServerPrefiks = /prefiks/i.test(error) ? error : '';
+  const galatPrefiks = galatPrefiksLokal || galatServerPrefiks;
+  const msg = localError || (galatServerPrefiks ? '' : error);
   return (
     <form onSubmit={handle} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
       {msg && <p className="form-error" role="alert">{msg}</p>}
@@ -105,8 +124,14 @@ export default function LayananForm({
       </div>
       <div className="form-group">
         <label className="form-label" htmlFor="lyPrefiks">Prefiks antrean</label>
-        <input id="lyPrefiks" className="form-input" value={prefiks} maxLength={3} onChange={(e) => setPrefiks(e.target.value.toUpperCase())} />
-        <p className="form-hint">1-3 huruf, unik. Hanya memengaruhi nomor antrean BARU.</p>
+        <input id="lyPrefiks" className="form-input" value={prefiks} maxLength={2} autoCapitalize="characters" spellCheck={false}
+          aria-invalid={galatPrefiks ? true : undefined}
+          aria-describedby={galatPrefiks ? 'lyPrefiksBantuan lyPrefiksGalat' : 'lyPrefiksBantuan'}
+          onChange={(e) => { setPrefiks(e.target.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2)); setGalatPrefiksLokal(''); }} />
+        <p id="lyPrefiksBantuan" className="form-hint">
+          Tepat 2 huruf (A-Z), unik antar layanan. Kosongkan agar dibuat otomatis. Hanya memengaruhi nomor antrean BARU.
+        </p>
+        {galatPrefiks && <p id="lyPrefiksGalat" className="form-error" role="alert">{galatPrefiks}</p>}
       </div>
       <div className="form-group">
         <label className="form-label" htmlFor="lyStatus">Di halaman utama / daftar layanan</label>
@@ -116,6 +141,18 @@ export default function LayananForm({
           <option value="nonaktif">Disembunyikan</option>
         </select>
         <p className="form-hint">Tidak memengaruhi penerbitan tiket atau check-in.</p>
+      </div>
+      <div className="form-group">
+        <label className="form-label" htmlFor="lyForm">Formulir Pendataan</label>
+        <select id="lyForm" className="form-input" value={form} onChange={(e) => setForm(e.target.value)}
+          aria-describedby="lyFormBantuan">
+          <option value="">Tidak ada</option>
+          <option value="oss">{FORM_PENDATAAN_LABEL.oss}</option>
+          <option value="perizinan">{FORM_PENDATAAN_LABEL.perizinan}</option>
+        </select>
+        <p id="lyFormBantuan" className="form-hint">
+          Bila dipilih, petugas WAJIB mengisi formulir ini (semua field) sebelum tiket layanan dapat diselesaikan.
+        </p>
       </div>
       <label style={{ display: 'flex', gap: 'var(--space-2)' }}>
         <input type="checkbox" checked={layar} onChange={(e) => setLayar(e.target.checked)} /> Tampil di layar TV

@@ -94,7 +94,9 @@ export default function KunjunganPage() {
   }, [loadData]);
 
   // Fase 3: data menyegarkan sendiri via realtime + polling cadangan 30 dtk.
-  useRealtimeRefetch(loadData, { table: 'visit', pollMs: 30_000 });
+  // visit = arsip baca-saja sejak WP-24 (tak pernah berubah lagi): dengarkan tiket_antrean + penanganan (tabel yang
+  // bergerak di alur FO/antrean; kunjungan sendiri tidak ada di publikasi realtime, perubahannya terjemput polling).
+  useRealtimeRefetch(loadData, { tables: ['tiket_antrean', 'penanganan'], pollMs: 30_000 });
 
 
   const getTiket = (k: KunjunganRow): TiketData | null => {

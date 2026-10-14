@@ -7,7 +7,7 @@ import { useToast } from '@/components/Toast';
 import RoleNote from '@/components/admin/RoleNote';
 import { AkunDialog } from '@/components/admin/AkunForm';
 import { adminFetch } from '@/components/admin/adminFetch';
-import LayananForm, { STATUS_LABEL, type LayananRow } from '@/components/admin/layanan/LayananForm';
+import LayananForm, { FORM_PENDATAAN_LABEL, STATUS_LABEL, type LayananRow } from '@/components/admin/layanan/LayananForm';
 
 const ya = (v: boolean) => (v ? 'Ya' : 'Tidak');
 
@@ -68,7 +68,7 @@ export default function KelolaLayananPage() {
 
   return (
     <>
-      <PageHeader title="Kelola Layanan" description="Nama, loket, prefiks, tampilan publik, layar TV, antrean, chat, dan bot" />
+      <PageHeader title="Kelola Layanan" description="Nama, loket, prefiks, tampilan publik, layar TV, antrean, Formulir Pendataan, chat, dan bot" />
       <div style={{ padding: 'clamp(var(--space-4), 4vw, var(--space-8))' }}>
         {!loading && !loadError && (
           <RoleNote>
@@ -91,7 +91,7 @@ export default function KelolaLayananPage() {
               <thead>
                 <tr>
                   <th>Layanan</th><th>Loket</th><th>Prefiks</th><th>Halaman utama</th>
-                  <th>Layar TV</th><th>Antrean</th><th>Chat</th><th>Bot</th>
+                  <th>Layar TV</th><th>Antrean</th><th>Pendataan</th><th>Chat</th><th>Bot</th>
                   {bisaUbah && <th>Aksi</th>}
                 </tr>
               </thead>
@@ -104,6 +104,7 @@ export default function KelolaLayananPage() {
                     <td>{STATUS_LABEL[r.status_tampilan] ?? r.status_tampilan}</td>
                     <td>{ya(r.tampil_di_layar)}</td>
                     <td>{ya(r.punya_antrean)}</td>
+                    <td>{r.form_pendataan ? FORM_PENDATAAN_LABEL[r.form_pendataan] : '—'}</td>
                     <td>{ya(r.punya_chat)}</td>
                     <td>
                       {bisaUbah ? (

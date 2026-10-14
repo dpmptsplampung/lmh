@@ -19,6 +19,63 @@ export const STATUS_KUNJUNGAN = {
   SELESAI: 'selesai',
 } as const;
 
+// Status kunjungan lengkap (kolom kunjungan.status; kontrak FO §1.3). Arti: dilayani = sedang ditangani FO atau
+// petugas; menunggu = antre di layanan atau di kotak masuk FO.
+export const STATUS_KUNJUNGAN_DB = {
+  TERJADWAL: 'terjadwal',
+  MENUNGGU: 'menunggu',
+  DILAYANI: 'dilayani',
+  SELESAI: 'selesai',
+  BATAL: 'batal',
+  NO_SHOW: 'no_show',
+  TIDAK_TERLAYANI: 'tidak_terlayani',
+} as const;
+
+export type StatusKunjunganDb = (typeof STATUS_KUNJUNGAN_DB)[keyof typeof STATUS_KUNJUNGAN_DB];
+
+// Asal kunjungan (kunjungan.asal): 'online' = sesi chat (Tahap C).
+export const ASAL_KUNJUNGAN = {
+  WALK_IN: 'walk_in',
+  RESERVASI: 'reservasi',
+  ONLINE: 'online',
+} as const;
+
+export type AsalKunjungan = (typeof ASAL_KUNJUNGAN)[keyof typeof ASAL_KUNJUNGAN];
+
+export const LABEL_ASAL_KUNJUNGAN: Record<AsalKunjungan, string> = {
+  walk_in: 'Walk-in',
+  reservasi: 'Reservasi',
+  online: 'Online (chat)',
+};
+
+// Status tiket antrean (tiket_antrean.status). 'dikembalikan' (dikembalikan petugas ke FO) dan 'dialihkan'
+// (dipindah Admin, lihat dialihkan_ke) adalah status AKHIR.
+export const STATUS_TIKET = {
+  MENUNGGU: 'menunggu',
+  DIPANGGIL: 'dipanggil',
+  DILAYANI: 'dilayani',
+  SELESAI: 'selesai',
+  BATAL: 'batal',
+  NO_SHOW: 'no_show',
+  TIDAK_TERLAYANI: 'tidak_terlayani',
+  DIKEMBALIKAN: 'dikembalikan',
+  DIALIHKAN: 'dialihkan',
+} as const;
+
+export type StatusTiket = (typeof STATUS_TIKET)[keyof typeof STATUS_TIKET];
+
+export const LABEL_STATUS_TIKET: Record<StatusTiket, string> = {
+  menunggu: 'Menunggu',
+  dipanggil: 'Dipanggil',
+  dilayani: 'Sedang Dilayani',
+  selesai: 'Selesai',
+  batal: 'Dibatalkan',
+  no_show: 'Tidak Hadir',
+  tidak_terlayani: 'Tidak Terlayani',
+  dikembalikan: 'Dikembalikan ke Front Office',
+  dialihkan: 'Dialihkan ke Layanan Lain',
+};
+
 // Status reservasi
 export const STATUS_RESERVASI = {
   TERJADWAL: 'terjadwal',

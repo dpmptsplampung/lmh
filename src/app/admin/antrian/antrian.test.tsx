@@ -2,6 +2,8 @@
 // Halaman antrean admin (A3, migrasi 202610140002_tiket_kepemilikan): transisi status lewat RPC atomik
 // (layanan_mulai / layanan_selesai / admin_ambil_alih), BUKAN UPDATE langsung visit. Hanya pemilik tiket
 // (dilayani_oleh) yang melihat tombol Selesai / Form Pendataan.
+// B4 (migrasi 202610140004): tiket HASIL ESKALASI Front Office (penanganan_asal_id) menampilkan catatan FO, wajib topik +
+// catatan saat selesai, "Kembalikan ke FO" (pemilik) dan "Alihkan" (Admin).
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, cleanup, fireEvent, within } from '@testing-library/react';
 
@@ -50,13 +52,14 @@ type AntrianRow = {
   layanan_id: string;
   dilayani_oleh: string | null;
   pelayan: { nama: string } | null;
+  penanganan_asal_id?: string | null;
   nomor: number;
   nomor_display: string;
   status: string;
   waktu_terbit: string | null;
   waktu_mulai_layan: string | null;
   waktu_selesai: string | null;
-  layanan: { nama: string } | { nama: string }[];
+  layanan: { nama: string; form_pendataan?: string | null } | { nama: string; form_pendataan?: string | null }[];
   kunjungan: { nama: string; asal: string; waktu_masuk: string | null } |
     { nama: string; asal: string; waktu_masuk: string | null }[];
 };
@@ -71,7 +74,14 @@ function buildMock(opts: {
   role?: string;
   layananId?: string | null;
   // Hasil RPC per nama; nilai bisa Promise (untuk menguji tombol terkunci selama request).
-  rpc?: Partial<Record<'panggil_tiket' | 'layanan_mulai' | 'layanan_selesai' | 'admin_ambil_alih', HasilRpc | Promise<HasilRpc>>>;
+  rpc?: Partial<Record<
+    'panggil_tiket' | 'layanan_mulai' | 'layanan_selesai' | 'admin_ambil_alih' | 'layanan_kembalikan' | 'admin_alihkan',
+    HasilRpc | Promise<HasilRpc>
+  >>;
+  // Baris penanganan tahap FO (kontrak §6.3), topik layanan tiket, dan layanan tujuan alih.
+  penanganan?: Array<{ id: string; topik: string | null; catatan: string | null; penangan: { nama: string } | null }>;
+  topik?: Array<{ id: string; nama: string }>;
+  layananTujuan?: Array<{ id: string; nama: string }>;
 } = {}) {
   const rows = opts.rows ?? [];
   const role = opts.role ?? 'admin';
@@ -98,11 +108,30 @@ function buildMock(opts: {
     layanan_mulai: { data: { ok: true, sudah_milik_anda: false }, error: null },
     layanan_selesai: { data: { ok: true, is_locked: false }, error: null },
     admin_ambil_alih: { data: { ok: true, sudah_milik_anda: false }, error: null },
+    layanan_kembalikan: { data: { ok: true }, error: null },
+    admin_alihkan: { data: { ok: true, nomor_display: 'BP-003', layanan_nama: 'BPJS Kesehatan', petugas_hadir: true }, error: null },
   };
   const rpc = vi.fn((nama: string) => {
     const atur = opts.rpc?.[nama as keyof NonNullable<typeof opts.rpc>];
     return Promise.resolve(atur ?? hasilDefault[nama] ?? { data: null, error: { message: 'tak dikenal' } });
   });
+
+  // Rantai query "thenable" (select/eq/order/in mengembalikan dirinya; await -> hasil kaleng).
+  const thenable = (hasil: { data: unknown; error: null }) => {
+    const eq = vi.fn();
+    const inFn = vi.fn();
+    const p: Record<string, unknown> = {
+      select: vi.fn(() => p),
+      order: vi.fn(() => p),
+      eq: eq.mockImplementation(() => p),
+      in: inFn.mockImplementation(() => p),
+      then: (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) => Promise.resolve(hasil).then(res, rej),
+    };
+    return { p, eq, inFn };
+  };
+  const penangananQ = thenable({ data: opts.penanganan ?? [], error: null });
+  const topikQ = thenable({ data: opts.topik ?? [], error: null });
+  const layananQ = thenable({ data: opts.layananTujuan ?? [], error: null });
 
   const mock = {
     auth: {
@@ -112,11 +141,17 @@ function buildMock(opts: {
       if (table === 'petugas') return { select: petugasSelect };
       if (table === 'tiket_antrean') return { select: tiketSelect };
       if (table === 'visit') return { update: visitUpdate };
+      if (table === 'penanganan') return penangananQ.p;
+      if (table === 'topik_penanganan') return topikQ.p;
+      if (table === 'layanan') return layananQ.p;
       return {};
     }),
     rpc,
     _visitUpdate: visitUpdate,
     _tiketSelect: tiketSelect,
+    _penangananIn: penangananQ.inFn,
+    _topikEq: topikQ.eq,
+    _layananEq: layananQ.eq,
   };
 
   (createClient as unknown as ReturnType<typeof vi.fn>).mockReturnValue(mock);
@@ -128,6 +163,7 @@ const baseRow = (over: Partial<AntrianRow> = {}): AntrianRow => ({
   legacy_visit_id: 'v-1',
   layanan_id: 'l-1',
   dilayani_oleh: null,
+  penanganan_asal_id: null,
   pelayan: null,
   nomor: 1,
   nomor_display: 'A-001',
@@ -335,6 +371,30 @@ describe('Admin antrian: Selesai hanya oleh pemilik (rpc layanan_selesai)', () =
     expect(screen.getByText('oleh Anda')).toBeInTheDocument();
   });
 
+  // Migrasi 202610140012: kewajiban form ditentukan kolom DB layanan.form_pendataan (bukan nama).
+  it('form_pendataan DB menang atas nama: nama tanpa "OSS" tetapi wajib perizinan -> Selesai membuka wizard', async () => {
+    const mock = buildMock({ rows: [dilayaniSaya({ layanan: { nama: 'Layanan Khusus', form_pendataan: 'perizinan' } })] });
+    render(<AntrianPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /^selesai$/i }));
+    await waitFor(() => expect(screen.getByTestId('pelayanan-wizard')).toBeInTheDocument());
+    expect(mock.rpc.mock.calls.filter(([n]) => n === 'layanan_selesai')).toHaveLength(0);
+  });
+
+  it('form_pendataan DB kosong pada "Helpdesk OSS" -> tanpa Form Pendataan, Selesai memanggil RPC langsung', async () => {
+    const mock = buildMock({ rows: [dilayaniSaya({ layanan: { nama: 'Helpdesk OSS', form_pendataan: null } })] });
+    render(<AntrianPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /^selesai$/i }));
+    await waitFor(() => expect(mock.rpc).toHaveBeenCalledWith('layanan_selesai', { p_tiket_id: 't-1' }));
+    expect(screen.queryByRole('button', { name: /form pendataan/i })).not.toBeInTheDocument();
+  });
+
+  it('kueri tiket memuat layanan.form_pendataan', async () => {
+    const mock = buildMock({ rows: [dilayaniSaya()] });
+    render(<AntrianPage />);
+    await screen.findByRole('button', { name: /^selesai$/i });
+    expect(String(mock._tiketSelect.mock.calls[0][0])).toMatch(/layanan:layanan_id\(nama, form_pendataan\)/);
+  });
+
   it('bukan pemilik: tanpa Selesai / Form Pendataan; menyebut pemilik; Lihat Data tersedia (baca-saja)', async () => {
     buildMock({ rows: [dilayaniLain()], role: 'petugas', layananId: 'l-1' });
     render(<AntrianPage />);
@@ -501,5 +561,408 @@ describe('Admin antrian: koreksi data terkunci (tidak berubah)', () => {
     render(<AntrianPage />);
     await screen.findByText('Budi');
     expect(screen.queryByRole('button', { name: /Koreksi Data/i })).not.toBeInTheDocument();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// B4: tiket hasil eskalasi Front Office (kontrak docs/analysis/FO-ESKALASI-KONTRAK-RPC.md)
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+const eskalasi = (over: Partial<AntrianRow> = {}) => baseRow({ penanganan_asal_id: 'pn-fo', ...over });
+const eskalasiSaya = (over: Partial<AntrianRow> = {}) => dilayaniSaya({ penanganan_asal_id: 'pn-fo', ...over });
+const noBpjs = { nama: 'BPJS Kesehatan' };
+const catatanFo = [{ id: 'pn-fo', topik: 'Pertanyaan BPJS', catatan: 'Pemohon menanyakan klaim rawat inap', penangan: { nama: 'Siti FO' } }];
+
+describe('Admin antrian B4: catatan eskalasi dari Front Office', () => {
+  it('tiket hasil eskalasi menampilkan topik, catatan, dan nama FO (kueri penanganan per id asal)', async () => {
+    const mock = buildMock({ rows: [eskalasi()], penanganan: catatanFo });
+    render(<AntrianPage />);
+    expect(await screen.findByText('Eskalasi dari Front Office')).toBeInTheDocument();
+    expect(await screen.findByText('Topik: Pertanyaan BPJS')).toBeInTheDocument();
+    expect(screen.getByText('Pemohon menanyakan klaim rawat inap')).toBeInTheDocument();
+    expect(screen.getByText('oleh Siti FO')).toBeInTheDocument();
+    expect(String(mock._tiketSelect.mock.calls[0][0])).toMatch(/penanganan_asal_id/);
+    expect(mock._penangananIn).toHaveBeenCalledWith('id', ['pn-fo']);
+  });
+
+  it('tiket lama (penanganan_asal_id null): tanpa blok eskalasi dan tanpa kueri penanganan', async () => {
+    const mock = buildMock({ rows: [baseRow()] });
+    render(<AntrianPage />);
+    await screen.findByText('Budi');
+    expect(screen.queryByText('Eskalasi dari Front Office')).not.toBeInTheDocument();
+    expect(mock.from.mock.calls.some(([t]) => t === 'penanganan')).toBe(false);
+  });
+
+  it('catatan tidak terbaca (RLS/galat) tidak menggagalkan daftar: label eskalasi tetap tampil', async () => {
+    const mock = buildMock({ rows: [eskalasi()] });
+    mock._penangananIn.mockImplementation(() => { throw new Error('boom'); });
+    render(<AntrianPage />);
+    expect(await screen.findByText('Budi')).toBeInTheDocument();
+    expect(screen.getByText('Eskalasi dari Front Office')).toBeInTheDocument();
+    expect(screen.queryByText(/^Topik:/)).not.toBeInTheDocument();
+  });
+});
+
+describe('Admin antrian B4: Selesai tiket eskalasi tanpa pendataan (layanan_selesai + topik + catatan)', () => {
+  const buka = async (mock: ReturnType<typeof buildMock>) => {
+    render(<AntrianPage />);
+    const tombol = await screen.findByRole('button', { name: /^selesai$/i });
+    fireEvent.click(tombol);
+    const dialog = await screen.findByRole('dialog', { name: /Selesaikan tiket A-001/i });
+    await waitFor(() => expect(within(dialog).getByRole('option', { name: 'Klaim' })).toBeInTheDocument());
+    return { dialog, tombol, mock };
+  };
+
+  it('membuka dialog (bukan RPC langsung); wajib topik dan catatan; lalu RPC 5 parameter', async () => {
+    const mock = buildMock({
+      rows: [eskalasiSaya({ layanan: noBpjs })],
+      topik: [{ id: 'tp-1', nama: 'Klaim' }, { id: 'tp-2', nama: 'Lainnya' }],
+    });
+    const { dialog } = await buka(mock);
+    expect(mock.rpc.mock.calls.filter(([n]) => n === 'layanan_selesai')).toHaveLength(0);
+    expect(mock._topikEq).toHaveBeenCalledWith('layanan_id', 'l-1');
+    expect(mock._topikEq).toHaveBeenCalledWith('aktif', true);
+
+    // Kosong -> dua galat role=alert, RPC tidak dipanggil.
+    fireEvent.click(within(dialog).getByRole('button', { name: /^Selesaikan$/ }));
+    const galat = await within(dialog).findAllByRole('alert');
+    expect(galat.map((g) => g.textContent).join(' ')).toMatch(/Topik penanganan wajib dipilih/);
+    expect(galat.map((g) => g.textContent).join(' ')).toMatch(/Catatan wajib diisi/);
+    expect(within(dialog).getByLabelText(/Topik penanganan/)).toHaveAttribute('aria-invalid', 'true');
+    expect(mock.rpc.mock.calls.filter(([n]) => n === 'layanan_selesai')).toHaveLength(0);
+
+    const sebelum = jumlahMuat(mock);
+    fireEvent.change(within(dialog).getByLabelText(/Topik penanganan/), { target: { value: 'tp-1' } });
+    fireEvent.change(within(dialog).getByLabelText(/Catatan penanganan/), { target: { value: '  Klaim dijelaskan  ' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /^Selesaikan$/ }));
+    await waitFor(() =>
+      expect(mock.rpc).toHaveBeenCalledWith('layanan_selesai', { p_tiket_id: 't-1', p_topik_id: 'tp-1', p_catatan: 'Klaim dijelaskan' }),
+    );
+    await waitFor(() => expect(toastMock).toHaveBeenCalledWith(expect.stringContaining('selesai dilayani'), 'success'));
+    await waitFor(() => expect(jumlahMuat(mock)).toBeGreaterThan(sebelum));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(mock._visitUpdate).not.toHaveBeenCalled();
+  });
+
+  it('tombol dikunci selama request (klik ganda tidak memanggil RPC dua kali)', async () => {
+    let selesaikan: (v: HasilRpc) => void = () => {};
+    const tertunda = new Promise<HasilRpc>((r) => { selesaikan = r; });
+    const mock = buildMock({ rows: [eskalasiSaya({ layanan: noBpjs })], topik: [{ id: 'tp-1', nama: 'Klaim' }], rpc: { layanan_selesai: tertunda } });
+    const { dialog } = await buka(mock);
+    fireEvent.change(within(dialog).getByLabelText(/Topik penanganan/), { target: { value: 'tp-1' } });
+    fireEvent.change(within(dialog).getByLabelText(/Catatan penanganan/), { target: { value: 'ok' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /^Selesaikan$/ }));
+    const sibuk = await within(dialog).findByRole('button', { name: /memproses/i });
+    expect(sibuk).toBeDisabled();
+    expect(sibuk).toHaveAttribute('aria-busy', 'true');
+    fireEvent.submit(sibuk.closest('form')!);
+    expect(mock.rpc.mock.calls.filter(([n]) => n === 'layanan_selesai')).toHaveLength(1);
+    selesaikan({ data: { ok: true }, error: null });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it.each([
+    ['TOPIK_TIDAK_VALID: topik bukan milik layanan tiket', /Topik yang dipilih tidak valid/],
+    ['CATATAN_TERLALU_PANJANG: maksimal 1000 karakter', /Catatan terlalu panjang/],
+    ['BUKAN_PEMILIK: tiket ini sedang dilayani petugas lain', /Hanya petugas yang memulai/],
+    ['TIKET_LAMA: tiket alur visit', /alur lama/],
+  ])('galat DB "%s" tampil jelas di dialog (role=alert) dan dialog tetap terbuka', async (pesanDb, pola) => {
+    const mock = buildMock({
+      rows: [eskalasiSaya({ layanan: noBpjs })],
+      topik: [{ id: 'tp-1', nama: 'Klaim' }],
+      rpc: { layanan_selesai: { data: null, error: { message: pesanDb, code: 'P0001' } } },
+    });
+    const { dialog } = await buka(mock);
+    fireEvent.change(within(dialog).getByLabelText(/Topik penanganan/), { target: { value: 'tp-1' } });
+    fireEvent.change(within(dialog).getByLabelText(/Catatan penanganan/), { target: { value: 'ok' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /^Selesaikan$/ }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(pola);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(toastMock).not.toHaveBeenCalledWith(expect.stringContaining('selesai dilayani'), 'success');
+  });
+
+  it('a11y: label terhubung, fokus awal ke isian, Tab berputar di dalam dialog, Escape menutup dan fokus kembali ke pemicu', async () => {
+    const mock = buildMock({ rows: [eskalasiSaya({ layanan: noBpjs })], topik: [{ id: 'tp-1', nama: 'Klaim' }] });
+    const { dialog, tombol } = await buka(mock);
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    expect(within(dialog).getByLabelText(/Topik penanganan/)).toHaveFocus();
+
+    const batal = within(dialog).getByRole('button', { name: 'Batal' });
+    const kirim = within(dialog).getByRole('button', { name: /^Selesaikan$/ });
+    kirim.focus();
+    fireEvent.keyDown(document, { key: 'Tab' });
+    expect(within(dialog).getByRole('button', { name: 'Tutup' })).toHaveFocus();
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+    expect(kirim).toHaveFocus();
+    expect(batal).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(tombol).toHaveFocus();
+  });
+
+  it('tiket lama (bukan eskalasi) tanpa pendataan tetap langsung RPC tanpa topik/catatan', async () => {
+    const mock = buildMock({ rows: [dilayaniSaya({ layanan: noBpjs })] });
+    render(<AntrianPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /^selesai$/i }));
+    await waitFor(() => expect(mock.rpc).toHaveBeenCalledWith('layanan_selesai', { p_tiket_id: 't-1' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('tiket eskalasi dengan pendataan (Helpdesk OSS): Selesai membuka wizard, bukan dialog topik', async () => {
+    buildMock({ rows: [eskalasiSaya()] });
+    render(<AntrianPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /^selesai$/i }));
+    await waitFor(() => expect(screen.getByTestId('pelayanan-wizard')).toHaveTextContent('Pendataan Pelayanan'));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+});
+
+describe('Admin antrian B4: Kembalikan ke FO (layanan_kembalikan)', () => {
+  const bukaDialog = async (mock: ReturnType<typeof buildMock>) => {
+    render(<AntrianPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /Kembalikan tiket A-001 ke Front Office/i }));
+    const dialog = await screen.findByRole('dialog', { name: /Kembalikan A-001 ke Front Office/i });
+    await waitFor(() => expect(within(dialog).getByRole('option', { name: 'Klaim' })).toBeInTheDocument());
+    return { dialog, mock };
+  };
+
+  it('hanya untuk pemilik tiket eskalasi yang sedang dilayani', async () => {
+    // pemilik + eskalasi -> ada
+    buildMock({ rows: [eskalasiSaya({ layanan: noBpjs })] });
+    render(<AntrianPage />);
+    expect(await screen.findByRole('button', { name: /Kembalikan tiket A-001/i })).toBeInTheDocument();
+    cleanup();
+    // pemilik tapi tiket lama -> tidak
+    buildMock({ rows: [dilayaniSaya({ layanan: noBpjs })] });
+    render(<AntrianPage />);
+    await screen.findByRole('button', { name: /^selesai$/i });
+    expect(screen.queryByRole('button', { name: /Kembalikan/i })).not.toBeInTheDocument();
+    cleanup();
+    // eskalasi tetapi dilayani orang lain (bahkan Admin) -> tidak
+    buildMock({ rows: [dilayaniLain({ penanganan_asal_id: 'pn-fo' })], role: 'admin' });
+    render(<AntrianPage />);
+    await screen.findByText('Budi');
+    expect(screen.queryByRole('button', { name: /Kembalikan/i })).not.toBeInTheDocument();
+    cleanup();
+    // eskalasi menunggu (belum dimulai) -> tidak
+    buildMock({ rows: [eskalasi()] });
+    render(<AntrianPage />);
+    await screen.findByText('Budi');
+    expect(screen.queryByRole('button', { name: /Kembalikan/i })).not.toBeInTheDocument();
+  });
+
+  it('catatan wajib; topik opsional; RPC dengan p_catatan dan p_topik_id; daftar dimuat ulang', async () => {
+    const mock = buildMock({ rows: [eskalasiSaya({ layanan: noBpjs })], topik: [{ id: 'tp-1', nama: 'Klaim' }] });
+    const { dialog } = await bukaDialog(mock);
+    expect(within(dialog).getByLabelText(/Topik penanganan \(Opsional\)/)).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: /^Kembalikan ke FO$/ }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(/Catatan wajib diisi/);
+    expect(mock.rpc.mock.calls.filter(([n]) => n === 'layanan_kembalikan')).toHaveLength(0);
+
+    const sebelum = jumlahMuat(mock);
+    fireEvent.change(within(dialog).getByLabelText(/Alasan pengembalian/), { target: { value: '  Kebutuhan bukan di layanan ini  ' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /^Kembalikan ke FO$/ }));
+    await waitFor(() =>
+      expect(mock.rpc).toHaveBeenCalledWith('layanan_kembalikan', { p_tiket_id: 't-1', p_catatan: 'Kebutuhan bukan di layanan ini', p_topik_id: null }),
+    );
+    await waitFor(() => expect(toastMock).toHaveBeenCalledWith(expect.stringContaining('dikembalikan ke Front Office'), 'success'));
+    await waitFor(() => expect(jumlahMuat(mock)).toBeGreaterThan(sebelum));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('topik yang dipilih ikut dikirim', async () => {
+    const mock = buildMock({ rows: [eskalasiSaya({ layanan: noBpjs })], topik: [{ id: 'tp-1', nama: 'Klaim' }] });
+    const { dialog } = await bukaDialog(mock);
+    fireEvent.change(within(dialog).getByLabelText(/Topik penanganan/), { target: { value: 'tp-1' } });
+    fireEvent.change(within(dialog).getByLabelText(/Alasan pengembalian/), { target: { value: 'alasan' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /^Kembalikan ke FO$/ }));
+    await waitFor(() =>
+      expect(mock.rpc).toHaveBeenCalledWith('layanan_kembalikan', { p_tiket_id: 't-1', p_catatan: 'alasan', p_topik_id: 'tp-1' }),
+    );
+  });
+
+  it('tombol dikunci selama request', async () => {
+    let selesaikan: (v: HasilRpc) => void = () => {};
+    const tertunda = new Promise<HasilRpc>((r) => { selesaikan = r; });
+    const mock = buildMock({ rows: [eskalasiSaya({ layanan: noBpjs })], topik: [{ id: 'tp-1', nama: 'Klaim' }], rpc: { layanan_kembalikan: tertunda } });
+    const { dialog } = await bukaDialog(mock);
+    fireEvent.change(within(dialog).getByLabelText(/Alasan pengembalian/), { target: { value: 'alasan' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /^Kembalikan ke FO$/ }));
+    const sibuk = await within(dialog).findByRole('button', { name: /memproses/i });
+    expect(sibuk).toBeDisabled();
+    fireEvent.submit(sibuk.closest('form')!);
+    expect(mock.rpc.mock.calls.filter(([n]) => n === 'layanan_kembalikan')).toHaveLength(1);
+    selesaikan({ data: { ok: true }, error: null });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it.each([
+    ['TIKET_LAMA: tiket alur visit', /alur lama/, true],
+    ['INVALID_STATUS: tiket tidak sedang dilayani', /Status tiket sudah berubah/, true],
+    ['BUKAN_PEMILIK: bukan pemilik', /Hanya petugas yang memulai/, true],
+    ['CATATAN_TERLALU_PANJANG: maksimal 1000', /Catatan terlalu panjang/, false],
+    ['TOPIK_TIDAK_VALID: topik tidak valid', /Topik yang dipilih tidak valid/, false],
+    ['SESI_TIDAK_SAH: sesi berakhir', /Sesi Anda sudah tidak berlaku/, false],
+  ])('galat "%s" dipetakan ke pesan Indonesia (muat ulang daftar: %s)', async (pesanDb, pola, muatUlang) => {
+    const mock = buildMock({
+      rows: [eskalasiSaya({ layanan: noBpjs })],
+      topik: [{ id: 'tp-1', nama: 'Klaim' }],
+      rpc: { layanan_kembalikan: { data: null, error: { message: pesanDb, code: 'P0001' } } },
+    });
+    const { dialog } = await bukaDialog(mock);
+    fireEvent.change(within(dialog).getByLabelText(/Alasan pengembalian/), { target: { value: 'alasan' } });
+    const sebelum = jumlahMuat(mock);
+    fireEvent.click(within(dialog).getByRole('button', { name: /^Kembalikan ke FO$/ }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(pola);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    if (muatUlang) await waitFor(() => expect(jumlahMuat(mock)).toBeGreaterThan(sebelum));
+    else expect(jumlahMuat(mock)).toBe(sebelum);
+  });
+});
+
+describe('Admin antrian B4: Alihkan (Admin, admin_alihkan)', () => {
+  const layananTujuan = [
+    { id: 'l-1', nama: 'Helpdesk OSS' }, // layanan tiket sendiri: tidak boleh jadi pilihan
+    { id: 'l-2', nama: 'BPJS Kesehatan' },
+    { id: 'l-3', nama: 'Bank Lampung' },
+  ];
+
+  const bukaDialog = async (mock: ReturnType<typeof buildMock>) => {
+    render(<AntrianPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /Alihkan tiket A-001/i }));
+    const dialog = await screen.findByRole('dialog', { name: /Alihkan tiket A-001/i });
+    await waitFor(() => expect(within(dialog).getByRole('option', { name: 'BPJS Kesehatan' })).toBeInTheDocument());
+    return { dialog, mock };
+  };
+
+  it('Admin melihat Alihkan pada tiket eskalasi menunggu, dilayani orang lain, dan dilayani sendiri', async () => {
+    for (const baris of [eskalasi(), dilayaniLain({ penanganan_asal_id: 'pn-fo' }), eskalasiSaya()]) {
+      buildMock({ rows: [baris], role: 'admin' });
+      render(<AntrianPage />);
+      expect(await screen.findByRole('button', { name: /Alihkan tiket A-001/i })).toBeInTheDocument();
+      cleanup();
+    }
+    // Di samping Ambil alih yang sudah ada.
+    buildMock({ rows: [dilayaniLain({ penanganan_asal_id: 'pn-fo' })], role: 'admin' });
+    render(<AntrianPage />);
+    expect(await screen.findByRole('button', { name: /^Ambil alih$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Alihkan tiket A-001/i })).toBeInTheDocument();
+  });
+
+  it('tidak tampil untuk tiket lama, tiket selesai, petugas, maupun Front Office', async () => {
+    const kasus: Array<[AntrianRow, string]> = [
+      [baseRow(), 'admin'],
+      [dilayaniLain(), 'admin'],
+      [eskalasi({ status: 'selesai', waktu_selesai: new Date().toISOString() }), 'admin'],
+      [eskalasi(), 'petugas'],
+      [eskalasiSaya(), 'petugas'],
+      [eskalasi(), 'front_office'],
+    ];
+    for (const [baris, role] of kasus) {
+      buildMock({ rows: [baris], role, layananId: role === 'petugas' ? 'l-1' : null });
+      render(<AntrianPage />);
+      await screen.findByText('Budi');
+      expect(screen.queryByRole('button', { name: /Alihkan/i })).not.toBeInTheDocument();
+      cleanup();
+    }
+  });
+
+  it('memilih layanan tujuan (tanpa layanan asal) dan alasan wajib 5-500; RPC lalu daftar dimuat ulang', async () => {
+    const mock = buildMock({ rows: [eskalasi()], role: 'admin', layananTujuan });
+    const { dialog } = await bukaDialog(mock);
+    expect(within(dialog).queryByRole('option', { name: 'Helpdesk OSS' })).not.toBeInTheDocument();
+    expect(mock._layananEq).toHaveBeenCalledWith('punya_antrean', true);
+
+    fireEvent.click(within(dialog).getByRole('button', { name: /^Alihkan$/ }));
+    const galat = await within(dialog).findAllByRole('alert');
+    expect(galat.map((g) => g.textContent).join(' ')).toMatch(/Pilih layanan tujuan/);
+    expect(galat.map((g) => g.textContent).join(' ')).toMatch(/minimal 5 karakter/);
+    expect(mock.rpc.mock.calls.filter(([n]) => n === 'admin_alihkan')).toHaveLength(0);
+
+    fireEvent.change(within(dialog).getByLabelText(/Layanan tujuan/), { target: { value: 'l-2' } });
+    fireEvent.change(within(dialog).getByLabelText(/Alasan pengalihan/), { target: { value: 'abc' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /^Alihkan$/ }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(/minimal 5 karakter/);
+    expect(mock.rpc.mock.calls.filter(([n]) => n === 'admin_alihkan')).toHaveLength(0);
+
+    const sebelum = jumlahMuat(mock);
+    fireEvent.change(within(dialog).getByLabelText(/Alasan pengalihan/), { target: { value: '  salah pilih layanan  ' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /^Alihkan$/ }));
+    await waitFor(() =>
+      expect(mock.rpc).toHaveBeenCalledWith('admin_alihkan', { p_tiket_id: 't-1', p_layanan_tujuan: 'l-2', p_alasan: 'salah pilih layanan' }),
+    );
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith('Tiket A-001 dialihkan ke BPJS Kesehatan (nomor baru BP-003)', 'success'),
+    );
+    await waitFor(() => expect(jumlahMuat(mock)).toBeGreaterThan(sebelum));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('petugas_hadir=false: pemberitahuan tambahan (bukan galat)', async () => {
+    const mock = buildMock({
+      rows: [eskalasi()], role: 'admin', layananTujuan,
+      rpc: { admin_alihkan: { data: { ok: true, nomor_display: 'BP-003', layanan_nama: 'BPJS Kesehatan', petugas_hadir: false }, error: null } },
+    });
+    const { dialog } = await bukaDialog(mock);
+    fireEvent.change(within(dialog).getByLabelText(/Layanan tujuan/), { target: { value: 'l-2' } });
+    fireEvent.change(within(dialog).getByLabelText(/Alasan pengalihan/), { target: { value: 'alasan cukup' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /^Alihkan$/ }));
+    await waitFor(() => expect(toastMock).toHaveBeenCalledWith(expect.stringContaining('Belum ada petugas layanan tujuan'), 'info'));
+  });
+
+  it('tombol dikunci selama request', async () => {
+    let selesaikan: (v: HasilRpc) => void = () => {};
+    const tertunda = new Promise<HasilRpc>((r) => { selesaikan = r; });
+    const mock = buildMock({ rows: [eskalasi()], role: 'admin', layananTujuan, rpc: { admin_alihkan: tertunda } });
+    const { dialog } = await bukaDialog(mock);
+    fireEvent.change(within(dialog).getByLabelText(/Layanan tujuan/), { target: { value: 'l-2' } });
+    fireEvent.change(within(dialog).getByLabelText(/Alasan pengalihan/), { target: { value: 'alasan cukup' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /^Alihkan$/ }));
+    const sibuk = await within(dialog).findByRole('button', { name: /memproses/i });
+    expect(sibuk).toBeDisabled();
+    expect(sibuk).toHaveAttribute('aria-busy', 'true');
+    fireEvent.submit(sibuk.closest('form')!);
+    expect(mock.rpc.mock.calls.filter(([n]) => n === 'admin_alihkan')).toHaveLength(1);
+    selesaikan({ data: { ok: true, nomor_display: 'BP-003' }, error: null });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it.each([
+    ['LAYANAN_SAMA: layanan tujuan sama', /Layanan tujuan sama dengan layanan tiket/, false],
+    ['LAYANAN_TIDAK_VALID: layanan tidak aktif', /Layanan tujuan tidak valid/, false],
+    ['ALASAN_WAJIB: alasan 5-500', /minimal 5 karakter/, false],
+    ['TIKET_LAMA: tiket alur visit', /alur lama/, true],
+    ['INVALID_STATUS: tiket sudah selesai', /Status tiket sudah berubah/, true],
+    ['FORBIDDEN: hanya Admin', /tidak berwenang/, false],
+    ['SESI_TIDAK_SAH: sesi berakhir', /Sesi Anda sudah tidak berlaku/, false],
+    ['DIVERGENSI: visit tidak sinkron', /tidak sinkron/, false],
+  ])('galat "%s" dipetakan ke pesan Indonesia di dialog (muat ulang daftar: %s)', async (pesanDb, pola, muatUlang) => {
+    const mock = buildMock({
+      rows: [eskalasi()], role: 'admin', layananTujuan,
+      rpc: { admin_alihkan: { data: null, error: { message: pesanDb, code: 'P0001' } } },
+    });
+    const { dialog } = await bukaDialog(mock);
+    fireEvent.change(within(dialog).getByLabelText(/Layanan tujuan/), { target: { value: 'l-2' } });
+    fireEvent.change(within(dialog).getByLabelText(/Alasan pengalihan/), { target: { value: 'alasan cukup' } });
+    const sebelum = jumlahMuat(mock);
+    fireEvent.click(within(dialog).getByRole('button', { name: /^Alihkan$/ }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(pola);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    if (muatUlang) await waitFor(() => expect(jumlahMuat(mock)).toBeGreaterThan(sebelum));
+    expect(toastMock).not.toHaveBeenCalledWith(expect.stringContaining('dialihkan'), 'success');
+  });
+
+  it('Escape menutup dan fokus kembali ke tombol pemicu', async () => {
+    const mock = buildMock({ rows: [eskalasi()], role: 'admin', layananTujuan });
+    render(<AntrianPage />);
+    const pemicu = await screen.findByRole('button', { name: /Alihkan tiket A-001/i });
+    pemicu.focus();
+    fireEvent.click(pemicu);
+    await screen.findByRole('dialog');
+    expect(mock.rpc).not.toHaveBeenCalled();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(pemicu).toHaveFocus();
   });
 });

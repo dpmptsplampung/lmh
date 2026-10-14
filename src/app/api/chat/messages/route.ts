@@ -124,7 +124,7 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await adminClient
     .from('chat_pesan')
-    .select('id, pengirim, isi, created_at, client_uuid')
+    .select('id, pengirim, isi, created_at, client_uuid, jenis_jawaban')
     .eq('sesi_id', parsed.data.sesi_id)
     .order('created_at', { ascending: true });
 
@@ -191,14 +191,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Sesi sudah selesai' }, { status: 409 });
   }
 
-  // Server menegakkan aturan yang digerbangkan UI: petugas (bukan admin/FO)
-  // hanya boleh membalas sesi yang ia pegang sendiri.
-  if (actor.kind === 'staff' && actor.role === 'petugas') {
+  // Tahap C (kontrak FO-CHAT §4.3): SEMUA staf (petugas, FO, Admin) hanya boleh membalas sesi yang sedang ia
+  // pegang lewat chat_ambil (status 'aktif' dan ditangani_oleh = dirinya). Sesi bot/eskalasi -> ambil dulu;
+  // Admin pun harus mengambil (alasan wajib bila merebut dari staf lain) sebelum membalas.
+  if (actor.kind === 'staff') {
     const held = sesiData.ditangani_oleh as string | null | undefined;
-    if (sesiData.status === 'bot') {
+    if (sesiData.status !== 'aktif') {
       return NextResponse.json({ error: 'Ambil alih sesi terlebih dahulu', code: 'perlu_takeover' }, { status: 409 });
     }
-    if (sesiData.status === 'aktif' && held && held !== actor.petugasId) {
+    if (!held || held !== actor.petugasId) {
       return NextResponse.json({ error: 'Sesi sedang ditangani petugas lain', code: 'dipegang_lain' }, { status: 409 });
     }
   }
@@ -217,7 +218,7 @@ export async function POST(request: NextRequest) {
           isi: parsed.data.isi.trim(),
           client_uuid: parsed.data.client_uuid ?? null,
         })
-        .select('id, pengirim, isi, created_at, client_uuid')
+        .select('id, pengirim, isi, created_at, client_uuid, jenis_jawaban')
         .single(),
     );
   } catch (e) {
@@ -227,7 +228,7 @@ export async function POST(request: NextRequest) {
     if (kodeDb === '23505' && parsed.data.client_uuid) {
       const existing = await adminClient
         .from('chat_pesan')
-        .select('id, pengirim, isi, created_at, client_uuid')
+        .select('id, pengirim, isi, created_at, client_uuid, jenis_jawaban')
         .eq('sesi_id', parsed.data.sesi_id)
         .eq('client_uuid', parsed.data.client_uuid)
         .maybeSingle();

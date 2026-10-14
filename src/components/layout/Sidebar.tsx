@@ -35,6 +35,12 @@ import {
   BookUser,
   History,
   Sparkles,
+  Inbox,
+  ClipboardList,
+  ListChecks,
+  Tags,
+  FileSpreadsheet,
+  Gauge,
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
@@ -72,6 +78,12 @@ const ICONS: Record<AdminNavEntry['iconKey'], React.ReactNode> = {
   bukuTamu:  <BookUser size={20} />,
   riwayat:   <History size={20} />,
   ai:        <Sparkles size={20} />,
+  kotakMasuk: <Inbox size={20} />,
+  penanganan: <ClipboardList size={20} />,
+  daftarFo:  <ListChecks size={20} />,
+  topik:     <Tags size={20} />,
+  rekapFo:   <FileSpreadsheet size={20} />,
+  performa:  <Gauge size={20} />,
 };
 
 const navItems = ADMIN_NAV.map((entry) => ({

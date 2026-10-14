@@ -105,6 +105,12 @@ describe('layanan', () => {
     expect((await m.PATCH(req('PATCH', { chatbot_aktif: true }), ctx)).status).toBe(400);
     expect((await m.PATCH(req('PATCH', { aktif: false }), ctx)).status).toBe(400);
     expect((await m.PATCH(req('PATCH', { prefiks: '12' }), ctx)).status).toBe(400);
+    // Prefiks TEPAT 2 huruf (migrasi 202610140003): 1 atau 3 huruf dan campuran angka ditolak sebelum menyentuh DB.
+    for (const salah of ['A', 'ABC', 'A1', 'A-', 'ÄB']) {
+      const res = await m.PATCH(req('PATCH', { prefiks: salah }), ctx);
+      expect(res.status, `prefiks "${salah}"`).toBe(400);
+      expect((await res.json()).error).toMatch(/tepat 2 huruf/);
+    }
     expect((await m.PATCH(req('PATCH', {}), ctx)).status).toBe(400);
     expect((await m.PATCH(req('PATCH', { status_tampilan: 'tampil' }), ctx)).status).toBe(400);
   });
@@ -118,6 +124,43 @@ describe('layanan', () => {
       nomor_loket: '3', tampil_di_layar: false, status_tampilan: 'coming_soon', prefiks_antrean: 'AB',
     });
     expect(s.svcCalls.layanan).toBeUndefined();
+  });
+
+  it('PATCH: prefiks kosong / null = minta kode otomatis (prefiks_antrean dikirim null); spasi dipangkas', async () => {
+    for (const nilai of [null, '', '   ']) {
+      vi.resetModules();
+      const s = await setup({ tables: { layanan: { data: { id: ID } } } });
+      const { PATCH } = await import('./layanan/[id]/route');
+      expect((await PATCH(req('PATCH', { prefiks: nilai }), ctx)).status).toBe(200);
+      expect(callOf(s.calls, 'layanan', 'update')?.[0]).toEqual({ prefiks_antrean: null });
+    }
+    vi.resetModules();
+    const s = await setup({ tables: { layanan: { data: { id: ID } } } });
+    const { PATCH } = await import('./layanan/[id]/route');
+    expect((await PATCH(req('PATCH', { prefiks: ' bm ' }), ctx)).status).toBe(200);
+    expect(callOf(s.calls, 'layanan', 'update')?.[0]).toEqual({ prefiks_antrean: 'BM' });
+  });
+
+  it('PATCH: bentrok UNIQUE prefiks (23505) = 409 PREFIKS_BENTROK dengan pesan khusus; format ditolak CHECK (23514) = 422', async () => {
+    await setup({
+      tables: { layanan: { data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint "uq_layanan_prefiks_antrean"' } } },
+    });
+    let res = await (await import('./layanan/[id]/route')).PATCH(req('PATCH', { prefiks: 'OS' }), ctx);
+    expect(res.status).toBe(409);
+    let json = await res.json();
+    expect(json.kode).toBe('PREFIKS_BENTROK');
+    expect(json.error).toMatch(/Prefiks antrean sudah dipakai/);
+    expect(JSON.stringify(json)).not.toContain('uq_layanan_prefiks_antrean');
+
+    vi.resetModules();
+    await setup({
+      tables: { layanan: { data: null, error: { code: '23514', message: 'new row for relation "layanan" violates check constraint "layanan_prefiks_antrean_format"' } } },
+    });
+    res = await (await import('./layanan/[id]/route')).PATCH(req('PATCH', { prefiks: 'OS' }), ctx);
+    expect(res.status).toBe(422);
+    json = await res.json();
+    expect(json.kode).toBe('PREFIKS_FORMAT');
+    expect(json.error).toMatch(/tepat 2 huruf/);
   });
 
   it('PATCH: 404 bila tidak ada, 409 bila nama/prefiks bentrok', async () => {

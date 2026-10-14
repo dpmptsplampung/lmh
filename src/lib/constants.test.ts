@@ -39,3 +39,20 @@ describe('KATEGORI_PENGUNJUNG', () => {
     expect(KATEGORI_PENGUNJUNG.Instansi).toBeTruthy();
   });
 });
+
+describe('status tiket/kunjungan baru (kontrak FO §1.3/§1.4)', () => {
+  it('STATUS_TIKET memuat dikembalikan & dialihkan; setiap status punya label', async () => {
+    const { STATUS_TIKET, LABEL_STATUS_TIKET } = await import('./constants');
+    expect(Object.values(STATUS_TIKET)).toEqual(expect.arrayContaining(['dikembalikan', 'dialihkan']));
+    for (const s of Object.values(STATUS_TIKET)) expect(LABEL_STATUS_TIKET[s]).toBeTruthy();
+  });
+
+  it("ASAL_KUNJUNGAN memuat 'online' dan setiap asal punya label; status kunjungan lengkap", async () => {
+    const { ASAL_KUNJUNGAN, LABEL_ASAL_KUNJUNGAN, STATUS_KUNJUNGAN_DB } = await import('./constants');
+    expect(Object.values(ASAL_KUNJUNGAN).sort()).toEqual(['online', 'reservasi', 'walk_in']);
+    for (const a of Object.values(ASAL_KUNJUNGAN)) expect(LABEL_ASAL_KUNJUNGAN[a]).toBeTruthy();
+    expect(Object.values(STATUS_KUNJUNGAN_DB).sort()).toEqual(
+      ['batal', 'dilayani', 'menunggu', 'no_show', 'selesai', 'terjadwal', 'tidak_terlayani'],
+    );
+  });
+});

@@ -14,11 +14,11 @@ const row0 = () => ({
 
 vi.mock('@/components/Toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock('@/components/layout/PageHeader', () => ({ default: () => null }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }));
 vi.mock('@/lib/supabase/client', () => {
   const q = (data: unknown) => {
     const b: Record<string, unknown> = {};
-    b.select = () => b;
-    b.eq = () => b;
+    for (const m of ['select', 'eq', 'in', 'is', 'order']) b[m] = () => b;
     b.maybeSingle = () => Promise.resolve({ data });
     b.then = (r: (v: unknown) => unknown) => Promise.resolve({ data: Array.isArray(data) ? data : [data] }).then(r);
     return b;
@@ -29,7 +29,8 @@ vi.mock('@/lib/supabase/client', () => {
       auth: { getUser: () => Promise.resolve({ data: { user: { id: 'u1' } } }) },
       from: (t: string) =>
         t === 'petugas' ? q({ id: ME, role: 'petugas', layanan_id: 'l1', nama: 'Budi' })
-        : t === 'layanan' ? q({ id: 'l1', nama: 'Helpdesk OSS' })
+        : t === 'layanan' ? q({ id: 'l1', nama: 'Helpdesk OSS', aktif: true, punya_chat: true })
+        : t === 'penanganan' ? q([])
         : q({ kontak_pengunjung: 'Ani' }),
       rpc: () => Promise.resolve({ data: [row], error: null }),
       channel: () => channel,
@@ -40,13 +41,13 @@ vi.mock('@/lib/supabase/client', () => {
 
 import AdminChatPage from './page';
 
-describe('admin chat: Ambil Alih -> kotak balasan', () => {
+describe('admin chat: Ambil Chat -> kotak balasan', () => {
   beforeEach(() => {
     row = row0();
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       if (String(url).includes('/api/chat/sesi')) {
         row = { ...row, status: 'aktif', ditangani_oleh: ME };
-        return { ok: true, status: 200, json: async () => ({ ok: true, status: 'aktif' }) };
+        return { ok: true, status: 200, json: async () => ({ ok: true, aksi: 'takeover', data: { ok: true, peran_tahap: 'layanan' } }) };
       }
       return { ok: true, status: 200, json: async () => ({ messages: [], status: row.status }) };
     }));
@@ -54,10 +55,10 @@ describe('admin chat: Ambil Alih -> kotak balasan', () => {
   });
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
-  it('kotak balasan muncul dan aktif setelah petugas mengambil alih', async () => {
+  it('kotak balasan muncul dan aktif setelah petugas mengambil chat', async () => {
     render(<AdminChatPage />);
     fireEvent.click(await screen.findByRole('button', { name: /Helpdesk OSS/ }));
-    fireEvent.click(await screen.findByRole('button', { name: /Ambil Alih Chat/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Ambil Chat/ }));
     await waitFor(() => expect(screen.getByText(/Ditangani oleh Anda/)).toBeTruthy());
     // chatscope menaruh placeholder di atribut data-placeholder pada editor contenteditable.
     await waitFor(() => {
@@ -70,9 +71,9 @@ describe('admin chat: Ambil Alih -> kotak balasan', () => {
   it('kembali ke daftar menandai sesi terbaca: titik unread tidak muncul lagi', async () => {
     render(<AdminChatPage />);
     fireEvent.click(await screen.findByRole('button', { name: /Helpdesk OSS/ }));
-    // Pesan baru masuk saat sesi terbuka (refetch daftar lewat Ambil Alih).
+    // Pesan baru masuk saat sesi terbuka (refetch daftar lewat Ambil Chat).
     row = { ...row, last_pesan_at: '2026-01-01T00:05:00Z' };
-    fireEvent.click(await screen.findByRole('button', { name: /Ambil Alih Chat/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Ambil Chat/ }));
     await waitFor(() => expect(screen.getByText(/Ditangani oleh Anda/)).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: /Daftar sesi/ }));
     const item = await screen.findByRole('button', { name: /Helpdesk OSS/ });

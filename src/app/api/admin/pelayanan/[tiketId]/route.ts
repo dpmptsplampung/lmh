@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { MutasiError, mutasiInsert, mutasiWajibBaris } from '@/lib/supabase/mutate';
 import { catatMutasiGagal } from '@/app/api/admin/_mutasi';
 import {
-  determineFormType,
+  formPendataanLayanan,
   canAccessPelayananStaff,
   bolehSelesaikanTiket,
   kodeGalatAntrean,
+  MAX_CATATAN_LAYANAN,
   PESAN_GALAT_ANTREAN,
   type KodeGalatAntrean,
 } from '@/lib/pelayanan';
@@ -35,8 +37,9 @@ function responsGagalDraf(e: MutasiError, pesanUmum: string) {
   return NextResponse.json({ error: pesanUmum }, { status: 400 });
 }
 
-// Status HTTP per kode galat RPC antrean (migrasi 202610140002). SESI_TIDAK_SAH = 401 (sesi tidak berlaku lagi,
-// klien harus masuk ulang); pelanggaran kepemilikan/peran = 403; konflik status (kalah balapan) = 409.
+// Status HTTP per kode galat RPC antrean (migrasi 202610140002 dan 202610140004). SESI_TIDAK_SAH = 401 (sesi tidak
+// berlaku lagi, klien harus masuk ulang); pelanggaran kepemilikan/peran = 403; konflik status (kalah balapan) = 409;
+// isian tidak valid (topik/catatan/alasan/layanan) = 422, sama seperti ALASAN_WAJIB / INVALID_FORM.
 const STATUS_GALAT_ANTREAN: Record<KodeGalatAntrean, number> = {
   SESI_TIDAK_SAH: 401,
   BUKAN_PEMILIK: 403,
@@ -49,6 +52,18 @@ const STATUS_GALAT_ANTREAN: Record<KodeGalatAntrean, number> = {
   TRANSISI_LEWAT_RPC: 409,
   ALASAN_WAJIB: 422,
   INVALID_FORM: 422,
+  INVALID_PAYLOAD: 422,
+  TOPIK_WAJIB: 422,
+  TOPIK_TIDAK_VALID: 422,
+  CATATAN_WAJIB: 422,
+  CATATAN_TERLALU_PANJANG: 422,
+  LAYANAN_SAMA: 422,
+  LAYANAN_TIDAK_VALID: 422,
+  TIKET_LAMA: 409,
+  // 202610140012: tiket bukan hari ini / layanan tujuan libur atau tutup (konflik keadaan, bukan isian salah).
+  BUKAN_HARI_INI: 409,
+  LAYANAN_TIDAK_BUKA: 409,
+  LAYANAN_TUTUP: 409,
 };
 
 function responsGalatAntrean(kode: KodeGalatAntrean, pesan?: string) {
@@ -96,14 +111,14 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // 2. Ambil Tiket, Layanan, Kunjungan, dan Visit
+    // 2. Ambil Tiket, Layanan, dan Kunjungan (visit = arsip baca-saja sejak WP-24; tidak dibaca lagi)
     const { data: tiket, error: tiketErr } = await supabase
       .from('tiket_antrean')
       .select(`
-        id, legacy_visit_id, nomor_display, status, layanan_id, dilayani_oleh,
-        layanan:layanan_id(id, nama),
+        id, legacy_visit_id, nomor_display, status, layanan_id, dilayani_oleh, penanganan_asal_id,
+        layanan:layanan_id(id, nama, form_pendataan),
         pelayan:dilayani_oleh(nama),
-        kunjungan:kunjungan_id(id, nama, kontak_hp, pengunjung_id)
+        kunjungan:kunjungan_id(id, nama, kontak_hp, pengunjung_id, asal_instansi, email, keperluan)
       `)
       .eq('id', tiketId)
       .maybeSingle();
@@ -121,7 +136,8 @@ export async function GET(
     const kunjunganData = Array.isArray(tiket.kunjungan) ? tiket.kunjungan[0] : tiket.kunjungan;
     const pelayanData = Array.isArray(tiket.pelayan) ? tiket.pelayan[0] : tiket.pelayan;
     const layananNama = layananData?.nama || '';
-    const formType = determineFormType(layananNama);
+    // Jenis form = layanan.form_pendataan (sumber kebenaran DB, migrasi 202610140012).
+    const formType = formPendataanLayanan(layananData);
 
     if (!formType) {
       return NextResponse.json(
@@ -130,22 +146,10 @@ export async function GET(
       );
     }
 
-    // 3. Ambil data registrasi tambahan dari visit / pengunjung bila ada
-    let asalInstansi: string | null = null;
-    let email: string | null = null;
-    let keperluan: string | null = null;
-
-    if (tiket.legacy_visit_id) {
-      const { data: v } = await supabase
-        .from('visit')
-        .select('asal_instansi, keperluan, pengunjung_id')
-        .eq('id', tiket.legacy_visit_id)
-        .maybeSingle();
-      if (v) {
-        asalInstansi = v.asal_instansi;
-        keperluan = v.keperluan;
-      }
-    }
+    // 3. Data registrasi tambahan: kolom kunjungan (walk-in FO / reservasi), lalu profil pengunjung bila ada.
+    let asalInstansi: string | null = kunjunganData?.asal_instansi ?? null;
+    let email: string | null = kunjunganData?.email ?? null;
+    const keperluan: string | null = kunjunganData?.keperluan ?? null;
 
     const pengunjungId = kunjunganData?.pengunjung_id;
     if (pengunjungId) {
@@ -190,6 +194,20 @@ export async function GET(
       }
     }
 
+    // Tiket hasil eskalasi FO: petugas wajib memilih topik layanan (dan menulis catatan) saat menyelesaikan.
+    const dariEskalasi = !!tiket.penanganan_asal_id;
+    let topikPilihan: { id: string; nama: string }[] = [];
+    if (dariEskalasi) {
+      const { data: tp } = await supabase
+        .from('topik_penanganan')
+        .select('id, nama')
+        .eq('aktif', true)
+        .eq('layanan_id', tiket.layanan_id)
+        .order('urut')
+        .order('nama');
+      topikPilihan = (tp ?? []) as { id: string; nama: string }[];
+    }
+
     const responsePayload: PelayananInitialData = {
       tiket_id: tiket.id,
       legacy_visit_id: tiket.legacy_visit_id,
@@ -206,6 +224,8 @@ export async function GET(
       dilayani_oleh: tiket.dilayani_oleh ?? null,
       dilayani_oleh_nama: pelayanData?.nama ?? null,
       boleh_ubah: !isLocked && bolehSelesaikanTiket(staff, { status: tiket.status, dilayani_oleh: tiket.dilayani_oleh }),
+      dari_eskalasi: dariEskalasi,
+      topik_pilihan: topikPilihan,
       is_locked: isLocked,
       status_draft: statusDraft,
       data_oss: dataOss,
@@ -246,7 +266,7 @@ export async function PATCH(
     // 2. Ambil Tiket
     const { data: tiket } = await supabase
       .from('tiket_antrean')
-      .select('id, kunjungan_id, layanan_id, status, dilayani_oleh, layanan:layanan_id(nama)')
+      .select('id, kunjungan_id, layanan_id, status, dilayani_oleh, layanan:layanan_id(nama, form_pendataan)')
       .eq('id', tiketId)
       .maybeSingle();
 
@@ -259,7 +279,7 @@ export async function PATCH(
     }
 
     const layananData = Array.isArray(tiket.layanan) ? tiket.layanan[0] : tiket.layanan;
-    const formType = determineFormType(layananData?.nama || '');
+    const formType = formPendataanLayanan(layananData);
 
     if (!formType) {
       return NextResponse.json({ error: 'Layanan tidak valid' }, { status: 400 });
@@ -399,7 +419,7 @@ export async function POST(
     // 2. Ambil Tiket
     const { data: tiket } = await supabase
       .from('tiket_antrean')
-      .select('id, legacy_visit_id, kunjungan_id, layanan_id, layanan:layanan_id(nama)')
+      .select('id, legacy_visit_id, kunjungan_id, layanan_id, layanan:layanan_id(nama, form_pendataan)')
       .eq('id', tiketId)
       .maybeSingle();
 
@@ -412,7 +432,7 @@ export async function POST(
     }
 
     const layananData = Array.isArray(tiket.layanan) ? tiket.layanan[0] : tiket.layanan;
-    const formType = determineFormType(layananData?.nama || '');
+    const formType = formPendataanLayanan(layananData);
 
     if (!formType) {
       return NextResponse.json({ error: 'Layanan tidak valid' }, { status: 400 });
@@ -420,15 +440,19 @@ export async function POST(
 
     const body = await request.json();
 
+    // Topik + catatan penanganan (tiket hasil eskalasi FO) dibawa wizard di body, terpisah dari isi form pendataan.
+    const bodyObj = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
+    const { topik_id: topikRaw, catatan_penanganan: catatanRaw, ...isiForm } = bodyObj;
+
     // Validasi ketat field wajib di server sebelum finalize
     let finalData: Record<string, unknown>;
     if (formType === 'oss') {
-      // Validasi ketat field wajib OSS: nama_pemohon, nama_usaha, uraian_solusi, tindak_lanjut
-      const parsed = ossPelayananFinalSchema.safeParse(body);
+      // Validasi ketat OSS: SEMUA field wajib non-kosong (keputusan CEO G.5; server DB 202610140011 menegakkan hal sama)
+      const parsed = ossPelayananFinalSchema.safeParse(isiForm);
       if (!parsed.success) {
         return NextResponse.json(
           {
-            error: 'Lengkapi semua field wajib sebelum menyelesaikan layanan (nama usaha, uraian, tindak lanjut)',
+            error: 'Lengkapi SEMUA field pendataan sebelum menyelesaikan layanan (isi "Belum ada" / "Tidak berlaku" bila tidak ada, atau "-" untuk catatan)',
             details: parsed.error.flatten().fieldErrors,
           },
           { status: 422 }
@@ -436,12 +460,12 @@ export async function POST(
       }
       finalData = parsed.data;
     } else {
-      // Validasi ketat field wajib Perizinan: nama_pemohon, nama_perusahaan, opd_teknis, uraian_permohonan, tindak_lanjut
-      const parsed = perizinanPelayananFinalSchema.safeParse(body);
+      // Validasi ketat Perizinan: SEMUA field wajib non-kosong (keputusan CEO G.5)
+      const parsed = perizinanPelayananFinalSchema.safeParse(isiForm);
       if (!parsed.success) {
         return NextResponse.json(
           {
-            error: 'Lengkapi semua field wajib sebelum menyelesaikan perizinan (nama perusahaan, OPD teknis, uraian permohonan, tindak lanjut)',
+            error: 'Lengkapi SEMUA field pendataan sebelum menyelesaikan perizinan (isi "Belum ada" / "Tidak berlaku" bila tidak ada, atau "-" untuk catatan)',
             details: parsed.error.flatten().fieldErrors,
           },
           { status: 422 }
@@ -450,12 +474,32 @@ export async function POST(
       finalData = parsed.data;
     }
 
-    // Selesaikan atomik via RPC layanan_selesai (migrasi 202610140002): hanya pemilik tiket (dilayani_oleh =
-    // pemanggil) dengan sesi sah; upsert data + kunci + selesaikan tiket/visit dalam SATU transaksi DB.
+    // Topik + catatan: bentuknya dicek di sini (uuid / panjang). WAJIB-nya untuk tiket hasil eskalasi ditegakkan DB
+    // (TOPIK_WAJIB / CATATAN_WAJIB / TOPIK_TIDAK_VALID) sebelum apa pun ditulis; tiket lama mengabaikannya.
+    let topikId: string | null = null;
+    if (topikRaw !== undefined && topikRaw !== null && topikRaw !== '') {
+      if (typeof topikRaw !== 'string' || !z.uuid().safeParse(topikRaw).success) {
+        return responsGalatAntrean('TOPIK_TIDAK_VALID');
+      }
+      topikId = topikRaw;
+    }
+    let catatan: string | null = null;
+    if (catatanRaw !== undefined && catatanRaw !== null) {
+      if (typeof catatanRaw !== 'string') return responsGalatAntrean('CATATAN_WAJIB');
+      const bersih = catatanRaw.trim();
+      if (bersih.length > MAX_CATATAN_LAYANAN) return responsGalatAntrean('CATATAN_TERLALU_PANJANG');
+      catatan = bersih === '' ? null : bersih;
+    }
+
+    // Selesaikan atomik via RPC layanan_selesai (migrasi 202610140002; 5 parameter sejak 202610140004): hanya pemilik
+    // tiket (dilayani_oleh = pemanggil) dengan sesi sah; upsert data + kunci + selesaikan tiket/penanganan
+    // dalam SATU transaksi DB.
     const { data: rpcData, error: rpcErr } = await supabase.rpc('layanan_selesai', {
       p_tiket_id: tiketId,
       p_form_type: formType,
       p_payload: finalData,
+      p_topik_id: topikId,
+      p_catatan: catatan,
     });
 
     if (rpcErr) {
@@ -508,13 +552,13 @@ export async function PUT(
 
     const { data: tiket } = await supabase
       .from('tiket_antrean')
-      .select('id, layanan:layanan_id(nama)')
+      .select('id, layanan:layanan_id(nama, form_pendataan)')
       .eq('id', tiketId)
       .maybeSingle();
     if (!tiket) return NextResponse.json({ error: 'Tiket tidak ditemukan' }, { status: 404 });
 
     const layananData = Array.isArray(tiket.layanan) ? tiket.layanan[0] : tiket.layanan;
-    const formType = determineFormType(layananData?.nama || '');
+    const formType = formPendataanLayanan(layananData);
     if (!formType) return NextResponse.json({ error: 'Layanan tidak valid' }, { status: 400 });
 
     let body: { perubahan?: unknown; alasan?: unknown };

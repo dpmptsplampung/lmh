@@ -1,16 +1,19 @@
 // src/lib/offline/queue.ts — IndexedDB offline action queue (I9.2)
-// Stores user actions (checkin, investasi_lead, umkm_inquiry) when offline,
-// replayed by replay.ts when connection is restored or background sync fires.
+// Antrean offline HANYA untuk Front Office (audit T3): pendaftaran walk-in ('fo_walkin') yang ditulis saat
+// jaringan putus. Diputar ulang oleh replay.ts (saat 'online', saat halaman dibuka, atau Background Sync).
+// Pengunjung tidak lagi menulis apa pun dari klien, sehingga tipe lama ('checkin', 'investasi_lead',
+// 'umkm_inquiry') tidak dibuat lagi; rekaman lama di perangkat dibuang oleh replay.
 
-export type ActionType = 'checkin' | 'investasi_lead' | 'umkm_inquiry';
+export type ActionType = 'fo_walkin';
 
 export interface QueuedAction {
   id: string;
-  type: ActionType;
+  /** Bisa berisi tipe lama dari versi aplikasi sebelumnya (dibuang saat replay). */
+  type: ActionType | (string & {});
   payload: Record<string, unknown>;
   created_at: number;
   synced: 0 | 1;
-  /** Auth user id when known — used to isolate multi-user browser queues */
+  /** Auth user id pemilik antrean — item milik akun lain di perangkat bersama TIDAK diputar ulang. */
   owner_user_id?: string | null;
 }
 
@@ -56,8 +59,9 @@ function generateId(): string {
 }
 
 export async function enqueueAction(
-  action: Omit<QueuedAction, 'id' | 'created_at' | 'synced'>,
+  action: { type: ActionType; payload: Record<string, unknown>; owner_user_id: string },
 ): Promise<string> {
+  if (!action.owner_user_id) throw new Error('owner_user_id wajib untuk antrean offline');
   const id = generateId();
   const record: QueuedAction = {
     id,
@@ -65,7 +69,7 @@ export async function enqueueAction(
     payload: action.payload,
     created_at: Date.now(),
     synced: 0,
-    owner_user_id: action.owner_user_id ?? null,
+    owner_user_id: action.owner_user_id,
   };
   const db = await openDB();
   return new Promise<string>((resolve, reject) => {
@@ -103,10 +107,15 @@ export async function getQueue(): Promise<QueuedAction[]> {
   }
 }
 
+/**
+ * `ownerUserId` tidak diberikan (undefined) = semua item (hanya untuk diagnosis). Diberikan tetapi kosong/null
+ * (pemilik tidak diketahui) = TIDAK ADA item: jangan pernah memutar ulang antrean orang lain (audit T3c).
+ */
 export async function getPending(ownerUserId?: string | null): Promise<QueuedAction[]> {
   const all = await getQueue();
   const pending = all.filter((a) => a.synced === 0);
-  if (ownerUserId == null || ownerUserId === '') return pending;
+  if (ownerUserId === undefined) return pending;
+  if (ownerUserId === null || ownerUserId === '') return [];
   return pending.filter((a) => a.owner_user_id === ownerUserId);
 }
 

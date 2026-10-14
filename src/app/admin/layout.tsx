@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Sidebar from '@/components/layout/Sidebar';
 import AdminGuard from '@/components/layout/AdminGuard';
 import SesiStafGuard from '@/components/layout/SesiStafGuard';
+import OfflineReplayer from '@/components/admin/OfflineReplayer';
 import styles from './admin.module.css';
 import { APP_NAME } from '@/lib/constants';
 
@@ -22,6 +23,7 @@ export default function AdminLayout({
       <Sidebar />
       <div className={styles.adminContent}>
         <SesiStafGuard />
+        <OfflineReplayer />
         <AdminGuard>{children}</AdminGuard>
       </div>
     </div>

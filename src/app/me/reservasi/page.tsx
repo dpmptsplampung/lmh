@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { todayWIB, addDaysWIB } from '@/lib/time';
 import {
@@ -13,9 +13,20 @@ import {
   Send,
   Clock,
   Users,
+  XCircle,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { mutasiInsert } from '@/lib/supabase/mutate';
+import { GalatRpc } from '@/lib/rpc-galat';
+import {
+  KOLOM_RESERVASI,
+  labelStatusReservasi,
+  panggilReservasiBatalkan,
+  panggilReservasiBuat,
+  pesanGalatReservasiBatal,
+  pesanGalatReservasiBuat,
+  type ReservasiKunjungan,
+} from '@/lib/reservasi';
 import ErrorRetry from '@/components/ErrorRetry';
 import QRCodeDisplay from '@/components/QRCode';
 import styles from './reservasi.module.css';
@@ -44,8 +55,14 @@ export default function ReservasiPage() {
   });
   const [layananOptions, setLayananOptions] = useState<{ id: string; nama: string; status_tampilan?: string; punya_antrean?: boolean }[]>([]);
   const [pengunjungId, setPengunjungId] = useState<string | null>(null);
-  const [pengunjungNama, setPengunjungNama] = useState<string | null>(null);
   const [authUserId, setAuthUserId] = useState<string | null>(null);
+  // Reservasi Saya (kontrak §6.6): baris `kunjungan` milik pengunjung ini.
+  const [daftar, setDaftar] = useState<ReservasiKunjungan[]>([]);
+  const [daftarGagal, setDaftarGagal] = useState(false);
+  const [konfirmasiBatal, setKonfirmasiBatal] = useState<string | null>(null);
+  const [membatalkan, setMembatalkan] = useState<string | null>(null);
+  const [infoBatal, setInfoBatal] = useState('');
+  const [galatBatal, setGalatBatal] = useState('');
   const [loading, setLoading] = useState(false);
   const [loadingInit, setLoadingInit] = useState(true);
   const [error, setError] = useState('');
@@ -53,7 +70,6 @@ export default function ReservasiPage() {
   const [consentGagal, setConsentGagal] = useState(false);
   const [success, setSuccess] = useState<{ qr_token: string; tanggal_rencana: string } | null>(null);
   const [consentGiven, setConsentGiven] = useState(false);
-  const [queuePos, setQueuePos] = useState<{ posisi: number; total_menunggu: number } | null>(null);
   const [estimasiLayanan, setEstimasiLayanan] = useState<{
     antre_count: number;
     estimasi_tunggu_total_menit: number;
@@ -62,6 +78,25 @@ export default function ReservasiPage() {
   // Set min date ke hari ini, max 30 hari ke depan (batas hari memakai Asia/Jakarta — RPT-07)
   const minDate = todayWIB();
   const maxDate = addDaysWIB(MAX_BOOKING_DAYS);
+
+  // Daftar reservasi milik pengunjung (§6.6). Filter pengunjung_id eksplisit: staf yang membuka halaman ini
+  // lolos RLS baca semua `kunjungan`, jadi jangan bergantung pada RLS saja.
+  const muatDaftar = useCallback(async (idPengunjung: string) => {
+    try {
+      const { data, error: daftarError } = await createClient()
+        .from('kunjungan')
+        .select(KOLOM_RESERVASI)
+        .eq('pengunjung_id', idPengunjung)
+        .eq('asal', 'reservasi')
+        .order('tanggal', { ascending: false })
+        .limit(30);
+      if (daftarError) throw daftarError;
+      setDaftar((data ?? []) as unknown as ReservasiKunjungan[]);
+      setDaftarGagal(false);
+    } catch {
+      setDaftarGagal(true);
+    }
+  }, []);
 
   useEffect(() => {
     const supabase = createClient();
@@ -79,7 +114,7 @@ export default function ReservasiPage() {
 
         if (pengunjung) {
           setPengunjungId(pengunjung.id);
-          setPengunjungNama(pengunjung.nama);
+          await muatDaftar(pengunjung.id);
         }
       }
 
@@ -101,7 +136,7 @@ export default function ReservasiPage() {
     }
 
     loadInitData();
-  }, []);
+  }, [muatDaftar]);
 
   // Fetch estimasi antrean untuk layanan yang dipilih (I2)
   useEffect(() => {
@@ -188,7 +223,7 @@ export default function ReservasiPage() {
       setError('Anda harus menyetujui pemrosesan data sesuai Kebijakan Privasi.');
       return;
     }
-    if (!pengunjungId || !pengunjungNama) {
+    if (!pengunjungId) {
       setError('Sesi login tidak ditemukan. Silakan login ulang.');
       return;
     }
@@ -197,7 +232,7 @@ export default function ReservasiPage() {
     try {
       const supabase = createClient();
 
-      // Catat consent PDP sebelum insert visit. Hasilnya WAJIB diperiksa (supabase-js tidak
+      // Catat consent PDP sebelum memanggil rpc reservasi_buat. Hasilnya WAJIB diperiksa (supabase-js tidak
       // melempar, kegagalan kembali sebagai { error }): gagal -> reservasi TIDAK dilanjutkan
       // dan pengguna diminta mencoba lagi (audit S1, K11; pola K-2 di check-in).
       if (authUserId && consentGiven) {
@@ -217,61 +252,49 @@ export default function ReservasiPage() {
         }
       }
 
-      const insertData: Record<string, unknown> = {
-        asal: 'reservasi',
-        pengunjung_id: pengunjungId,
-        nama: pengunjungNama,
+      // Reservasi = baris `kunjungan` (rpc reservasi_buat, kontrak §4.1); tidak lagi menulis `visit`.
+      // Server memvalidasi ulang tanggal/jadwal/kuota dan menyalin data profil.
+      const hasil = await panggilReservasiBuat(supabase, {
         tujuan: form.tujuan,
-        tanggal_rencana: form.tanggal_rencana,
-        keperluan: form.keperluan.trim() || null,
-        status: 'terjadwal',
-      };
-
-      if (form.tujuan === 'loket') {
-        insertData.layanan_id = form.layanan_id;
-      } else {
-        insertData.nama_yang_ditemui = form.nama_yang_ditemui.trim();
-      }
-
-      if (form.jam_rencana) {
-        insertData.jam_rencana = form.jam_rencana;
-      }
-
-      const { data, error: insertError } = await supabase
-        .from('visit')
-        .insert(insertData)
-        .select('qr_token')
-        .single();
-
-      if (insertError) throw insertError;
-      setSuccess({ qr_token: data.qr_token, tanggal_rencana: form.tanggal_rencana });
-      setQueuePos(null);
-      // Tampilkan posisi antrean hanya bila reservasi untuk hari ini.
-      // Defensif: rpc mungkin belum tersedia — sembunyikan blok bila gagal.
-      if (form.tanggal_rencana === minDate) {
-        try {
-          const { data: pos, error: posError } = await supabase
-            .rpc('get_queue_position', { p_qr_token: data.qr_token })
-            .maybeSingle();
-          if (
-            !posError &&
-            pos &&
-            typeof (pos as { posisi?: unknown }).posisi === 'number' &&
-            typeof (pos as { total_menunggu?: unknown }).total_menunggu === 'number'
-          ) {
-            setQueuePos(pos as { posisi: number; total_menunggu: number });
-          }
-        } catch {
-          // posisi antrean opsional — abaikan
-        }
-      }
+        layananId: form.layanan_id,
+        namaYangDitemui: form.nama_yang_ditemui,
+        tanggal: form.tanggal_rencana,
+        jamRencana: form.jam_rencana,
+        keperluan: form.keperluan,
+      });
+      setSuccess({ qr_token: hasil.qrToken, tanggal_rencana: hasil.tanggal });
+      void muatDaftar(pengunjungId);
     } catch (err) {
-      setError('Gagal membuat reservasi. Silakan coba lagi.');
+      setError(pesanGalatReservasiBuat(err));
+      // RESERVASI_GANDA bisa berarti percobaan sebelumnya sudah tersimpan (balasan hilang): segarkan daftar.
+      if (err instanceof GalatRpc && err.kode === 'RESERVASI_GANDA') void muatDaftar(pengunjungId);
       console.error('Reservasi error:', err);
     } finally {
       setLoading(false);
     }
   };
+
+  const batalkan = async (id: string) => {
+    if (membatalkan) return;
+    setMembatalkan(id);
+    setGalatBatal('');
+    setInfoBatal('');
+    try {
+      await panggilReservasiBatalkan(createClient(), id);
+      setInfoBatal('Reservasi dibatalkan.');
+      setKonfirmasiBatal(null);
+    } catch (err) {
+      setGalatBatal(pesanGalatReservasiBatal(err));
+      console.error('Pembatalan reservasi gagal:', err);
+    } finally {
+      setMembatalkan(null);
+      // Status bisa saja berubah di server (mis. sudah check-in): selalu segarkan.
+      if (pengunjungId) void muatDaftar(pengunjungId);
+    }
+  };
+
+  const namaLayananSaran = (id: string | null) =>
+    (id && layananOptions.find((l) => l.id === id)?.nama) || 'Loket Layanan';
 
   if (loadingInit) {
     return (
@@ -308,16 +331,11 @@ export default function ReservasiPage() {
               <div className={styles.qrWrapper}>
                 <QRCodeDisplay value={success.qr_token} size={180} />
                 <p className={styles.qrHint}>
-                  Tunjukkan QR code ini ke petugas saat scan di kantor
+                  Tunjukkan QR code ini ke petugas Front Office untuk dipindai saat tiba di kantor
                 </p>
                 <p className={styles.qrHint}>
-                  Setelah layanan selesai, Anda akan menerima tautan Survei Kepuasan (SKM).
+                  QR ini juga tersimpan di daftar Reservasi Saya di bawah.
                 </p>
-                {queuePos && success.tanggal_rencana === minDate && (
-                  <p role="status" style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--color-primary-700)' }}>
-                    Posisi antrean Anda: {queuePos.posisi} dari {queuePos.total_menunggu} menunggu
-                  </p>
-                )}
               </div>
 
               <div className={styles.successActions}>
@@ -353,7 +371,7 @@ export default function ReservasiPage() {
                 <h1 className={styles.formTitle}>Rencanakan Kedatangan</h1>
                 <p className={styles.formSubtitle}>
                   Booking kunjungan Anda ke kantor DPMPTSP. Setelah selesai, Anda akan mendapatkan QR code
-                  yang bisa di-scan petugas saat tiba.
+                  yang dipindai petugas Front Office saat Anda tiba.
                 </p>
               </div>
 
@@ -576,6 +594,116 @@ export default function ReservasiPage() {
             </>
           )}
         </div>
+
+        {/* Reservasi Saya: baris kunjungan (kontrak §6.6), QR untuk yang masih terjadwal */}
+        <section className={styles.daftarSection} aria-labelledby="reservasi-saya-judul">
+          <h2 id="reservasi-saya-judul" className={styles.daftarTitle}>
+            Reservasi Saya
+          </h2>
+          <div role="status" aria-live="polite">
+            {infoBatal && <p className={styles.daftarInfo}>{infoBatal}</p>}
+          </div>
+          {galatBatal && (
+            <div className="form-error" role="alert" style={{ marginBottom: 'var(--space-3)' }}>
+              {galatBatal}
+            </div>
+          )}
+          {daftarGagal ? (
+            <ErrorRetry
+              judul="Daftar reservasi belum termuat"
+              pesan="Daftar reservasi Anda tidak dapat dimuat saat ini."
+              onRetry={() => {
+                if (pengunjungId) void muatDaftar(pengunjungId);
+              }}
+            />
+          ) : daftar.length === 0 ? (
+            <p className="form-hint">Belum ada reservasi.</p>
+          ) : (
+            <ul className={styles.daftarList}>
+              {daftar.map((r) => {
+                const info = labelStatusReservasi(r.status);
+                const aktif = r.status === 'terjadwal';
+                const sedangBatal = membatalkan === r.id;
+                return (
+                  <li key={r.id} className={styles.reservasiCard}>
+                    {aktif && (
+                      <div className={styles.reservasiQr}>
+                        <QRCodeDisplay value={r.qr_token} size={90} />
+                      </div>
+                    )}
+                    <div className={styles.reservasiInfo}>
+                      <div className={styles.daftarBaris}>
+                        <span style={{ fontWeight: 700 }}>
+                          {r.tujuan === 'bertemu_seseorang'
+                            ? `Bertemu: ${r.nama_yang_ditemui ?? '-'}`
+                            : namaLayananSaran(r.layanan_saran_id)}
+                        </span>
+                        <span className={`badge ${info.className}`}>{info.label}</span>
+                      </div>
+                      <div className={styles.reservasiMeta}>
+                        <CalendarPlus size={14} className={styles.reservasiMetaIcon} aria-hidden="true" />
+                        {new Date(`${r.tanggal}T00:00:00`).toLocaleDateString('id-ID', {
+                          weekday: 'long',
+                          day: 'numeric',
+                          month: 'long',
+                          year: 'numeric',
+                        })}
+                      </div>
+                      {r.jam_rencana && (
+                        <div className={styles.reservasiMeta}>
+                          <Clock size={14} className={styles.reservasiMetaIcon} aria-hidden="true" />
+                          {r.jam_rencana.substring(0, 5)} WIB
+                        </div>
+                      )}
+                      {aktif && (
+                        <>
+                          <p className={styles.daftarCatatan}>
+                            Tunjukkan QR ini ke petugas Front Office saat tiba.
+                          </p>
+                          {konfirmasiBatal === r.id ? (
+                            <div className={styles.daftarAksi}>
+                              <button
+                                type="button"
+                                className="btn btn--danger btn--sm"
+                                onClick={() => void batalkan(r.id)}
+                                disabled={sedangBatal}
+                              >
+                                {sedangBatal ? 'Membatalkan…' : 'Ya, batalkan'}
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn--secondary btn--sm"
+                                onClick={() => setKonfirmasiBatal(null)}
+                                disabled={sedangBatal}
+                              >
+                                Tidak
+                              </button>
+                            </div>
+                          ) : (
+                            <div className={styles.daftarAksi}>
+                              <button
+                                type="button"
+                                className="btn btn--ghost btn--sm"
+                                onClick={() => {
+                                  setInfoBatal('');
+                                  setGalatBatal('');
+                                  setKonfirmasiBatal(r.id);
+                                }}
+                                disabled={membatalkan !== null}
+                              >
+                                <XCircle size={14} aria-hidden="true" /> Batalkan reservasi
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
       </div>
     </div>
   );

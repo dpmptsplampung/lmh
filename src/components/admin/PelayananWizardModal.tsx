@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useId } from 'react';
 import {
   X,
   Loader2,
@@ -16,6 +16,9 @@ import {
   ChevronLeft,
 } from 'lucide-react';
 import { useToast } from '@/components/Toast';
+import { MAX_CATATAN_LAYANAN } from '@/lib/pelayanan';
+import TopikCatatanFields from '@/components/admin/TopikCatatanFields';
+import { useDialogFokus } from '@/components/admin/useDialogFokus';
 import {
   SKALA_USAHA_OPTIONS,
   TIPE_PELAKU_USAHA_OPTIONS,
@@ -25,6 +28,11 @@ import {
   TINDAK_LANJUT_OSS_OPTIONS,
   OPD_TEKNIS_OPTIONS,
   TINDAK_LANJUT_PERIZINAN_OPTIONS,
+  NILAI_BELUM_ADA,
+  NILAI_TIDAK_BERLAKU,
+  NILAI_CATATAN_KOSONG,
+  ossPelayananFinalSchema,
+  perizinanPelayananFinalSchema,
   PelayananInitialData,
   FormPelayananType,
 } from '@/lib/types/pelayanan';
@@ -38,8 +46,39 @@ interface PelayananWizardModalProps {
   onDataBasi?: () => void | Promise<void>;
 }
 
+// Langkah wizard tempat sebuah field berada (untuk memindahkan ke langkah yang galat saat validasi).
+const LANGKAH_FIELD: Record<string, 1 | 2 | 3> = {
+  nama_pemohon: 1,
+  alamat_pemohon: 1,
+  no_hp: 1,
+  email: 1,
+  keperluan_awal: 1,
+  nama_usaha: 2,
+  tipe_pelaku_usaha: 2,
+  status_penanaman_modal: 2,
+  lokasi_usaha: 2,
+  skala_usaha: 2,
+  sektor_usaha_kbli: 2,
+  nama_perusahaan: 2,
+  opd_teknis: 2,
+  uraian_permohonan: 2,
+  uraian_solusi: 3,
+  tindak_lanjut: 3,
+  catatan_internal: 3,
+  catatan_petugas: 3,
+  topik: 3,
+  catatan: 3,
+};
+
+const GAYA_GALAT: React.CSSProperties = { color: 'var(--color-danger-600)', fontSize: 12, marginTop: 4 };
+
 // Kepemilikan tiket (migrasi 202610140002): hanya pemilik tiket yang sedang 'dilayani' (initialData.boleh_ubah)
 // yang boleh menyimpan draf dan menyelesaikan. Selain itu wizard BACA-SAJA (tanpa autosave, tanpa tombol simpan).
+// Tiket HASIL ESKALASI Front Office (initialData.dari_eskalasi): menyelesaikan wajib topik layanan + catatan
+// (layanan_selesai 5 parameter; kontrak FO-ESKALASI §3.2). Catatan diisi otomatis dari Uraian Solusi (OSS) tetapi
+// dapat diubah petugas.
+// Aksesibilitas (audit T8): setiap field berlabel terhubung, dialog role=dialog aria-modal, Escape menutup (dengan
+// konfirmasi bila ada perubahan belum tersimpan), focus trap, fokus kembali ke pemicu, galat role=alert.
 export default function PelayananWizardModal({
   isOpen,
   tiketId,
@@ -48,6 +87,11 @@ export default function PelayananWizardModal({
   onDataBasi,
 }: PelayananWizardModalProps) {
   const { toast } = useToast();
+  const uid = useId();
+  const id = (nama: string) => `${uid}-${nama}`;
+  const idJudul = id('judul');
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const tombolLanjutRef = useRef<HTMLButtonElement>(null);
   const [loading, setLoading] = useState(true);
   const [initialData, setInitialData] = useState<PelayananInitialData | null>(null);
   const [step, setStep] = useState<1 | 2 | 3>(1);
@@ -55,6 +99,9 @@ export default function PelayananWizardModal({
   const [finalizing, setFinalizing] = useState(false);
   const [lastSavedTime, setLastSavedTime] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  // Ada isian yang belum tersimpan sebagai draf (autosave tertunda / gagal) -> Escape meminta konfirmasi.
+  const [adaPerubahan, setAdaPerubahan] = useState(false);
+  const [konfirmasiTutup, setKonfirmasiTutup] = useState(false);
 
   // Form State — Prapopulasi / Umum
   const [namaPemohon, setNamaPemohon] = useState('');
@@ -82,6 +129,11 @@ export default function PelayananWizardModal({
   const [catatanPetugas, setCatatanPetugas] = useState('');
   const [lokasiUsahaPerizinan, setLokasiUsahaPerizinan] = useState('');
 
+  // Form State — penanganan tiket hasil eskalasi FO (topik + catatan; tidak ikut draf, hanya dikirim saat Selesai).
+  const [topikId, setTopikId] = useState('');
+  const [catatanPenanganan, setCatatanPenanganan] = useState('');
+  const [catatanDiubah, setCatatanDiubah] = useState(false);
+
   // Server menolak tulis (bukan pemilik / status berubah) setelah wizard dibuka -> kunci formulir.
   const [ditolakServer, setDitolakServer] = useState(false);
 
@@ -89,6 +141,14 @@ export default function PelayananWizardModal({
   const bacaSaja = isLocked || ditolakServer || !(initialData?.boleh_ubah ?? false);
   const bukanPemilik = !isLocked && !!initialData && initialData.status_tiket === 'dilayani' && !initialData.boleh_ubah;
   const formType: FormPelayananType | null = initialData?.form_type ?? null;
+  const dariEskalasi = initialData?.dari_eskalasi === true;
+  const topikPilihan = initialData?.topik_pilihan ?? [];
+  // Catatan penanganan: sebelum petugas mengubahnya, mengikuti Uraian Solusi (OSS) agar tidak mengetik dua kali.
+  const otomatisDariUraian = dariEskalasi && !catatanDiubah && formType === 'oss';
+  const catatanTampil = catatanDiubah
+    ? catatanPenanganan
+    : otomatisDariUraian ? uraianSolusi.slice(0, MAX_CATATAN_LAYANAN) : catatanPenanganan;
+  const topikCatatanBelumTersimpan = dariEskalasi && (topikId !== '' || catatanDiubah);
   const autosaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Bersihkan autosave tertunda saat komponen unmount agar tidak ada PATCH
@@ -104,12 +164,17 @@ export default function PelayananWizardModal({
 
   // 1. Fetch data saat modal dibuka
   const loadData = useCallback(
-    async (id: string, isCurrent: () => boolean) => {
+    async (idTiket: string, isCurrent: () => boolean) => {
       try {
         setLoading(true);
         setValidationErrors({});
         setDitolakServer(false);
-        const res = await fetch(`/api/admin/pelayanan/${id}`);
+        setAdaPerubahan(false);
+        setKonfirmasiTutup(false);
+        setTopikId('');
+        setCatatanPenanganan('');
+        setCatatanDiubah(false);
+        const res = await fetch(`/api/admin/pelayanan/${idTiket}`);
         if (!res.ok) {
           const err = await res.json();
           throw new Error(err.error || 'Gagal memuat data pelayanan');
@@ -257,6 +322,7 @@ export default function PelayananWizardModal({
         setLastSavedTime(
           d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
         );
+        setAdaPerubahan(false);
       } else {
         const err = await res.json().catch(() => ({}));
         tanganiPenolakan(res.status, (err as { error?: unknown }).error);
@@ -295,11 +361,32 @@ export default function PelayananWizardModal({
 
   const triggerAutosave = useCallback(() => {
     if (bacaSaja || loading) return;
+    setAdaPerubahan(true);
     if (autosaveTimeoutRef.current) clearTimeout(autosaveTimeoutRef.current);
     autosaveTimeoutRef.current = setTimeout(() => {
       saveDraftNow();
     }, 1000);
   }, [bacaSaja, loading, saveDraftNow]);
+
+  // Escape: tutup langsung bila tak ada yang hilang; bila ada perubahan belum tersimpan, minta konfirmasi dulu.
+  const perubahanBelumTersimpan = !bacaSaja && (adaPerubahan || topikCatatanBelumTersimpan);
+  useDialogFokus(isOpen, dialogRef, () => {
+    if (finalizing) return;
+    if (konfirmasiTutup) {
+      setKonfirmasiTutup(false);
+      return;
+    }
+    if (perubahanBelumTersimpan) {
+      setKonfirmasiTutup(true);
+      return;
+    }
+    onClose();
+  });
+
+  // Saat konfirmasi tutup muncul, fokus ke pilihan aman ("Lanjut mengisi").
+  useEffect(() => {
+    if (konfirmasiTutup) tombolLanjutRef.current?.focus();
+  }, [konfirmasiTutup]);
 
   // 3. Finalize / Selesaikan Pelayanan
   const handleFinalize = async () => {
@@ -307,59 +394,70 @@ export default function PelayananWizardModal({
     setValidationErrors({});
     const errors: Record<string, string> = {};
 
-    // Validasi Client-Side
-    if (formType === 'oss') {
-      if (!namaPemohon.trim()) errors.nama_pemohon = 'Nama pemohon wajib diisi';
-      if (!namaUsaha.trim()) errors.nama_usaha = 'Nama usaha wajib diisi';
-      if (!uraianSolusi.trim()) errors.uraian_solusi = 'Uraian solusi / konsultasi wajib diisi';
-      if (!tindakLanjutOss.trim()) errors.tindak_lanjut = 'Tindak lanjut / tindakan wajib diisi';
-    } else {
-      if (!namaPemohon.trim()) errors.nama_pemohon = 'Nama pemohon wajib diisi';
-      if (!namaPerusahaan.trim()) errors.nama_perusahaan = 'Nama perusahaan wajib diisi';
-      if (!opdTeknis.trim()) errors.opd_teknis = 'OPD teknis wajib dipilih / diisi';
-      if (!uraianPermohonan.trim()) errors.uraian_permohonan = 'Uraian permohonan wajib diisi';
-      if (!tindakLanjutPerizinan.trim()) errors.tindak_lanjut = 'Tindak lanjut wajib dipilih / diisi';
+    // Validasi Client-Side: SEMUA field wajib (skema Zod yang sama dengan server; keputusan CEO G.5).
+    const isiMentah =
+      formType === 'oss'
+        ? {
+            nama_pemohon: namaPemohon,
+            alamat_pemohon: alamatPemohon,
+            no_hp: noHp,
+            email,
+            keperluan_awal: keperluanAwal,
+            nama_usaha: namaUsaha,
+            tipe_pelaku_usaha: tipePelakuUsaha,
+            status_penanaman_modal: statusPenanamanModal,
+            lokasi_usaha: lokasiUsaha,
+            skala_usaha: skalaUsaha,
+            sektor_usaha_kbli: sektorUsahaKbli,
+            tindak_lanjut: tindakLanjutOss,
+            uraian_solusi: uraianSolusi,
+            catatan_internal: catatanInternal,
+          }
+        : {
+            nama_pemohon: namaPemohon,
+            alamat_pemohon: alamatPemohon,
+            no_hp: noHp,
+            email,
+            keperluan_awal: keperluanAwal,
+            nama_perusahaan: namaPerusahaan,
+            lokasi_usaha: lokasiUsahaPerizinan,
+            opd_teknis: opdTeknis,
+            uraian_permohonan: uraianPermohonan,
+            tindak_lanjut: tindakLanjutPerizinan,
+            catatan_petugas: catatanPetugas,
+          };
+    const hasilForm = (formType === 'oss' ? ossPelayananFinalSchema : perizinanPelayananFinalSchema).safeParse(isiMentah);
+    if (!hasilForm.success) {
+      for (const isu of hasilForm.error.issues) {
+        const kunci = String(isu.path[0] ?? '');
+        if (kunci && !errors[kunci]) errors[kunci] = isu.message;
+      }
+    }
+    // Tiket hasil eskalasi FO: topik layanan + catatan (1-1000) wajib (kontrak §3.2).
+    const catatanKirim = catatanTampil.trim();
+    if (dariEskalasi) {
+      if (!topikId) errors.topik = 'Topik penanganan wajib dipilih';
+      if (!catatanKirim) errors.catatan = `Catatan penanganan wajib diisi (1-${MAX_CATATAN_LAYANAN} karakter)`;
+      else if (catatanKirim.length > MAX_CATATAN_LAYANAN) {
+        errors.catatan = `Catatan terlalu panjang (maksimal ${MAX_CATATAN_LAYANAN} karakter)`;
+      }
     }
 
     if (Object.keys(errors).length > 0) {
       setValidationErrors(errors);
+      // Pindah ke langkah pertama yang berisi galat agar pesannya terlihat.
+      const langkah = Math.min(...Object.keys(errors).map((k) => LANGKAH_FIELD[k] ?? 3)) as 1 | 2 | 3;
+      setStep(langkah);
       toast('Lengkapi seluruh field wajib bertanda bintang (*)', 'error');
       return;
     }
 
     try {
       setFinalizing(true);
-      const payload =
-        formType === 'oss'
-          ? {
-              nama_pemohon: namaPemohon.trim(),
-              alamat_pemohon: alamatPemohon.trim() || null,
-              no_hp: noHp.trim() || null,
-              email: email.trim() || null,
-              keperluan_awal: keperluanAwal.trim() || null,
-              nama_usaha: namaUsaha.trim(),
-              tipe_pelaku_usaha: tipePelakuUsaha || null,
-              status_penanaman_modal: statusPenanamanModal || null,
-              lokasi_usaha: lokasiUsaha.trim() || null,
-              skala_usaha: skalaUsaha || null,
-              sektor_usaha_kbli: sektorUsahaKbli.trim() || null,
-              tindak_lanjut: tindakLanjutOss.trim(),
-              uraian_solusi: uraianSolusi.trim(),
-              catatan_internal: catatanInternal.trim() || null,
-            }
-          : {
-              nama_pemohon: namaPemohon.trim(),
-              alamat_pemohon: alamatPemohon.trim() || null,
-              no_hp: noHp.trim() || null,
-              email: email.trim() || null,
-              keperluan_awal: keperluanAwal.trim() || null,
-              nama_perusahaan: namaPerusahaan.trim(),
-              opd_teknis: opdTeknis.trim(),
-              uraian_permohonan: uraianPermohonan.trim(),
-              tindak_lanjut: tindakLanjutPerizinan.trim(),
-              catatan_petugas: catatanPetugas.trim() || null,
-              lokasi_usaha: lokasiUsahaPerizinan.trim() || null,
-            };
+      // Lolos validasi di atas: hasilForm.success true (semua field terisi, sudah di-trim).
+      const isiForm = hasilForm.success ? hasilForm.data : isiMentah;
+      // topik_id / catatan_penanganan dipisahkan dari isi form oleh route (diteruskan ke layanan_selesai).
+      const payload = dariEskalasi ? { ...isiForm, topik_id: topikId, catatan_penanganan: catatanKirim } : isiForm;
 
       const res = await fetch(`/api/admin/pelayanan/${tiketId}`, {
         method: 'POST',
@@ -370,6 +468,20 @@ export default function PelayananWizardModal({
       const result = await res.json();
       if (!res.ok) {
         if (tanganiPenolakan(res.status, result.error)) return;
+        // Galat isian topik/catatan dari server: tampilkan pada field-nya (role=alert) di langkah 3.
+        const kode = typeof result.kode === 'string' ? result.kode : '';
+        if (res.status === 422 && /^TOPIK_/.test(kode)) {
+          setValidationErrors({ topik: String(result.error) });
+          setStep(3);
+          toast(String(result.error), 'error');
+          return;
+        }
+        if (res.status === 422 && /^CATATAN_/.test(kode)) {
+          setValidationErrors({ catatan: String(result.error) });
+          setStep(3);
+          toast(String(result.error), 'error');
+          return;
+        }
         throw new Error(result.error || 'Gagal menyelesaikan pelayanan');
       }
 
@@ -385,11 +497,152 @@ export default function PelayananWizardModal({
 
   if (!isOpen) return null;
 
+  // Galat field: pesan role=alert, dirujuk aria-describedby pada field-nya.
+  const galat = (kunci: string) =>
+    validationErrors[kunci] ? (
+      <p id={id(`${kunci}-galat`)} role="alert" className="form-error" style={GAYA_GALAT}>
+        {validationErrors[kunci]}
+      </p>
+    ) : null;
+  const atributGalat = (kunci: string) =>
+    validationErrors[kunci]
+      ? ({ 'aria-invalid': true, 'aria-describedby': id(`${kunci}-galat`) } as const)
+      : ({} as const);
+
+  // Pendataan: SEMUA field wajib (keputusan CEO G.5). Field yang memang tidak ada diisi eksplisit lewat "isian cepat"
+  // (Belum ada / Tidak berlaku; "-" untuk catatan) atau opsi "Tidak berlaku" pada pilihan, bukan dikosongkan.
+  type IsianCepat = { label: string; nilai: string };
+  const CEPAT_TIDAK_BERLAKU: IsianCepat[] = [{ label: NILAI_TIDAK_BERLAKU, nilai: NILAI_TIDAK_BERLAKU }];
+  const CEPAT_USAHA: IsianCepat[] = [
+    { label: NILAI_BELUM_ADA, nilai: NILAI_BELUM_ADA },
+    { label: NILAI_TIDAK_BERLAKU, nilai: NILAI_TIDAK_BERLAKU },
+  ];
+  const CEPAT_CATATAN: IsianCepat[] = [{ label: 'Tidak ada catatan', nilai: NILAI_CATATAN_KOSONG }];
+
+  const tombolCepat = (slug: string, cepat: IsianCepat[] | undefined, set: (v: string) => void) =>
+    !bacaSaja && cepat && cepat.length > 0 ? (
+      <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', marginTop: 4 }}>
+        {cepat.map((c) => (
+          <button
+            key={c.label}
+            type="button"
+            className="btn btn--ghost btn--sm"
+            style={{ fontSize: 12, padding: '2px 8px' }}
+            aria-describedby={id(`${slug}-label`)}
+            onClick={() => {
+              set(c.nilai);
+              triggerAutosave();
+            }}
+          >
+            {c.label}
+          </button>
+        ))}
+      </div>
+    ) : null;
+
+  const medanTeks = (o: {
+    kunci: string;
+    slug: string;
+    label: string;
+    nilai: string;
+    set: (v: string) => void;
+    tipe?: 'text' | 'email' | 'tel';
+    placeholder?: string;
+    rows?: number;
+    daftar?: string;
+    ikon?: React.ReactNode;
+    cepat?: IsianCepat[];
+  }) => (
+    <div className="form-group">
+      <label id={id(`${o.slug}-label`)} htmlFor={id(o.slug)} className="form-label form-label--required">
+        {o.ikon}
+        {o.label}
+      </label>
+      {o.rows ? (
+        <textarea
+          id={id(o.slug)}
+          className="form-textarea"
+          rows={o.rows}
+          value={o.nilai}
+          disabled={bacaSaja}
+          aria-required="true"
+          {...atributGalat(o.kunci)}
+          onChange={(e) => {
+            o.set(e.target.value);
+            triggerAutosave();
+          }}
+          placeholder={o.placeholder}
+        />
+      ) : (
+        <input
+          id={id(o.slug)}
+          type={o.tipe ?? 'text'}
+          list={o.daftar}
+          className="form-input"
+          value={o.nilai}
+          disabled={bacaSaja}
+          aria-required="true"
+          {...atributGalat(o.kunci)}
+          onChange={(e) => {
+            o.set(e.target.value);
+            triggerAutosave();
+          }}
+          placeholder={o.placeholder}
+        />
+      )}
+      {tombolCepat(o.slug, o.cepat, o.set)}
+      {galat(o.kunci)}
+    </div>
+  );
+
+  const medanPilihan = (o: {
+    kunci: string;
+    slug: string;
+    label: string;
+    nilai: string;
+    set: (v: string) => void;
+    opsi: readonly string[];
+    labels?: Record<string, string>;
+  }) => (
+    <div className="form-group">
+      <label id={id(`${o.slug}-label`)} htmlFor={id(o.slug)} className="form-label form-label--required">
+        {o.label}
+      </label>
+      <select
+        id={id(o.slug)}
+        className="form-select"
+        value={o.nilai}
+        disabled={bacaSaja}
+        aria-required="true"
+        {...atributGalat(o.kunci)}
+        onChange={(e) => {
+          o.set(e.target.value);
+          triggerAutosave();
+        }}
+      >
+        <option value="">-- Pilih {o.label} --</option>
+        {o.opsi.map((opt) => (
+          <option key={opt} value={opt}>
+            {o.labels?.[opt] ?? opt}
+          </option>
+        ))}
+      </select>
+      {galat(o.kunci)}
+    </div>
+  );
+
+  const tutupDenganSimpan = () => {
+    saveDraftNow();
+    onClose();
+  };
+
   return (
     <div
+      ref={dialogRef}
+      tabIndex={-1}
       role="dialog"
       aria-modal="true"
-      aria-labelledby="pw-title"
+      aria-labelledby={idJudul}
       style={{
         position: 'fixed',
         inset: 0,
@@ -399,6 +652,7 @@ export default function PelayananWizardModal({
         alignItems: 'center',
         justifyContent: 'center',
         padding: 'var(--space-4)',
+        outline: 'none',
       }}
     >
       <div
@@ -429,7 +683,7 @@ export default function PelayananWizardModal({
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
               <h2
-                id="pw-title"
+                id={idJudul}
                 style={{
                   fontSize: 'var(--text-lg, 1.125rem)',
                   fontWeight: 700,
@@ -441,11 +695,11 @@ export default function PelayananWizardModal({
               </h2>
               {isLocked ? (
                 <span className="badge badge--aktif" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                  <Lock size={12} /> Terkunci (Selesai)
+                  <Lock size={12} aria-hidden="true" /> Terkunci (Selesai)
                 </span>
               ) : bacaSaja ? (
                 <span className="badge badge--nonaktif" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                  <Lock size={12} /> Baca saja
+                  <Lock size={12} aria-hidden="true" /> Baca saja
                 </span>
               ) : (
                 <span className="badge badge--draft">Sedang Dilayani</span>
@@ -475,20 +729,20 @@ export default function PelayananWizardModal({
           </div>
 
           <button
-            onClick={() => {
-              saveDraftNow();
-              onClose();
-            }}
+            type="button"
+            onClick={tutupDenganSimpan}
             className="btn btn--ghost btn--sm"
             style={{ borderRadius: '50%', padding: '6px' }}
             aria-label="Tutup"
           >
-            <X size={18} />
+            <X size={18} aria-hidden="true" />
           </button>
         </div>
 
         {/* Steps Navigation */}
         <div
+          role="group"
+          aria-label="Langkah formulir pendataan"
           style={{
             display: 'flex',
             borderBottom: '1px solid var(--border-default, #e2e8f0)',
@@ -505,7 +759,9 @@ export default function PelayananWizardModal({
             return (
               <button
                 key={item.s}
+                type="button"
                 onClick={() => setStep(item.s as 1 | 2 | 3)}
+                aria-current={isActive ? 'step' : undefined}
                 style={{
                   flex: 1,
                   padding: 'var(--space-3) var(--space-4)',
@@ -525,7 +781,7 @@ export default function PelayananWizardModal({
                   transition: 'all 0.15s ease',
                 }}
               >
-                <Icon size={16} />
+                <Icon size={16} aria-hidden="true" />
                 {item.label}
               </button>
             );
@@ -542,421 +798,247 @@ export default function PelayananWizardModal({
         >
           {loading ? (
             <div style={{ textAlign: 'center', padding: 'var(--space-12)', color: 'var(--text-secondary)' }}>
-              <Loader2 size={32} className="animate-spin" style={{ margin: '0 auto var(--space-3)' }} />
+              <Loader2 size={32} className="animate-spin" style={{ margin: '0 auto var(--space-3)' }} aria-hidden="true" />
               <p>Memuat formulir pendataan…</p>
             </div>
           ) : (
             <form onSubmit={(e) => e.preventDefault()}>
+              {!bacaSaja && (
+                <p
+                  style={{
+                    fontSize: 'var(--text-xs, 0.75rem)',
+                    color: 'var(--text-secondary, #475569)',
+                    margin: '0 0 var(--space-4) 0',
+                  }}
+                >
+                  Semua isian wajib diisi sebelum layanan diselesaikan. Bila memang tidak ada, pakai tombol isian cepat
+                  di bawah kolom (&quot;Tidak berlaku&quot; / &quot;Belum ada&quot;; untuk catatan &quot;-&quot;) atau
+                  pilih opsi &quot;Tidak berlaku&quot; pada daftar pilihan.
+                </p>
+              )}
+
               {/* STEP 1: PROFIL PEMOHON */}
               {step === 1 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-                  <div className="form-group">
-                    <label className="form-label form-label--required">Nama Pemohon</label>
-                    <input
-                      type="text"
-                      className="form-input"
-                      value={namaPemohon}
-                      disabled={bacaSaja}
-                      onChange={(e) => {
-                        setNamaPemohon(e.target.value);
-                        triggerAutosave();
-                      }}
-                      placeholder="Nama lengkap pemohon"
-                    />
-                    {validationErrors.nama_pemohon && (
-                      <p className="form-error" style={{ color: 'var(--color-danger-600)', fontSize: 12, marginTop: 4 }}>
-                        {validationErrors.nama_pemohon}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label">Asal Instansi / Alamat Domisili (Opsional)</label>
-                    <input
-                      type="text"
-                      className="form-input"
-                      value={alamatPemohon}
-                      disabled={bacaSaja}
-                      onChange={(e) => {
-                        setAlamatPemohon(e.target.value);
-                        triggerAutosave();
-                      }}
-                      placeholder="Kabupaten/Kota atau alamat domisili pemohon"
-                    />
-                  </div>
-
+                  {medanTeks({
+                    kunci: 'nama_pemohon', slug: 'nama-pemohon', label: 'Nama Pemohon',
+                    nilai: namaPemohon, set: setNamaPemohon, placeholder: 'Nama lengkap pemohon',
+                  })}
+                  {medanTeks({
+                    kunci: 'alamat_pemohon', slug: 'alamat-pemohon', label: 'Asal Instansi / Alamat Domisili',
+                    nilai: alamatPemohon, set: setAlamatPemohon, cepat: CEPAT_TIDAK_BERLAKU,
+                    placeholder: 'Kabupaten/Kota atau alamat domisili pemohon',
+                  })}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
-                    <div className="form-group">
-                      <label className="form-label">
-                        <Phone size={14} style={{ display: 'inline', marginRight: 4 }} />
-                        Nomor Handphone / WhatsApp (Opsional)
-                      </label>
-                      <input
-                        type="tel"
-                        className="form-input"
-                        value={noHp}
-                        disabled={bacaSaja}
-                        onChange={(e) => {
-                          setNoHp(e.target.value);
-                          triggerAutosave();
-                        }}
-                        placeholder="081234567890"
-                      />
-                    </div>
-
-                    <div className="form-group">
-                      <label className="form-label">
-                        <Mail size={14} style={{ display: 'inline', marginRight: 4 }} />
-                        Alamat Email (Opsional)
-                      </label>
-                      <input
-                        type="email"
-                        className="form-input"
-                        value={email}
-                        disabled={bacaSaja}
-                        onChange={(e) => {
-                          setEmail(e.target.value);
-                          triggerAutosave();
-                        }}
-                        placeholder="nama@email.com"
-                      />
-                    </div>
+                    {medanTeks({
+                      kunci: 'no_hp', slug: 'no-hp', label: 'Nomor Handphone / WhatsApp', tipe: 'tel',
+                      ikon: <Phone size={14} aria-hidden="true" style={{ display: 'inline', marginRight: 4 }} />,
+                      nilai: noHp, set: setNoHp, cepat: CEPAT_TIDAK_BERLAKU, placeholder: '081234567890',
+                    })}
+                    {medanTeks({
+                      kunci: 'email', slug: 'email', label: 'Alamat Email', tipe: 'email',
+                      ikon: <Mail size={14} aria-hidden="true" style={{ display: 'inline', marginRight: 4 }} />,
+                      nilai: email, set: setEmail, cepat: CEPAT_TIDAK_BERLAKU, placeholder: 'nama@email.com',
+                    })}
                   </div>
-
-                  <div className="form-group">
-                    <label className="form-label">Keperluan Awal (Opsional)</label>
-                    <textarea
-                      className="form-textarea"
-                      rows={2}
-                      value={keperluanAwal}
-                      disabled={bacaSaja}
-                      onChange={(e) => {
-                        setKeperluanAwal(e.target.value);
-                        triggerAutosave();
-                      }}
-                      placeholder="Catatan keperluan saat pendaftaran awal"
-                    />
-                  </div>
+                  {medanTeks({
+                    kunci: 'keperluan_awal', slug: 'keperluan-awal', label: 'Keperluan Awal', rows: 2,
+                    nilai: keperluanAwal, set: setKeperluanAwal, cepat: CEPAT_TIDAK_BERLAKU,
+                    placeholder: 'Catatan keperluan saat pendaftaran awal',
+                  })}
                 </div>
               )}
 
               {/* STEP 2: DATA PELAYANAN TEKNIS */}
               {step === 2 && formType === 'oss' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-                  <div className="form-group">
-                    <label className="form-label form-label--required">Nama Usaha / Merk Usaha</label>
-                    <input
-                      type="text"
-                      className="form-input"
-                      value={namaUsaha}
-                      disabled={bacaSaja}
-                      onChange={(e) => {
-                        setNamaUsaha(e.target.value);
-                        triggerAutosave();
-                      }}
-                      placeholder="Nama PT / CV / Toko / Usaha Perorangan"
-                    />
-                    {validationErrors.nama_usaha && (
-                      <p className="form-error" style={{ color: 'var(--color-danger-600)', fontSize: 12, marginTop: 4 }}>
-                        {validationErrors.nama_usaha}
-                      </p>
-                    )}
-                  </div>
-
+                  {medanTeks({
+                    kunci: 'nama_usaha', slug: 'nama-usaha', label: 'Nama Usaha / Merk Usaha',
+                    nilai: namaUsaha, set: setNamaUsaha, cepat: CEPAT_USAHA,
+                    placeholder: 'Nama PT / CV / Toko / Usaha Perorangan',
+                  })}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
-                    <div className="form-group">
-                      <label className="form-label">Tipe Pelaku Usaha (Opsional)</label>
-                      <select
-                        className="form-select"
-                        value={tipePelakuUsaha}
-                        disabled={bacaSaja}
-                        onChange={(e) => {
-                          setTipePelakuUsaha(e.target.value);
-                          triggerAutosave();
-                        }}
-                      >
-                        <option value="">-- Pilih Tipe Pelaku Usaha (Opsional) --</option>
-                        {TIPE_PELAKU_USAHA_OPTIONS.map((opt) => (
-                          <option key={opt} value={opt}>
-                            {TIPE_PELAKU_USAHA_LABELS[opt]}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="form-group">
-                      <label className="form-label">Status Penanaman Modal (Opsional)</label>
-                      <select
-                        className="form-select"
-                        value={statusPenanamanModal}
-                        disabled={bacaSaja}
-                        onChange={(e) => {
-                          setStatusPenanamanModal(e.target.value);
-                          triggerAutosave();
-                        }}
-                      >
-                        <option value="">-- Pilih Status Penanaman Modal (Opsional) --</option>
-                        {STATUS_PENANAMAN_MODAL_OPTIONS.map((opt) => (
-                          <option key={opt} value={opt}>
-                            {STATUS_PENANAMAN_MODAL_LABELS[opt]}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                    {medanPilihan({
+                      kunci: 'tipe_pelaku_usaha', slug: 'tipe-pelaku', label: 'Tipe Pelaku Usaha',
+                      nilai: tipePelakuUsaha, set: setTipePelakuUsaha,
+                      opsi: TIPE_PELAKU_USAHA_OPTIONS, labels: TIPE_PELAKU_USAHA_LABELS,
+                    })}
+                    {medanPilihan({
+                      kunci: 'status_penanaman_modal', slug: 'status-modal', label: 'Status Penanaman Modal',
+                      nilai: statusPenanamanModal, set: setStatusPenanamanModal,
+                      opsi: STATUS_PENANAMAN_MODAL_OPTIONS, labels: STATUS_PENANAMAN_MODAL_LABELS,
+                    })}
                   </div>
-
-                  <div className="form-group">
-                    <label className="form-label">Lokasi Usaha (Opsional)</label>
-                    <input
-                      type="text"
-                      className="form-input"
-                      value={lokasiUsaha}
-                      disabled={bacaSaja}
-                      onChange={(e) => {
-                        setLokasiUsaha(e.target.value);
-                        triggerAutosave();
-                      }}
-                      placeholder="Kabupaten/Kota atau wilayah lokasi kegiatan usaha (mis. Bandar Lampung)"
-                    />
-                  </div>
-
+                  {medanTeks({
+                    kunci: 'lokasi_usaha', slug: 'lokasi-usaha', label: 'Lokasi Usaha',
+                    nilai: lokasiUsaha, set: setLokasiUsaha, cepat: CEPAT_USAHA,
+                    placeholder: 'Kabupaten/Kota atau wilayah lokasi kegiatan usaha (mis. Bandar Lampung)',
+                  })}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
-                    <div className="form-group">
-                      <label className="form-label">Skala Usaha (Opsional)</label>
-                      <select
-                        className="form-select"
-                        value={skalaUsaha}
-                        disabled={bacaSaja}
-                        onChange={(e) => {
-                          setSkalaUsaha(e.target.value);
-                          triggerAutosave();
-                        }}
-                      >
-                        <option value="">-- Pilih Skala Usaha (Opsional) --</option>
-                        {SKALA_USAHA_OPTIONS.map((opt) => (
-                          <option key={opt} value={opt}>
-                            {opt}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="form-group">
-                      <label className="form-label">KBLI / Sektor Usaha (Opsional)</label>
-                      <input
-                        type="text"
-                        className="form-input"
-                        value={sektorUsahaKbli}
-                        disabled={bacaSaja}
-                        onChange={(e) => {
-                          setSektorUsahaKbli(e.target.value);
-                          triggerAutosave();
-                        }}
-                        placeholder="Contoh: 47111 - Perdagangan Eceran"
-                      />
-                    </div>
+                    {medanPilihan({
+                      kunci: 'skala_usaha', slug: 'skala-usaha', label: 'Skala Usaha',
+                      nilai: skalaUsaha, set: setSkalaUsaha, opsi: SKALA_USAHA_OPTIONS,
+                    })}
+                    {medanTeks({
+                      kunci: 'sektor_usaha_kbli', slug: 'kbli', label: 'KBLI / Sektor Usaha',
+                      nilai: sektorUsahaKbli, set: setSektorUsahaKbli, cepat: CEPAT_USAHA,
+                      placeholder: 'Contoh: 47111 - Perdagangan Eceran',
+                    })}
                   </div>
                 </div>
               )}
 
               {step === 2 && formType === 'perizinan' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-                  <div className="form-group">
-                    <label className="form-label form-label--required">Nama Perusahaan / Pemohon</label>
-                    <input
-                      type="text"
-                      className="form-input"
-                      value={namaPerusahaan}
-                      disabled={bacaSaja}
-                      onChange={(e) => {
-                        setNamaPerusahaan(e.target.value);
-                        triggerAutosave();
-                      }}
-                      placeholder="Nama PT / CV / Koperasi / Perorangan Pemohon"
-                    />
-                    {validationErrors.nama_perusahaan && (
-                      <p className="form-error" style={{ color: 'var(--color-danger-600)', fontSize: 12, marginTop: 4 }}>
-                        {validationErrors.nama_perusahaan}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label form-label--required">OPD Teknis Terkait</label>
-                    <input
-                      type="text"
-                      list="list-opd-teknis"
-                      className="form-input"
-                      value={opdTeknis}
-                      disabled={bacaSaja}
-                      onChange={(e) => {
-                        setOpdTeknis(e.target.value);
-                        triggerAutosave();
-                      }}
-                      placeholder="Pilih atau ketik nama OPD Teknis (mis. Dinas ESDM, DLH, dll)"
-                    />
-                    <datalist id="list-opd-teknis">
-                      {OPD_TEKNIS_OPTIONS.map((opt) => (
-                        <option key={opt} value={opt} />
-                      ))}
-                    </datalist>
-                    {validationErrors.opd_teknis && (
-                      <p className="form-error" style={{ color: 'var(--color-danger-600)', fontSize: 12, marginTop: 4 }}>
-                        {validationErrors.opd_teknis}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label form-label--required">Uraian Permohonan / Izin</label>
-                    <textarea
-                      className="form-textarea"
-                      rows={3}
-                      value={uraianPermohonan}
-                      disabled={bacaSaja}
-                      onChange={(e) => {
-                        setUraianPermohonan(e.target.value);
-                        triggerAutosave();
-                      }}
-                      placeholder="Uraian permohonan izin/non-perizinan atau dokumen yang diajukan..."
-                    />
-                    {validationErrors.uraian_permohonan && (
-                      <p className="form-error" style={{ color: 'var(--color-danger-600)', fontSize: 12, marginTop: 4 }}>
-                        {validationErrors.uraian_permohonan}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label">Lokasi Usaha (Opsional)</label>
-                    <input
-                      type="text"
-                      className="form-input"
-                      value={lokasiUsahaPerizinan}
-                      disabled={bacaSaja}
-                      onChange={(e) => {
-                        setLokasiUsahaPerizinan(e.target.value);
-                        triggerAutosave();
-                      }}
-                      placeholder="Kabupaten/Kota atau wilayah lokasi kegiatan usaha (mis. Bandar Lampung)"
-                    />
-                  </div>
+                  {medanTeks({
+                    kunci: 'nama_perusahaan', slug: 'nama-perusahaan', label: 'Nama Perusahaan / Pemohon',
+                    nilai: namaPerusahaan, set: setNamaPerusahaan, cepat: CEPAT_USAHA,
+                    placeholder: 'Nama PT / CV / Koperasi / Perorangan Pemohon',
+                  })}
+                  {medanTeks({
+                    kunci: 'opd_teknis', slug: 'opd-teknis', label: 'OPD Teknis Terkait', daftar: 'list-opd-teknis',
+                    nilai: opdTeknis, set: setOpdTeknis, cepat: CEPAT_TIDAK_BERLAKU,
+                    placeholder: 'Pilih atau ketik nama OPD Teknis (mis. Dinas ESDM, DLH, dll)',
+                  })}
+                  <datalist id="list-opd-teknis">
+                    {OPD_TEKNIS_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt} />
+                    ))}
+                  </datalist>
+                  {medanTeks({
+                    kunci: 'uraian_permohonan', slug: 'uraian-permohonan', label: 'Uraian Permohonan / Izin', rows: 3,
+                    nilai: uraianPermohonan, set: setUraianPermohonan,
+                    placeholder: 'Uraian permohonan izin/non-perizinan atau dokumen yang diajukan...',
+                  })}
+                  {medanTeks({
+                    kunci: 'lokasi_usaha', slug: 'lokasi-usaha-perizinan', label: 'Lokasi Usaha',
+                    nilai: lokasiUsahaPerizinan, set: setLokasiUsahaPerizinan, cepat: CEPAT_USAHA,
+                    placeholder: 'Kabupaten/Kota atau wilayah lokasi kegiatan usaha (mis. Bandar Lampung)',
+                  })}
                 </div>
               )}
 
               {/* STEP 3: TINDAKAN & SOLUSI */}
               {step === 3 && formType === 'oss' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-                  <div className="form-group">
-                    <label className="form-label form-label--required">Tindakan / Tindak Lanjut</label>
-                    <input
-                      type="text"
-                      list="list-tindakan-oss"
-                      className="form-input"
-                      value={tindakLanjutOss}
-                      disabled={bacaSaja}
-                      onChange={(e) => {
-                        setTindakLanjutOss(e.target.value);
-                        triggerAutosave();
-                      }}
-                      placeholder="Pilih atau ketik tindakan yang diambil..."
-                    />
-                    <datalist id="list-tindakan-oss">
-                      {TINDAK_LANJUT_OSS_OPTIONS.map((opt) => (
-                        <option key={opt} value={opt} />
-                      ))}
-                    </datalist>
-                    {validationErrors.tindak_lanjut && (
-                      <p className="form-error" style={{ color: 'var(--color-danger-600)', fontSize: 12, marginTop: 4 }}>
-                        {validationErrors.tindak_lanjut}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label form-label--required">Uraian Solusi / Konsultasi</label>
-                    <textarea
-                      className="form-textarea"
-                      rows={4}
-                      value={uraianSolusi}
-                      disabled={bacaSaja}
-                      onChange={(e) => {
-                        setUraianSolusi(e.target.value);
-                        triggerAutosave();
-                      }}
-                      placeholder="Tuliskan kendala dan langkah solusi / konsultasi yang diberikan di loket..."
-                    />
-                    {validationErrors.uraian_solusi && (
-                      <p className="form-error" style={{ color: 'var(--color-danger-600)', fontSize: 12, marginTop: 4 }}>
-                        {validationErrors.uraian_solusi}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label">Catatan Tambahan Internal (Opsional)</label>
-                    <textarea
-                      className="form-textarea"
-                      rows={2}
-                      value={catatanInternal}
-                      disabled={bacaSaja}
-                      onChange={(e) => {
-                        setCatatanInternal(e.target.value);
-                        triggerAutosave();
-                      }}
-                      placeholder="Catatan tambahan untuk internal (opsional)"
-                    />
-                  </div>
+                  {medanTeks({
+                    kunci: 'tindak_lanjut', slug: 'tindak-lanjut-oss', label: 'Tindakan / Tindak Lanjut',
+                    daftar: 'list-tindakan-oss', nilai: tindakLanjutOss, set: setTindakLanjutOss,
+                    placeholder: 'Pilih atau ketik tindakan yang diambil...',
+                  })}
+                  <datalist id="list-tindakan-oss">
+                    {TINDAK_LANJUT_OSS_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt} />
+                    ))}
+                  </datalist>
+                  {medanTeks({
+                    kunci: 'uraian_solusi', slug: 'uraian-solusi', label: 'Uraian Solusi / Konsultasi', rows: 4,
+                    nilai: uraianSolusi, set: setUraianSolusi,
+                    placeholder: 'Tuliskan kendala dan langkah solusi / konsultasi yang diberikan di loket...',
+                  })}
+                  {medanTeks({
+                    kunci: 'catatan_internal', slug: 'catatan-internal', label: 'Catatan Tambahan Internal', rows: 2,
+                    nilai: catatanInternal, set: setCatatanInternal, cepat: CEPAT_CATATAN,
+                    placeholder: 'Catatan tambahan untuk internal (isi "-" bila tidak ada)',
+                  })}
                 </div>
               )}
 
               {step === 3 && formType === 'perizinan' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-                  <div className="form-group">
-                    <label className="form-label form-label--required">Tindak Lanjut</label>
-                    <input
-                      type="text"
-                      list="list-tindakan-perizinan"
-                      className="form-input"
-                      value={tindakLanjutPerizinan}
-                      disabled={bacaSaja}
-                      onChange={(e) => {
-                        setTindakLanjutPerizinan(e.target.value);
-                        triggerAutosave();
-                      }}
-                      placeholder="Pilih atau ketik tindak lanjut layanan..."
-                    />
-                    <datalist id="list-tindakan-perizinan">
-                      {TINDAK_LANJUT_PERIZINAN_OPTIONS.map((opt) => (
-                        <option key={opt} value={opt} />
-                      ))}
-                    </datalist>
-                    {validationErrors.tindak_lanjut && (
-                      <p className="form-error" style={{ color: 'var(--color-danger-600)', fontSize: 12, marginTop: 4 }}>
-                        {validationErrors.tindak_lanjut}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label">Catatan Petugas (Opsional)</label>
-                    <textarea
-                      className="form-textarea"
-                      rows={4}
-                      value={catatanPetugas}
-                      disabled={bacaSaja}
-                      onChange={(e) => {
-                        setCatatanPetugas(e.target.value);
-                        triggerAutosave();
-                      }}
-                      placeholder="Catatan persyaratan atau tindak lanjut tambahan (opsional)..."
-                    />
-                  </div>
+                  {medanTeks({
+                    kunci: 'tindak_lanjut', slug: 'tindak-lanjut-perizinan', label: 'Tindak Lanjut',
+                    daftar: 'list-tindakan-perizinan', nilai: tindakLanjutPerizinan, set: setTindakLanjutPerizinan,
+                    placeholder: 'Pilih atau ketik tindak lanjut layanan...',
+                  })}
+                  <datalist id="list-tindakan-perizinan">
+                    {TINDAK_LANJUT_PERIZINAN_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt} />
+                    ))}
+                  </datalist>
+                  {medanTeks({
+                    kunci: 'catatan_petugas', slug: 'catatan-petugas', label: 'Catatan Petugas', rows: 4,
+                    nilai: catatanPetugas, set: setCatatanPetugas, cepat: CEPAT_CATATAN,
+                    placeholder: 'Catatan persyaratan atau tindak lanjut tambahan (isi "-" bila tidak ada)...',
+                  })}
                 </div>
+              )}
+
+              {/* Tiket hasil eskalasi FO: topik + catatan penanganan (wajib saat Selesai). Tidak ikut draf. */}
+              {step === 3 && dariEskalasi && (
+                <fieldset
+                  style={{
+                    marginTop: 'var(--space-6)', padding: 'var(--space-4)', display: 'flex', flexDirection: 'column',
+                    gap: 'var(--space-4)', border: '1px solid var(--border-default, #e2e8f0)', borderRadius: 'var(--radius-lg, 12px)',
+                  }}
+                >
+                  <legend style={{ padding: '0 var(--space-2)', fontWeight: 700, fontSize: 'var(--text-sm)' }}>
+                    Penanganan tiket eskalasi Front Office
+                  </legend>
+                  <TopikCatatanFields
+                    idDasar={id('pen')}
+                    topik={topikPilihan}
+                    topikId={topikId}
+                    onTopikId={(v) => setTopikId(v)}
+                    topikWajib
+                    catatan={catatanTampil}
+                    onCatatan={(v) => {
+                      setCatatanPenanganan(v);
+                      setCatatanDiubah(true);
+                    }}
+                    catatanWajib
+                    rows={3}
+                    bantuanCatatan={otomatisDariUraian && uraianSolusi.trim() ? 'Diisi otomatis dari Uraian Solusi; ubah bila perlu.' : undefined}
+                    placeholderCatatan="Ringkas hasil layanan untuk catatan penanganan"
+                    galatTopik={validationErrors.topik ?? null}
+                    galatCatatan={validationErrors.catatan ?? null}
+                    disabled={bacaSaja}
+                  />
+                </fieldset>
               )}
             </form>
           )}
         </div>
+
+        {/* Konfirmasi tutup (Escape dengan perubahan belum tersimpan) */}
+        {konfirmasiTutup && (
+          <div
+            role="alertdialog"
+            aria-labelledby={id('konfirmasi-judul')}
+            aria-describedby={id('konfirmasi-desk')}
+            style={{
+              padding: 'var(--space-4) var(--space-6)',
+              borderTop: '1px solid var(--color-warning-500, #f59e0b)',
+              background: 'var(--color-warning-50, #fffbeb)',
+            }}
+          >
+            <p id={id('konfirmasi-judul')} style={{ margin: 0, fontWeight: 700 }}>Tutup formulir?</p>
+            <p id={id('konfirmasi-desk')} style={{ margin: '2px 0 var(--space-3)', fontSize: 'var(--text-sm)' }}>
+              Ada isian yang belum tersimpan{topikCatatanBelumTersimpan ? ' (topik dan catatan penanganan tidak ikut tersimpan sebagai draf)' : ''}.
+            </p>
+            <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+              <button ref={tombolLanjutRef} type="button" className="btn btn--primary btn--sm" onClick={() => setKonfirmasiTutup(false)}>
+                Lanjut mengisi
+              </button>
+              <button type="button" className="btn btn--secondary btn--sm" onClick={tutupDenganSimpan}>
+                Simpan draf &amp; tutup
+              </button>
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                onClick={() => {
+                  if (autosaveTimeoutRef.current) {
+                    clearTimeout(autosaveTimeoutRef.current);
+                    autosaveTimeoutRef.current = null;
+                  }
+                  onClose();
+                }}
+              >
+                Tutup tanpa menyimpan
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Footer Actions */}
         <div
@@ -977,16 +1059,13 @@ export default function PelayananWizardModal({
                 className="btn btn--ghost btn--sm"
                 onClick={() => setStep((s) => (s - 1) as 1 | 2 | 3)}
               >
-                <ChevronLeft size={16} /> Sebelumnya
+                <ChevronLeft size={16} aria-hidden="true" /> Sebelumnya
               </button>
             ) : (
               <button
                 type="button"
                 className="btn btn--ghost btn--sm"
-                onClick={() => {
-                  saveDraftNow();
-                  onClose();
-                }}
+                onClick={tutupDenganSimpan}
               >
                 {bacaSaja ? 'Tutup' : 'Tutup (Draf tersimpan)'}
               </button>
@@ -1002,7 +1081,7 @@ export default function PelayananWizardModal({
                 onClick={saveDraftNow}
                 title="Simpan data tanpa menyelesaikan antrian. Anda bisa lanjut mengisi nanti."
               >
-                <Save size={16} /> {savingDraft ? 'Menyimpan…' : 'Simpan'}
+                <Save size={16} aria-hidden="true" /> {savingDraft ? 'Menyimpan…' : 'Simpan'}
               </button>
             )}
 
@@ -1012,7 +1091,7 @@ export default function PelayananWizardModal({
                 className="btn btn--primary btn--sm"
                 onClick={() => setStep((s) => (s + 1) as 1 | 2 | 3)}
               >
-                Selanjutnya <ChevronRight size={16} />
+                Selanjutnya <ChevronRight size={16} aria-hidden="true" />
               </button>
             ) : (
               !bacaSaja && (
@@ -1028,7 +1107,7 @@ export default function PelayananWizardModal({
                     borderColor: 'var(--color-success-600, #16a34a)',
                   }}
                 >
-                  <CheckCircle2 size={16} /> {finalizing ? 'Menyelesaikan…' : 'Selesaikan Antrian'}
+                  <CheckCircle2 size={16} aria-hidden="true" /> {finalizing ? 'Menyelesaikan…' : 'Selesaikan Antrian'}
                 </button>
               )
             )}
