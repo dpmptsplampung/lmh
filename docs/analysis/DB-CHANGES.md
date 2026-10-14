@@ -32,6 +32,18 @@
 
 ## Riwayat (dari yang terbaru)
 
+### [2026-10-14] — Keterbukaan data antar Front Office: semua FO membaca semua `penanganan` (M-202610140013_fo_keterbukaan_data) — BELUM DITERAPKAN
+- WP/Migrasi   : keputusan CEO 2026-10-14 ("semua antrian, semua pengunjung, rekap, dll itu terbuka untuk semua FO ... di setiap pengunjung ada nama petugas FO yang melayani") / `supabase/migrations/202610140013_fo_keterbukaan_data.sql` + test kontrak `supabase/migrations/fo_keterbukaan.test.ts` + rollback `docs/rollback-fo-keterbukaan-data-202610140013.sql`
+- Jenis        : DDL (fungsi helper RLS; tanpa tabel/kolom/policy baru)
+- Objek        : `public.boleh_penanganan(uuid, text, uuid, uuid, text)` (dipakai policy `penanganan_staf_select`): cabang `front_office` = `RETURN true`; cabang admin/petugas/default identik versi 0009; hak EXECUTE sama; COMMENT penanda `202610140013`. Rollback 0012 mendapat penjaga baru (menolak selama penanda 0013 ada).
+- Menyentuh data pengunjung? : Tidak mengubah data. Memperluas BACA: FO aktif kini membaca semua tahap penanganan (nama/instansi pengunjung lewat embed `kunjungan` sudah terbaca FO sebelumnya; topik/catatan tahap FO lain dan tahap layanan kini terbaca). Tulis tetap hanya lewat RPC pemilik tahap.
+- Prasyarat    : 0012 (`hari_tanpa_layanan`), 0009, 0003 (penjaga `PRASYARAT`). Urutan: `... -> 0011 -> 0012 -> 0013`.
+- Cara menerapkan : `node scripts/apply-migration.mjs supabase/migrations/202610140013_fo_keterbukaan_data.sql --atomic --dry-run` (produksi 2026-10-14: berhenti di `PRASYARAT: tabel penanganan / boleh_penanganan belum ada`, di-ROLLBACK), lalu tanpa `--dry-run` setelah konfirmasi CEO. Idempoten.
+- Cara mengembalikan : `node scripts/apply-migration.mjs docs/rollback-fo-keterbukaan-data-202610140013.sql --atomic` (`--dry-run` dulu); memulihkan `boleh_penanganan` PERSIS versi 0009 dan menghapus komentar. PERTAMA dalam urutan rollback (sebelum 0012).
+- Klien        : `src/lib/rekap/penanganan.ts` (`tentukanCakupan`: FO = Admin untuk rekap FO & layanan; kolom `fo_nama`), `api/admin/rekap/penanganan(+/export)` (tanpa `terkunci_ke_saya`/`cakupan_eskalasi_fo`/`eskalasi_fo_id`), `RekapPenangananTable` (filter penangan untuk FO, kolom Front Office), Excel (kolom Front Office), `/admin/fo/penanganan` (FO lain + riwayat semua FO), `/admin/fo/kotak-masuk` (FO sebelumnya), `/admin/kunjungan` (kolom Front Office). Aman di-deploy sebelum/sesudah 0013 (tanpa 0013 data FO hanya tidak lengkap).
+- Uji perilaku : `scripts/test-fo-keterbukaan.mjs` (BELUM DIJALANKAN; ditulis pada jam layanan; skrip menolak Senin-Jumat 07:00-16:59 WIB).
+- Status       : DITULIS, BELUM DITERAPKAN
+
 ### [2026-10-14] — Tahap C3: Pendataan Pelayanan semua field wajib (M-202610140011_pendataan_wajib) — BELUM DITERAPKAN
 - WP/Migrasi   : Tahap C3 (keputusan CEO Gerbang G.5) / `supabase/migrations/202610140011_pendataan_wajib.sql` + test kontrak `supabase/migrations/pendataan_wajib.test.ts` + rollback `docs/rollback-pendataan-wajib-202610140011.sql`
 - Jenis        : DDL (CHECK dilonggarkan, fungsi baru) + perilaku RPC (validasi)

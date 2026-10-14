@@ -154,13 +154,13 @@ Pratinjau gabungan sebelum 0003-0005 diterapkan (satu transaksi, selalu ROLLBACK
 
 ### URUTAN TERAPAN (satu jendela cutover) dan larangan
 
-Status per 2026-10-14: hanya `202610140001` yang DITERAPKAN; `0002`-`0009` dan `0011` DITULIS, BELUM DITERAPKAN. Nomor `0010` tidak dipakai (tidak ada berkasnya). `0012` sedang ditulis (lihat `docs/analysis/DB-CHANGES.md` bila sudah dicatat).
+Status per 2026-10-14: hanya `202610140001` yang DITERAPKAN; `0002`-`0009`, `0011`, `0012`, dan `0013` DITULIS, BELUM DITERAPKAN. Nomor `0010` tidak dipakai (tidak ada berkasnya).
 
 ```
-0002 -> 0003 -> 0004 -> 0005 -> 0006 -> 0007 -> 0008 -> 0009 -> 0011 -> (0012)
+0002 -> 0003 -> 0004 -> 0005 -> 0006 -> 0007 -> 0008 -> 0009 -> 0011 -> 0012 -> 0013
 ```
 
-- Rollback = urutan terbalik: 0012 -> 0011 -> 0009 -> 0008 -> 0007 -> 0006 -> 0005 -> 0004 -> 0003 -> 0002 (0009 sebelum 0005; 0008 sebelum 0007; 0007 setelah 0008 dan sebelum 0006/0005/0004/0003/0002).
+- Rollback = urutan terbalik: 0013 -> 0012 -> 0011 -> 0009 -> 0008 -> 0007 -> 0006 -> 0005 -> 0004 -> 0003 -> 0002 (0009 sebelum 0005; 0008 sebelum 0007; 0007 setelah 0008 dan sebelum 0006/0005/0004/0003/0002).
 - **DILARANG menerapkan ulang 0004 atau 0005 SETELAH 0007 diterapkan.** Keduanya `CREATE OR REPLACE` fungsi yang oleh 0007 sudah diganti dengan versi tanpa `visit`; menjalankannya lagi menimpa versi 0007 dengan versi lama yang masih menulis/mengunci `visit` (kini arsip, ditolak `VISIT_ARSIP`), sehingga RPC FO/layanan dan job akhir hari/no-show rusak. Hal yang sama untuk 0003 dan 0002 (penjaga/DROP/policy yang sudah ditimpa). Berkas 0002-0006 hanya dijalankan ulang bila rollback 0007 dilakukan lebih dulu. Skrip uji (`scripts/test-fo-eskalasi.mjs`, `test-chat-online.mjs`, `test-wp24.mjs`) hanya memakai transaksi ROLLBACK, sehingga aman.
 - 0011 hanya SETELAH 0007 (penjaga membaca `visit_arsip_jaga()`; bila dijalankan sebelum 0007, `layanan_selesai` ditimpa lagi oleh 0007 dan validasi hilang).
 - 0007 menolak (`CUTOVER_DITOLAK`) bila ada tiket `menunggu`/`dipanggil` hari ini: terapkan setelah antrean kosong (Jumat setelah 16:00 WIB atau akhir pekan, Gerbang G.6), bersamaan dengan deploy klien. Muat ulang skema PostgREST setelah setiap migrasi.
@@ -175,9 +175,9 @@ Status per 2026-10-14: hanya `202610140001` yang DITERAPKAN; `0002`-`0009` dan `
 
 | Versi | Berkas | Prasyarat | Rollback | Status |
 |---|---|---|---|---|
-| 202610140012 | `202610140012_perbaikan_review.sql` | 0011 (+0009, 0007, pg_cron, tabel `hari_libur`) — penjaga `PRASYARAT` | `docs/rollback-perbaikan-review-202610140012.sql` (PERTAMA dalam urutan rollback) | ditulis, belum diterapkan |
+| 202610140012 | `202610140012_perbaikan_review.sql` | 0011 (+0009, 0007, pg_cron, tabel `hari_libur`) — penjaga `PRASYARAT` | `docs/rollback-perbaikan-review-202610140012.sql` (setelah rollback 0013; menolak selama penanda 0013 ada) | ditulis, belum diterapkan |
 
-Urutan cutover menjadi `0002 -> ... -> 0008 -> 0009 -> 0011 -> 0012`. Urutan rollback: `0012 -> 0011 -> 0009 -> 0008 -> 0007 -> ...`.
+Urutan cutover menjadi `0002 -> ... -> 0008 -> 0009 -> 0011 -> 0012 -> 0013`. Urutan rollback: `0013 -> 0012 -> 0011 -> 0009 -> 0008 -> 0007 -> ...` (0013: lihat bagian "Keterbukaan data antar Front Office (0013)").
 
 ### Catatan perubahan in-place 202610140012 (belum diterapkan; keputusan CEO 2026-10-14)
 
@@ -208,6 +208,21 @@ node scripts/apply-migration.mjs supabase/migrations/202610140012_perbaikan_revi
 ```
 
 Dry-run terhadap produksi 2026-10-14 (siang, read-only, di-ROLLBACK): berhenti di penjaga `PRASYARAT: 202610140011_pendataan_wajib belum diterapkan` (benar). Dry-run 0009 (setelah diubah): berhenti di `PRASYARAT: tabel penanganan/topik_penanganan belum ada` (benar).
+
+## Keterbukaan data antar Front Office (0013)
+
+| Versi | Berkas | Prasyarat | Rollback | Status |
+|---|---|---|---|---|
+| 202610140013 | `202610140013_fo_keterbukaan_data.sql` | 0012 (`hari_tanpa_layanan`) + 0009 (`chat_buat_kunjungan`) + 0003 (`penanganan`, `boleh_penanganan`) — penjaga `PRASYARAT` | `docs/rollback-fo-keterbukaan-data-202610140013.sql` (PERTAMA dalam urutan rollback; memulihkan `boleh_penanganan` persis versi 0009) | **DITULIS, BELUM DITERAPKAN ke produksi; menunggu konfirmasi CEO** |
+
+Keputusan CEO 2026-10-14 (keterbukaan data antar FO): semua FO membaca semua `penanganan` (tahap `fo` dan `layanan`, semua tanggal). Hanya `boleh_penanganan` (cabang `front_office` = `RETURN true`) yang diganti; cabang lain identik 0009; tanpa policy/GRANT/DML baru; tabel `penanganan` tetap baca-saja bagi klien (tulis hanya RPC pemilik tahap). Tabel lain (`kunjungan`, `tiket_antrean`, `pelayanan_*`, `petugas`) sudah terbuka untuk FO sebelum ini dan tidak diubah. Penanda: komentar fungsi `boleh_penanganan` memuat `202610140013` (dipakai penjaga rollback 0012). Rincian akses sebelum/sesudah: `docs/analysis/04-RBAC-MATRIX.md` §6.4. Pilihan berkas baru (bukan in-place 0012): satu keputusan akses yang berdiri sendiri, bisa di-rollback terpisah dari perbaikan review; 0012 tidak diubah (hanya rollback 0012 mendapat penjaga baru).
+
+```
+node scripts/apply-migration.mjs supabase/migrations/202610140013_fo_keterbukaan_data.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202610140013_fo_keterbukaan_data.sql --atomic
+```
+
+Dry-run terhadap produksi 2026-10-14 (read-only, di-ROLLBACK): berhenti di `PRASYARAT: tabel penanganan / boleh_penanganan belum ada (202610140003_fo_model_data)` (benar). Dry-run kedua rollback (0013 dan 0012 yang diberi penjaga baru) juga berhenti di penjaganya masing-masing tanpa perubahan. Klien (rekap tanpa batas "milik sendiri", kolom Front Office) aman di-deploy sebelum/sesudah 0013: tanpa 0013 RLS lama hanya membuat data FO tidak lengkap, tidak bocor. Uji perilaku: `scripts/test-fo-keterbukaan.mjs` (**belum dijalankan**; hanya di luar jam layanan; skrip menolak Senin-Jumat 07:00-16:59 WIB).
 
 ## Ledger migrasi produksi (status 2026-10-13)
 

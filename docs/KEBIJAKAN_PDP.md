@@ -94,6 +94,14 @@ Setiap aksi sensitif oleh admin/petugas dicatat di tabel `audit_log`:
 **Catatan:** Tabel `kunjungan`/`reservasi` telah di-retire; trigger audit
 kini menempel pada `visit` (lihat baseline `202607140004_security_and_automation.sql`).
 
+### Akses data pengunjung antar Front Office (keputusan CEO 2026-10-14, migrasi `202610140013`)
+
+- **Siapa**: semua akun Front Office (`petugas.role = 'front_office'`, `aktif = true`, sesi staf sah) membaca data kunjungan, antrean, dan seluruh tahap penanganan (termasuk topik/catatan tahap FO lain dan tahap petugas layanan) serta isi Pendataan Pelayanan. **Baca saja**; perubahan tetap hanya oleh pemilik tahap lewat RPC.
+- **Alasan (dasar keperluan)**: semua FO adalah satu unit layanan yang bergantian melayani pengunjung yang sama (serah terima, pengunjung yang dikembalikan petugas layanan, rekap harian unit). Membatasi per FO menghambat pelayanan tanpa menambah perlindungan berarti karena data yang sama sudah dikelola unit tersebut.
+- **Akuntabilitas**: setiap baris pengunjung/penanganan/rekap menampilkan nama FO yang melayani; setiap ekspor Excel rekap tercatat di `audit_log` (aktor, peran, filter, jumlah baris).
+- **Tidak termasuk**: profil akun pengunjung (`pengunjung`), pengaduan jalur integritas, log AI. Petugas layanan tetap terbatas pada layanannya.
+- **Audit akses per-baca**: TIDAK dicatat (pertimbangan; bukan fitur). Bila DPO/CEO menilainya perlu, opsi ringan: catat pembukaan rekap/riwayat lintas-FO di `audit_log`.
+
 ## DPO (Data Protection Officer)
 
 **[Placeholder — diisi oleh DPMPTSP]**

@@ -11,8 +11,10 @@
 ```
 0002 tiket_kepemilikan -> 0003 fo_model_data -> 0004 fo_rpc -> 0005 fo_selaras_antrean -> 0006 pernyataan_kebenaran
  -> 0007 wp24_akhiri_dual_write -> 0008 wp24_tutup_otomatis_retensi -> 0009 chat_online -> 0011 pendataan_wajib
- -> 0012 perbaikan_review
+ -> 0012 perbaikan_review -> 0013 fo_keterbukaan_data
 ```
+
+`0013` (keterbukaan data antar FO, keputusan CEO 2026-10-14) hanya mengganti `boleh_penanganan` (semua FO membaca semua tahap; baca saja). Klien rekap/nama FO aman di-deploy sebelum/sesudah 0013; tanpa 0013 data FO hanya tidak lengkap. Verifikasi pasca: FO-B melihat penanganan FO-A di Penanganan Saya (seksi "Sedang ditangani Front Office lain") dan Rekap FO, tetapi "Selesaikan" milik FO-A tidak tersedia baginya (RPC menolak `BUKAN_PEMILIK`).
 
 (`202610140010` tidak dipakai. `0012` = perbaikan temuan review atas 0002..0011, wajib SETELAH 0011 dan 0009; rincian `docs/analysis/_fragmen-R12.md` sampai digabung ke `docs/MIGRATIONS.md`/`DB-CHANGES.md`. Klien rilis ini membaca `layanan.form_pendataan` (0012), jadi klien tetap dideploy SETELAH seluruh rantai termasuk 0012.) Nama berkas lengkap `202610140NNN_<nama>.sql` ada di `docs/MIGRATIONS.md`.
 
@@ -65,17 +67,18 @@ Semua menyentuh DB produksi lewat `DIRECT_URL` dan mengunci tabel antrean ±1-2 
 | `scripts/test-wp24.mjs --pre 0002..0006 --apply 0007 --apply 0008 --akhir-hari` | 0007, 0008 | **BELUM DIJALANKAN** (jam DB 2026-10-14 06:04 WIB terlarang) |
 | `scripts/test-chat-online.mjs --pre 0002..0005 --apply 0009` dan `--pre 0002..0008 --apply 0009` | 0009 | DIJALANKAN 2026-10-14 06:14/06:15 WIB pada versi 0009 SEBELUM perbaikan review (batas spam + backfill 24 jam); 0009 diubah sesudahnya, skrip disesuaikan: **WAJIB diulang** |
 | `scripts/test-perbaikan-review.mjs --pre 0002..0009 --pre 0011 --apply 0012` | 0012 (+ trigger/backfill 0009 yang diubah; seksi 2 Admin pengambil alih wajib form; seksi 9 hari tanpa pelayanan #13) | **BELUM DIJALANKAN** (ditulis 2026-10-14 pada jam layanan; 0012 diubah in-place atas keputusan CEO 2026-10-14) |
+| `scripts/test-fo-keterbukaan.mjs --pre 0002..0009 --pre 0011 --pre 0012 --apply 0013` | 0013 (FO-B membaca milik FO-A, tulis langsung/RPC ditolak; petugas/pengunjung/anon tetap; rollback ke 0009; penjaga rollback 0012) | **BELUM DIJALANKAN** (ditulis 2026-10-14 pada jam layanan) |
 | uji perilaku 0006 dan 0011 | 0006, 0011 | tidak ada skrip perilaku khusus; hanya test kontrak statis (`supabase/migrations/*.test.ts`) **[BELUM TERBUKTI secara perilaku]** |
 
 Skrip lama yang menulis `visit`/meng-UPDATE langsung akan gagal pada DB yang memuat 0002/0007 sampai disesuaikan: `scripts/selftest-wp21.mjs`, `scripts/test-rbac-tahap0.mjs`, `scripts/test-rbac-tahap1.mjs` (lihat `DB-CHANGES.md` entri 0002/0005/0007). Konkurensi sejati (dua koneksi) tidak diuji oleh skrip mana pun. Perintah dan flag lengkap: komentar kepala tiap skrip dan §A.2.
 
 ## 6. Rollback
 
-- Urutan terbalik: 0012 -> 0011 -> 0009 -> 0008 -> 0007 -> 0006 -> 0005 -> 0004 -> 0003 -> 0002 (0009 sebelum 0005; 0008 sebelum 0007), masing-masing `node scripts/apply-migration.mjs docs/rollback-<nama>-<versi>.sql --atomic --dry-run` lalu sungguhan, **bersama pengembalian klien** ke rilis sebelumnya (Vercel: kembali ke deployment sebelumnya).
+- Urutan terbalik: 0013 -> 0012 -> 0011 -> 0009 -> 0008 -> 0007 -> 0006 -> 0005 -> 0004 -> 0003 -> 0002 (0009 sebelum 0005; 0008 sebelum 0007), masing-masing `node scripts/apply-migration.mjs docs/rollback-<nama>-<versi>.sql --atomic --dry-run` lalu sungguhan, **bersama pengembalian klien** ke rilis sebelumnya (Vercel: kembali ke deployment sebelumnya).
 - Jendela utama: dari terap sampai sebelum layanan dibuka hari kerja berikutnya (Senin 08:00 WIB). Rincian WP-24 dan data yang tidak kembali: §A.6. Data kunjungan online/penanganan yang sudah dibuat dibiarkan; rollback 0003 menolak bila ada data `penanganan` atau kunjungan `online` kecuali flag sadar `lmh.rollback_paksa`; rollback 0008 menolak bila ada tahap `tidak_ditutup` kecuali flag yang sama.
 - Setelah layanan berjalan dengan alur baru, lebih aman **perbaikan maju** (migrasi forward baru) daripada rollback (ATURAN_MIGRASI, T11).
 - Pemicu: tulis klien gagal massal, SKM/notifikasi tidak terantre, job akhir hari/no-show gagal, FO/petugas tidak dapat bekerja dan tidak ada perbaikan cepat. Selama pemulihan pakai `docs/CADANGAN_MANUAL_FO.md`.
-- Rollback sebagian (hanya 0012, atau 0012 lalu 0011/0009) dimungkinkan karena ketiganya di ujung rantai; klien terkait ikut dikembalikan. Penjaga urutan (DO di awal berkas rollback): rollback 0011, 0009, dan 0007 menolak bila 0012 masih terpasang (`docs/rollback-perbaikan-review-202610140012.sql` dulu); rollback 0007 juga menolak bila 0011 masih ada; rollback 0012 menolak bila 0011/0009 sudah tidak ada (keadaan tak terduga).
+- Rollback sebagian (hanya 0012, atau 0012 lalu 0011/0009) dimungkinkan karena ketiganya di ujung rantai; klien terkait ikut dikembalikan. Penjaga urutan (DO di awal berkas rollback): rollback 0011, 0009, dan 0007 menolak bila 0012 masih terpasang (`docs/rollback-perbaikan-review-202610140012.sql` dulu); rollback 0007 juga menolak bila 0011 masih ada; rollback 0012 menolak bila 0011/0009 sudah tidak ada (keadaan tak terduga) dan selama penanda 0013 (komentar `boleh_penanganan`) masih ada (`docs/rollback-fo-keterbukaan-data-202610140013.sql` dulu).
 
 ## 7. Ledger migrasi (izin CEO)
 
