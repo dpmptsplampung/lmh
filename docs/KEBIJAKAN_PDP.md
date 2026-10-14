@@ -13,7 +13,7 @@ LMH mengumpulkan data pribadi berikut:
 | Sumber | Data | Tujuan |
 |--------|------|--------|
 | Google OAuth (login chat) | Nama, email, foto profil | Identitas pengunjung sesi chat |
-| Form check-in (kunjungan) | Nama, keperluan, layanan tujuan | Pelayanan loket, antrian |
+| Pendaftaran walk-in oleh Front Office (`/admin/fo/daftar`, RPC `fo_mulai_kunjungan`; menggantikan form check-in mandiri `/checkin` dan `POST /api/checkin` yang sudah dihapus) | Nama, asal instansi, HP, kategori, email, keperluan, layanan saran; catatan penanganan (topik + catatan staf) | Pelayanan loket, antrian, rekap penanganan |
 | Reservasi online | Nama, instansi, tanggal kunjungan, QR token | Penjadwalan kunjungan |
 | Profil pengunjung | Asal instansi, kategori (UMKM/Umum/Instansi/Investor) | Statistik layanan |
 | Investment Gallery | Dokumen PDF (metadata: judul, kategori) | Informasi publik |
@@ -40,6 +40,7 @@ Data **tidak** digunakan untuk pemasaran komersial, profiling otomatis, atau dib
   - `nama` → `'[anonim]'`
   - `email` → `NULL`
   - `foto_url` → `NULL`
+- **Cakupan baru (migrasi `202610140008`, DITULIS, BELUM DITERAPKAN):** anonimisasi 730 hari juga mengosongkan PII `kunjungan` (nama → `[anonim]`; HP, email, instansi, nama yang ditemui, keperluan → NULL), `penanganan.catatan` → `[anonim]`, dan arsip `visit` (tabel `visit` menjadi arsip baca saja setelah migrasi `202610140007`). Belum mencakup `pelayanan_oss`/`pelayanan_perizinan`, `buku_tamu`, dan isi chat (pertanyaan terbuka).
 - **Pengecualian:** dokumen Investment Gallery dan listing UMKM bersifat publik (bukan data pribadi per individu) sehingga tidak dianonimisasi otomatis.
 - **Manual trigger:** jika pg_cron belum di-enable, admin dapat menjalankan:
   ```sql
@@ -52,13 +53,13 @@ Persetujuan eksplisit diperlukan sebelum pengolahan data pribadi. Implementasi:
 
 | Titik consent | Tabel | `tujuan` |
 |---------------|-------|----------|
-| Form check-in `/checkin` | `consent_log` | `checkin_data` |
+| ~~Form check-in `/checkin`~~ (dihapus: `/checkin` kini halaman informasi tanpa isian; `/api/checkin` dan test kepemilikan consent-nya sudah dihapus) | `consent_log` | `checkin_data` (hanya baris historis; tidak ada penulis baru). Dasar pencatatan walk-in oleh Front Office dan cara mencatat persetujuannya BELUM ditetapkan (pertanyaan terbuka, `docs/analysis/DB-CHANGES.md` entri 202610140007 butir 1) |
 | Mulai sesi chat `/chat` | `consent_log` | `chat_followup` |
 | Simpan profil pengunjung (kotak centang pernyataan kebenaran data; K12) | `consent_log` | `pernyataan_kebenaran` — versi teks di `src/lib/pernyataan-kebenaran.ts` (`versi_kebijakan`); `subjek_ref` = `auth.uid()`; gagal mencatat = profil tidak disimpan. Setelah profil lengkap, Nama Lengkap terkunci di database; perubahan hanya oleh Front Office/admin lewat `ubah_nama_pengunjung` dengan `audit_log` |
 | Kontak UMKM (checkbox consent saat admin submit listing) | `consent_log` | `umkm_contact_public` — **Diimplementasikan 2026-07-20** (checkbox consent saat admin submit listing + baris `consent_log` tujuan `umkm_contact_public`) |
 
 - Consent dicatat di tabel `consent_log` dengan kolom `disetujui` (boolean), `versi_kebijakan` (saat ini `1.0`), dan `created_at`.
-- Checkbox consent bersifat **required** — tombol submit dinonaktifkan sampai checkbox dicentang.
+- Pada form yang masih memakai kotak centang (chat, profil pengunjung) checkbox consent bersifat **required** — tombol submit dinonaktifkan sampai checkbox dicentang.
 - Pengunjung dapat membaca kebijakan ini via link "Baca kebijakan" di samping checkbox.
 
 ## Hak Subjek Data

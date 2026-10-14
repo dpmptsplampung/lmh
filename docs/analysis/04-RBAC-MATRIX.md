@@ -121,4 +121,51 @@ Setiap kebijakan RLS baru/perubahan **wajib** punya tes perilaku dengan token ny
 - **I-22:** `petugas.aktif=false` tidak bisa login / memanggil antrean.
 - **I-23:** pemegang akun lama tidak bisa login setelah pergantian PIC (sesi lama yang masih terbuka diuji).
 
+## 6. PEMBARUAN 2026-10-14 — Alur Front Office → eskalasi, chat online, rekap FO/performa
+
+> Status: kode ditulis; migrasi `0003`-`0009`, `0011` BELUM DITERAPKAN ke produksi (hanya `202610140001` sesi staf yang sudah). Sumber kebenaran akses halaman admin tetap **`src/lib/admin-nav.ts`** (bila berbeda dengan tabel §1/§3 di atas, yang berlaku `admin-nav.ts`: mis. `/admin` dashboard, `/admin/kunjungan`, `/admin/scan` kini dapat dibuka `admin` dan `front_office`). Kontrak RPC: `docs/analysis/FO-ESKALASI-KONTRAK-RPC.md`, `docs/analysis/FO-CHAT-KONTRAK-RPC.md`.
+
+### 6.1 Rute baru (`admin-nav.ts`)
+
+| Rute | Admin | FO | Petugas | Catatan |
+|---|:-:|:-:|:-:|---|
+| `/admin/fo/kotak-masuk` | ✓ | ✓ | ✗ | kotak masuk FO (tahap `fo` `menunggu`, termasuk chat) |
+| `/admin/fo/penanganan` | ✓ | ✓ | ✗ | penanganan yang sedang saya pegang (selesai/eskalasi) |
+| `/admin/fo/daftar` | ✓ | ✓ | ✗ | pendaftaran walk-in (`fo_mulai_kunjungan`) |
+| `/admin/topik` | ✓ | ✗ | ✗ | kelola topik penanganan (tulis langsung RLS `topik_penanganan_admin_tulis`) |
+| `/admin/rekap-fo` | ✓ (semua FO, filter FO) | ✓ (hanya miliknya) | ✗ | API `rekap/penanganan?peran=fo` |
+| `/admin/performa` | ✓ | ✗ | ✗ | API `rekap/performa` (403 selain admin) |
+| `/admin/rekap` tab Rekap Petugas Layanan | ✓ | **✗ (tab disembunyikan; API 403)** | `S` (layanannya) | keputusan CEO: rekap layanan hanya Admin dan Petugas |
+| `/checkin` (publik) | – | – | – | kini halaman informasi statis; `POST /api/checkin` dihapus |
+
+### 6.2 RPC baru (SECURITY DEFINER; identitas dari sesi, bukan parameter; semua memanggil `sesi_valid()`)
+
+| RPC | Admin | FO | Petugas | Pengunjung | Syarat/catatan |
+|---|:-:|:-:|:-:|:-:|---|
+| `fo_mulai_kunjungan`, `fo_checkin_reservasi`, `fo_tolak_reservasi` | ✓ | ✓ | ✗ | ✗ | Admin sebagai pengganti FO (butuh konfirmasi CEO); walk-in ditolak setelah jam tutup |
+| `fo_selesai`, `fo_eskalasi` | ✓ | ✓ | ✗ | ✗ | hanya pemilik tahap FO `berjalan`; topik + catatan <= 200 wajib |
+| `fo_ambil_dari_kotak_masuk` | ✓ | ✓ | ✗ | ✗ | atomik (`SUDAH_DIAMBIL` bila kalah) |
+| `layanan_mulai` | ✓ (semua layanan) | ✗ | `S` | ✗ | atomik; `dilayani_oleh` = pemanggil (A3) |
+| `layanan_selesai` (5 argumen) | ✓ (pemilik) | ✗ | `S` (pemilik) | ✗ | hanya pemilik; tiket hasil eskalasi wajib topik + catatan <= 1000; pendataan semua field wajib (`INVALID_PAYLOAD`, 0011) |
+| `layanan_kembalikan` | ✓ (pemilik) | ✗ | `S` (pemilik) | ✗ | tiket hasil eskalasi; catatan wajib; masuk kotak masuk FO |
+| `admin_ambil_alih` | ✓ | ✗ | ✗ | ✗ | alasan >= 5; `audit_log` |
+| `admin_alihkan` | ✓ | ✗ | ✗ | ✗ | alasan 5-500; `audit_log`; notifikasi petugas tujuan |
+| `chat_ambil` | ✓ (ambil alih + alasan) | ✓ | `S` (layanan sesi; langsung selama belum diambil FO) | ✗ | atomik |
+| `chat_teruskan` | ✓ | ✓ | ✗ | ✗ | hanya pemilik tahap FO; tanpa tiket; layanan tujuan `aktif` + `punya_chat` |
+| `chat_selesai` | ✓ | ✓ | `S` | ✗ | hanya pemilik tahap berjalan; topik + catatan wajib |
+| `reservasi_buat`, `reservasi_batalkan` | – | – | – | ✓ (miliknya) | tanggal 0..7 hari kerja |
+| `ubah_nama_pengunjung` | ✓ | ✓ | ✗ | ✗ | alasan wajib; `audit_log`; satu-satunya jalur ubah Nama Lengkap profil lengkap |
+| `daftarkan_sesi`, `ping_sesi`, `akhiri_sesi` | ✓ | ✓ | ✓ | ✗ | sesi tunggal staf; flag `sesi_tunggal_aktif` = false sampai cutover |
+| `tutup_penanganan_tertinggal`, `pendataan_validasi_payload`, `chat_ubah_sesi`, `chat_pesan_sistem`, `chat_buat_kunjungan` | ✗ | ✗ | ✗ | ✗ | internal (service_role/pg_cron atau tanpa EXECUTE klien) |
+
+### 6.3 Perubahan akses data (RLS/hak)
+
+- `kunjungan`, `tiket_antrean`, `penanganan`: klien tidak punya INSERT/UPDATE/DELETE (UPDATE langsung mengembalikan 0 baris); `kunjungan_staff_update` dan `tiket_staff_update` dicabut. `penanganan`: SELECT lewat `boleh_penanganan(...)` (Admin semua; FO tahap miliknya, kotak masuk FO (`fo` `menunggu`), dan tahap lain dari kunjungan yang sama (konteks); petugas tahap layanannya dan tahap lain dari kunjungan yang punya tahap di layanannya (konteks); chat: petugas melihat sesi yang saat ini di layanannya).
+- `topik_penanganan`: SELECT staf, tulis Admin.
+- `visit` (setelah `0007`): arsip baca saja (INSERT/UPDATE/DELETE klien dicabut; `VISIT_ARSIP` bagi fungsi/service_role kecuali flag `lmh.visit_arsip`).
+- `chat_sesi`: kolom staf (status, `ditangani_oleh`, `layanan_id`, `kunjungan_id`) hanya lewat RPC (`CHAT_HARUS_RPC`).
+- Draf pendataan `pelayanan_oss`/`pelayanan_perizinan`: hanya pemilik tiket `dilayani` (`pemilik_tiket()`; keputusan CEO 7.5).
+- `pengunjung.nama`: terkunci bagi pemilik setelah profil lengkap (trigger); pengecualian service_role/pg_cron dan flag `lmh.ubah_nama` (RPC).
+- Uji perilaku wajib (SEC-04) per migrasi: `scripts/test-tiket-kepemilikan.mjs`, `test-fo-eskalasi.mjs`, `test-wp24.mjs`, `test-chat-online.mjs` (transaksi di-ROLLBACK; di luar jam layanan). Belum dijalankan semuanya terhadap DB yang memuat migrasi terkait, kecuali `test-chat-online.mjs` (99 lolos, 2026-10-14).
+
 **BERHENTI DI SINI.** Menunggu persetujuan manusia sebelum melanjutkan ke **Fase D (Rencana implementasi)**.

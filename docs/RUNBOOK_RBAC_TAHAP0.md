@@ -66,7 +66,7 @@ SELECT policyname FROM pg_policies WHERE tablename IN ('kunjungan','tiket_antrea
 SELECT has_function_privilege('authenticated','public.terbit_tiket(uuid,uuid)','EXECUTE');             -- false
 ```
 
-Uji manual satu kali (di perangkat): check-in walk-in dari `/checkin` sebagai pengunjung -> tiket muncul di `/admin/antrian`
+[Usang sejak 2026-10-14: `/checkin` kini halaman informasi dan `/api/checkin` dihapus; walk-in didaftarkan Front Office via `/admin/fo/daftar`.] Uji manual satu kali (di perangkat): check-in walk-in dari `/checkin` sebagai pengunjung -> tiket muncul di `/admin/antrian`
 dan layar antrean. Bila check-in gagal: jalankan rollback bagian 6 SEGERA, lalu selidiki.
 
 Efek yang diharapkan di UI sesudah 0001 (sebelum UI diperbarui):

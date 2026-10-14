@@ -57,7 +57,7 @@ GEMINI_EMBEDDING_MODEL=text-embedding-004
 5. **Resend domain** — domain in `RESEND_FROM` must be **verified** in Resend.
    Magic-link and notification email **will fail** without this.
 6. **Consent / privacy URL** — confirm `https://<prod>/kebijakan-privasi`
-   loads and matches checkin/chat consent links (`CONSENT_VERSION` / policy
+   loads and matches chat/profile consent links (the check-in form was removed 2026-10-14) (`CONSENT_VERSION` / policy
    version `1.0`).
 
 ---

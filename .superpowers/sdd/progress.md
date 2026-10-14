@@ -142,3 +142,21 @@ Plan: `docs/superpowers/plans/2026-10-13-implementasi-fo-mutasi-fondasi-plan.md`
 ## Menunggu keputusan CEO
 - Gerbang G (WP-24, idle sesi, kolom identitas, topik, field wajib, cutover) sebelum Fase 3
 - Konfirmasi terapan migrasi 202610130001/0002 ke produksi; pengisian ledger; V5
+
+
+## Pembaruan 2026-10-14 — Tahap A-D (branch `feat/audit-fondasi-fo-eskalasi`, lokal, belum di-push)
+
+Catatan: sebagian besar BELUM diterapkan ke produksi dan BELUM di-deploy. Hanya migrasi 202610140001 yang di produksi. Sumber: `docs/MIGRATIONS.md`, `docs/analysis/DB-CHANGES.md`, `docs/RUNBOOK_FO_ESKALASI.md`, pelacak lokal `docs/audit/AUDIT-2026-10-12-TRACKER.md`.
+
+- [x] Fase 0-2 fondasi/mutasi tercek/error publik/FAQ umum: di-commit lokal (894f170, 3161882, 901739f, 423e02e); FAQ umum (202610130001/2) DITERAPKAN 2026-10-13
+- [x] A1/A2 sesi tunggal: migrasi 0001 DITERAPKAN 2026-10-13 (flag `sesi_tunggal_aktif`=false); klien di-commit lokal (ef9bfab), belum di-deploy
+- [x] A3 kepemilikan tiket: kode di-commit lokal (e3d9208); migrasi 0002 DITULIS, BELUM DITERAPKAN
+- [x] B-DB1 model data + RPC FO + penyelarasan (0003-0005) dan C2 kunci nama (0006): SQL di-commit lokal (2e77296), BELUM DITERAPKAN
+- [x] Klien Tahap B/D (halaman `admin/fo/*`, `admin/topik`, `rekap-fo`, `performa`, dialog, scan, reservasi): working tree, belum di-commit
+- [x] WP-24 (0007, 0008) ditulis + `wp24.test.ts`: BELUM DITERAPKAN; `scripts/test-wp24.mjs` belum dijalankan
+- [x] C1 chat online (0009): ditulis; uji perilaku ROLLBACK 99 lolos (2026-10-14); BELUM DITERAPKAN
+- [x] C3 pendataan wajib (0011): ditulis; BELUM DITERAPKAN
+- [x] Dokumentasi: fragmen DB2/C1/C3 digabung ke MIGRATIONS.md + DB-CHANGES.md; STATUS, DECISION_LOG, RBAC-MATRIX §6, ENVIRONMENT_VARIABLES, RUNBOOK_FO_ESKALASI, KEBIJAKAN_PDP/PRD (rujukan `/api/checkin`) diperbarui
+- [ ] 0012 (agent lain) dan `_fragmen-R12.md`: belum digabung
+- [ ] Gerbang penuh `verify:baseline` untuk working tree + commit klien Tahap B-D; cutover malam (CEO); pengisian ledger; nyalakan flag sesi tunggal
+- [ ] Tahap E survei terpadu (B7): belum dimulai
