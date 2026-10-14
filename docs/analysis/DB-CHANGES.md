@@ -573,7 +573,7 @@
 5. **#10** `total_hadir` = pengunjung berbeda per layanan per hari — **disetujui**.
 
 ```markdown
-### [2026-10-14] — Walk-in FO: semua field wajib + validasi HP/email (M-202610140014_walkin_data_lengkap) — BELUM DITERAPKAN
+### [2026-10-14] — Walk-in FO: semua field wajib + validasi HP/email (M-202610140014_walkin_data_lengkap) — DITERAPKAN 2026-10-14 malam (atomik, dry-run lalu COMMIT; ledger terisi; verifikasi read-only: validasi HP/email terpasang di fo_mulai_kunjungan, anon tanpa EXECUTE, authenticated EXECUTE)
 - WP/Migrasi   : permintaan CEO 2026-10-14 (pendaftaran walk-in FO lengkap dan tervalidasi) / `supabase/migrations/202610140014_walkin_data_lengkap.sql` + test kontrak `supabase/migrations/walkin_data_lengkap.test.ts` + rollback `docs/rollback-walkin-data-lengkap-202610140014.sql`
 - Jenis        : perilaku RPC (validasi); tanpa tabel/kolom/policy/hak baru; tanpa DML
 - Objek        : `public.fo_mulai_kunjungan(text, text, text, text, text, text, uuid, uuid, uuid)`: normalisasi + validasi (nama 3–100 huruf/.,'’- min 3 huruf; asal 3–120; HP wajib kanonik `08…` `^08[1-9][0-9]{7,10}$`; kategori wajib; email wajib huruf kecil ≤ 254; keperluan wajib 10–500; layanan saran tetap opsional). Galat `DATA_TIDAK_VALID` (22023) + DETAIL nama field. COMMENT penanda `202610140014`. Bagian lain identik versi 0012.
