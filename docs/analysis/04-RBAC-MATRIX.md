@@ -135,7 +135,7 @@ Setiap kebijakan RLS baru/perubahan **wajib** punya tes perilaku dengan token ny
 | `/admin/topik` | ✓ | ✗ | ✗ | kelola topik penanganan (tulis langsung RLS `topik_penanganan_admin_tulis`) |
 | `/admin/rekap-fo` | ✓ (semua FO, filter FO) | ✓ (hanya miliknya) | ✗ | API `rekap/penanganan?peran=fo` |
 | `/admin/performa` | ✓ | ✗ | ✗ | API `rekap/performa` (403 selain admin) |
-| `/admin/rekap` tab Rekap Petugas Layanan | ✓ | **✗ (tab disembunyikan; API 403)** | `S` (layanannya) | keputusan CEO: rekap layanan hanya Admin dan Petugas |
+| `/admin/rekap` tab Rekap Petugas Layanan | ✓ (semua, filter petugas/layanan) | **✓ terbatas: hanya eskalasi asal dirinya** | `S` (layanannya) | keputusan CEO 2026-10-14 (menggantikan "hanya Admin dan Petugas"). API `rekap/penanganan?peran=layanan` dan `.../penanganan/export`: untuk FO server memaksa filter tahap `layanan` pada kunjungan yang punya tahap `fo` dengan `penangan_id` = FO pemanggil (id dari sesi, `petugas` aktif; bukan input). Dibaca dengan klien pengguna (RLS `penanganan_staf_select`/`boleh_penanganan` versi `202610140009` sudah mengizinkan cakupan itu); tanpa service-role, tanpa migrasi, tanpa PII baru (FO sudah boleh membaca `kunjungan`, `tiket_antrean`, `pelayanan_*`). Angka FO bukan rekap lengkap layanan; tab memuat catatan keterbatasan. Ekspor tercatat di `audit_log` (`detail.eskalasi_fo_id`). `/admin/performa` tidak berubah (Admin saja). |
 | `/checkin` (publik) | – | – | – | kini halaman informasi statis; `POST /api/checkin` dihapus |
 
 ### 6.2 RPC baru (SECURITY DEFINER; identitas dari sesi, bukan parameter; semua memanggil `sesi_valid()`)
@@ -146,12 +146,12 @@ Setiap kebijakan RLS baru/perubahan **wajib** punya tes perilaku dengan token ny
 | `fo_selesai`, `fo_eskalasi` | ✓ | ✓ | ✗ | ✗ | hanya pemilik tahap FO `berjalan`; topik + catatan <= 200 wajib |
 | `fo_ambil_dari_kotak_masuk` | ✓ | ✓ | ✗ | ✗ | atomik (`SUDAH_DIAMBIL` bila kalah) |
 | `layanan_mulai` | ✓ (semua layanan) | ✗ | `S` | ✗ | atomik; `dilayani_oleh` = pemanggil (A3) |
-| `layanan_selesai` (5 argumen) | ✓ (pemilik) | ✗ | `S` (pemilik) | ✗ | hanya pemilik; tiket hasil eskalasi wajib topik + catatan <= 1000; pendataan semua field wajib (`INVALID_PAYLOAD`, 0011) |
+| `layanan_selesai` (5 argumen) | ✓ (pemilik) | ✗ | `S` (pemilik) | ✗ | hanya pemilik; tiket hasil eskalasi wajib topik + catatan <= 1000; pendataan semua field wajib (`INVALID_PAYLOAD`, 0011); layanan wajib form (`layanan.form_pendataan`, 0012) wajib form untuk SEMUA peran, termasuk Admin setelah ambil alih (keputusan CEO 2026-10-14); penutupan tanpa form hanya job 23:00 WIB |
 | `layanan_kembalikan` | ✓ (pemilik) | ✗ | `S` (pemilik) | ✗ | tiket hasil eskalasi; catatan wajib; masuk kotak masuk FO |
 | `admin_ambil_alih` | ✓ | ✗ | ✗ | ✗ | alasan >= 5; `audit_log` |
 | `admin_alihkan` | ✓ | ✗ | ✗ | ✗ | alasan 5-500; `audit_log`; notifikasi petugas tujuan |
-| `chat_ambil` | ✓ (ambil alih + alasan) | ✓ | `S` (layanan sesi; langsung selama belum diambil FO) | ✗ | atomik |
-| `chat_teruskan` | ✓ | ✓ | ✗ | ✗ | hanya pemilik tahap FO; tanpa tiket; layanan tujuan `aktif` + `punya_chat` |
+| `chat_ambil` | ✓ (ambil alih + alasan) | ✓ | `S` (layanan sesi; langsung selama belum diambil FO) | ✗ | atomik; **semua peran ditolak `HARI_TANPA_LAYANAN` pada Sabtu/Minggu/`hari_libur`** (0012 #13) |
+| `chat_teruskan` | ✓ | ✓ | ✗ | ✗ | hanya pemilik tahap FO; tanpa tiket; layanan tujuan `aktif` + `punya_chat`; ditolak `HARI_TANPA_LAYANAN` pada hari tanpa pelayanan || `hari_tanpa_layanan` | ✓ | ✓ | ✓ | ✓ (anon juga) | baca saja; Sabtu/Minggu/`hari_libur` |
 | `chat_selesai` | ✓ | ✓ | `S` | ✗ | hanya pemilik tahap berjalan; topik + catatan wajib |
 | `reservasi_buat`, `reservasi_batalkan` | – | – | – | ✓ (miliknya) | tanggal 0..7 hari kerja |
 | `ubah_nama_pengunjung` | ✓ | ✓ | ✗ | ✗ | alasan wajib; `audit_log`; satu-satunya jalur ubah Nama Lengkap profil lengkap |

@@ -13,6 +13,7 @@
 - **Semua aksi staf atas sesi chat lewat RPC** `chat_ambil` / `chat_teruskan` / `chat_selesai`. DB **menolak** perubahan langsung `chat_sesi.status/ditangani_oleh/layanan_id/kunjungan_id` dengan `CHAT_HARUS_RPC`, termasuk dari service_role. **Akibatnya route lama `POST /api/chat/sesi` (`takeover`, `kembali_ke_bot`, `selesaikan`) gagal setelah migrasi** dan harus diganti (lihat §5).
 - Alur yang **tidak berubah**: pengunjung membuat sesi (`bot`/`eskalasi`) lewat RLS; `/api/chat/ai` menaikkan `bot → eskalasi` (service_role); semua kirim/baca pesan (`/api/chat/messages`, RLS `chat_pesan`, realtime).
 - **Pesan sistem ditulis RPC** di transaksi yang sama (pengirim `bot`). Route **tidak boleh** menulis pesan sistem sendiri lagi.
+- **Hari tanpa pelayanan** (Sabtu/Minggu/tanggal di `hari_libur`; keputusan CEO 2026-10-14, migrasi `202610140012` #13, lihat §2.6): live chat dengan petugas tidak tersedia. `chat_ambil`/`chat_teruskan` menolak `HARI_TANPA_LAYANAN`; trigger eskalasi tidak mencatat kunjungan; `/api/chat/ai` tidak mengeskalasi; `/chat` memberi tahu pengunjung (bot saja). Penutupan otomatis 24 jam (`tutup_chat_tertinggal`, `0012` #11) tetap berlaku.
 
 ## 1. Skema
 
@@ -47,13 +48,13 @@ Peran: `front_office`, `admin`, `petugas`. Atomik: `UPDATE penanganan … WHERE 
 
 Efek sukses (bukan idempoten): tahap `berjalan` (penangan = pemanggil, `mulai_at` server), kunjungan `dilayani`, sesi `aktif` + `ditangani_oleh` = pemanggil, pesan sistem ke pengunjung. Admin: `audit_log` `chat_ambil`.
 - Balasan: `{ok, sudah_milik_anda, ambil_alih, sesi_id, kunjungan_id, penanganan_id, peran_tahap, mulai_at}` (+ `pemilik_lama` bila `ambil_alih: true`).
-- Galat: `FORBIDDEN`, `SESI_TIDAK_SAH`, `NOT_FOUND` (P0002), `INVALID_STATUS` (P0001, sesi `selesai`), `SUDAH_DIAMBIL` (P0001, kalah balapan → muat ulang daftar), `ALASAN_WAJIB` (22023, Admin ambil alih), `DIVERGENSI` (P0001, sesi belum selesai tanpa tahap terbuka; laporkan).
+- Galat: `FORBIDDEN`, `SESI_TIDAK_SAH`, `NOT_FOUND` (P0002), `INVALID_STATUS` (P0001, sesi `selesai`), `SUDAH_DIAMBIL` (P0001, kalah balapan → muat ulang daftar), `ALASAN_WAJIB` (22023, Admin ambil alih), `DIVERGENSI` (P0001, sesi belum selesai tanpa tahap terbuka; laporkan), `HARI_TANPA_LAYANAN` (P0001, `0012` #13: Sabtu/Minggu/hari libur, semua peran termasuk ambil alih Admin; diperiksa sebelum mengunci apa pun).
 
 ### 2.2 `chat_teruskan(p_sesi_id uuid, p_layanan_id uuid, p_topik_id uuid, p_catatan text) → jsonb`
 Peran: `front_office`, `admin`; hanya **pemilik tahap FO yang berjalan**. Handoff **tanpa tiket**: tahap FO → `selesai` (`hasil='dieskalasi'`, topik FO aktif + catatan 1–200 wajib); tahap baru `layanan` (`p_layanan_id`, saluran `chat`, `menunggu`, `tiket_id` NULL); kunjungan `menunggu`; sesi → `eskalasi`, `ditangani_oleh` NULL, `layanan_id` = tujuan; pesan sistem "diteruskan ke petugas layanan …"; notifikasi web push ke semua petugas **aktif** layanan tujuan (`queue_notifikasi`, payload `{type:'chat_diteruskan', sesi_id, layanan_id, url:'/admin/chat'}`, tanpa PII). Admin: `audit_log` `chat_teruskan`. Tidak terikat jam tutup/jadwal (live chat tetap tersedia).
 - Syarat layanan tujuan: ada, `aktif`, `punya_chat = true`. Boleh sama dengan layanan sesi saat ini.
 - Balasan: `{ok, sesi_id, kunjungan_id, penanganan_fo_id, penanganan_layanan_id, layanan_id, layanan_nama, petugas_hadir, notifikasi_diantrekan}`. `petugas_hadir=false` (belum ada absensi `approved` hari ini) / `notifikasi_diantrekan=0` **bukan galat**: tampilkan peringatan ke FO.
-- Galat: `FORBIDDEN`, `SESI_TIDAK_SAH`, `NOT_FOUND`, `INVALID_STATUS` (belum diambil / selesai), `BUKAN_TAHAP_FO` (P0001, tahap berjalan milik petugas layanan), `BUKAN_PEMILIK` (42501), `TOPIK_WAJIB` / `TOPIK_TIDAK_VALID` / `CATATAN_WAJIB` / `CATATAN_TERLALU_PANJANG` (22023), `LAYANAN_TIDAK_VALID` (22023).
+- Galat: `FORBIDDEN`, `SESI_TIDAK_SAH`, `NOT_FOUND`, `INVALID_STATUS` (belum diambil / selesai), `BUKAN_TAHAP_FO` (P0001, tahap berjalan milik petugas layanan), `BUKAN_PEMILIK` (42501), `TOPIK_WAJIB` / `TOPIK_TIDAK_VALID` / `CATATAN_WAJIB` / `CATATAN_TERLALU_PANJANG` (22023), `LAYANAN_TIDAK_VALID` (22023), `HARI_TANPA_LAYANAN` (P0001, `0012` #13: petugas tujuan tidak bertugas pada Sabtu/Minggu/hari libur). Catatan: "tidak terikat jam tutup" di atas tetap berlaku untuk hari kerja.
 - Setelah diteruskan, petugas layanan tujuan mengambil dengan `chat_ambil`. Mengembalikan chat dari petugas ke FO **belum didukung** (lihat §7).
 
 ### 2.3 `chat_selesai(p_sesi_id uuid, p_topik_id uuid, p_catatan text) → jsonb`
@@ -67,6 +68,12 @@ Peran: `front_office`, `admin`, `petugas`; hanya **pemilik tahap yang berjalan**
 
 ### 2.5 `CHAT_HARUS_RPC` (42501)
 Dari trigger `trg_chat_sesi_jaga_rpc`. Tanpa RPC hanya boleh: INSERT sesi berstatus `bot`/`eskalasi` tanpa `ditangani_oleh`/`kunjungan_id`; `bot → eskalasi`; `bot → selesai` (sesi belum tercatat); SET NULL otomatis akibat FK. Kolom lain (`kontak_pengunjung`, `updated_at`) bebas seperti sebelumnya.
+
+### 2.6 Hari tanpa pelayanan (`202610140012` #13; keputusan CEO 2026-10-14)
+- `hari_tanpa_layanan(p_tanggal date DEFAULT hari ini WIB) → boolean` (STABLE, SECURITY DEFINER, EXECUTE untuk anon/authenticated/service_role): `ISODOW IN (6,7)` atau tanggal ada di `hari_libur`. Sama dengan `hariTanpaLayanan()` di `src/lib/llm/bot-waktu.ts` dan aturan `tambah_hari_kerja`. Tidak memakai jadwal per layanan (chat lintas layanan).
+- `chat_ambil`, `chat_teruskan`: `HARI_TANPA_LAYANAN` (P0001) untuk semua peran, sebelum mengunci/menulis apa pun. `chat_selesai`: **tidak** ditolak (pemegang chat dari hari kerja tetap dapat menutup).
+- Trigger `chat_sesi_eskalasi_kunjungan` / `chat_pesan_eskalasi_kunjungan`: tidak membuat kunjungan/tahap pada hari itu. Sesi yang tetap `eskalasi` tanpa kunjungan dicatat saat pesan pengunjung berikutnya di hari kerja atau saat `chat_ambil` (hari kerja), atau ditutup `tutup_chat_tertinggal` setelah 24 jam tanpa aktivitas.
+- Klien (tidak memanggil fungsi ini; menilai hari dari `hari_libur` lewat `src/lib/chat/hari-tanpa-layanan.ts`): `/api/chat/ai` tanpa eskalasi (termasuk jalur gagal; `reason` `hari_tanpa_layanan`, balasan menyarankan hari kerja berikutnya + kanal `wa_number`/`contact_email` dari `site_settings` bila terisi); `/chat` menampilkan pemberitahuan, menyembunyikan "Hubungkan ke Petugas", menonaktifkan layanan tanpa bot, dan meneruskan pesan sesi `eskalasi` ke bot; `/admin/chat` menonaktifkan Ambil Chat / Ambil Alih / Teruskan dengan alasan. Route `/api/chat/sesi` memetakan `HARI_TANPA_LAYANAN` ke HTTP 409 (`src/lib/chat-staf.ts`).
 
 ## 3. Transisi status
 
@@ -146,8 +153,8 @@ Sama dengan kontrak FO §6.5: tahap `fo` → `.is('layanan_id', null)`; tahap `l
 
 ## 7. Pertanyaan terbuka (untuk CEO)
 
-1. **Kapan dicatat:** saat eskalasi (dipilih) atau saat pengunjung terdaftar memulai chat? Pilihan sekarang tidak mencatat sesi yang tuntas oleh bot.
-2. **"Kembali ke bot"** tidak lagi didukung. Hapus fitur, atau perlu RPC (mis. tahap `batal` + sesi `bot`)?
+1. ~~**Kapan dicatat**~~ — **DIJAWAB CEO 2026-10-14: saat eskalasi** (pilihan sekarang; sesi yang tuntas oleh bot tidak dicatat). Pada hari tanpa pelayanan tidak dicatat sama sekali (§2.6).
+2. ~~**"Kembali ke bot"**~~ — **DIJAWAB CEO 2026-10-14: fitur dihapus** (tanpa RPC pengganti).
 3. **Petugas mengembalikan chat ke FO** (padanan `layanan_kembalikan` untuk chat) belum ada. Perlu?
 4. FO lain merebut chat yang sedang ditangani FO lain: kini **ditolak** (`SUDAH_DIAMBIL`; route lama mengizinkan). Hanya Admin (dengan alasan) yang bisa. Setuju?
 5. `chat_teruskan` mensyaratkan `layanan.punya_chat = true`. Setuju?

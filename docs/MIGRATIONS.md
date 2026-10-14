@@ -175,9 +175,17 @@ Status per 2026-10-14: hanya `202610140001` yang DITERAPKAN; `0002`-`0009` dan `
 
 | Versi | Berkas | Prasyarat | Rollback | Status |
 |---|---|---|---|---|
-| 202610140012 | `202610140012_perbaikan_review.sql` | 0011 (+0009, 0007, pg_cron) — penjaga `PRASYARAT` | `docs/rollback-perbaikan-review-202610140012.sql` (PERTAMA dalam urutan rollback) | ditulis, belum diterapkan |
+| 202610140012 | `202610140012_perbaikan_review.sql` | 0011 (+0009, 0007, pg_cron, tabel `hari_libur`) — penjaga `PRASYARAT` | `docs/rollback-perbaikan-review-202610140012.sql` (PERTAMA dalam urutan rollback) | ditulis, belum diterapkan |
 
 Urutan cutover menjadi `0002 -> ... -> 0008 -> 0009 -> 0011 -> 0012`. Urutan rollback: `0012 -> 0011 -> 0009 -> 0008 -> 0007 -> ...`.
+
+### Catatan perubahan in-place 202610140012 (belum diterapkan; keputusan CEO 2026-10-14)
+
+`202610140012_perbaikan_review.sql` DIUBAH in-place (diizinkan karena belum diterapkan di produksi; entri manifest dihapus lalu diregenerasi dengan `node scripts/gen-migration-manifest.mjs`):
+- #1 `layanan_selesai`: pengecualian "Admin pengambil alih menutup tanpa form" dan audit `layanan_selesai_tanpa_pendataan` DIHAPUS; kewajiban form berlaku untuk semua peran. Tiket macet tanpa data hanya ditutup jalur otomatis `tutup_penanganan_tertinggal` (0008, 23:00 WIB).
+- #13 baru (hari tanpa pelayanan = Sabtu/Minggu/`hari_libur`): fungsi `hari_tanpa_layanan(date)`; `chat_ambil`/`chat_teruskan` menolak `HARI_TANPA_LAYANAN`; trigger eskalasi chat (`chat_sesi_eskalasi_kunjungan`, `chat_pesan_eskalasi_kunjungan`) tidak mencatat kunjungan pada hari itu. Fungsi 0009 itu di-`CREATE OR REPLACE` penuh di 0012 (berkas 0009 TIDAK diubah); rollback 0012 memulihkannya persis dari 0009 lalu `DROP FUNCTION hari_tanpa_layanan(date)`.
+- Uji perilaku: `scripts/test-perbaikan-review.mjs` seksi 2 (Admin pengambil alih wajib form, jalur otomatis) dan seksi 9 (#13; menandai hari ini sebagai `hari_libur` di dalam savepoint) — **belum dijalankan** (hanya di luar jam layanan). `scripts/test-chat-online.mjs` kini berhenti pada Sabtu/Minggu/hari libur bila 0012 sudah terpasang (jalankan pada hari kerja setelah 17:00 WIB).
+- Klien: `/chat`, `/admin/chat`, `/api/chat/ai` menilai hari sendiri dari tabel `hari_libur` (tidak memanggil `hari_tanpa_layanan`), jadi aman di-deploy sebelum/sesudah 0012; tanpa 0012 hanya penegakan DB yang belum ada.
 
 ### Catatan perubahan in-place 202610140009 (belum diterapkan)
 
