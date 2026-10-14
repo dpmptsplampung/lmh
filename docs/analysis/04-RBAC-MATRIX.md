@@ -124,6 +124,8 @@ Setiap kebijakan RLS baru/perubahan **wajib** punya tes perilaku dengan token ny
 ## 6. PEMBARUAN 2026-10-14 — Alur Front Office → eskalasi, chat online, rekap FO/performa
 
 > Status: kode ditulis; migrasi `0002`-`0009`, `0011`, `0012`, `0013` DITERAPKAN ke produksi 2026-10-14 malam (`0001` sesi staf sejak 2026-10-13); tampilan di browser belum terbukti. Sumber kebenaran akses halaman admin tetap **`src/lib/admin-nav.ts`** (bila berbeda dengan tabel §1/§3 di atas, yang berlaku `admin-nav.ts`: mis. `/admin` dashboard, `/admin/kunjungan`, `/admin/scan` kini dapat dibuka `admin` dan `front_office`). Kontrak RPC: `docs/analysis/FO-ESKALASI-KONTRAK-RPC.md`, `docs/analysis/FO-CHAT-KONTRAK-RPC.md`.
+r
+> Pengelompokan menu sidebar (2026-10-14): menu admin ditampilkan sebagai dropdown per kelompok (Front Office, Antrean & Kehadiran, Layanan Online, Laporan & Evaluasi, Pengelolaan Layanan, Kemitraan & Investasi, Konten & Dokumen, Sistem & Keamanan) dengan urutan prioritas pemakaian harian; kelompok dengan satu entri tersisa setelah disaring per role tampil sebagai tautan biasa. Ini murni presentasi di `admin-nav.ts` (`group`, `ADMIN_NAV_GROUPS`, `buildNavTree`): kolom `roles` dan `canAccessAdminPath` tidak berubah. Badge notifikasi per menu (`badgeKey`, `ADMIN_BADGE_ROLES`) hanya penanda jumlah data yang perlu dibuka, bukan hak akses; hitungannya tetap dibatasi RLS.
 
 ### 6.1 Rute baru (`admin-nav.ts`)
 

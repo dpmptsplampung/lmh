@@ -15,6 +15,7 @@ import {
   X,
   LogOut,
   ChevronRight,
+  ChevronDown,
   QrCode,
   Globe,
   HelpCircle,
@@ -41,13 +42,27 @@ import {
   Tags,
   FileSpreadsheet,
   Gauge,
+  ConciergeBell,
+  ListOrdered,
+  Headset,
+  FileBarChart,
+  SlidersHorizontal,
+  Handshake,
+  FolderOpen,
+  Cog,
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
 import { keluarDariSesi } from '@/lib/sesi-staf';
-import { makeThrottle } from '@/app/chat/merge';
-import { ADMIN_NAV, type AdminNavEntry } from '@/lib/admin-nav';
+import {
+  buildNavTree,
+  findActiveNavEntry,
+  findGroupForPath,
+  type AdminNavEntry,
+  type AdminNavGroupKey,
+} from '@/lib/admin-nav';
+import { totalBadge, useJudulTabBadge, useNavBadges, type NavBadge } from '@/lib/hooks/useNavBadges';
 import styles from './Sidebar.module.css';
 
 const ICONS: Record<AdminNavEntry['iconKey'], React.ReactNode> = {
@@ -86,12 +101,53 @@ const ICONS: Record<AdminNavEntry['iconKey'], React.ReactNode> = {
   performa:  <Gauge size={20} />,
 };
 
-const navItems = ADMIN_NAV.map((entry) => ({
-  label: entry.label,
-  href: entry.href,
-  icon: ICONS[entry.iconKey],
-  roles: entry.roles as string[],
-}));
+const GROUP_ICONS: Record<AdminNavGroupKey, React.ReactNode> = {
+  frontOffice: <ConciergeBell size={20} />,
+  antrean: <ListOrdered size={20} />,
+  layananOnline: <Headset size={20} />,
+  laporan: <FileBarChart size={20} />,
+  pengelolaan: <SlidersHorizontal size={20} />,
+  kemitraan: <Handshake size={20} />,
+  konten: <FolderOpen size={20} />,
+  sistem: <Cog size={20} />,
+};
+
+// Kelompok yang terbuka bertahan saat muat ulang (per tab). Bentuk: {open, pathGroup};
+// dipulihkan hanya bila kelompok halaman aktif masih sama dengan saat disimpan.
+const SIDEBAR_STORAGE_KEY = 'lmh.sidebar.grup';
+
+function readStored(): { open: AdminNavGroupKey | null; pathGroup: AdminNavGroupKey | null } | null {
+  try {
+    const raw = window.sessionStorage.getItem(SIDEBAR_STORAGE_KEY);
+    if (!raw) return null;
+    const v = JSON.parse(raw) as { open?: unknown; pathGroup?: unknown };
+    const ok = (x: unknown) => x === null || typeof x === 'string';
+    if (!v || !ok(v.open) || !ok(v.pathGroup)) return null;
+    return { open: v.open as AdminNavGroupKey | null, pathGroup: v.pathGroup as AdminNavGroupKey | null };
+  } catch {
+    return null;
+  }
+}
+
+function writeStored(open: AdminNavGroupKey | null, pathGroup: AdminNavGroupKey | null) {
+  try {
+    window.sessionStorage.setItem(SIDEBAR_STORAGE_KEY, JSON.stringify({ open, pathGroup }));
+  } catch {
+    /* storage tidak tersedia: state tetap jalan tanpa persistensi */
+  }
+}
+
+// Badge angka bundar: disembunyikan bila 0, '99+' bila >99. Angka disembunyikan dari pembaca layar
+// (aria-hidden) dan diganti teks jelas yang tersembunyi secara visual.
+function NavBadgeView({ count, label }: { count: number; label: string }) {
+  if (count <= 0) return null;
+  return (
+    <>
+      <span className={styles.badge} aria-hidden="true">{count > 99 ? '99+' : count}</span>
+      <span className={styles.srOnly}>{`: ${label}`}</span>
+    </>
+  );
+}
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -103,17 +159,48 @@ export default function Sidebar() {
     setPrevPath(pathname);
     setMobileOpen(false);
   }
+
+  // Accordion: satu kelompok terbuka. Render awal deterministik (kelompok halaman aktif);
+  // sessionStorage dibaca di efek agar tidak ada hydration mismatch.
+  const pathGroup = findGroupForPath(pathname);
+  const [openGroup, setOpenGroup] = useState<AdminNavGroupKey | null>(pathGroup);
+  const [prevGroup, setPrevGroup] = useState<AdminNavGroupKey | null>(pathGroup);
+  const [storageReady, setStorageReady] = useState(false);
+  if (prevGroup !== pathGroup) {
+    // Pindah ke kelompok lain: buka kelompok baru (yang lain tertutup). Kelompok yang
+    // sama: state tidak disentuh. Halaman tautan tunggal: kelompok terbuka dibiarkan.
+    setPrevGroup(pathGroup);
+    if (pathGroup) setOpenGroup(pathGroup);
+  }
+  useEffect(() => {
+    const stored = readStored();
+    // Pulihkan hanya bila kelompok halaman aktif sama dengan saat disimpan.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (stored && stored.pathGroup === pathGroup) setOpenGroup(stored.open);
+    setStorageReady(true);
+    // Sekali saat mount; perubahan berikutnya ditangani saat render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (storageReady) writeStored(openGroup, pathGroup);
+  }, [storageReady, openGroup, pathGroup]);
+  const toggleGroup = (key: AdminNavGroupKey) =>
+    setOpenGroup((cur) => (cur === key ? null : key));
+
   const toggleRef = useRef<HTMLButtonElement>(null);
   const sidebarRef = useRef<HTMLElement>(null);
   const [userRole, setUserRole] = useState<string | null | undefined>(undefined);
   const [userName, setUserName] = useState<string>('');
-  const [eskalasiCount, setEskalasiCount] = useState(0);
+  const [staf, setStaf] = useState<{ id: string | null; layananId: string | null }>({ id: null, layananId: null });
+
+  // Badge notifikasi per menu (satu instance hook) + awalan jumlah di judul tab.
+  const badges = useNavBadges(
+    userRole ? { role: userRole, petugasId: staf.id, layananId: staf.layananId } : null,
+  );
+  useJudulTabBadge(totalBadge(badges));
 
   useEffect(() => {
     const supabase = createClient();
-    let channel: ReturnType<typeof supabase.channel> | null = null;
-    let throttleCancel: (() => void) | null = null;
-
     async function getUserRole() {
       const {
         data: { user },
@@ -121,7 +208,7 @@ export default function Sidebar() {
       if (user) {
         const { data: petugas, error } = await supabase
           .from('petugas')
-          .select('nama, role, layanan_id')
+          .select('id, nama, role, layanan_id')
           .eq('auth_user_id', user.id)
           .maybeSingle();
         if (error || !petugas) {
@@ -130,41 +217,12 @@ export default function Sidebar() {
         }
         setUserRole(petugas.role);
         setUserName(petugas.nama ?? '');
-
-        // Badge unread: sesi chat berstatus eskalasi — live via subscription
-        const scopeLayananId = petugas.role === 'petugas' ? petugas.layanan_id : null;
-        const refreshBadge = async () => {
-          let badgeQuery = supabase
-            .from('chat_sesi')
-            .select('*', { count: 'exact', head: true })
-            .eq('status', 'eskalasi');
-          if (scopeLayananId) {
-            badgeQuery = badgeQuery.eq('layanan_id', scopeLayananId);
-          }
-          const { count } = await badgeQuery;
-          setEskalasiCount(count ?? 0);
-        };
-        const badgeThrottle = makeThrottle(() => { refreshBadge(); }, 1500);
-        throttleCancel = badgeThrottle.cancel;
-
-        channel = supabase
-          .channel('sidebar-eskalasi-badge')
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_sesi' }, () => {
-            badgeThrottle.call();
-          })
-          .subscribe((st) => {
-            if (st === 'SUBSCRIBED') refreshBadge(); // catch-up saat (re)connect
-          });
+        setStaf({ id: petugas.id ?? null, layananId: petugas.layanan_id ?? null });
       } else {
         setUserRole(null);
       }
     }
     getUserRole();
-
-    return () => {
-      throttleCancel?.();
-      if (channel) supabase.removeChannel(channel);
-    };
   }, []);
 
   // Laci terbuka: kunci scroll halaman, Esc menutup (fokus kembali ke tombol),
@@ -202,18 +260,29 @@ export default function Sidebar() {
     };
   }, [mobileOpen]);
 
-  const isActive = (href: string) => {
-    if (href === '/') return pathname === '/';
-    if (href === '/admin') return pathname === '/admin';
-    if (pathname === href) return true;
-    const moreSpecific = navItems.some(
-      (item) =>
-        item.href !== href &&
-        item.href.startsWith(href + '/') &&
-        (pathname === item.href || pathname.startsWith(item.href + '/'))
+  // Tepat satu entri aktif: exact, lalu prefiks terpanjang ('/' dan '/admin' hanya exact).
+  const activeHref = findActiveNavEntry(pathname)?.href;
+  const isActive = (href: string) => href === activeHref;
+
+  const tree = buildNavTree(userRole);
+
+  const renderLink = (entry: AdminNavEntry, nested = false) => {
+    const active = isActive(entry.href);
+    const badge = entry.badgeKey ? badges[entry.badgeKey] : undefined;
+    return (
+      <Link
+        key={entry.href}
+        href={entry.href}
+        className={cn(styles.navItem, nested && styles.navItemNested, active && styles.navItemActive)}
+        aria-current={active ? 'page' : undefined}
+        onClick={() => setMobileOpen(false)}
+      >
+        <span className={styles.navIcon}>{ICONS[entry.iconKey]}</span>
+        <span className={styles.navLabel}>{entry.label}</span>
+        {badge && <NavBadgeView count={badge.count} label={badge.label} />}
+        {active && <ChevronRight size={16} className={styles.navArrow} />}
+      </Link>
     );
-    if (moreSpecific) return false;
-    return pathname.startsWith(href + '/');
   };
 
   const handleLogout = async () => {
@@ -261,61 +330,58 @@ export default function Sidebar() {
       >
         {/* Brand */}
         <div className={styles.brand}>
-          <Image 
-            src="/logo.png" 
-            alt="Lampung Maju Hub Logo" 
-            width={180} 
-            height={80} 
+          <Image
+            src="/logo.png"
+            alt="Lampung Maju Hub Logo"
+            width={180}
+            height={80}
             className={styles.brandLogo}
-            style={{ objectFit: 'contain', width: 'auto', height: 'auto' }} 
+            style={{ objectFit: 'contain', width: 'auto', height: 'auto' }}
             priority
           />
         </div>
 
         {/* Navigation */}
         <nav className={styles.nav} aria-label="Menu admin">
-          {navItems.filter(item => {
-            if (userRole === undefined || userRole === null) return false;
-            if (!item.roles) return true;
-            return item.roles.includes(userRole);
-          }).map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                styles.navItem,
-                isActive(item.href) && styles.navItemActive
-              )}
-              aria-current={isActive(item.href) ? 'page' : undefined}
-              onClick={() => setMobileOpen(false)}
-            >
-              <span className={styles.navIcon}>{item.icon}</span>
-              <span className={styles.navLabel}>{item.label}</span>
-              {item.href === '/admin/chat' && eskalasiCount > 0 && (
-                <span
-                  aria-label={`${eskalasiCount} sesi chat eskalasi`}
-                  style={{
-                    background: 'var(--color-danger-500)',
-                    color: 'var(--text-inverse)',
-                    borderRadius: 'var(--radius-full)',
-                    fontSize: 'var(--text-xs)',
-                    fontWeight: 700,
-                    minWidth: '20px',
-                    height: '20px',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: '0 var(--space-1)',
-                  }}
+          {tree.map((item) => {
+            if (item.type === 'link') return renderLink(item.entry);
+            const { group, children } = item;
+            const open = openGroup === group.key;
+            const listId = `sidebar-grup-${group.key}`;
+            const containsActive = children.some((c) => isActive(c.href));
+            // Grup tertutup: jumlah total badge anak tetap terlihat; terbuka: badge ada di tiap anak.
+            const anak = children
+              .map((c) => (c.badgeKey ? badges[c.badgeKey] : undefined))
+              .filter((b): b is NavBadge => !!b && b.count > 0);
+            const jumlahGrup = anak.reduce((n, b) => n + b.count, 0);
+            return (
+              <div key={group.key} className={styles.group}>
+                <button
+                  type="button"
+                  className={cn(styles.groupHeader, containsActive && styles.groupHeaderActive)}
+                  aria-expanded={open}
+                  aria-controls={listId}
+                  onClick={() => toggleGroup(group.key)}
                 >
-                  {eskalasiCount}
-                </span>
-              )}
-              {isActive(item.href) && (
-                <ChevronRight size={16} className={styles.navArrow} />
-              )}
-            </Link>
-          ))}
+                  <span className={styles.navIcon}>{GROUP_ICONS[group.iconKey]}</span>
+                  <span className={styles.navLabel}>{group.label}</span>
+                  {!open && jumlahGrup > 0 && (
+                    <NavBadgeView count={jumlahGrup} label={anak.map((b) => b.label).join('; ')} />
+                  )}
+                  <ChevronDown
+                    size={16}
+                    aria-hidden="true"
+                    className={cn(styles.groupChevron, open && styles.groupChevronOpen)}
+                  />
+                </button>
+                <ul id={listId} className={styles.groupList} hidden={!open}>
+                  {children.map((entry) => (
+                    <li key={entry.href}>{renderLink(entry, true)}</li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
         </nav>
 
         {/* Footer */}
@@ -330,7 +396,7 @@ export default function Sidebar() {
               </div>
             </div>
           )}
-          <button 
+          <button
             className={cn('btn btn--ghost', styles.logoutBtn)}
             onClick={handleLogout}
           >

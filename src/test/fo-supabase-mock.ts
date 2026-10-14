@@ -30,7 +30,7 @@ export function buatH(): FakeH {
   return { tabel: {}, rpc: () => ({ data: null, error: null }), user: { id: 'u-saya' }, log: [], rpcLog: [] };
 }
 
-const METODE_RANTAI = ['select', 'eq', 'neq', 'in', 'is', 'gte', 'lte', 'order', 'limit', 'range', 'not', 'or'];
+const METODE_RANTAI = ['select', 'eq', 'neq', 'in', 'is', 'gt', 'gte', 'lte', 'order', 'limit', 'range', 'not', 'or'];
 
 export function buatFakeSupabase(h: FakeH) {
   return {
