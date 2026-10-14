@@ -96,6 +96,34 @@ describe('Kotak Masuk FO', () => {
     expect(screen.queryByText(/SALAH/)).toBeNull();
   });
 
+  it('pengunjung yang dikembalikan menampilkan nama FO yang melayani sebelumnya (FO mana pun; keterbukaan antar FO)', async () => {
+    siapkan(
+      [barisKotak({ id: 'pn-4', tahap_ke: 4 })],
+      [{ kunjungan_id: 'k-1', tahap_ke: 3, catatan: 'Kurang berkas', layanan_id: 'l-1', penangan_id: 'p-9', selesai_at: null }],
+    );
+    const dasar = m.h.tabel.penanganan as (ops: Op[]) => { data: unknown; error: null };
+    m.h.tabel.penanganan = (ops: Op[]) =>
+      ops.some(([op, a]) => op === 'not' && a[0] === 'penangan_id')
+        ? {
+            data: [
+              { kunjungan_id: 'k-1', tahap_ke: 1, penangan_id: 'p-fo-a' },
+              { kunjungan_id: 'k-1', tahap_ke: 2, penangan_id: 'p-fo-b' },
+              { kunjungan_id: 'k-1', tahap_ke: 5, penangan_id: 'p-fo-c' }, // sesudah item ini: tidak dipakai
+            ],
+            error: null,
+          }
+        : dasar(ops);
+    m.h.tabel.petugas = {
+      data: [{ id: 'p-9', nama: 'Sari' }, { id: 'p-fo-a', nama: 'Ani FO' }, { id: 'p-fo-b', nama: 'Bayu FO' }, { id: 'p-fo-c', nama: 'Citra FO' }],
+      error: null,
+    };
+    render(<KotakMasukFoPage />);
+    expect(await screen.findByText(/Sebelumnya dilayani Front Office: Bayu FO/)).toBeInTheDocument();
+    expect(screen.queryByText(/Citra FO/)).toBeNull();
+    const kueriFo = m.h.log.find((l) => l.tabel === 'penanganan' && l.ops.some(([op]) => op === 'not'))!;
+    expect(punyaOp(kueriFo.ops, 'eq', 'peran_tahap', 'fo')).toBe(true);
+  });
+
   it('tahap pertama (bukan pengembalian) tidak menampilkan blok "Dikembalikan"', async () => {
     siapkan([barisKotak()]);
     render(<KotakMasukFoPage />);

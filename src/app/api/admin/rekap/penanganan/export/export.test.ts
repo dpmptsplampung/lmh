@@ -50,7 +50,7 @@ describe('GET /api/admin/rekap/penanganan/export', () => {
     expect((await get()).status).toBe(401);
   });
 
-  it('ekspor FO memuat nama FO dan HANYA baris miliknya untuk Front Office', async () => {
+  it('ekspor FO untuk Front Office memuat SEMUA FO dengan nama FO tiap baris (keterbukaan antar FO)', async () => {
     pasang(buatHRekap({
       role: 'front_office',
       penanganan: [tahap('a'), tahap('b', { penangan_id: 'p-lain', petugas: { nama: 'Orang Lain' } })],
@@ -61,8 +61,13 @@ describe('GET /api/admin/rekap/penanganan/export', () => {
     expect(res.headers.get('X-Rekap-Truncated')).toBe('false');
     expect(res.headers.get('Content-Disposition')).toContain('rekap-front-office-2026-10-12-sd-2026-10-12.xlsx');
     const ws = await bacaSheet(res, 'Rekap FO');
-    expect(ws.rowCount).toBe(2); // header + 1 baris
+    expect(ws.rowCount).toBe(3); // header + 2 baris (milik sendiri dan FO lain)
     expect(ws.getRow(2).getCell(2).value).toBe('Sari Wulandari');
+    expect(ws.getRow(3).getCell(2).value).toBe('Orang Lain');
+    expect(auditInsert).toHaveBeenCalledWith(expect.objectContaining({
+      actor_role: 'front_office', entitas: 'rekap_penanganan_fo',
+      detail: expect.objectContaining({ petugas_id: null, total_rows: 2 }),
+    }));
   });
 
   it('ekspor tidak terpotong oleh batas baris server: 2.500 baris dengan cap 1.000', async () => {
@@ -81,9 +86,13 @@ describe('GET /api/admin/rekap/penanganan/export', () => {
     }));
   });
 
-  it('FO meminta FO lain -> 403; Petugas peran fo -> 403; tidak ada audit', async () => {
+  it('FO memfilter FO lain -> 200 (audit mencatat filter); Petugas peran fo -> 403 tanpa audit', async () => {
     pasang(buatHRekap({ role: 'front_office' }));
-    expect((await get('&petugas_id=550e8400-e29b-41d4-a716-446655440001')).status).toBe(403);
+    expect((await get('&petugas_id=550e8400-e29b-41d4-a716-446655440001')).status).toBe(200);
+    expect(auditInsert).toHaveBeenCalledWith(expect.objectContaining({
+      detail: expect.objectContaining({ petugas_id: '550e8400-e29b-41d4-a716-446655440001' }),
+    }));
+    auditInsert.mockClear();
     pasang(buatHRekap({ role: 'petugas', layananId: 'l1' }));
     expect((await get()).status).toBe(403);
     expect(auditInsert).not.toHaveBeenCalled();
@@ -103,25 +112,29 @@ describe('GET /api/admin/rekap/penanganan/export', () => {
     expect(ws.rowCount).toBe(2);
   });
 
-  it('Front Office: ekspor rekap layanan hanya eskalasi asal dirinya; audit mencatat cakupan', async () => {
-    const lyn = (id: string, foPenangan: string): Baris =>
+  it('Front Office: ekspor rekap layanan SEMUA eskalasi dengan kolom Front Office; audit tercatat', async () => {
+    const lyn = (id: string, foPenangan: string, foNama: string): Baris =>
       tahap(id, {
-        peran_tahap: 'layanan', layanan_id: 'lyn-oss', penangan_id: 'ptg-1', layanan: { nama: 'Helpdesk OSS' },
+        peran_tahap: 'layanan', tahap_ke: 2, layanan_id: 'lyn-oss', penangan_id: 'ptg-1', layanan: { nama: 'Helpdesk OSS' },
         petugas: { nama: 'Rina' }, tiket: null,
-        kunjungan: { nama: 'Budi', asal_instansi: 'CV', fo_asal: [{ penangan_id: foPenangan, peran_tahap: 'fo' }] },
+        kunjungan: { nama: 'Budi', asal_instansi: 'CV', tahap_fo: [{ tahap_ke: 1, penangan_id: foPenangan, peran_tahap: 'fo', petugas: { nama: foNama } }] },
       });
-    const h = buatHRekap({ role: 'front_office', meId: 'p-saya', penanganan: [lyn('a', 'p-saya'), lyn('b', 'p-lain')] });
+    const h = buatHRekap({ role: 'front_office', meId: 'p-saya', penanganan: [lyn('a', 'p-saya', 'Sari'), lyn('b', 'p-lain', 'Bayu')] });
     pasang(h);
     const res = await get('&peran=layanan');
     expect(res.status).toBe(200);
     expect(res.headers.get('Content-Disposition')).toContain('rekap-petugas-layanan-2026-10-12-sd-2026-10-12.xlsx');
     const ws = await bacaSheet(res, 'Rekap Petugas Layanan');
-    expect(ws.rowCount).toBe(2); // header + 1 baris (eskalasi FO lain tidak ikut)
-    expect(h.log[0].ops).toContainEqual(['eq', ['kunjungan.fo_asal.penangan_id', 'p-saya']]);
+    expect(ws.rowCount).toBe(3); // header + 2 baris (eskalasi FO lain ikut)
+    const header = (ws.getRow(1).values as unknown[]).slice(1) as string[];
+    const kolomFo = header.indexOf('Front Office') + 1;
+    expect([ws.getRow(2).getCell(kolomFo).value, ws.getRow(3).getCell(kolomFo).value]).toEqual(['Sari', 'Bayu']);
+    expect(h.log[0].ops.some(([, a]) => String(a[0]).startsWith('kunjungan.'))).toBe(false);
     expect(auditInsert).toHaveBeenCalledWith(expect.objectContaining({
       actor_role: 'front_office', entitas: 'rekap_penanganan_layanan',
-      detail: expect.objectContaining({ eskalasi_fo_id: 'p-saya', total_rows: 1 }),
+      detail: expect.objectContaining({ total_rows: 2 }),
     }));
+    expect(auditInsert.mock.calls[0][0].detail).not.toHaveProperty('eskalasi_fo_id');
   });
 
   it('galat DB -> 500 tanpa berkas', async () => {

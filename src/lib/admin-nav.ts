@@ -43,7 +43,7 @@ export const ADMIN_NAV: AdminNavEntry[] = [
   { label: 'Pengaturan AI', href: '/admin/settings/ai', iconKey: 'ai', roles: ['admin'] },
   { label: 'Kelola Layar', href: '/admin/layar', iconKey: 'layar', roles: ['admin'] },
   { label: 'Rekap Harian', href: '/admin/rekap', iconKey: 'rekap', roles: ['admin', 'petugas', 'front_office'] },
-  // Tahap D: rekap harian FO (FO melihat rekapnya sendiri, Admin semua) dan performa pelayanan (Admin).
+  // Tahap D: rekap harian FO (Admin dan semua FO melihat semua FO, keputusan CEO 2026-10-14) dan performa (Admin).
   { label: 'Rekap Front Office', href: '/admin/rekap-fo', iconKey: 'rekapFo', roles: ['admin', 'front_office'] },
   { label: 'Performa Pelayanan', href: '/admin/performa', iconKey: 'performa', roles: ['admin'] },
   { label: 'Dokumen Peraturan', href: '/admin/dokumen', iconKey: 'dokumen', roles: ['admin'] },

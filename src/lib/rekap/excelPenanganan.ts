@@ -24,6 +24,7 @@ const KOLOM_FO: Kolom[] = [
 const KOLOM_LAYANAN: Kolom[] = [
   { header: 'Tanggal', key: 'tanggal' },
   { header: 'Petugas', key: 'penangan' },
+  { header: 'Front Office', key: 'fo' },
   { header: 'Layanan', key: 'layanan' },
   { header: 'No Antrian', key: 'nomor' },
   { header: 'Jam Mulai', key: 'mulai' },
@@ -74,6 +75,7 @@ function barisSel(peran: PeranTahap, r: RekapPenangananRow): Record<string, Cell
   const p = r.tiket?.pelayanan_perizinan ?? null;
   return {
     ...dasar,
+    fo: amanSel(r.fo_nama),
     layanan: amanSel(r.layanan_nama),
     nomor: r.tiket?.nomor_display ?? '',
     status_tiket: r.tiket ? labelStatusTiket(r.tiket.status) : '',

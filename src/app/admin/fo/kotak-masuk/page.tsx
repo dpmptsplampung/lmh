@@ -61,6 +61,14 @@ interface Pengembalian {
   catatan: string | null;
   layananNama: string | null;
   petugasNama: string | null;
+  /** Front Office yang melayani sebelum dieskalasi (tahap 'fo' terakhir sebelum item ini). */
+  foNama: string | null;
+}
+
+interface TahapFoSebelumnya {
+  kunjungan_id: string;
+  tahap_ke: number;
+  penangan_id: string | null;
 }
 
 export default function KotakMasukFoPage() {
@@ -95,16 +103,30 @@ export default function KotakMasukFoPage() {
       const alasan: Record<string, Pengembalian> = {};
       const lanjutan = daftar.filter((b) => b.tahap_ke > 1);
       if (lanjutan.length > 0) {
-        const { data: tahap } = await supabase
-          .from('penanganan')
-          .select('kunjungan_id, tahap_ke, catatan, layanan_id, penangan_id, selesai_at')
-          .in('kunjungan_id', lanjutan.map((b) => b.kunjungan_id))
-          .eq('hasil', 'dikembalikan');
+        const idKunjungan = lanjutan.map((b) => b.kunjungan_id);
+        // Tahap FO sebelumnya (siapa FO yang melayani sebelum eskalasi): semua FO membaca semua tahap (keputusan CEO
+        // 2026-10-14, RLS 202610140013). Pelengkap: kegagalannya tidak menggagalkan kotak masuk.
+        const [{ data: tahap }, resFo] = await Promise.all([
+          supabase
+            .from('penanganan')
+            .select('kunjungan_id, tahap_ke, catatan, layanan_id, penangan_id, selesai_at')
+            .in('kunjungan_id', idKunjungan)
+            .eq('hasil', 'dikembalikan'),
+          supabase
+            .from('penanganan')
+            .select('kunjungan_id, tahap_ke, penangan_id')
+            .in('kunjungan_id', idKunjungan)
+            .eq('peran_tahap', 'fo')
+            .not('penangan_id', 'is', null),
+        ]);
         const sebelumnya = (tahap ?? []) as unknown as TahapSebelumnya[];
+        const tahapFo = ((resFo.error ? [] : resFo.data) ?? []) as unknown as TahapFoSebelumnya[];
 
         // Nama layanan/petugas pelengkap: kegagalan membacanya tidak boleh menggagalkan kotak masuk.
         const idLayanan = [...new Set(sebelumnya.map((t) => t.layanan_id).filter((x): x is string => !!x))];
-        const idPetugas = [...new Set(sebelumnya.map((t) => t.penangan_id).filter((x): x is string => !!x))];
+        const idPetugas = [...new Set(
+          [...sebelumnya.map((t) => t.penangan_id), ...tahapFo.map((t) => t.penangan_id)].filter((x): x is string => !!x),
+        )];
         const [resLayanan, resPetugas] = await Promise.all([
           idLayanan.length ? supabase.from('layanan').select('id, nama').in('id', idLayanan) : Promise.resolve({ data: [] }),
           idPetugas.length ? supabase.from('petugas').select('id, nama').in('id', idPetugas) : Promise.resolve({ data: [] }),
@@ -115,10 +137,14 @@ export default function KotakMasukFoPage() {
         for (const b of lanjutan) {
           const t = sebelumnya.find((x) => x.kunjungan_id === b.kunjungan_id && x.tahap_ke === b.tahap_ke - 1);
           if (!t) continue;
+          const fo = tahapFo
+            .filter((x) => x.kunjungan_id === b.kunjungan_id && x.tahap_ke < b.tahap_ke && !!x.penangan_id)
+            .sort((x, y) => y.tahap_ke - x.tahap_ke)[0];
           alasan[b.id] = {
             catatan: t.catatan,
             layananNama: t.layanan_id ? (namaLayanan.get(t.layanan_id) ?? null) : null,
             petugasNama: t.penangan_id ? (namaPetugas.get(t.penangan_id) ?? null) : null,
+            foNama: fo?.penangan_id ? (namaPetugas.get(fo.penangan_id) ?? null) : null,
           };
         }
       }
@@ -233,6 +259,9 @@ export default function KotakMasukFoPage() {
                         {alasan?.petugasNama ? ` (${alasan.petugasNama})` : ''}
                         {alasan?.catatan ? `: ${alasan.catatan}` : '. Alasan tidak tercatat.'}
                       </p>
+                    )}
+                    {alasan?.foNama && (
+                      <p className={styles.meta}>Sebelumnya dilayani Front Office: {alasan.foNama}</p>
                     )}
                     <div className={styles.aksiKartu}>
                       {b.saluran === 'chat' ? (

@@ -10,6 +10,7 @@ function baris(s: Partial<RekapPenangananRow> = {}): RekapPenangananRow {
     topik: 'Informasi umum', catatan: 'Sudah dijelaskan', batal_karena: null,
     mulai_at: '2026-10-12T02:00:00Z', selesai_at: '2026-10-12T02:10:00Z', created_at: '2026-10-12T02:00:00Z',
     tanggal: '2026-10-12', durasi_menit: 10, pengunjung_nama: 'Budi', pengunjung_instansi: 'CV Maju', tiket: null,
+    fo_nama: 'Sari Wulandari',
     ...s,
   };
 }
@@ -42,6 +43,7 @@ describe('buildRekapPenangananWorkbook', () => {
     const rows = [
       baris({
         peran_tahap: 'layanan', layanan_id: 'l1', layanan_nama: 'Helpdesk OSS', hasil: 'dikembalikan', topik: null,
+        fo_nama: '=Bayu FO',
         tiket: {
           nomor_display: 'OS-007', tanggal: '2026-10-12', status: 'dikembalikan', form_type: 'oss',
           pelayanan_oss: {
@@ -57,6 +59,9 @@ describe('buildRekapPenangananWorkbook', () => {
     const header = (ws.getRow(1).values as unknown[]).slice(1) as string[];
     const nilai = (nama: string) => ws.getRow(2).getCell(header.indexOf(nama) + 1).value;
     expect(nilai('Petugas')).toBe('Sari Wulandari');
+    // Kolom Front Office (keterbukaan antar FO): nama FO yang melayani, dinetralkan dari formula injection.
+    expect(header.indexOf('Front Office')).toBe(header.indexOf('Petugas') + 1);
+    expect(nilai('Front Office')).toBe("'=Bayu FO");
     expect(nilai('Layanan')).toBe('Helpdesk OSS');
     expect(nilai('No Antrian')).toBe('OS-007');
     expect(nilai('Status Tiket')).toBe('Dikembalikan ke Front Office');

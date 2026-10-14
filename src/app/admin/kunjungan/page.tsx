@@ -48,6 +48,40 @@ export default function KunjunganPage() {
   const [page, setPage] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
   const [filterTanggal, setFilterTanggal] = useState(todayWIB());
+  const [namaFo, setNamaFo] = useState<Record<string, string>>({});
+
+  // Nama Front Office yang melayani tiap kunjungan (keputusan CEO 2026-10-14: semua FO melihat semua pengunjung, dengan
+  // nama FO yang melayani). Sumber: tahap 'fo' ber-penangan pada tabel penanganan (RLS: Admin & FO semua, 202610140013).
+  // Pelengkap: kegagalan memuatnya tidak menggagalkan daftar kunjungan.
+  const muatNamaFo = useCallback(async (supabase: ReturnType<typeof createClient>, ids: string[]) => {
+    if (ids.length === 0) {
+      setNamaFo({});
+      return;
+    }
+    try {
+      const { data, error } = await supabase
+        .from('penanganan')
+        .select('kunjungan_id, tahap_ke, penangan_id, penangan:penangan_id(nama)')
+        .in('kunjungan_id', ids)
+        .eq('peran_tahap', 'fo')
+        .not('penangan_id', 'is', null)
+        .order('tahap_ke', { ascending: true });
+      if (error) throw error;
+      const peta: Record<string, string[]> = {};
+      for (const r of (data ?? []) as unknown as Array<{
+        kunjungan_id: string; penangan: { nama: string } | { nama: string }[] | null;
+      }>) {
+        const nama = (Array.isArray(r.penangan) ? r.penangan[0] : r.penangan)?.nama;
+        if (!nama) continue;
+        const daftar = (peta[r.kunjungan_id] ??= []);
+        if (!daftar.includes(nama)) daftar.push(nama);
+      }
+      setNamaFo(Object.fromEntries(Object.entries(peta).map(([k, v]) => [k, v.join(', ')])));
+    } catch (e) {
+      console.error('Gagal memuat nama Front Office:', e);
+      setNamaFo({});
+    }
+  }, []);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -80,13 +114,14 @@ export default function KunjunganPage() {
 
       setKunjungan(normalized);
       setTotalCount(count ?? normalized.length);
+      await muatNamaFo(supabase, normalized.map((k) => k.id));
     } catch (e) {
       console.error('Error loading kunjungan:', e);
       toast('Gagal memuat data kunjungan', 'error');
     } finally {
       setLoading(false);
     }
-  }, [filterTanggal, page, toast]);
+  }, [filterTanggal, page, toast, muatNamaFo]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -228,7 +263,7 @@ export default function KunjunganPage() {
               <tbody>
                 {Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i}>
-                    <td colSpan={7} style={{ padding: 'var(--space-3) var(--space-4)' }}>
+                    <td colSpan={8} style={{ padding: 'var(--space-3) var(--space-4)' }}>
                       <div className="skeleton" style={{ height: '20px', width: '100%' }} />
                     </td>
                   </tr>
@@ -243,6 +278,7 @@ export default function KunjunganPage() {
                 <th>No. Tiket</th>
                 <th>Nama</th>
                 <th>Layanan</th>
+                <th>Front Office</th>
                 <th>Waktu Masuk</th>
                 <th>Waktu Selesai</th>
                 <th>Status</th>
@@ -255,6 +291,7 @@ export default function KunjunganPage() {
                   <td style={{ fontWeight: 600, color: 'var(--color-primary-700)' }}>{getNomorDisplay(k)}</td>
                   <td style={{ fontWeight: 600 }}>{k.nama}</td>
                   <td>{getLayananNama(k)}</td>
+                  <td>{namaFo[k.id] ?? '—'}</td>
                   <td>{formatTime(k.waktu_masuk)}</td>
                   <td style={{ color: 'var(--text-secondary)' }}>
                     {formatTime(getWaktuSelesai(k))}

@@ -95,7 +95,7 @@ export default function AdminRekapPage() {
   // page knows whether to render the Layanan tab with a locked layanan filter).
   const [isPetugas, setIsPetugas] = useState(false);
   // Tab Rekap Petugas Layanan terbuka untuk Admin, Petugas, dan Front Office (keputusan CEO 2026-10-14). Cakupan
-  // ditegakkan server (api/admin/rekap/penanganan): FO hanya eskalasi asal dirinya, dengan catatan di dalam tab.
+  // ditegakkan server (api/admin/rekap/penanganan): Admin & FO semua (keterbukaan antar FO), Petugas layanannya.
   const [initialLayananId, setInitialLayananId] = useState<string | null>(null);
   const [layananOptions, setLayananOptions] = useState<LayananOption[]>([]);
 

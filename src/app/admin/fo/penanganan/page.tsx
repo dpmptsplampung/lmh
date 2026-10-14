@@ -1,7 +1,9 @@
 'use client';
 
 // Penanganan Saya (Front Office; Tahap B, kontrak docs/analysis/FO-ESKALASI-KONTRAK-RPC.md §6.2, §2.4, §2.5).
-// Menampilkan tahap FO yang sedang saya pegang (status `berjalan`) beserta riwayat hari ini (WIB).
+// Menampilkan tahap FO yang sedang saya pegang (status `berjalan`), tahap FO yang sedang dipegang FO lain (baca saja),
+// dan riwayat hari ini (WIB) SEMUA Front Office dengan nama FO yang melayani (keputusan CEO 2026-10-14: keterbukaan
+// data antar FO; RLS migrasi 202610140013). Tombol aksi hanya untuk milik sendiri; DB tetap menolak BUKAN_PEMILIK.
 // Penutupan tahap hanya lewat RPC: "Selesaikan" (fo_selesai: topik + catatan wajib) atau "Eskalasi" (fo_eskalasi:
 // layanan tujuan, topik, catatan wajib; tiket baru terbit di sini, mis. OS-014). Hasil eskalasi (nomor tiket, peringatan
 // bila belum ada petugas layanan yang hadir) tetap tampil sampai ditutup agar nomor dapat disampaikan ke pengunjung.
@@ -37,6 +39,8 @@ interface KunjunganEmbed {
   layanan_saran_id: string | null;
 }
 
+type NamaEmbed = { nama: string } | { nama: string }[] | null;
+
 interface PenangananBerjalan {
   id: string;
   kunjungan_id: string;
@@ -47,6 +51,8 @@ interface PenangananBerjalan {
   tiket_id: string | null;
   status: string;
   mulai_at: string | null;
+  penangan_id?: string | null;
+  penangan?: NamaEmbed;
   kunjungan: KunjunganEmbed | KunjunganEmbed[] | null;
 }
 
@@ -61,6 +67,8 @@ interface PenangananRiwayat {
   catatan: string | null;
   mulai_at: string | null;
   selesai_at: string | null;
+  penangan_id?: string | null;
+  penangan?: NamaEmbed;
   kunjungan: { nama: string; asal_instansi: string | null } | { nama: string; asal_instansi: string | null }[] | null;
 }
 
@@ -78,6 +86,8 @@ export default function PenangananFoPage() {
   const { toast } = useToast();
   const router = useRouter();
   const [berjalan, setBerjalan] = useState<PenangananBerjalan[]>([]);
+  const [berjalanLain, setBerjalanLain] = useState<PenangananBerjalan[]>([]);
+  const [petugasSaya, setPetugasSaya] = useState<string | null>(null);
   const [riwayat, setRiwayat] = useState<PenangananRiwayat[]>([]);
   const [tiketPerTahap, setTiketPerTahap] = useState<Record<string, TiketHasilEskalasi>>({});
   const [topik, setTopik] = useState<TopikFo[]>([]);
@@ -109,22 +119,21 @@ export default function PenangananFoPage() {
       if (!saya) throw new Error('Akun petugas tidak ditemukan');
       const petugasId = (saya as { id: string }).id;
 
+      // Semua FO (keterbukaan antar FO): tahap berjalan milik saya dipisah dari milik FO lain di klien.
       const [resBerjalan, resRiwayat] = await Promise.all([
         supabase
           .from('penanganan')
           .select(
-            'id, kunjungan_id, tahap_ke, peran_tahap, layanan_id, saluran, tiket_id, status, mulai_at, kunjungan:kunjungan_id(nama, asal_instansi, keperluan, layanan_saran_id)',
+            'id, kunjungan_id, tahap_ke, peran_tahap, layanan_id, saluran, tiket_id, status, mulai_at, penangan_id, penangan:penangan_id(nama), kunjungan:kunjungan_id(nama, asal_instansi, keperluan, layanan_saran_id)',
           )
-          .eq('penangan_id', petugasId)
           .eq('peran_tahap', 'fo')
           .eq('status', 'berjalan')
           .order('mulai_at', { ascending: true }),
         supabase
           .from('penanganan')
           .select(
-            'id, kunjungan_id, tahap_ke, saluran, status, hasil, topik, catatan, mulai_at, selesai_at, kunjungan:kunjungan_id(nama, asal_instansi)',
+            'id, kunjungan_id, tahap_ke, saluran, status, hasil, topik, catatan, mulai_at, selesai_at, penangan_id, penangan:penangan_id(nama), kunjungan:kunjungan_id(nama, asal_instansi)',
           )
-          .eq('penangan_id', petugasId)
           .eq('peran_tahap', 'fo')
           .in('status', ['selesai', 'batal'])
           .gte('mulai_at', awalHariWIBIso())
@@ -132,7 +141,9 @@ export default function PenangananFoPage() {
       ]);
       if (resBerjalan.error) throw resBerjalan.error;
       if (resRiwayat.error) throw resRiwayat.error;
-      const dataBerjalan = (resBerjalan.data ?? []) as unknown as PenangananBerjalan[];
+      const semuaBerjalan = (resBerjalan.data ?? []) as unknown as PenangananBerjalan[];
+      const dataBerjalan = semuaBerjalan.filter((b) => b.penangan_id === petugasId);
+      const dataBerjalanLain = semuaBerjalan.filter((b) => b.penangan_id !== petugasId);
       const dataRiwayat = (resRiwayat.data ?? []) as unknown as PenangananRiwayat[];
 
       // Nomor tiket hasil eskalasi untuk baris riwayat 'dieskalasi' (tiket.penanganan_asal_id = tahap FO itu).
@@ -173,7 +184,9 @@ export default function PenangananFoPage() {
       }
 
       if (seq !== seqRef.current) return; // respons lama tidak boleh menimpa yang lebih baru
+      setPetugasSaya(petugasId);
       setBerjalan(dataBerjalan);
+      setBerjalanLain(dataBerjalanLain);
       setRiwayat(dataRiwayat);
       setTiketPerTahap(petaTiket);
       if (dataTopik && dataLayanan) {
@@ -237,6 +250,12 @@ export default function PenangananFoPage() {
 
   const namaLayanan = (id: string | null) => layanan.find((l) => l.id === id)?.nama ?? null;
 
+  /** Nama FO yang melayani; "Anda" untuk milik sendiri. */
+  const namaFo = (r: { penangan_id?: string | null; penangan?: NamaEmbed }) => {
+    if (r.penangan_id && r.penangan_id === petugasSaya) return 'Anda';
+    return satu(r.penangan ?? null)?.nama ?? '-';
+  };
+
   const labelHasil = (r: PenangananRiwayat): string => {
     if (r.status === 'batal') return 'Dibatalkan';
     if (r.hasil === 'dieskalasi') {
@@ -253,7 +272,7 @@ export default function PenangananFoPage() {
     <>
       <PageHeader
         title="Penanganan Saya"
-        description="Pengunjung yang sedang Anda tangani sebagai Front Office dan riwayat hari ini."
+        description="Pengunjung yang sedang Anda tangani sebagai Front Office, yang sedang ditangani Front Office lain, dan riwayat hari ini semua Front Office."
       />
       <div className={styles.halaman}>
         {/* Pengumuman hasil tindakan; bertahan sampai ditutup agar nomor tiket tidak hilang seperti toast. */}
@@ -367,9 +386,50 @@ export default function PenangananFoPage() {
           )}
         </section>
 
+        {!memuat && (
+          <section className={styles.seksi} aria-labelledby="judul-berjalan-lain">
+            <h2 id="judul-berjalan-lain" className={styles.judulSeksi}>
+              Sedang ditangani Front Office lain
+              <span className={styles.jumlah}>{berjalanLain.length}</span>
+            </h2>
+            {berjalanLain.length === 0 ? (
+              <p className={styles.kosong}>Tidak ada pengunjung yang sedang ditangani Front Office lain.</p>
+            ) : (
+              <div className={styles.tabelWadah}>
+                <table className={styles.tabel}>
+                  <caption>Pengunjung yang sedang ditangani Front Office lain (hanya dapat dilihat)</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Mulai</th>
+                      <th scope="col">Pengunjung</th>
+                      <th scope="col">Front Office</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {berjalanLain.map((b) => {
+                      const k = satu(b.kunjungan);
+                      return (
+                        <tr key={b.id}>
+                          <td>{formatJamWIB(b.mulai_at)}</td>
+                          <td>
+                            {k?.nama ?? '-'}
+                            <br />
+                            <span className={styles.meta}>{labelSaluran(b.saluran)}</span>
+                          </td>
+                          <td>{namaFo(b)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        )}
+
         <section className={styles.seksi} aria-labelledby="judul-riwayat">
           <h2 id="judul-riwayat" className={styles.judulSeksi}>
-            Riwayat hari ini
+            Riwayat hari ini (semua Front Office)
             <span className={styles.jumlah}>{riwayat.length}</span>
           </h2>
           {riwayat.length === 0 ? (
@@ -382,6 +442,7 @@ export default function PenangananFoPage() {
                   <tr>
                     <th scope="col">Waktu</th>
                     <th scope="col">Pengunjung</th>
+                    <th scope="col">Front Office</th>
                     <th scope="col">Hasil</th>
                     <th scope="col">Topik</th>
                     <th scope="col">Catatan</th>
@@ -398,6 +459,7 @@ export default function PenangananFoPage() {
                           <br />
                           <span className={styles.meta}>{labelSaluran(r.saluran)}</span>
                         </td>
+                        <td>{namaFo(r)}</td>
                         <td>{labelHasil(r)}</td>
                         <td>{r.topik ?? '-'}</td>
                         <td>{r.catatan ?? '-'}</td>

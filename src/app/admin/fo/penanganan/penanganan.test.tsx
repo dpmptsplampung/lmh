@@ -39,7 +39,7 @@ const LAYANAN = [
 ];
 const berjalan = (o: Record<string, unknown> = {}) => ({
   id: 'pn-1', kunjungan_id: 'k-1', tahap_ke: 1, peran_tahap: 'fo', layanan_id: null, saluran: 'walk_in', tiket_id: null,
-  status: 'berjalan', mulai_at: '2026-10-13T02:30:00.000Z',
+  status: 'berjalan', mulai_at: '2026-10-13T02:30:00.000Z', penangan_id: 'p-saya', penangan: { nama: 'Saya FO' },
   kunjungan: { nama: 'Budi Santoso', asal_instansi: 'CV Maju', keperluan: 'Urus NIB', layanan_saran_id: null },
   ...o,
 });
@@ -85,7 +85,8 @@ describe('Penanganan Saya: memuat data', () => {
     expect(screen.getByText('Walk-in')).toBeInTheDocument();
 
     const kueri = m.h.log.find((l) => l.tabel === 'penanganan' && punyaOp(l.ops, 'eq', 'status', 'berjalan'))!;
-    expect(punyaOp(kueri.ops, 'eq', 'penangan_id', 'p-saya')).toBe(true);
+    // Keterbukaan antar FO (keputusan CEO 2026-10-14): kueri tidak dibatasi ke penangan sendiri; dipisah di klien.
+    expect(kueri.ops.some(([op, a]) => op === 'eq' && a[0] === 'penangan_id')).toBe(false);
     expect(punyaOp(kueri.ops, 'eq', 'peran_tahap', 'fo')).toBe(true);
     expect(m.realtime).toHaveBeenCalledWith(expect.any(Function), expect.objectContaining({ table: 'penanganan' }));
   });
@@ -98,7 +99,52 @@ describe('Penanganan Saya: memuat data', () => {
     const kueri = m.h.log.find((l) => l.tabel === 'penanganan' && !punyaOp(l.ops, 'eq', 'status', 'berjalan'))!;
     const gte = kueri.ops.find(([op, a]) => op === 'gte' && a[0] === 'mulai_at')!;
     expect(String(gte[1][1])).toMatch(/T17:00:00\.000Z$/);
-    expect(punyaOp(kueri.ops, 'eq', 'penangan_id', 'p-saya')).toBe(true);
+    expect(kueri.ops.some(([op, a]) => op === 'eq' && a[0] === 'penangan_id')).toBe(false);
+  });
+
+  it('tahap FO lain tampil di seksi baca-saja dengan nama FO, tanpa tombol aksi; riwayat semua FO berkolom FO', async () => {
+    siapkan({
+      berjalan: [
+        berjalan(),
+        berjalan({
+          id: 'pn-9', kunjungan_id: 'k-9', penangan_id: 'p-lain', penangan: { nama: 'Bayu FO' },
+          kunjungan: { nama: 'Dewi Lestari', asal_instansi: null, keperluan: null, layanan_saran_id: null },
+        }),
+      ],
+      riwayat: [
+        {
+          id: 'r-1', kunjungan_id: 'k-2', tahap_ke: 1, saluran: 'walk_in', status: 'selesai', hasil: 'selesai',
+          topik: 'Lainnya', catatan: 'Milik saya', mulai_at: '2026-10-13T01:00:00.000Z', selesai_at: '2026-10-13T01:10:00.000Z',
+          penangan_id: 'p-saya', penangan: { nama: 'Saya FO' }, kunjungan: { nama: 'Ani', asal_instansi: null },
+        },
+        {
+          id: 'r-2', kunjungan_id: 'k-3', tahap_ke: 1, saluran: 'qr', status: 'selesai', hasil: 'selesai',
+          topik: 'Lainnya', catatan: 'Milik FO lain', mulai_at: '2026-10-13T00:30:00.000Z', selesai_at: '2026-10-13T00:35:00.000Z',
+          penangan_id: 'p-lain', penangan: [{ nama: 'Bayu FO' }], kunjungan: { nama: 'Candra', asal_instansi: null },
+        },
+      ],
+    });
+    render(<PenangananFoPage />);
+
+    // Milik sendiri: kartu dengan tombol aksi. Milik FO lain: tabel baca-saja.
+    expect(await screen.findByRole('heading', { name: 'Budi Santoso' })).toBeInTheDocument();
+    const lain = screen.getByRole('table', { name: /ditangani Front Office lain/ });
+    expect(within(lain).getByText('Dewi Lestari')).toBeInTheDocument();
+    expect(within(lain).getByText('Bayu FO')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Dewi Lestari/ })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Dewi Lestari' })).toBeNull();
+
+    const riwayat = screen.getByRole('table', { name: /Riwayat penanganan/ });
+    expect(within(riwayat).getByRole('columnheader', { name: 'Front Office' })).toBeInTheDocument();
+    expect(within(riwayat).getByText('Anda')).toBeInTheDocument();
+    expect(within(riwayat).getByText('Bayu FO')).toBeInTheDocument();
+  });
+
+  it('tanpa FO lain yang sedang menangani: pesan kosong pada seksi FO lain', async () => {
+    siapkan();
+    render(<PenangananFoPage />);
+    await screen.findByRole('heading', { name: 'Budi Santoso' });
+    expect(screen.getByText(/Tidak ada pengunjung yang sedang ditangani Front Office lain/)).toBeInTheDocument();
   });
 
   it('riwayat memuat nomor tiket hasil eskalasi, hasil selesai di FO, dan topik/catatan', async () => {

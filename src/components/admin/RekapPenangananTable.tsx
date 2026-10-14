@@ -2,8 +2,8 @@
 
 // Rekap penanganan per tahap (Tahap D): dipakai /admin/rekap-fo (peran 'fo') dan tab "Rekap Petugas Layanan"
 // di /admin/rekap (peran 'layanan'). Hak akses ditegakkan server (api/admin/rekap/penanganan); komponen ini hanya
-// menyesuaikan tampilan (mis. Front Office tidak punya filter FO karena selalu terkunci ke dirinya; pada rekap
-// layanan Front Office hanya melihat eskalasi asal dirinya dan diberi catatan keterbatasan).
+// menyesuaikan tampilan. Keputusan CEO 2026-10-14 (keterbukaan data antar FO): Admin dan Front Office melihat semua
+// dan punya filter penangan yang sama; setiap baris menampilkan nama Front Office yang melayani (kolom FO).
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertCircle, Download, Loader2, RefreshCw } from 'lucide-react';
 import Pagination from '@/components/Pagination';
@@ -45,9 +45,6 @@ interface Respons {
   total: number;
   truncated: boolean;
   peran_saya: string;
-  terkunci_ke_saya: boolean;
-  /** Rekap layanan untuk Front Office: dibatasi ke eskalasi asal FO pemanggil (opsional untuk respons lama). */
-  cakupan_eskalasi_fo?: boolean;
   ringkasan: RingkasanPenanganan;
   rows: RekapPenangananRow[];
 }
@@ -110,10 +107,12 @@ export default function RekapPenangananTable({ peran, isPetugas = false, initial
     return () => clearTimeout(t);
   }, [muat]);
 
-  // Daftar penangan untuk filter Admin (FO/Admin untuk rekap FO; petugas untuk rekap layanan). Dimuat sekali.
-  const adalahAdmin = data?.peran_saya === 'admin';
+  // Daftar penangan untuk filter Admin dan Front Office (FO/Admin untuk rekap FO; petugas untuk rekap layanan).
+  // Dimuat sekali. FO membaca nama petugas lewat RLS petugas_fo_read.
+  const bolehFilterPenangan = data?.peran_saya === 'admin' || data?.peran_saya === 'front_office';
+  const adalahFo = data?.peran_saya === 'front_office';
   useEffect(() => {
-    if (!adalahAdmin || opsiDimuat.current) return;
+    if (!bolehFilterPenangan || opsiDimuat.current) return;
     opsiDimuat.current = true;
     void (async () => {
       try {
@@ -127,7 +126,7 @@ export default function RekapPenangananTable({ peran, isPetugas = false, initial
         // filter opsional: rekap tetap bisa dipakai tanpa daftar
       }
     })();
-  }, [adalahAdmin, peran]);
+  }, [bolehFilterPenangan, peran]);
 
   const unduh = async () => {
     setExporting(true);
@@ -164,13 +163,10 @@ export default function RekapPenangananTable({ peran, isPetugas = false, initial
 
   return (
     <div>
-      {data?.terkunci_ke_saya && (
-        <RoleNote>Anda hanya melihat penanganan Anda sendiri. Setiap ekspor tercatat.</RoleNote>
-      )}
-      {data?.cakupan_eskalasi_fo && (
+      {adalahFo && (
         <RoleNote>
-          Rekap ini tidak lengkap untuk seluruh layanan: Anda hanya melihat tahap petugas layanan pada kunjungan yang
-          pernah Anda tangani di Front Office (eskalasi dari Anda). Rekap lengkap ada pada Admin. Setiap ekspor tercatat.
+          Rekap ini memuat penanganan semua Front Office{peran === 'layanan' ? ' dan semua petugas layanan' : ''}.
+          Kolom Front Office menunjukkan petugas FO yang melayani. Setiap ekspor tercatat.
         </RoleNote>
       )}
       {peran === 'layanan' && isPetugas && (
@@ -197,7 +193,7 @@ export default function RekapPenangananTable({ peran, isPetugas = false, initial
           <input id={`${idAwal}-sampai`} type="date" className="form-input" value={sampai}
             onChange={(e) => { setSampai(e.target.value); setPage(0); }} />
         </div>
-        {adalahAdmin && (
+        {bolehFilterPenangan && (
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label" htmlFor={`${idAwal}-petugas`}>{labelPenangan}</label>
             <select id={`${idAwal}-petugas`} className="form-input" style={sel} value={petugasId}
@@ -313,6 +309,7 @@ export default function RekapPenangananTable({ peran, isPetugas = false, initial
               <tr>
                 <th>Tanggal</th>
                 <th>{labelPenangan}</th>
+                {peran === 'layanan' && <th>Front Office</th>}
                 {peran === 'layanan' && <th>Layanan / Tiket</th>}
                 <th>Pengunjung</th>
                 <th>Saluran</th>
@@ -329,6 +326,7 @@ export default function RekapPenangananTable({ peran, isPetugas = false, initial
                 <tr key={r.id}>
                   <td style={{ fontVariantNumeric: 'tabular-nums' }}>{r.tanggal ? formatTanggalId(r.tanggal) : '—'}</td>
                   <td style={{ fontWeight: 600 }}>{r.penangan_nama ?? '—'}</td>
+                  {peran === 'layanan' && <td>{r.fo_nama ?? '—'}</td>}
                   {peran === 'layanan' && (
                     <td>
                       <div>{r.layanan_nama ?? '—'}</div>

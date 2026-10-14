@@ -39,7 +39,6 @@ export async function GET(request: NextRequest) {
         sampai: q.sampai,
         penanganId: cakupan.penanganId,
         layananId: cakupan.layananId,
-        eskalasiFoId: cakupan.eskalasiFoId,
         from,
         to,
       }),
@@ -49,11 +48,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       total: semua.length,
       truncated,
+      // Admin dan Front Office melihat semua (keputusan CEO 2026-10-14); UI menampilkan filter penangan untuk keduanya.
       peran_saya: staf.me.role,
-      // Rekap FO: FO terkunci ke dirinya sendiri; UI menyembunyikan filter FO.
-      terkunci_ke_saya: staf.me.role === 'front_office' && q.peran === 'fo',
-      // Rekap layanan untuk FO: hanya tahap layanan dari kunjungan yang pernah ia tangani (eskalasi asal FO itu).
-      cakupan_eskalasi_fo: cakupan.eskalasiFoId != null,
       ringkasan: ringkasPenanganan(semua),
       rows: semua.slice(awal, awal + q.page_size),
     });

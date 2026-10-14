@@ -36,31 +36,39 @@ describe('GET /api/admin/rekap/penanganan', () => {
     expect((await get()).status).toBe(401);
   });
 
-  it('FO hanya melihat penanganan miliknya (baris FO lain tidak ikut, filter dipaksa di kueri)', async () => {
+  // Keputusan CEO 2026-10-14 (keterbukaan data antar FO): FO membaca semua FO, filter FO opsional seperti Admin.
+  it('Front Office melihat penanganan SEMUA FO (tanpa filter penangan dipaksa) dan nama FO tiap baris', async () => {
     const h = buatHRekap({
       role: 'front_office', meId: 'p-saya',
       penanganan: [
         tahap('a'), tahap('b'),
-        tahap('c', { penangan_id: 'p-lain' }),
-        tahap('d', { penangan_id: 'p-lain' }),
+        tahap('c', { penangan_id: 'p-lain', petugas: { nama: 'Bayu' } }),
+        tahap('d', { penangan_id: 'p-lain', petugas: { nama: 'Bayu' } }),
       ],
     });
     pasang(h);
     const res = await get();
     const body = await res.json();
     expect(res.status).toBe(200);
-    expect(body.total).toBe(2);
-    expect(body.rows.map((r: { id: string }) => r.id)).toEqual(['a', 'b']);
-    expect(body.terkunci_ke_saya).toBe(true);
-    expect(h.log[0].ops).toContainEqual(['eq', ['penangan_id', 'p-saya']]);
+    expect(body.total).toBe(4);
+    expect(body.rows.map((r: { id: string }) => r.id)).toEqual(['a', 'b', 'c', 'd']);
+    expect(body.rows.map((r: { fo_nama: string }) => r.fo_nama)).toEqual(['Sari', 'Sari', 'Bayu', 'Bayu']);
+    expect(body.peran_saya).toBe('front_office');
+    expect(body).not.toHaveProperty('terkunci_ke_saya');
+    expect(body).not.toHaveProperty('cakupan_eskalasi_fo');
+    expect(h.log[0].ops.filter(([m]) => m === 'eq').map(([, a]) => a[0])).toEqual(['peran_tahap']);
   });
 
-  it('FO yang meminta FO lain lewat petugas_id -> 403 dan tidak menyentuh DB', async () => {
-    const h = buatHRekap({ role: 'front_office', penanganan: [tahap('a', { penangan_id: UUID_FO2 })] });
+  it('Front Office boleh memfilter FO lain lewat petugas_id (dulu 403)', async () => {
+    const h = buatHRekap({
+      role: 'front_office', meId: 'p-saya',
+      penanganan: [tahap('a'), tahap('c', { penangan_id: UUID_FO2 })],
+    });
     pasang(h);
     const res = await get(`&petugas_id=${UUID_FO2}`);
-    expect(res.status).toBe(403);
-    expect(h.log).toHaveLength(0);
+    expect(res.status).toBe(200);
+    expect((await res.json()).rows.map((r: { id: string }) => r.id)).toEqual(['c']);
+    expect(h.log[0].ops).toContainEqual(['eq', ['penangan_id', UUID_FO2]]);
   });
 
   it('Admin melihat semua FO dan memfilter satu FO', async () => {
@@ -91,20 +99,19 @@ describe('GET /api/admin/rekap/penanganan', () => {
     expect((await get('&peran=layanan&layanan_id=550e8400-e29b-41d4-a716-446655440009')).status).toBe(403);
   });
 
-  it('Front Office boleh rekap layanan, HANYA tahap layanan dari kunjungan yang punya tahap FO miliknya', async () => {
-    const lyn = (id: string, foAsal: Baris[]): Baris =>
+  it('Front Office: rekap layanan memuat SEMUA tahap layanan (bukan hanya eskalasi asal dirinya) + kolom FO', async () => {
+    const lyn = (id: string, tahapFo: Baris[]): Baris =>
       tahap(id, {
-        peran_tahap: 'layanan', layanan_id: 'lyn-oss', penangan_id: 'ptg-1', tiket: null,
-        kunjungan: { nama: 'Budi', asal_instansi: 'CV', fo_asal: foAsal },
+        peran_tahap: 'layanan', tahap_ke: 2, layanan_id: 'lyn-oss', penangan_id: 'ptg-1', tiket: null,
+        petugas: { nama: 'Rina' },
+        kunjungan: { nama: 'Budi', asal_instansi: 'CV', tahap_fo: tahapFo },
       });
     const h = buatHRekap({
       role: 'front_office', meId: 'p-saya',
       penanganan: [
-        lyn('milik', [{ penangan_id: 'p-saya', peran_tahap: 'fo' }]),
-        lyn('fo-lain', [{ penangan_id: 'p-lain', peran_tahap: 'fo' }]),
+        lyn('milik', [{ tahap_ke: 1, peran_tahap: 'fo', penangan_id: 'p-saya', petugas: { nama: 'Sari' } }]),
+        lyn('fo-lain', [{ tahap_ke: 1, peran_tahap: 'fo', penangan_id: 'p-lain', petugas: { nama: 'Bayu' } }]),
         lyn('tanpa-fo', []),
-        // Satu elemen embed yang sama harus memenuhi kedua syarat (bukan campuran dua elemen).
-        lyn('campur', [{ penangan_id: 'p-lain', peran_tahap: 'fo' }, { penangan_id: 'p-saya', peran_tahap: 'layanan' }]),
         tahap('tahap-fo-saya'), // peran fo: tidak ikut rekap layanan
       ],
     });
@@ -112,35 +119,23 @@ describe('GET /api/admin/rekap/penanganan', () => {
     const res = await get('&peran=layanan');
     const body = await res.json();
     expect(res.status).toBe(200);
-    expect(body.rows.map((r: { id: string }) => r.id)).toEqual(['milik']);
-    expect(body.ringkasan.total).toBe(1);
-    expect(body.cakupan_eskalasi_fo).toBe(true);
-    expect(body.terkunci_ke_saya).toBe(false);
+    // Urutan deterministik (mulai_at, id).
+    expect(body.rows.map((r: { id: string }) => r.id)).toEqual(['fo-lain', 'milik', 'tanpa-fo']);
+    expect(body.rows.map((r: { fo_nama: string | null }) => r.fo_nama)).toEqual(['Bayu', 'Sari', null]);
+    expect(body.rows.map((r: { penangan_nama: string }) => r.penangan_nama)).toEqual(['Rina', 'Rina', 'Rina']);
+    expect(body.ringkasan.total).toBe(3);
     expect(body.rows[0]).not.toHaveProperty('kunjungan');
-    const ops = h.log[0].ops;
-    expect(ops).toContainEqual(['eq', ['kunjungan.fo_asal.penangan_id', 'p-saya']]);
-    expect(ops).toContainEqual(['eq', ['kunjungan.fo_asal.peran_tahap', 'fo']]);
+    expect(h.log[0].ops.some(([, a]) => String(a[0]).startsWith('kunjungan.'))).toBe(false);
   });
 
-  it('Front Office: id FO cakupan selalu dari sesi; petugas_id/layanan_id hanya menyempitkan', async () => {
+  it('Front Office: filter petugas/layanan opsional diteruskan apa adanya', async () => {
     const h = buatHRekap({ role: 'front_office', meId: 'p-saya' });
     pasang(h);
-    const res = await get(`&peran=layanan&petugas_id=${UUID_FO2}`);
+    const res = await get(`&peran=layanan&petugas_id=${UUID_FO2}&layanan_id=550e8400-e29b-41d4-a716-446655440009`);
     expect(res.status).toBe(200);
     const ops = h.log[0].ops;
-    expect(ops).toContainEqual(['eq', ['kunjungan.fo_asal.penangan_id', 'p-saya']]);
     expect(ops).toContainEqual(['eq', ['penangan_id', UUID_FO2]]);
-    expect(ops).not.toContainEqual(['eq', ['kunjungan.fo_asal.penangan_id', UUID_FO2]]);
-  });
-
-  it('Admin dan Petugas: rekap layanan tanpa batas eskalasi FO (perilaku lama)', async () => {
-    for (const role of ['admin', 'petugas']) {
-      const h = buatHRekap({ role, layananId: role === 'petugas' ? 'lyn-oss' : null });
-      pasang(h);
-      const body = await (await get('&peran=layanan')).json();
-      expect(body.cakupan_eskalasi_fo).toBe(false);
-      expect(h.log[0].ops.some(([, a]) => String(a[0]).startsWith('kunjungan.'))).toBe(false);
-    }
+    expect(ops).toContainEqual(['eq', ['layanan_id', '550e8400-e29b-41d4-a716-446655440009']]);
   });
 
   it('data > batas baris server (2.500 baris, cap 1.000): total dan ringkasan lengkap, daftar dipaginasi', async () => {

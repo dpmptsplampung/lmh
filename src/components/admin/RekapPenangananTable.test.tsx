@@ -42,7 +42,7 @@ function baris(id: string, s: Record<string, unknown> = {}) {
     penangan_id: 'fo-1', penangan_nama: 'Sari Wulandari', status: 'selesai', hasil: 'selesai', topik: 'Informasi umum',
     catatan: 'Sudah dijelaskan', batal_karena: null, mulai_at: '2026-10-12T02:00:00Z', selesai_at: '2026-10-12T02:10:00Z',
     created_at: '2026-10-12T02:00:00Z', tanggal: '2026-10-12', durasi_menit: 10, pengunjung_nama: 'Budi',
-    pengunjung_instansi: 'CV Maju', tiket: null, ...s,
+    pengunjung_instansi: 'CV Maju', tiket: null, fo_nama: 'Sari Wulandari', ...s,
   };
 }
 
@@ -57,23 +57,32 @@ describe('RekapPenangananTable', () => {
   });
   afterEach(() => cleanup());
 
-  it('FO: menampilkan baris, ringkasan, catatan terkunci, dan TANPA filter FO', async () => {
-    jawab({ total: 2, truncated: false, peran_saya: 'front_office', terkunci_ke_saya: true, ringkasan, rows: [baris('1'), baris('2', { hasil: 'dieskalasi', topik: 'Perizinan' })] });
+  // Keputusan CEO 2026-10-14 (keterbukaan data antar FO): FO melihat semua FO dan punya filter FO seperti Admin.
+  it('FO: menampilkan baris semua FO, catatan keterbukaan, dan filter FO (mengirim petugas_id FO lain)', async () => {
+    hOpsi.petugas = [{ id: 'fo-1', nama: 'Sari Wulandari', aktif: true }, { id: 'fo-2', nama: 'Bayu', aktif: true }];
+    jawab({
+      total: 2, truncated: false, peran_saya: 'front_office', ringkasan,
+      rows: [baris('1'), baris('2', { hasil: 'dieskalasi', topik: 'Perizinan', penangan_id: 'fo-2', penangan_nama: 'Bayu', fo_nama: 'Bayu' })],
+    });
     render(<RekapPenangananTable peran="fo" />);
     expect((await screen.findAllByText('Sudah dijelaskan')).length).toBe(2);
-    expect(screen.getByText(/hanya melihat penanganan Anda sendiri/i)).toBeInTheDocument();
-    expect(screen.queryByLabelText('Front Office')).not.toBeInTheDocument();
-    expect(screen.getAllByText('Sari Wulandari').length).toBeGreaterThan(0);
+    expect(screen.getByText(/memuat penanganan semua Front Office/i)).toBeInTheDocument();
+    expect(screen.queryByText(/hanya melihat penanganan Anda sendiri/i)).not.toBeInTheDocument();
+    expect(screen.getAllByText('Bayu').length).toBeGreaterThan(0);
     expect(screen.getByRole('table', { name: /daftar penanganan/i })).toBeInTheDocument();
     const url = mockFetch.mock.calls[0][0] as string;
     expect(url).toContain('/api/admin/rekap/penanganan?');
     expect(url).toContain('peran=fo');
     expect(url).not.toContain('petugas_id');
+    const pilih = await screen.findByLabelText('Front Office');
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Bayu' })).toBeInTheDocument());
+    fireEvent.change(pilih, { target: { value: 'fo-2' } });
+    await waitFor(() => expect(mockFetch.mock.calls.some((c) => String(c[0]).includes('petugas_id=fo-2'))).toBe(true));
   });
 
   it('Admin: ada filter FO berisi opsi dan mengirim petugas_id saat dipilih', async () => {
     hOpsi.petugas = [{ id: 'fo-1', nama: 'Sari Wulandari', aktif: true }, { id: 'fo-9', nama: 'Dewi', aktif: false }];
-    jawab({ total: 1, truncated: false, peran_saya: 'admin', terkunci_ke_saya: false, ringkasan, rows: [baris('1')] });
+    jawab({ total: 1, truncated: false, peran_saya: 'admin', ringkasan, rows: [baris('1')] });
     render(<RekapPenangananTable peran="fo" />);
     const pilih = await screen.findByLabelText('Front Office');
     await waitFor(() => expect(screen.getByRole('option', { name: 'Dewi (nonaktif)' })).toBeInTheDocument());
@@ -82,7 +91,7 @@ describe('RekapPenangananTable', () => {
   });
 
   it('rekap kosong: pesan kosong dan tombol unduh nonaktif', async () => {
-    jawab({ total: 0, truncated: false, peran_saya: 'admin', terkunci_ke_saya: false, ringkasan: { ...ringkasan, total: 0, per_topik: [], per_penangan_hari: [] }, rows: [] });
+    jawab({ total: 0, truncated: false, peran_saya: 'admin', ringkasan: { ...ringkasan, total: 0, per_topik: [], per_penangan_hari: [] }, rows: [] });
     render(<RekapPenangananTable peran="fo" />);
     expect(await screen.findByText(/tidak ada penanganan pada rentang/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /download excel/i })).toBeDisabled();
@@ -101,7 +110,7 @@ describe('RekapPenangananTable', () => {
 
   it('peran layanan: kolom Layanan/Tiket dan Pendataan, label status baru; filter layanan untuk non-petugas', async () => {
     jawab({
-      total: 1, truncated: false, peran_saya: 'admin', terkunci_ke_saya: false, ringkasan,
+      total: 1, truncated: false, peran_saya: 'admin', ringkasan,
       rows: [baris('9', {
         peran_tahap: 'layanan', layanan_id: 'l1', layanan_nama: 'Helpdesk OSS', hasil: 'dikembalikan', topik: null,
         tiket: { nomor_display: 'OS-007', tanggal: '2026-10-12', status: 'dikembalikan', form_type: 'oss',
@@ -117,26 +126,32 @@ describe('RekapPenangananTable', () => {
   });
 
   it('petugas layanan: filter layanan disembunyikan, catatan layanan sendiri tampil', async () => {
-    jawab({ total: 0, truncated: false, peran_saya: 'petugas', terkunci_ke_saya: false, ringkasan: { ...ringkasan, total: 0, per_topik: [], per_penangan_hari: [] }, rows: [] });
+    jawab({ total: 0, truncated: false, peran_saya: 'petugas', ringkasan: { ...ringkasan, total: 0, per_topik: [], per_penangan_hari: [] }, rows: [] });
     render(<RekapPenangananTable peran="layanan" isPetugas initialLayananId="l1" layananOptions={[{ id: 'l1', nama: 'Helpdesk OSS' }]} />);
     expect(await screen.findByText(/hanya untuk layanan Helpdesk OSS/i)).toBeInTheDocument();
     expect(screen.queryByLabelText('Layanan')).not.toBeInTheDocument();
   });
 
-  it('FO pada rekap layanan: catatan keterbatasan eskalasi tampil, bukan catatan "penanganan Anda sendiri"', async () => {
+  it('FO pada rekap layanan: tanpa catatan keterbatasan lama; kolom Front Office, filter Petugas dan Layanan tampil', async () => {
     jawab({
-      total: 0, truncated: false, peran_saya: 'front_office', terkunci_ke_saya: false, cakupan_eskalasi_fo: true,
-      ringkasan: { ...ringkasan, total: 0, per_topik: [], per_penangan_hari: [] }, rows: [],
+      total: 1, truncated: false, peran_saya: 'front_office', ringkasan,
+      rows: [baris('9', {
+        peran_tahap: 'layanan', layanan_id: 'l1', layanan_nama: 'Helpdesk OSS', penangan_id: 'p-1', penangan_nama: 'Rina',
+        fo_nama: 'Bayu (FO lain)', tiket: null,
+      })],
     });
     render(<RekapPenangananTable peran="layanan" layananOptions={[{ id: 'l1', nama: 'Helpdesk OSS' }]} />);
-    expect(await screen.findByText(/pernah Anda tangani di Front Office/i)).toBeInTheDocument();
-    expect(screen.getByText(/tidak lengkap untuk seluruh layanan/i)).toBeInTheDocument();
-    expect(screen.queryByText(/hanya melihat penanganan Anda sendiri/i)).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Petugas')).not.toBeInTheDocument();
+    expect(await screen.findByText('Bayu (FO lain)')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Front Office' })).toBeInTheDocument();
+    expect(screen.queryByText(/tidak lengkap untuk seluruh layanan/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/pernah Anda tangani di Front Office/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/semua Front Office dan semua petugas layanan/i)).toBeInTheDocument();
+    expect(await screen.findByLabelText('Petugas')).toBeInTheDocument();
+    expect(screen.getByLabelText('Layanan')).toBeInTheDocument();
   });
 
   it('peringatan bila data terpotong 50.000 baris', async () => {
-    jawab({ total: 1, truncated: true, peran_saya: 'admin', terkunci_ke_saya: false, ringkasan, rows: [baris('1')] });
+    jawab({ total: 1, truncated: true, peran_saya: 'admin', ringkasan, rows: [baris('1')] });
     render(<RekapPenangananTable peran="fo" />);
     expect(await screen.findByText(/dipotong/i)).toBeInTheDocument();
   });
