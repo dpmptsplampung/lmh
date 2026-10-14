@@ -11,10 +11,11 @@
 --         INSERT trg_layanan_isi_form_pendataan). Admin menyetel lewat Kelola Layanan (PATCH /api/admin/layanan/[id]
 --         field form_pendataan; tercatat audit_perubahan) atau SQL: UPDATE public.layanan SET form_pendataan = ...
 --       - layanan_selesai = versi 202610140011 + penolakan INVALID_PAYLOAD (22023) bila layanan wajib form dan
---         p_form_type NULL / tidak cocok. PENGECUALIAN tercatat: Admin yang MENGAMBIL ALIH tiket itu (audit_log
---         admin_ambil_alih, pemilik_baru = Admin) boleh menutup TANPA form (keadaan darurat; audit_log
---         'layanan_selesai_tanpa_pendataan'). Job tutup_penanganan_tertinggal (0008, 23:00 WIB) tetap menutup tiket
---         'dilayani' tanpa form (tidak lewat layanan_selesai). Layanan tanpa kewajiban: perilaku 0011 apa adanya.
+--         p_form_type NULL / tidak cocok. TANPA PENGECUALIAN PERAN (keputusan CEO 2026-10-14): Admin, termasuk Admin
+--         yang mengambil alih tiket (admin_ambil_alih), wajib mengisi form lengkap seperti petugas. Satu-satunya jalur
+--         penutupan tanpa form = jalur OTOMATIS: job tutup_penanganan_tertinggal (0008, 23:00 WIB) menutup tiket
+--         'dilayani' yang macet ('tidak_ditutup', tidak lewat layanan_selesai, diaudit). Layanan tanpa kewajiban:
+--         perilaku 0011 apa adanya.
 --   #2  get_queue_position: qr_token kunjungan baru disimpan TANPA tanda hubung (32 hex), sedangkan p_qr_token uuid
 --       ber-cast ke teks bertanda hubung -> tak pernah cocok. Kini cocok untuk kedua bentuk. Signature uuid TETAP
 --       (GRANT anon/authenticated tidak berubah).
@@ -40,6 +41,17 @@
 --       tidak_ditutup; menunggu: tidak_terlayani) + audit, kunjungan dilayani -> selesai / menunggu -> tidak_terlayani,
 --       sesi 'selesai' + pesan sistem. Batas pembuatan kunjungan (spam) dan backfill 24 jam ada di 202610140009.
 --   #3 / #6 hanya dokumen + penjaga rollback (docs/RUNBOOK_FO_ESKALASI.md, docs/rollback-*.sql).
+--   #13 (keputusan CEO 2026-10-14) LIVE CHAT PADA HARI TANPA PELAYANAN = Sabtu, Minggu, atau tanggal di tabel
+--       hari_libur (pengaturan Admin; aturan sama dengan bot /api/chat/ai, src/lib/llm/bot-waktu.ts hariTanpaLayanan):
+--       - hari_tanpa_layanan(date DEFAULT hari ini WIB) -> boolean (baru; anon/authenticated boleh EXECUTE, data publik).
+--       - chat_ambil dan chat_teruskan (versi 202610140009 + penolakan di awal) menolak 'HARI_TANPA_LAYANAN' (P0001)
+--         untuk SEMUA peran (FO, petugas, Admin termasuk ambil alih): staf tidak mengambil/meneruskan chat pada hari
+--         itu. chat_selesai TIDAK diubah (pemegang chat dari hari kerja tetap boleh menutup).
+--       - trigger eskalasi chat_sesi_eskalasi_kunjungan / chat_pesan_eskalasi_kunjungan (versi 0009 + syarat) TIDAK
+--         membuat kunjungan/kotak masuk FO pada hari itu. Sesi yang tetap 'eskalasi' tanpa kunjungan dicatat saat pesan
+--         pengunjung berikutnya pada hari kerja atau saat diambil (chat_ambil), atau ditutup tutup_chat_tertinggal.
+--       - Chat yang sudah menunggu dari hari kerja terakhir dan tidak sempat diambil TETAP ditutup oleh
+--         tutup_chat_tertinggal (ambang 24 jam tidak diubah).
 --
 -- SYARAT: 202610140011 (pendataan_validasi_payload) dan 202610140009 (chat_buat_kunjungan). URUTAN penerapan:
 --   0002 -> ... -> 0009 -> 0011 -> 0012. PENERAPAN (WAJIB atomik; dry-run dulu; hanya setelah konfirmasi CEO):
@@ -64,6 +76,9 @@ BEGIN
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_namespace WHERE nspname = 'cron') THEN
     RAISE EXCEPTION 'PRASYARAT: ekstensi pg_cron (skema cron) tidak ada';
+  END IF;
+  IF pg_catalog.to_regclass('public.hari_libur') IS NULL THEN
+    RAISE EXCEPTION 'PRASYARAT: tabel public.hari_libur tidak ada (202607290007_pengaduan)';
   END IF;
 END $$;
 
@@ -150,8 +165,7 @@ DECLARE
   v_catatan  text;
   v_now      timestamptz := pg_catalog.now();
   v_n        integer;
-  v_form_wajib      text;
-  v_tanpa_pendataan boolean := false;
+  v_form_wajib text;
 BEGIN
   SELECT me.id, me.role INTO v_me_id, v_me_role FROM public.staf_saya() AS me;
   IF v_me_id IS NULL THEN
@@ -188,18 +202,12 @@ BEGIN
   END IF;
 
   -- Pendataan wajib per layanan (202610140012 #1): jenis form ditentukan DB (layanan.form_pendataan), bukan klien.
-  -- Pengecualian darurat: Admin yang mengambil alih tiket ini (admin_ambil_alih) boleh menutup tanpa form (diaudit).
+  -- Berlaku untuk SEMUA peran (Admin pengambil alih pun wajib form; keputusan CEO 2026-10-14). Tiket macet tanpa data
+  -- ditutup otomatis oleh job tutup_penanganan_tertinggal 23:00 WIB (jalur otomatis, bukan lewat fungsi ini).
   SELECT l.form_pendataan INTO v_form_wajib FROM public.layanan AS l WHERE l.id = v_t.layanan_id;
   IF v_form_wajib IS NOT NULL AND p_form_type IS DISTINCT FROM v_form_wajib THEN
-    IF p_form_type IS NULL AND v_me_role = 'admin' AND EXISTS (
-         SELECT 1 FROM public.audit_log AS a
-         WHERE a.aksi = 'admin_ambil_alih' AND a.entitas = 'tiket_antrean' AND a.entitas_id = p_tiket_id::text
-           AND a.detail ->> 'pemilik_baru' = v_me_id::text) THEN
-      v_tanpa_pendataan := true;
-    ELSE
-      RAISE EXCEPTION 'INVALID_PAYLOAD: layanan ini wajib Formulir Pendataan % (dikirim: %)',
-        v_form_wajib, COALESCE(p_form_type, 'tanpa form') USING ERRCODE = '22023';
-    END IF;
+    RAISE EXCEPTION 'INVALID_PAYLOAD: layanan ini wajib Formulir Pendataan % (dikirim: %)',
+      v_form_wajib, COALESCE(p_form_type, 'tanpa form') USING ERRCODE = '22023';
   END IF;
 
   -- Tahap penanganan (hanya tiket hasil eskalasi): topik + catatan wajib, divalidasi sebelum menulis apa pun.
@@ -343,17 +351,6 @@ BEGIN
                      WHERE x.kunjungan_id = v_t.kunjungan_id AND x.status IN ('menunggu', 'berjalan'))
      AND NOT EXISTS (SELECT 1 FROM public.tiket_antrean AS y
                      WHERE y.kunjungan_id = v_t.kunjungan_id AND y.status IN ('menunggu', 'dipanggil', 'dilayani'));
-
-  IF v_tanpa_pendataan THEN
-    INSERT INTO public.audit_log (actor_id, actor_role, aksi, entitas, entitas_id, detail, nilai_lama, nilai_baru)
-    VALUES (
-      auth.uid(), v_me_role, 'layanan_selesai_tanpa_pendataan', 'tiket_antrean', p_tiket_id::text,
-      pg_catalog.jsonb_build_object('tiket_id', p_tiket_id, 'layanan_id', v_t.layanan_id, 'form_wajib', v_form_wajib,
-        'alasan', 'Admin mengambil alih tiket (admin_ambil_alih) lalu menutup tanpa Formulir Pendataan'),
-      pg_catalog.jsonb_build_object('status', 'dilayani'),
-      pg_catalog.jsonb_build_object('status', 'selesai', 'pendataan', false)
-    );
-  END IF;
 
   RETURN pg_catalog.jsonb_build_object(
     'ok', true, 'is_locked', p_form_type IS NOT NULL, 'waktu_selesai', v_now,
@@ -1050,3 +1047,345 @@ BEGIN
   v_n := public.tutup_chat_tertinggal();
   RAISE NOTICE '202610140012: % sesi chat tertinggal ditutup', v_n;
 END $$;
+
+-- ============================================================
+-- 11. #13 Live chat pada hari tanpa pelayanan (Sabtu/Minggu/hari_libur)
+-- ============================================================
+-- Aturan hari = hariTanpaLayanan() di src/lib/llm/bot-waktu.ts (bot /api/chat/ai, halaman /chat dan /admin/chat) =
+-- aturan hari kerja tambah_hari_kerja() (202607290007, SLA pengaduan). Chat lintas layanan, jadi tidak memakai
+-- jadwal_standby/jadwal_pengecualian per layanan (is_layanan_buka_jadwal).
+CREATE OR REPLACE FUNCTION public.hari_tanpa_layanan(
+  p_tanggal date DEFAULT ((pg_catalog.now() AT TIME ZONE 'Asia/Jakarta')::date)
+)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+  SELECT EXTRACT(ISODOW FROM p_tanggal) IN (6, 7)
+      OR EXISTS (SELECT 1 FROM public.hari_libur AS h WHERE h.tanggal = p_tanggal)
+$$;
+
+REVOKE ALL ON FUNCTION public.hari_tanpa_layanan(date) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.hari_tanpa_layanan(date) TO anon, authenticated, service_role;
+COMMENT ON FUNCTION public.hari_tanpa_layanan(date) IS
+  'Sabtu/Minggu/hari_libur (WIB): live chat dengan petugas tidak tersedia (202610140012 #13).';
+
+-- Trigger eskalasi (versi 202610140009 + syarat hari pelayanan): tanpa kunjungan/kotak masuk FO pada hari tanpa layanan.
+CREATE OR REPLACE FUNCTION public.chat_sesi_eskalasi_kunjungan()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+  v_kid uuid;
+BEGIN
+  -- Batas spam: hanya sesi yang sudah punya pesan pengunjung (sesi kosong menunggu pesan pertamanya).
+  -- 202610140012 #13: hari tanpa pelayanan tidak mencatat kunjungan (live chat dengan petugas tidak tersedia).
+  IF NEW.status = 'eskalasi' AND NEW.kunjungan_id IS NULL
+     AND (TG_OP = 'INSERT' OR OLD.status IS DISTINCT FROM 'eskalasi')
+     AND EXISTS (SELECT 1 FROM public.chat_pesan AS m WHERE m.sesi_id = NEW.id AND m.pengirim = 'pengunjung')
+     AND NOT public.hari_tanpa_layanan() THEN
+    v_kid := public.chat_buat_kunjungan(NEW.id, 'menunggu', NULL);
+    INSERT INTO public.penanganan (kunjungan_id, tahap_ke, peran_tahap, saluran, status, chat_sesi_id)
+    VALUES (v_kid, 1, 'fo', 'chat', 'menunggu', NEW.id);
+  END IF;
+  RETURN NULL;
+END $$;
+
+REVOKE ALL ON FUNCTION public.chat_sesi_eskalasi_kunjungan() FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.chat_pesan_eskalasi_kunjungan()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+  v_s   record;
+  v_kid uuid;
+BEGIN
+  SELECT s.id, s.status, s.kunjungan_id INTO v_s
+  FROM public.chat_sesi AS s WHERE s.id = NEW.sesi_id FOR NO KEY UPDATE;
+  -- 202610140012 #13: hari tanpa pelayanan tidak mencatat kunjungan (dicatat pada pesan berikutnya di hari kerja).
+  IF v_s.id IS NOT NULL AND v_s.status = 'eskalasi' AND v_s.kunjungan_id IS NULL
+     AND NOT public.hari_tanpa_layanan() THEN
+    v_kid := public.chat_buat_kunjungan(NEW.sesi_id, 'menunggu', NULL);
+    INSERT INTO public.penanganan (kunjungan_id, tahap_ke, peran_tahap, saluran, status, chat_sesi_id)
+    VALUES (v_kid, 1, 'fo', 'chat', 'menunggu', NEW.sesi_id);
+  END IF;
+  RETURN NULL;
+END $$;
+
+REVOKE ALL ON FUNCTION public.chat_pesan_eskalasi_kunjungan() FROM PUBLIC, anon, authenticated;
+
+-- chat_ambil = versi 202610140009 + penolakan HARI_TANPA_LAYANAN di awal (semua peran, termasuk ambil alih Admin).
+CREATE OR REPLACE FUNCTION public.chat_ambil(p_sesi_id uuid, p_alasan text DEFAULT NULL)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+  v_me_id   uuid;
+  v_me_role text;
+  v_me_lyn  uuid;
+  v_now     timestamptz := pg_catalog.now();
+  v_alasan  text := pg_catalog.btrim(COALESCE(p_alasan, ''));
+  v_s       record;
+  v_kid     uuid;
+  v_p       record;
+  v_tahap   integer;
+  v_pid     uuid;
+  v_peran   text;
+  v_lyn     uuid;
+  v_n       integer;
+BEGIN
+  SELECT s.o_id, s.o_role, s.o_layanan INTO v_me_id, v_me_role, v_me_lyn
+  FROM public.staf_wajib_sesi(ARRAY['front_office', 'admin', 'petugas']) AS s;
+
+  -- 202610140012 #13: live chat dengan petugas tidak tersedia pada hari tanpa pelayanan.
+  IF public.hari_tanpa_layanan() THEN
+    RAISE EXCEPTION 'HARI_TANPA_LAYANAN: chat tidak dapat diambil pada hari tanpa pelayanan (Sabtu/Minggu/hari libur)'
+      USING ERRCODE = 'P0001';
+  END IF;
+
+  SELECT s.id, s.status, s.layanan_id, s.kunjungan_id, s.ditangani_oleh INTO v_s
+  FROM public.chat_sesi AS s WHERE s.id = p_sesi_id FOR NO KEY UPDATE;
+  IF v_s.id IS NULL THEN
+    RAISE EXCEPTION 'NOT_FOUND: sesi chat tidak ditemukan' USING ERRCODE = 'P0002';
+  END IF;
+  IF v_me_role = 'petugas' AND (v_me_lyn IS NULL OR v_s.layanan_id IS DISTINCT FROM v_me_lyn) THEN
+    RAISE EXCEPTION 'FORBIDDEN: chat ini bukan untuk layanan Anda' USING ERRCODE = '42501';
+  END IF;
+  IF v_s.status = 'selesai' THEN
+    RAISE EXCEPTION 'INVALID_STATUS: sesi chat sudah selesai' USING ERRCODE = 'P0001';
+  END IF;
+
+  -- Sesi bot (belum eskalasi) atau sesi lama tanpa kunjungan: catat sekarang (masuk "kotak masuk" lalu diambil).
+  v_kid := v_s.kunjungan_id;
+  IF v_kid IS NULL THEN
+    v_kid := public.chat_buat_kunjungan(p_sesi_id, 'menunggu', NULL);
+    INSERT INTO public.penanganan (kunjungan_id, tahap_ke, peran_tahap, saluran, status, chat_sesi_id)
+    VALUES (v_kid, 1, 'fo', 'chat', 'menunggu', p_sesi_id);
+  END IF;
+
+  PERFORM 1 FROM public.kunjungan AS k WHERE k.id = v_kid FOR UPDATE;
+  SELECT p.* INTO v_p FROM public.penanganan AS p
+  WHERE p.kunjungan_id = v_kid AND p.status IN ('menunggu', 'berjalan') FOR UPDATE;
+  IF v_p.id IS NULL THEN
+    RAISE EXCEPTION 'DIVERGENSI: sesi chat belum selesai tetapi tidak punya tahap terbuka' USING ERRCODE = 'P0001';
+  END IF;
+
+  -- Sudah berjalan.
+  IF v_p.status = 'berjalan' THEN
+    IF v_p.penangan_id = v_me_id THEN
+      RETURN pg_catalog.jsonb_build_object(
+        'ok', true, 'sudah_milik_anda', true, 'ambil_alih', false, 'sesi_id', p_sesi_id, 'kunjungan_id', v_kid,
+        'penanganan_id', v_p.id, 'peran_tahap', v_p.peran_tahap, 'mulai_at', v_p.mulai_at);
+    END IF;
+    IF v_me_role <> 'admin' THEN
+      RAISE EXCEPTION 'SUDAH_DIAMBIL: chat sudah ditangani staf lain' USING ERRCODE = 'P0001';
+    END IF;
+    -- Admin mengambil alih (alasan wajib, audit), pola admin_ambil_alih.
+    IF pg_catalog.char_length(v_alasan) NOT BETWEEN 5 AND 500 THEN
+      RAISE EXCEPTION 'ALASAN_WAJIB: alasan ambil alih chat wajib 5-500 karakter' USING ERRCODE = '22023';
+    END IF;
+    UPDATE public.penanganan AS p
+       SET status = 'batal', batal_karena = 'diambil_alih', selesai_at = v_now,
+           catatan = pg_catalog.left('Diambil alih Admin: ' || v_alasan, CASE WHEN p.peran_tahap = 'fo' THEN 200 ELSE 1000 END)
+     WHERE p.id = v_p.id;
+    SELECT COALESCE(pg_catalog.max(p.tahap_ke), 0) + 1 INTO v_tahap FROM public.penanganan AS p WHERE p.kunjungan_id = v_kid;
+    INSERT INTO public.penanganan (kunjungan_id, tahap_ke, peran_tahap, layanan_id, saluran, penangan_id, status,
+                                   mulai_at, chat_sesi_id, dibuat_oleh)
+    VALUES (v_kid, v_tahap, v_p.peran_tahap, v_p.layanan_id, 'chat', v_me_id, 'berjalan', v_now, p_sesi_id, v_me_id)
+    RETURNING id INTO v_pid;
+    PERFORM public.chat_ubah_sesi(p_sesi_id, 'aktif', v_me_id);
+    PERFORM public.chat_pesan_sistem(p_sesi_id,
+      'Percakapan ini dilanjutkan oleh petugas lain. Pesan Anda akan dibalas langsung oleh petugas.');
+    INSERT INTO public.audit_log (actor_id, actor_role, aksi, entitas, entitas_id, detail, nilai_lama, nilai_baru)
+    VALUES (auth.uid(), v_me_role, 'chat_ambil_alih', 'chat_sesi', p_sesi_id::text,
+            pg_catalog.jsonb_build_object('sesi_id', p_sesi_id, 'kunjungan_id', v_kid, 'penanganan_lama', v_p.id,
+              'penanganan_baru', v_pid, 'pemilik_lama', v_p.penangan_id, 'alasan', v_alasan),
+            pg_catalog.jsonb_build_object('penangan_id', v_p.penangan_id),
+            pg_catalog.jsonb_build_object('penangan_id', v_me_id));
+    RETURN pg_catalog.jsonb_build_object(
+      'ok', true, 'sudah_milik_anda', false, 'ambil_alih', true, 'pemilik_lama', v_p.penangan_id, 'sesi_id', p_sesi_id,
+      'kunjungan_id', v_kid, 'penanganan_id', v_pid, 'peran_tahap', v_p.peran_tahap, 'mulai_at', v_now);
+  END IF;
+
+  -- Menunggu: tentukan peran tahap setelah diambil.
+  IF v_p.peran_tahap = 'fo' THEN
+    IF v_me_role = 'petugas' THEN
+      -- Petugas mengambil langsung selama BELUM diambil FO: tahap menjadi tahap layanannya (tidak ada tahap FO fiktif).
+      v_peran := 'layanan';
+      v_lyn   := v_me_lyn;
+    ELSE
+      v_peran := 'fo';
+      v_lyn   := NULL;
+    END IF;
+  ELSE
+    IF v_me_role = 'front_office' THEN
+      RAISE EXCEPTION 'FORBIDDEN: chat ini sudah diteruskan dan menunggu petugas layanan' USING ERRCODE = '42501';
+    END IF;
+    IF v_me_role = 'petugas' AND v_p.layanan_id IS DISTINCT FROM v_me_lyn THEN
+      RAISE EXCEPTION 'FORBIDDEN: chat ini menunggu petugas layanan lain' USING ERRCODE = '42501';
+    END IF;
+    v_peran := 'layanan';
+    v_lyn   := v_p.layanan_id;
+  END IF;
+
+  UPDATE public.penanganan AS p
+     SET status = 'berjalan', penangan_id = v_me_id, mulai_at = v_now, peran_tahap = v_peran, layanan_id = v_lyn,
+         chat_sesi_id = p_sesi_id
+   WHERE p.id = v_p.id AND p.status = 'menunggu' AND p.penangan_id IS NULL;
+  GET DIAGNOSTICS v_n = ROW_COUNT;
+  IF v_n = 0 THEN
+    RAISE EXCEPTION 'SUDAH_DIAMBIL: chat sudah ditangani staf lain' USING ERRCODE = 'P0001';
+  END IF;
+
+  UPDATE public.kunjungan AS k SET status = 'dilayani', updated_at = v_now WHERE k.id = v_kid;
+  PERFORM public.chat_ubah_sesi(p_sesi_id, 'aktif', v_me_id);
+  PERFORM public.chat_pesan_sistem(p_sesi_id,
+    'Percakapan ini telah diambil oleh petugas. Pesan Anda akan dibalas langsung oleh petugas.');
+
+  IF v_me_role = 'admin' THEN
+    INSERT INTO public.audit_log (actor_id, actor_role, aksi, entitas, entitas_id, detail, nilai_lama, nilai_baru)
+    VALUES (auth.uid(), v_me_role, 'chat_ambil', 'chat_sesi', p_sesi_id::text,
+            pg_catalog.jsonb_build_object('sesi_id', p_sesi_id, 'kunjungan_id', v_kid, 'penanganan_id', v_p.id,
+              'peran_tahap', v_peran),
+            pg_catalog.jsonb_build_object('status_sesi', v_s.status),
+            pg_catalog.jsonb_build_object('status_sesi', 'aktif', 'penangan_id', v_me_id));
+  END IF;
+
+  RETURN pg_catalog.jsonb_build_object(
+    'ok', true, 'sudah_milik_anda', false, 'ambil_alih', false, 'sesi_id', p_sesi_id, 'kunjungan_id', v_kid,
+    'penanganan_id', v_p.id, 'peran_tahap', v_peran, 'mulai_at', v_now);
+END $$;
+
+-- chat_teruskan = versi 202610140009 + penolakan HARI_TANPA_LAYANAN di awal (petugas tujuan tidak bertugas).
+CREATE OR REPLACE FUNCTION public.chat_teruskan(
+  p_sesi_id    uuid,
+  p_layanan_id uuid,
+  p_topik_id   uuid,
+  p_catatan    text
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+  v_me_id   uuid;
+  v_me_role text;
+  v_me_lyn  uuid;
+  v_now     timestamptz := pg_catalog.now();
+  v_tgl     date := (pg_catalog.now() AT TIME ZONE 'Asia/Jakarta')::date;
+  v_s       record;
+  v_p       record;
+  v_l       record;
+  v_topik   text;
+  v_catatan text;
+  v_tahap   integer;
+  v_pl      uuid;
+  v_notif   integer := 0;
+  r         record;
+BEGIN
+  SELECT s.o_id, s.o_role, s.o_layanan INTO v_me_id, v_me_role, v_me_lyn
+  FROM public.staf_wajib_sesi(ARRAY['front_office', 'admin']) AS s;
+
+  -- 202610140012 #13: petugas layanan tujuan tidak bertugas pada hari tanpa pelayanan.
+  IF public.hari_tanpa_layanan(v_tgl) THEN
+    RAISE EXCEPTION 'HARI_TANPA_LAYANAN: chat tidak dapat diteruskan pada hari tanpa pelayanan (Sabtu/Minggu/hari libur)'
+      USING ERRCODE = 'P0001';
+  END IF;
+
+  SELECT s.id, s.status, s.layanan_id, s.kunjungan_id INTO v_s
+  FROM public.chat_sesi AS s WHERE s.id = p_sesi_id FOR NO KEY UPDATE;
+  IF v_s.id IS NULL THEN
+    RAISE EXCEPTION 'NOT_FOUND: sesi chat tidak ditemukan' USING ERRCODE = 'P0002';
+  END IF;
+  IF v_s.status = 'selesai' OR v_s.kunjungan_id IS NULL THEN
+    RAISE EXCEPTION 'INVALID_STATUS: sesi chat belum diambil atau sudah selesai (status=%)', v_s.status USING ERRCODE = 'P0001';
+  END IF;
+
+  PERFORM 1 FROM public.kunjungan AS k WHERE k.id = v_s.kunjungan_id FOR UPDATE;
+  SELECT p.* INTO v_p FROM public.penanganan AS p
+  WHERE p.kunjungan_id = v_s.kunjungan_id AND p.status IN ('menunggu', 'berjalan') FOR UPDATE;
+  IF v_p.id IS NULL OR v_p.status <> 'berjalan' THEN
+    RAISE EXCEPTION 'INVALID_STATUS: chat tidak sedang ditangani (ambil dulu dengan chat_ambil)' USING ERRCODE = 'P0001';
+  END IF;
+  IF v_p.peran_tahap <> 'fo' THEN
+    RAISE EXCEPTION 'BUKAN_TAHAP_FO: chat ini sedang ditangani petugas layanan' USING ERRCODE = 'P0001';
+  END IF;
+  IF v_p.penangan_id IS DISTINCT FROM v_me_id THEN
+    RAISE EXCEPTION 'BUKAN_PEMILIK: chat ini ditangani staf lain' USING ERRCODE = '42501';
+  END IF;
+  v_topik   := public.fo_validasi_topik(p_topik_id, NULL);
+  v_catatan := public.fo_validasi_catatan(p_catatan, 200);
+
+  SELECT l.id, l.nama, l.aktif, l.punya_chat INTO v_l FROM public.layanan AS l WHERE l.id = p_layanan_id;
+  IF v_l.id IS NULL OR NOT v_l.aktif OR NOT COALESCE(v_l.punya_chat, false) THEN
+    RAISE EXCEPTION 'LAYANAN_TIDAK_VALID: layanan tujuan tidak ada, nonaktif, atau tidak melayani chat' USING ERRCODE = '22023';
+  END IF;
+
+  UPDATE public.penanganan AS p
+     SET status = 'selesai', hasil = 'dieskalasi', topik_id = p_topik_id, topik = v_topik, catatan = v_catatan,
+         selesai_at = v_now
+   WHERE p.id = v_p.id AND p.status = 'berjalan' AND p.penangan_id = v_me_id;
+
+  SELECT COALESCE(pg_catalog.max(p.tahap_ke), 0) + 1 INTO v_tahap FROM public.penanganan AS p WHERE p.kunjungan_id = v_s.kunjungan_id;
+  INSERT INTO public.penanganan (kunjungan_id, tahap_ke, peran_tahap, layanan_id, saluran, status, chat_sesi_id, dibuat_oleh)
+  VALUES (v_s.kunjungan_id, v_tahap, 'layanan', p_layanan_id, 'chat', 'menunggu', p_sesi_id, v_me_id)
+  RETURNING id INTO v_pl;
+
+  UPDATE public.kunjungan AS k SET status = 'menunggu', updated_at = v_now WHERE k.id = v_s.kunjungan_id;
+  -- Sesi pindah ke layanan tujuan (RLS chat yang ada memberi petugas layanan itu akses baca/tulis), penangan dilepas.
+  PERFORM public.chat_ubah_sesi(p_sesi_id, 'eskalasi', NULL, p_layanan_id);
+  PERFORM public.chat_pesan_sistem(p_sesi_id, pg_catalog.format(
+    'Percakapan Anda diteruskan ke petugas layanan %s. Mohon tunggu, petugas akan segera membalas.', v_l.nama));
+
+  -- Notifikasi web push ke petugas aktif layanan tujuan (tanpa PII pengunjung).
+  FOR r IN
+    SELECT p.auth_user_id FROM public.petugas AS p
+    WHERE p.layanan_id = p_layanan_id AND p.role = 'petugas' AND p.aktif = true
+  LOOP
+    PERFORM public.queue_notifikasi(
+      r.auth_user_id, NULL, 'web_push',
+      'Chat menunggu',
+      pg_catalog.format('Front Office meneruskan satu chat ke layanan %s.', v_l.nama),
+      pg_catalog.jsonb_build_object('type', 'chat_diteruskan', 'sesi_id', p_sesi_id, 'layanan_id', p_layanan_id,
+                                    'url', '/admin/chat'));
+    v_notif := v_notif + 1;
+  END LOOP;
+
+  IF v_me_role = 'admin' THEN
+    INSERT INTO public.audit_log (actor_id, actor_role, aksi, entitas, entitas_id, detail, nilai_lama, nilai_baru)
+    VALUES (auth.uid(), v_me_role, 'chat_teruskan', 'chat_sesi', p_sesi_id::text,
+            pg_catalog.jsonb_build_object('sesi_id', p_sesi_id, 'kunjungan_id', v_s.kunjungan_id,
+              'penanganan_fo_id', v_p.id, 'penanganan_layanan_id', v_pl),
+            pg_catalog.jsonb_build_object('layanan_id', v_s.layanan_id),
+            pg_catalog.jsonb_build_object('layanan_id', p_layanan_id));
+  END IF;
+
+  RETURN pg_catalog.jsonb_build_object(
+    'ok', true,
+    'sesi_id', p_sesi_id,
+    'kunjungan_id', v_s.kunjungan_id,
+    'penanganan_fo_id', v_p.id,
+    'penanganan_layanan_id', v_pl,
+    'layanan_id', p_layanan_id,
+    'layanan_nama', v_l.nama,
+    'petugas_hadir', public.antrean_dibuka(p_layanan_id, v_tgl),
+    'notifikasi_diantrekan', v_notif);
+END $$;
+
+-- Hak sama dengan 202610140009 (CREATE OR REPLACE mempertahankan hak; ditegaskan ulang).
+REVOKE ALL ON FUNCTION public.chat_ambil(uuid, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.chat_ambil(uuid, text) TO authenticated;
+REVOKE ALL ON FUNCTION public.chat_teruskan(uuid, uuid, uuid, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.chat_teruskan(uuid, uuid, uuid, text) TO authenticated;

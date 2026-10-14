@@ -14,6 +14,8 @@
 //   --pre   = diterapkan dulu di dalam transaksi (tanpa uji rollback).
 //   --apply = migrasi yang diuji + uji idempoten + uji rollback docs/rollback-*-<versi>.sql (snapshot katalog).
 //   tanpa --apply: menguji state DB saat ini (seksi backfill/rollback dilewati).
+// HARI: bila 202610140012 sudah terpasang (fungsi hari_tanpa_layanan ada), skrip berhenti (ROLLBACK) pada Sabtu/Minggu/
+// hari_libur karena chat_ambil/chat_teruskan menolak HARI_TANPA_LAYANAN pada hari itu (keputusan CEO 2026-10-14).
 //
 // TIDAK tercakup: konkurensi SEJATI (dua koneksi serentak); yang diuji urutan berurutan (pemanggil kedua melihat hasil
 // pertama: SUDAH_DIAMBIL). Route Next.js tidak diuji (hanya DB). Harness diturunkan dari scripts/test-fo-eskalasi.mjs.
@@ -597,6 +599,15 @@ try {
     info('tanpa --apply: menguji state DB saat ini; backfill & uji rollback dilewati');
   }
   await siapkanTopik();
+  // 202610140012 #13: bila DB sudah memuat hari_tanpa_layanan (0012) dan hari ini Sabtu/Minggu/hari_libur, chat_ambil/
+  // chat_teruskan menolak HARI_TANPA_LAYANAN dan eskalasi tidak mencatat kunjungan -> seksi 2-8 akan gagal palsu.
+  // Perilaku hari tanpa pelayanan diuji di scripts/test-perbaikan-review.mjs (seksi 9). Jalankan skrip ini pada hari kerja
+  // di luar jam layanan (Senin-Jumat 17:00-06:59 WIB, bukan hari libur).
+  const hariTanpa = await satu(`SELECT CASE WHEN to_regprocedure('public.hari_tanpa_layanan(date)') IS NULL THEN false
+    ELSE public.hari_tanpa_layanan() END AS t`);
+  if (hariTanpa?.t) {
+    throw new Error('DITOLAK: hari tanpa pelayanan (Sabtu/Minggu/hari_libur) dengan 202610140012 terpasang; jalankan pada hari kerja di luar jam layanan');
+  }
   await fasePasca(applyFiles.length > 0);
 
   if (applyFiles.length) {

@@ -22,6 +22,9 @@
 //   --akhir-hari = juga menjalankan tandai_reservasi_no_show() (mengunci reservasi terjadwal lewat tanggal).
 //   tanpa --apply: menguji state DB saat ini (seksi fixture-sebelum-migrasi dan rollback dilewati).
 //
+// Seksi 9 (#13 hari tanpa pelayanan) menandai hari ini sebagai hari_libur DI DALAM savepoint (di-rollback) sehingga
+// jalur hari libur teruji pada hari apa pun; jalur hari kerja hanya diuji bila hari ini memang hari kerja.
+// Seksi 2 juga menjalankan tutup_penanganan_tertinggal() di dalam savepoint (menyentuh tiket 'dilayani' nyata; di-rollback).
 // TIDAK tercakup: konkurensi SEJATI (dua koneksi serentak) untuk ON CONFLICT fo_mulai_kunjungan dan kunci advisory
 // reservasi_buat; yang diuji hanya jalur berurutan. Harness diturunkan dari scripts/test-fo-eskalasi.mjs.
 import pg from 'pg';
@@ -322,13 +325,28 @@ async function fasePasca(adaApply) {
       await mulai(F.act.petO, x.tiket);
       const aa = await rpc(F.act.admin, 'admin_ambil_alih', [x.tiket, 'petugas O pulang sakit']);
       cek('Admin mengambil alih tiket O', aa.ok, sebut(aa));
-      const s = await selesai(F.act.admin, x.tiket, null, null, F.topikO, 'ditutup Admin');
-      cek('Admin pengambil alih menutup TANPA form (pengecualian) + audit layanan_selesai_tanpa_pendataan', s.ok
-        && (await satu(`SELECT count(*)::int AS n FROM public.audit_log WHERE aksi='layanan_selesai_tanpa_pendataan' AND entitas_id=$1`, [x.tiket])).n === 1, sebut(s));
+      // Keputusan CEO 2026-10-14: TANPA pengecualian; Admin pengambil alih pun wajib form lengkap.
+      cek('Admin pengambil alih TANPA form: INVALID_PAYLOAD (tiket tetap dilayani)',
+        galat(await selesai(F.act.admin, x.tiket, null, null, F.topikO, 'ditutup Admin'), '22023', /INVALID_PAYLOAD/)
+        && (await tiket(x.tiket)).status === 'dilayani');
+      const s = await selesai(F.act.admin, x.tiket, 'oss', PAYLOAD_OSS, F.topikO, 'ditutup Admin');
+      cek('Admin pengambil alih dengan form oss lengkap: selesai', s.ok && hasil(s).is_locked === true, sebut(s));
+      cek('tidak ada audit layanan_selesai_tanpa_pendataan', (await satu(
+        `SELECT count(*)::int AS n FROM public.audit_log WHERE aksi='layanan_selesai_tanpa_pendataan' AND entitas_id=$1`, [x.tiket])).n === 0);
       const y = await eskalasiBaru(F.O);
       await mulai(F.act.admin, y.tiket);
       cek('Admin yang memulai sendiri (tanpa ambil alih) tetap wajib form: INVALID_PAYLOAD',
         galat(await selesai(F.act.admin, y.tiket, null, null, F.topikO, 'x'), '22023', /INVALID_PAYLOAD/));
+    });
+    await sp(async () => {
+      // Jalur otomatis: tiket dilayani tanpa data ditutup job 23:00 WIB tanpa form (bukan lewat layanan_selesai).
+      const x = await eskalasiBaru(F.O);
+      await mulai(F.act.petO, x.tiket);
+      const j = await pgq(`SELECT public.tutup_penanganan_tertinggal() AS n`);
+      const t = await tiket(x.tiket);
+      cek('tutup_penanganan_tertinggal menutup tiket dilayani tanpa form (waktu_selesai NULL) + tahap tidak_ditutup',
+        j.ok && t.status === 'selesai' && t.waktu_selesai === null
+        && (await satu(`SELECT batal_karena FROM public.penanganan WHERE tiket_id=$1`, [x.tiket]))?.batal_karena === 'tidak_ditutup', sebut(j));
     });
   });
 
@@ -402,6 +420,82 @@ async function fasePasca(adaApply) {
       const rek = await satu(`SELECT total_hadir, total_selesai, rata_durasi_menit FROM public.rekap_harian_layanan
         WHERE layanan_id=$1 AND tanggal=(now() AT TIME ZONE 'Asia/Jakarta')::date`, [F.A]);
       cek('total_hadir = 1 kunjungan (bukan 2 tiket), total_selesai = 1', r.ok && rek?.total_hadir === 1 && rek.total_selesai === 1, JSON.stringify(rek));
+    });
+  });
+
+  await seksi('9. #13 live chat pada hari tanpa pelayanan (Sabtu/Minggu/hari_libur)', async () => {
+    const ada = await satu(`SELECT to_regprocedure('public.hari_tanpa_layanan(date)') IS NOT NULL AS ada`);
+    if (!ada?.ada) { cek('fungsi hari_tanpa_layanan(date) ada', false); return; }
+    const kal = await satu(`SELECT public.hari_tanpa_layanan('2026-10-17'::date) AS sab, public.hari_tanpa_layanan('2026-10-18'::date) AS mgg,
+      public.hari_tanpa_layanan('2026-10-14'::date) AS rabu`);
+    cek('Sabtu & Minggu = hari tanpa pelayanan; Rabu bukan (kecuali tercatat di hari_libur)', kal?.sab && kal?.mgg, JSON.stringify(kal));
+    cek('anon boleh memanggil hari_tanpa_layanan()', (await run(ANON, `SELECT public.hari_tanpa_layanan() AS r`)).ok);
+    const asli = (await satu(`SELECT public.hari_tanpa_layanan() AS t`))?.t === true;
+    const sesiBaru = async (status = 'bot') => {
+      const r = await pgq(`INSERT INTO public.chat_sesi (layanan_id, pengunjung_id, kontak_pengunjung, status)
+        VALUES ($1,$2,'ZZ R12-13',$3) RETURNING id`, [F.A, F.p_visitor, status]);
+      if (!r.ok) throw new Error(`sesi: ${sebut(r)}`);
+      await pgq(`INSERT INTO public.chat_pesan (sesi_id, pengirim, isi) VALUES ($1,'pengunjung','ZZ halo')`, [r.rows[0].id]);
+      return r.rows[0].id;
+    };
+    const eskalasi = (sid) => pgq(`UPDATE public.chat_sesi SET status='eskalasi' WHERE id=$1 AND status='bot'`, [sid]);
+    const jumlahTahap = async (sid) => (await satu(`SELECT count(*)::int AS n FROM public.penanganan WHERE chat_sesi_id=$1`, [sid])).n;
+
+    if (!asli) {
+      await sp(async () => {
+        const sid = await sesiBaru();
+        await eskalasi(sid);
+        cek('hari kerja: eskalasi mencatat kunjungan + tahap FO (perilaku 0009 tetap)', !!(await sesiChat(sid))?.kunjungan_id && (await jumlahTahap(sid)) === 1);
+        cek('hari kerja: chat_ambil FO berhasil', (await rpc(F.act.fo, 'chat_ambil', [sid, null])).ok);
+      });
+    } else {
+      info('hari ini sudah hari tanpa pelayanan: jalur hari kerja dilewati');
+    }
+
+    await sp(async () => {
+      // Chat yang sudah dipegang FO sejak hari kerja (dibuat sebelum hari ditandai libur).
+      let dipegang = null;
+      if (!asli) {
+        dipegang = await sesiBaru();
+        await eskalasi(dipegang);
+        const a = await rpc(F.act.fo, 'chat_ambil', [dipegang, null]);
+        if (!a.ok) { info(`fixture chat dipegang gagal: ${sebut(a)}`); dipegang = null; }
+      }
+      // Tandai hari ini libur (hanya di dalam savepoint) bila belum hari tanpa pelayanan.
+      await pgq(`INSERT INTO public.hari_libur (tanggal, keterangan) VALUES ((now() AT TIME ZONE 'Asia/Jakarta')::date, 'ZZ uji #13')
+        ON CONFLICT (tanggal) DO NOTHING`);
+      cek('hari ini kini hari tanpa pelayanan', (await satu(`SELECT public.hari_tanpa_layanan() AS t`))?.t === true);
+
+      const sid = await sesiBaru();
+      const u = await eskalasi(sid);
+      cek('bot -> eskalasi TIDAK mencatat kunjungan / kotak masuk FO', u.ok && (await sesiChat(sid))?.kunjungan_id === null
+        && (await jumlahTahap(sid)) === 0, sebut(u));
+      await pgq(`INSERT INTO public.chat_pesan (sesi_id, pengirim, isi) VALUES ($1,'pengunjung','ZZ masih menunggu')`, [sid]);
+      cek('pesan pengunjung berikutnya TIDAK mencatat kunjungan', (await sesiChat(sid))?.kunjungan_id === null && (await jumlahTahap(sid)) === 0);
+      const langsung = await sesiBaru('eskalasi'); // chatbot nonaktif: sesi dibuat langsung eskalasi
+      cek('sesi langsung eskalasi + pesan: TIDAK mencatat kunjungan', (await sesiChat(langsung))?.kunjungan_id === null);
+
+      for (const [nama, a] of [['FO', F.act.fo], ['petugas layanan', F.act.petA], ['Admin', F.act.admin]]) {
+        cek(`chat_ambil oleh ${nama}: HARI_TANPA_LAYANAN (P0001), sesi tidak berubah`,
+          galat(await rpc(a, 'chat_ambil', [sid, null]), 'P0001', /HARI_TANPA_LAYANAN/) && (await sesiChat(sid))?.status === 'eskalasi');
+      }
+      cek('chat_ambil sesi bot: HARI_TANPA_LAYANAN (tidak mencatat kunjungan)',
+        galat(await rpc(F.act.fo, 'chat_ambil', [await sesiBaru(), null]), 'P0001', /HARI_TANPA_LAYANAN/));
+
+      if (dipegang) {
+        cek('Admin ambil alih chat yang dipegang FO: HARI_TANPA_LAYANAN',
+          galat(await rpc(F.act.admin, 'chat_ambil', [dipegang, 'uji ambil alih']), 'P0001', /HARI_TANPA_LAYANAN/));
+        cek('chat_teruskan oleh FO pemegang: HARI_TANPA_LAYANAN',
+          galat(await rpc(F.act.fo, 'chat_teruskan', [dipegang, F.A, F.topikFo, 'teruskan']), 'P0001', /HARI_TANPA_LAYANAN/));
+        const s = await rpc(F.act.fo, 'chat_selesai', [dipegang, F.topikFo, 'ditutup pada hari libur']);
+        cek('chat_selesai oleh FO pemegang tetap boleh (tidak diubah #13)', s.ok && (await sesiChat(dipegang))?.status === 'selesai', sebut(s));
+      }
+
+      // Ambang 24 jam tidak berubah: sesi menunggu tanpa aktivitas > 24 jam tetap ditutup job, juga pada hari libur.
+      await pgq(`UPDATE public.chat_pesan SET created_at = now() - interval '2 days' WHERE sesi_id=$1`, [sid]);
+      await pgq(`UPDATE public.chat_sesi SET created_at = now() - interval '2 days' WHERE id=$1`, [sid]);
+      const j = await pgq(`SELECT public.tutup_chat_tertinggal() AS n`);
+      cek('tutup_chat_tertinggal (24 jam) menutup sesi menunggu pada hari tanpa pelayanan', j.ok && (await sesiChat(sid))?.status === 'selesai', sebut(j));
     });
   });
 

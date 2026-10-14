@@ -42,6 +42,7 @@ const S = {
   m4: stripSqlComments(baca('202610140004_fo_rpc.sql')),
   m5: stripSqlComments(baca('202610140005_fo_selaras_antrean.sql')),
   m7: stripSqlComments(baca('202610140007_wp24_akhiri_dual_write.sql')),
+  m9: stripSqlComments(baca('202610140009_chat_online.sql')),
   m11: stripSqlComments(baca('202610140011_pendataan_wajib.sql')),
 };
 
@@ -54,6 +55,10 @@ const DIUBAH: Array<[string, string]> = [
   ['reservasi_buat', 'm4'],
   ['rollup_rekap_harian', 'm5'],
   ['tandai_reservasi_no_show', 'm7'],
+  ['chat_ambil', 'm9'],
+  ['chat_teruskan', 'm9'],
+  ['chat_sesi_eskalasi_kunjungan', 'm9'],
+  ['chat_pesan_eskalasi_kunjungan', 'm9'],
 ];
 const asal = (nama: string, kunci: string) => ambilFungsi(S[kunci as keyof typeof S], nama);
 
@@ -68,7 +73,7 @@ describe('202610140012: berkas, urutan, prasyarat', () => {
     expect(rbRaw).toContain(`apply-migration.mjs docs/${RB12} --atomic --dry-run`);
   });
 
-  it('penjaga prasyarat (DO) sebelum perubahan apa pun: 0011, 0009, 0007, pg_cron', () => {
+  it('penjaga prasyarat (DO) sebelum perubahan apa pun: 0011, 0009, 0007, pg_cron, hari_libur', () => {
     const awal = sql.search(/DO \$\$/);
     expect(awal).toBeGreaterThanOrEqual(0);
     expect(awal).toBeLessThan(sql.search(/\b(?:CREATE|ALTER|UPDATE|INSERT|DROP|REVOKE)\b/));
@@ -77,6 +82,7 @@ describe('202610140012: berkas, urutan, prasyarat', () => {
     expect(blok).toMatch(/to_regprocedure\('public\.chat_buat_kunjungan\(uuid,text,date\)'\) IS NULL/);
     expect(blok).toMatch(/to_regprocedure\('public\.visit_arsip_jaga\(\)'\) IS NULL/);
     expect(blok).toMatch(/nspname = 'cron'/);
+    expect(blok).toMatch(/to_regclass\('public\.hari_libur'\) IS NULL/);
   });
 
   it('semua fungsi SECURITY DEFINER memakai search_path terkunci; tanpa DELETE/TRUNCATE/visit', () => {
@@ -129,28 +135,35 @@ describe('#1 kewajiban Formulir Pendataan per layanan', () => {
     }
   });
 
-  it('layanan_selesai = versi 0011 + blok kewajiban form (setelah BUKAN_PEMILIK, sebelum menulis) + audit tanpa pendataan', () => {
+  it('layanan_selesai = versi 0011 + blok kewajiban form (setelah BUKAN_PEMILIK, sebelum menulis), tanpa pengecualian peran', () => {
     const f12 = ambilFungsi(sql, 'layanan_selesai');
     const f11 = asal('layanan_selesai', 'm11');
     const blokWajib = f12.slice(
       f12.indexOf('  SELECT l.form_pendataan INTO v_form_wajib'),
       f12.indexOf('  SELECT p.id INTO v_p FROM public.penanganan'),
     );
-    const blokAudit = f12.slice(f12.indexOf('  IF v_tanpa_pendataan THEN'), f12.indexOf('  RETURN pg_catalog.jsonb_build_object('));
-    const sisa = tanpa(f12,
-      '  v_form_wajib      text;\n', '  v_tanpa_pendataan boolean := false;\n', blokWajib, blokAudit);
+    const sisa = tanpa(f12, '  v_form_wajib text;\n', blokWajib);
     expect(rapikan(sisa)).toBe(rapikan(f11));
 
     expect(f12.indexOf('SELECT l.form_pendataan INTO v_form_wajib')).toBeGreaterThan(f12.indexOf("'BUKAN_PEMILIK:"));
     expect(f12.indexOf('SELECT l.form_pendataan INTO v_form_wajib')).toBeLessThan(f12.indexOf('INSERT INTO public.pelayanan_oss'));
-    expect(blokWajib).toMatch(/IF v_form_wajib IS NOT NULL AND p_form_type IS DISTINCT FROM v_form_wajib THEN/);
-    expect(blokWajib).toMatch(/RAISE EXCEPTION 'INVALID_PAYLOAD:[^;]*USING ERRCODE = '22023'/);
-    // Pengecualian sempit: hanya Admin, tanpa form, yang tercatat sebagai pemilik_baru pada audit admin_ambil_alih tiket ini.
-    expect(rapikan(blokWajib)).toContain(
-      "IF p_form_type IS NULL AND v_me_role = 'admin' AND EXISTS ( SELECT 1 FROM public.audit_log AS a WHERE a.aksi = 'admin_ambil_alih' AND a.entitas = 'tiket_antrean' AND a.entitas_id = p_tiket_id::text AND a.detail ->> 'pemilik_baru' = v_me_id::text) THEN");
-    expect(blokAudit).toMatch(/'layanan_selesai_tanpa_pendataan'/);
+    // Keputusan CEO 2026-10-14: TIDAK ada pengecualian (Admin pengambil alih pun wajib form). Blok = satu IF -> RAISE.
+    expect(rapikan(blokWajib)).toBe(rapikan(`SELECT l.form_pendataan INTO v_form_wajib FROM public.layanan AS l WHERE l.id = v_t.layanan_id;
+  IF v_form_wajib IS NOT NULL AND p_form_type IS DISTINCT FROM v_form_wajib THEN
+    RAISE EXCEPTION 'INVALID_PAYLOAD: layanan ini wajib Formulir Pendataan % (dikirim: %)',
+      v_form_wajib, COALESCE(p_form_type, 'tanpa form') USING ERRCODE = '22023';
+  END IF;`));
+    expect(f12).not.toMatch(/admin_ambil_alih|layanan_selesai_tanpa_pendataan|v_tanpa_pendataan|v_me_role = 'admin' AND/);
+    expect(sql).not.toMatch(/layanan_selesai_tanpa_pendataan/);
     expect(kodeGalat(f12)).toEqual(new Set([...kodeGalat(f11), 'INVALID_PAYLOAD']));
     expect(sql).not.toMatch(/GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+public\.layanan_selesai/i);
+  });
+
+  it('jalur otomatis tetap menutup tiket dilayani tanpa form: tutup_penanganan_tertinggal (0008) tidak memanggil layanan_selesai', () => {
+    const f8 = ambilFungsi(stripSqlComments(baca('202610140008_wp24_tutup_otomatis_retensi.sql')), 'tutup_penanganan_tertinggal');
+    expect(f8).toMatch(/SET status = 'selesai', updated_at = v_now\s+WHERE t\.kunjungan_id = r\.kunjungan_id AND t\.status = 'dilayani'/);
+    expect(f8).not.toMatch(/layanan_selesai/);
+    expect(sql).not.toMatch(/FUNCTION public\.tutup_penanganan_tertinggal/);
   });
 });
 
@@ -273,6 +286,73 @@ describe('#11 tutup_chat_tertinggal', () => {
   });
 });
 
+describe('#13 live chat pada hari tanpa pelayanan (Sabtu/Minggu/hari_libur)', () => {
+  const PENOLAK_AMBIL = `  IF public.hari_tanpa_layanan() THEN
+    RAISE EXCEPTION 'HARI_TANPA_LAYANAN: chat tidak dapat diambil pada hari tanpa pelayanan (Sabtu/Minggu/hari libur)'
+      USING ERRCODE = 'P0001';
+  END IF;
+`;
+  const PENOLAK_TERUSKAN = `  IF public.hari_tanpa_layanan(v_tgl) THEN
+    RAISE EXCEPTION 'HARI_TANPA_LAYANAN: chat tidak dapat diteruskan pada hari tanpa pelayanan (Sabtu/Minggu/hari libur)'
+      USING ERRCODE = 'P0001';
+  END IF;
+`;
+
+  it('hari_tanpa_layanan(date): ISODOW 6/7 atau tabel hari_libur; default hari ini WIB; STABLE definer; hak baca publik', () => {
+    const f = ambilFungsi(sql, 'hari_tanpa_layanan');
+    expect(rapikan(f)).toContain("p_tanggal date DEFAULT ((pg_catalog.now() AT TIME ZONE 'Asia/Jakarta')::date)");
+    expect(rapikan(f)).toContain(
+      'SELECT EXTRACT(ISODOW FROM p_tanggal) IN (6, 7) OR EXISTS (SELECT 1 FROM public.hari_libur AS h WHERE h.tanggal = p_tanggal)');
+    expect(f).toMatch(/STABLE\s+SECURITY DEFINER/);
+    expect(sql).toMatch(/REVOKE ALL ON FUNCTION public\.hari_tanpa_layanan\(date\) FROM PUBLIC, anon, authenticated;\s+GRANT EXECUTE ON FUNCTION public\.hari_tanpa_layanan\(date\) TO anon, authenticated, service_role;/);
+    // didefinisikan sebelum dipakai fungsi chat
+    expect(sql.indexOf('FUNCTION public.hari_tanpa_layanan')).toBeLessThan(sql.indexOf('FUNCTION public.chat_ambil'));
+  });
+
+  it('chat_ambil = versi 0009 + penolak HARI_TANPA_LAYANAN tepat setelah staf_wajib_sesi (sebelum mengunci/menulis apa pun)', () => {
+    const f = ambilFungsi(sql, 'chat_ambil');
+    const i = f.indexOf(PENOLAK_AMBIL);
+    expect(i).toBeGreaterThan(f.indexOf('FROM public.staf_wajib_sesi('));
+    expect(i).toBeLessThan(f.indexOf('FOR NO KEY UPDATE'));
+    expect(rapikan(tanpa(f, PENOLAK_AMBIL))).toBe(rapikan(asal('chat_ambil', 'm9')));
+    expect(kodeGalat(f)).toEqual(new Set([...kodeGalat(asal('chat_ambil', 'm9')), 'HARI_TANPA_LAYANAN']));
+  });
+
+  it('chat_teruskan = versi 0009 + penolak HARI_TANPA_LAYANAN (tanggal WIB) sebelum mengunci/menulis apa pun', () => {
+    const f = ambilFungsi(sql, 'chat_teruskan');
+    const i = f.indexOf(PENOLAK_TERUSKAN);
+    expect(i).toBeGreaterThan(f.indexOf('FROM public.staf_wajib_sesi('));
+    expect(i).toBeLessThan(f.indexOf('FOR NO KEY UPDATE'));
+    expect(rapikan(tanpa(f, PENOLAK_TERUSKAN))).toBe(rapikan(asal('chat_teruskan', 'm9')));
+  });
+
+  it('chat_selesai TIDAK diubah (pemegang chat dari hari kerja tetap boleh menutup)', () => {
+    expect(sql).not.toMatch(/FUNCTION public\.chat_selesai/);
+  });
+
+  it('trigger eskalasi: syarat tambahan NOT hari_tanpa_layanan(); sisanya = versi 0009', () => {
+    const s = ambilFungsi(sql, 'chat_sesi_eskalasi_kunjungan');
+    expect(rapikan(tanpa(s, '\n     AND NOT public.hari_tanpa_layanan()'))).toBe(rapikan(asal('chat_sesi_eskalasi_kunjungan', 'm9')));
+    const p = ambilFungsi(sql, 'chat_pesan_eskalasi_kunjungan');
+    expect(rapikan(tanpa(p, '\n     AND NOT public.hari_tanpa_layanan()'))).toBe(rapikan(asal('chat_pesan_eskalasi_kunjungan', 'm9')));
+    // trigger (0009) tidak dibuat ulang; fungsi saja yang diganti
+    expect(sql).not.toMatch(/CREATE TRIGGER trg_chat_(?:sesi|pesan)_eskalasi_kunjungan/);
+  });
+
+  it('hak chat_ambil/chat_teruskan tetap authenticated saja; tutup_chat_tertinggal (24 jam) tidak berubah oleh #13', () => {
+    expect(sql).toMatch(/REVOKE ALL ON FUNCTION public\.chat_ambil\(uuid, text\) FROM PUBLIC, anon, authenticated;\s+GRANT EXECUTE ON FUNCTION public\.chat_ambil\(uuid, text\) TO authenticated;/);
+    expect(sql).toMatch(/REVOKE ALL ON FUNCTION public\.chat_teruskan\(uuid, uuid, uuid, text\) FROM PUBLIC, anon, authenticated;\s+GRANT EXECUTE ON FUNCTION public\.chat_teruskan\(uuid, uuid, uuid, text\) TO authenticated;/);
+    expect(ambilFungsi(sql, 'tutup_chat_tertinggal')).not.toMatch(/hari_tanpa_layanan/);
+  });
+
+  it('kode galat klien dikenal (lib/chat-staf) dan aturan hari klien = DB (bot-waktu hariTanpaLayanan)', () => {
+    const staf = readFileSync(join(MIGRATIONS_DIR, '..', '..', 'src', 'lib', 'chat-staf.ts'), 'utf8');
+    expect(staf).toMatch(/HARI_TANPA_LAYANAN:/);
+    const waktu = readFileSync(join(MIGRATIONS_DIR, '..', '..', 'src', 'lib', 'llm', 'bot-waktu.ts'), 'utf8');
+    expect(waktu).toMatch(/export function hariTanpaLayanan/);
+  });
+});
+
 describe('rollback 202610140012', () => {
   it.each(DIUBAH)('memulihkan %s PERSIS dari versi sebelumnya', (nama, kunci) => {
     expect(rapikan(ambilFungsi(rb, nama))).toBe(rapikan(asal(nama, kunci)));
@@ -291,6 +371,15 @@ describe('rollback 202610140012', () => {
       'DROP FUNCTION IF EXISTS public.form_pendataan_dari_nama(text);',
     ]) expect(rb).toContain(s);
     expect(rb.indexOf('FUNCTION public.layanan_selesai')).toBeLessThan(rb.indexOf('DROP COLUMN IF EXISTS form_pendataan'));
+    // #13: hari_tanpa_layanan dihapus SETELAH semua pemakainya dipulihkan ke versi 0009; hak chat dipulihkan.
+    const iDrop = rb.indexOf('DROP FUNCTION IF EXISTS public.hari_tanpa_layanan(date);');
+    expect(iDrop).toBeGreaterThan(0);
+    for (const f of ['chat_ambil', 'chat_teruskan', 'chat_sesi_eskalasi_kunjungan', 'chat_pesan_eskalasi_kunjungan']) {
+      expect(rb.indexOf(`FUNCTION public.${f}`), f).toBeLessThan(iDrop);
+    }
+    expect(rb.slice(0, iDrop)).not.toMatch(/public\.hari_tanpa_layanan\(/);
+    expect(rb).toMatch(/GRANT EXECUTE ON FUNCTION public\.chat_ambil\(uuid, text\) TO authenticated;/);
+    expect(rb).toMatch(/GRANT EXECUTE ON FUNCTION public\.chat_teruskan\(uuid, uuid, uuid, text\) TO authenticated;/);
     expect(rb).not.toMatch(/SELECT l\.form_pendataan/);
     expect(rb).not.toMatch(/^\s*DELETE\s+FROM/im);
   });
