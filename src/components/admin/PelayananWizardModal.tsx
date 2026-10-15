@@ -16,8 +16,6 @@ import {
   ChevronLeft,
 } from 'lucide-react';
 import { useToast } from '@/components/Toast';
-import { MAX_CATATAN_LAYANAN } from '@/lib/pelayanan';
-import TopikCatatanFields from '@/components/admin/TopikCatatanFields';
 import { useDialogFokus } from '@/components/admin/useDialogFokus';
 import {
   SKALA_USAHA_OPTIONS,
@@ -66,17 +64,14 @@ const LANGKAH_FIELD: Record<string, 1 | 2 | 3> = {
   tindak_lanjut: 3,
   catatan_internal: 3,
   catatan_petugas: 3,
-  topik: 3,
-  catatan: 3,
 };
 
 const GAYA_GALAT: React.CSSProperties = { color: 'var(--color-danger-600)', fontSize: 12, marginTop: 4 };
 
 // Kepemilikan tiket (migrasi 202610140002): hanya pemilik tiket yang sedang 'dilayani' (initialData.boleh_ubah)
 // yang boleh menyimpan draf dan menyelesaikan. Selain itu wizard BACA-SAJA (tanpa autosave, tanpa tombol simpan).
-// Tiket HASIL ESKALASI Front Office (initialData.dari_eskalasi): menyelesaikan wajib topik layanan + catatan
-// (layanan_selesai 5 parameter; kontrak FO-ESKALASI §3.2). Catatan diisi otomatis dari Uraian Solusi (OSS) tetapi
-// dapat diubah petugas.
+// Tiket HASIL ESKALASI Front Office: cukup Pendataan lengkap (keputusan CEO 2026-10-15, migrasi 202610140015); tidak
+// ada lagi isian topik/catatan penanganan. DB mengisi topik tahap layanan NULL dan menurunkan catatannya dari Pendataan.
 // Aksesibilitas (audit T8): setiap field berlabel terhubung, dialog role=dialog aria-modal, Escape menutup (dengan
 // konfirmasi bila ada perubahan belum tersimpan), focus trap, fokus kembali ke pemicu, galat role=alert.
 export default function PelayananWizardModal({
@@ -129,11 +124,6 @@ export default function PelayananWizardModal({
   const [catatanPetugas, setCatatanPetugas] = useState('');
   const [lokasiUsahaPerizinan, setLokasiUsahaPerizinan] = useState('');
 
-  // Form State — penanganan tiket hasil eskalasi FO (topik + catatan; tidak ikut draf, hanya dikirim saat Selesai).
-  const [topikId, setTopikId] = useState('');
-  const [catatanPenanganan, setCatatanPenanganan] = useState('');
-  const [catatanDiubah, setCatatanDiubah] = useState(false);
-
   // Server menolak tulis (bukan pemilik / status berubah) setelah wizard dibuka -> kunci formulir.
   const [ditolakServer, setDitolakServer] = useState(false);
 
@@ -141,14 +131,6 @@ export default function PelayananWizardModal({
   const bacaSaja = isLocked || ditolakServer || !(initialData?.boleh_ubah ?? false);
   const bukanPemilik = !isLocked && !!initialData && initialData.status_tiket === 'dilayani' && !initialData.boleh_ubah;
   const formType: FormPelayananType | null = initialData?.form_type ?? null;
-  const dariEskalasi = initialData?.dari_eskalasi === true;
-  const topikPilihan = initialData?.topik_pilihan ?? [];
-  // Catatan penanganan: sebelum petugas mengubahnya, mengikuti Uraian Solusi (OSS) agar tidak mengetik dua kali.
-  const otomatisDariUraian = dariEskalasi && !catatanDiubah && formType === 'oss';
-  const catatanTampil = catatanDiubah
-    ? catatanPenanganan
-    : otomatisDariUraian ? uraianSolusi.slice(0, MAX_CATATAN_LAYANAN) : catatanPenanganan;
-  const topikCatatanBelumTersimpan = dariEskalasi && (topikId !== '' || catatanDiubah);
   const autosaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Bersihkan autosave tertunda saat komponen unmount agar tidak ada PATCH
@@ -171,9 +153,6 @@ export default function PelayananWizardModal({
         setDitolakServer(false);
         setAdaPerubahan(false);
         setKonfirmasiTutup(false);
-        setTopikId('');
-        setCatatanPenanganan('');
-        setCatatanDiubah(false);
         const res = await fetch(`/api/admin/pelayanan/${idTiket}`);
         if (!res.ok) {
           const err = await res.json();
@@ -369,7 +348,7 @@ export default function PelayananWizardModal({
   }, [bacaSaja, loading, saveDraftNow]);
 
   // Escape: tutup langsung bila tak ada yang hilang; bila ada perubahan belum tersimpan, minta konfirmasi dulu.
-  const perubahanBelumTersimpan = !bacaSaja && (adaPerubahan || topikCatatanBelumTersimpan);
+  const perubahanBelumTersimpan = !bacaSaja && adaPerubahan;
   useDialogFokus(isOpen, dialogRef, () => {
     if (finalizing) return;
     if (konfirmasiTutup) {
@@ -433,16 +412,6 @@ export default function PelayananWizardModal({
         if (kunci && !errors[kunci]) errors[kunci] = isu.message;
       }
     }
-    // Tiket hasil eskalasi FO: topik layanan + catatan (1-1000) wajib (kontrak §3.2).
-    const catatanKirim = catatanTampil.trim();
-    if (dariEskalasi) {
-      if (!topikId) errors.topik = 'Topik penanganan wajib dipilih';
-      if (!catatanKirim) errors.catatan = `Catatan penanganan wajib diisi (1-${MAX_CATATAN_LAYANAN} karakter)`;
-      else if (catatanKirim.length > MAX_CATATAN_LAYANAN) {
-        errors.catatan = `Catatan terlalu panjang (maksimal ${MAX_CATATAN_LAYANAN} karakter)`;
-      }
-    }
-
     if (Object.keys(errors).length > 0) {
       setValidationErrors(errors);
       // Pindah ke langkah pertama yang berisi galat agar pesannya terlihat.
@@ -456,32 +425,18 @@ export default function PelayananWizardModal({
       setFinalizing(true);
       // Lolos validasi di atas: hasilForm.success true (semua field terisi, sudah di-trim).
       const isiForm = hasilForm.success ? hasilForm.data : isiMentah;
-      // topik_id / catatan_penanganan dipisahkan dari isi form oleh route (diteruskan ke layanan_selesai).
-      const payload = dariEskalasi ? { ...isiForm, topik_id: topikId, catatan_penanganan: catatanKirim } : isiForm;
+      // Tiket hasil eskalasi FO: topik/catatan penanganan TIDAK dikirim (migrasi 202610140015): topik tahap layanan
+      // NULL dan catatannya diturunkan DB dari Pendataan (tindak lanjut + uraian solusi / catatan petugas).
 
       const res = await fetch(`/api/admin/pelayanan/${tiketId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(isiForm),
       });
 
       const result = await res.json();
       if (!res.ok) {
         if (tanganiPenolakan(res.status, result.error)) return;
-        // Galat isian topik/catatan dari server: tampilkan pada field-nya (role=alert) di langkah 3.
-        const kode = typeof result.kode === 'string' ? result.kode : '';
-        if (res.status === 422 && /^TOPIK_/.test(kode)) {
-          setValidationErrors({ topik: String(result.error) });
-          setStep(3);
-          toast(String(result.error), 'error');
-          return;
-        }
-        if (res.status === 422 && /^CATATAN_/.test(kode)) {
-          setValidationErrors({ catatan: String(result.error) });
-          setStep(3);
-          toast(String(result.error), 'error');
-          return;
-        }
         throw new Error(result.error || 'Gagal menyelesaikan pelayanan');
       }
 
@@ -964,38 +919,6 @@ export default function PelayananWizardModal({
                 </div>
               )}
 
-              {/* Tiket hasil eskalasi FO: topik + catatan penanganan (wajib saat Selesai). Tidak ikut draf. */}
-              {step === 3 && dariEskalasi && (
-                <fieldset
-                  style={{
-                    marginTop: 'var(--space-6)', padding: 'var(--space-4)', display: 'flex', flexDirection: 'column',
-                    gap: 'var(--space-4)', border: '1px solid var(--border-default, #e2e8f0)', borderRadius: 'var(--radius-lg, 12px)',
-                  }}
-                >
-                  <legend style={{ padding: '0 var(--space-2)', fontWeight: 700, fontSize: 'var(--text-sm)' }}>
-                    Penanganan tiket eskalasi Front Office
-                  </legend>
-                  <TopikCatatanFields
-                    idDasar={id('pen')}
-                    topik={topikPilihan}
-                    topikId={topikId}
-                    onTopikId={(v) => setTopikId(v)}
-                    topikWajib
-                    catatan={catatanTampil}
-                    onCatatan={(v) => {
-                      setCatatanPenanganan(v);
-                      setCatatanDiubah(true);
-                    }}
-                    catatanWajib
-                    rows={3}
-                    bantuanCatatan={otomatisDariUraian && uraianSolusi.trim() ? 'Diisi otomatis dari Uraian Solusi; ubah bila perlu.' : undefined}
-                    placeholderCatatan="Ringkas hasil layanan untuk catatan penanganan"
-                    galatTopik={validationErrors.topik ?? null}
-                    galatCatatan={validationErrors.catatan ?? null}
-                    disabled={bacaSaja}
-                  />
-                </fieldset>
-              )}
             </form>
           )}
         </div>
@@ -1014,7 +937,7 @@ export default function PelayananWizardModal({
           >
             <p id={id('konfirmasi-judul')} style={{ margin: 0, fontWeight: 700 }}>Tutup formulir?</p>
             <p id={id('konfirmasi-desk')} style={{ margin: '2px 0 var(--space-3)', fontSize: 'var(--text-sm)' }}>
-              Ada isian yang belum tersimpan{topikCatatanBelumTersimpan ? ' (topik dan catatan penanganan tidak ikut tersimpan sebagai draf)' : ''}.
+              Ada isian yang belum tersimpan.
             </p>
             <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
               <button ref={tombolLanjutRef} type="button" className="btn btn--primary btn--sm" onClick={() => setKonfirmasiTutup(false)}>

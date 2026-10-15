@@ -47,6 +47,12 @@ export interface RekapPenangananRow {
   durasi_menit: number | null;
   pengunjung_nama: string | null;
   pengunjung_instansi: string | null;
+  /**
+   * Email pengunjung untuk rekap: email Pendataan petugas layanan (pelayanan_oss/perizinan tiket tahap ini, lalu
+   * Pendataan lain pada kunjungan yang sama = tiket hasil eskalasi) bila ada; selain itu email kunjungan (walk-in FO,
+   * boleh kosong sejak 202610140015). null bila tidak ada.
+   */
+  email: string | null;
   tiket: {
     nomor_display: string;
     tanggal: string;
@@ -60,10 +66,13 @@ export interface RekapPenangananRow {
 // Embed memakai nama kolom FK sebagai petunjuk (penanganan punya dua FK ke petugas: penangan_id dan dibuat_oleh).
 // `tahap_fo` = semua tahap kunjungan yang sama (penanganan!kunjungan_id) beserta nama penangannya; dipakai untuk kolom
 // "Front Office" (FO yang melayani) pada rekap petugas layanan. Hanya tahap 'fo' yang dipakai (disaring di mapRawPenangananRow).
+// Email kunjungan + email Pendataan pada kunjungan itu (tiket hasil eskalasi); lihat emailRekap.
+const SELECT_KUNJUNGAN_EMAIL =
+  'nama, asal_instansi, email, pelayanan_oss(email, updated_at), pelayanan_perizinan(email, updated_at)';
 const SELECT_DASAR = `
   id, kunjungan_id, tahap_ke, peran_tahap, layanan_id, saluran, penangan_id, status, hasil, topik, catatan,
   batal_karena, mulai_at, selesai_at, created_at,
-  kunjungan:kunjungan_id(nama, asal_instansi),
+  kunjungan:kunjungan_id(${SELECT_KUNJUNGAN_EMAIL}),
   petugas:penangan_id(nama),
   layanan:layanan_id(nama)
 `;
@@ -71,7 +80,7 @@ const SELECT_TIKET = `tiket:tiket_id(nomor_display, tanggal, status, pelayanan_o
 const SELECT_LAYANAN = `
   id, kunjungan_id, tahap_ke, peran_tahap, layanan_id, saluran, penangan_id, status, hasil, topik, catatan,
   batal_karena, mulai_at, selesai_at, created_at,
-  kunjungan:kunjungan_id(nama, asal_instansi, tahap_fo:penanganan!kunjungan_id(tahap_ke, peran_tahap, penangan_id, petugas:penangan_id(nama))),
+  kunjungan:kunjungan_id(${SELECT_KUNJUNGAN_EMAIL}, tahap_fo:penanganan!kunjungan_id(tahap_ke, peran_tahap, penangan_id, petugas:penangan_id(nama))),
   petugas:penangan_id(nama),
   layanan:layanan_id(nama),
   ${SELECT_TIKET}
@@ -144,8 +153,32 @@ export function namaFoSebelum(tahapKunjungan: unknown, tahapKe: number): string 
   return foSebelum(tahapKunjungan, tahapKe)?.nama ?? null;
 }
 
+type EmailEmbed = { email?: string | null; updated_at?: string | null };
+const teksIsi = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null);
+const keDaftar = (v: unknown): EmailEmbed[] => (Array.isArray(v) ? v : v ? [v] : []) as EmailEmbed[];
+
+/**
+ * Email untuk rekap (FO dan petugas layanan): Pendataan tiket tahap ini -> Pendataan terbaru pada kunjungan yang sama
+ * (diisi petugas layanan pada tiket hasil eskalasi) -> email kunjungan (diisi FO; opsional) -> null.
+ */
+export function emailRekap(
+  kunjungan: { email?: string | null; pelayanan_oss?: unknown; pelayanan_perizinan?: unknown } | null,
+  tiket: { pelayanan_oss?: unknown; pelayanan_perizinan?: unknown } | null,
+): string | null {
+  const dariTiket =
+    teksIsi(satu<EmailEmbed>(tiket?.pelayanan_oss)?.email) ?? teksIsi(satu<EmailEmbed>(tiket?.pelayanan_perizinan)?.email);
+  if (dariTiket) return dariTiket;
+  const pendataan = [...keDaftar(kunjungan?.pelayanan_oss), ...keDaftar(kunjungan?.pelayanan_perizinan)]
+    .filter((p) => teksIsi(p?.email))
+    .sort((a, b) => String(b.updated_at ?? '').localeCompare(String(a.updated_at ?? '')));
+  return teksIsi(pendataan[0]?.email) ?? teksIsi(kunjungan?.email);
+}
+
 export function mapRawPenangananRow(r: Record<string, unknown>): RekapPenangananRow {
-  const kunjungan = satu<{ nama?: string; asal_instansi?: string | null; tahap_fo?: unknown }>(r.kunjungan);
+  const kunjungan = satu<{
+    nama?: string; asal_instansi?: string | null; email?: string | null;
+    pelayanan_oss?: unknown; pelayanan_perizinan?: unknown; tahap_fo?: unknown;
+  }>(r.kunjungan);
   const petugas = satu<{ nama?: string }>(r.petugas);
   const layanan = satu<{ nama?: string }>(r.layanan);
   const tiketRaw = satu<Record<string, unknown>>(r.tiket);
@@ -195,6 +228,7 @@ export function mapRawPenangananRow(r: Record<string, unknown>): RekapPenanganan
     durasi_menit: selesai ? selisihMenit(mulai, selesai) : null,
     pengunjung_nama: kunjungan?.nama ?? null,
     pengunjung_instansi: kunjungan?.asal_instansi ?? null,
+    email: emailRekap(kunjungan, tiketRaw),
     tiket,
   };
 }

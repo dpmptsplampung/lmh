@@ -3,7 +3,7 @@
 // jalur identik. Kontrak: docs/analysis/FO-ESKALASI-KONTRAK-RPC.md §2.1.
 //
 // ATURAN VALIDASI di bawah ini adalah kontrak yang SAMA PERSIS ditegakkan di DB (`fo_mulai_kunjungan`).
-// Semua isian wajib. Klien selalu mengirim nilai yang sudah dinormalkan (lihat `normalisasiWalkin`).
+// Semua isian wajib kecuali email (opsional; bila diisi divalidasi). Klien selalu mengirim nilai yang sudah dinormalkan (lihat `normalisasiWalkin`).
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { KATEGORI_PENGUNJUNG } from '@/lib/constants';
 import { GalatRpc, jalankanRpc } from '@/lib/rpc-galat';
@@ -371,14 +371,17 @@ export function normalisasiWalkin(d: DataWalkin): DataWalkin {
   };
 }
 
-/** SEMUA isian wajib. Kunci galat hanya ada untuk isian yang tidak valid (urut sesuai formulir). */
+/**
+ * Semua isian wajib KECUALI email (opsional sejak migrasi 202610140015: kosong = NULL; bila diisi tetap divalidasi).
+ * Kunci galat hanya ada untuk isian yang tidak valid (urut sesuai formulir).
+ */
 export function validasiWalkin(d: DataWalkin): GalatFormWalkin {
   const hasil: GalatFormWalkin = {
     nama: periksaNama(d.nama),
     asal_instansi: periksaAsal(d.asal_instansi),
     kategori: periksaKategori(d.kategori.trim()),
     kontak_hp: periksaHp(d.kontak_hp),
-    email: periksaEmail(d.email),
+    email: normalisasiEmail(d.email) ? periksaEmail(d.email) : undefined,
     layanan_saran_id: periksaLayananSaran(d.layanan_saran_id.trim()),
     keperluan: periksaKeperluan(d.keperluan),
   };
@@ -470,7 +473,7 @@ export function bacaParamTersimpan(payload: unknown): ParamFoMulai | null {
 export const PESAN_GALAT_FO_MULAI: Record<string, string> = {
   LAYANAN_TUTUP: 'Layanan sudah tutup (pukul 16.00 WIB). Pendaftaran walk-in tidak dapat dilakukan lagi hari ini.',
   DATA_TIDAK_VALID:
-    'Data ditolak server. Semua isian wajib: nama (3–100 karakter, huruf saja), asal/instansi (3–120), nomor HP (08… / +62 8…), email (huruf latin), kategori, dan keperluan (10–500 karakter).',
+    'Data ditolak server. Isian wajib: nama (3–100 karakter, huruf saja), asal/instansi (3–120), nomor HP (08… / +62 8…), kategori, dan keperluan (10–500 karakter); email opsional (bila diisi, huruf latin dan format valid).',
   LAYANAN_TIDAK_VALID: 'Layanan saran tidak valid atau sedang tidak aktif. Pilih layanan lain atau "Belum tahu".',
   NOT_FOUND: 'Data pengunjung terdaftar tidak ditemukan.',
   IDEMPOTENSI_BENTROK: 'Permintaan ini bentrok dengan pendaftaran petugas lain. Muat ulang halaman, lalu coba lagi.',

@@ -5,7 +5,8 @@
 // rpc `fo_mulai_kunjungan` (kontrak docs/analysis/FO-ESKALASI-KONTRAK-RPC.md §2.1). Tidak menerbitkan tiket;
 // sukses -> halaman Penanganan. Offline: antrean IndexedDB (idempoten lewat p_client_request_id) milik FO.
 //
-// SEMUA isian wajib (aturan di src/lib/fo/walkin.ts, sama dengan DB). Formulir "pintar": validasi per isian saat
+// Semua isian wajib KECUALI email (opsional sejak 202610140015; bila diisi tetap divalidasi). Aturan di
+// src/lib/fo/walkin.ts, sama dengan DB. Formulir "pintar": validasi per isian saat
 // blur (bukan sebelum disentuh), ringkasan + fokus ke galat pertama saat kirim, normalisasi HP/email/nama, saran
 // koreksi email, pengenalan pengunjung lama, datalist asal/instansi. Tombol kirim SENGAJA tetap aktif (kecuali
 // sedang mengirim): tombol mati tidak bisa difokuskan dan tidak menjelaskan apa yang kurang (a11y).
@@ -81,15 +82,18 @@ function Kolom(props: {
   galat?: string;
   valid: boolean;
   penuh?: boolean;
+  /** Isian boleh kosong (tanpa tanda bintang). */
+  opsional?: boolean;
   tambahan?: React.ReactNode;
   children: React.ReactNode;
 }) {
-  const { k, label, hint, galat, valid, penuh, tambahan, children } = props;
+  const { k, label, hint, galat, valid, penuh, opsional, tambahan, children } = props;
   return (
     <div className={`form-group ${styles.kolom} ${penuh ? styles.penuh : ''}`}>
       <div className={styles.labelBaris}>
-        <label className="form-label form-label--required" htmlFor={idField(k)}>
+        <label className={opsional ? 'form-label' : 'form-label form-label--required'} htmlFor={idField(k)}>
           {label}
+          {opsional ? ' (opsional)' : ''}
         </label>
         {galat ? (
           <CircleAlert size={16} className={styles.ikonSalah} aria-hidden="true" />
@@ -147,7 +151,8 @@ export default function WalkinPanel({ fokusAwal = true }: WalkinPanelProps) {
   // Galat per-isian dari server (error.details) tampil sampai isian itu diubah.
   const galatDi = (k: keyof DataWalkin) =>
     (disentuh[k] || sudahCoba ? galatSemua[k] : undefined) ?? (galatServerField?.field === k ? galatServerField.pesan : undefined);
-  const validDi = (k: keyof DataWalkin) => Boolean(disentuh[k]) && !galatDi(k);
+  // Isian opsional yang dikosongkan (email) tidak diberi tanda "benar".
+  const validDi = (k: keyof DataWalkin) => Boolean(disentuh[k]) && !galatDi(k) && (k !== 'email' || form.email.trim() !== '');
 
   const hpKunci = !periksaHp(form.kontak_hp) ? normalisasiHp(form.kontak_hp) : '';
   const emailKunci = !periksaEmail(form.email) ? normalisasiEmail(form.email) : '';
@@ -347,13 +352,13 @@ export default function WalkinPanel({ fokusAwal = true }: WalkinPanelProps) {
   };
 
   /** Atribut umum kontrol: id, wajib, status galat, dan hubungan ke petunjuk/galat. */
-  const atribut = (k: keyof DataWalkin, adaHint: boolean) => {
+  const atribut = (k: keyof DataWalkin, adaHint: boolean, wajib = true) => {
     const galat = galatDi(k);
     const desc = [adaHint ? `${idField(k)}-hint` : null, galat ? `${idField(k)}-galat` : null].filter(Boolean).join(' ');
     return {
       id: idField(k),
-      required: true,
-      'aria-required': true as const,
+      required: wajib,
+      'aria-required': wajib,
       'aria-invalid': galat ? (true as const) : undefined,
       'aria-describedby': desc || undefined,
       onBlur: () => selesaiIsi(k),
@@ -485,7 +490,8 @@ export default function WalkinPanel({ fokusAwal = true }: WalkinPanelProps) {
                 <Kolom
                   k="email"
                   label="Email"
-                  hint="Alamat email aktif pengunjung."
+                  opsional
+                  hint="Opsional. Bila diisi, alamat email aktif pengunjung."
                   galat={galatDi('email')}
                   valid={validDi('email')}
                   tambahan={
@@ -509,7 +515,7 @@ export default function WalkinPanel({ fokusAwal = true }: WalkinPanelProps) {
                   }
                 >
                   <input
-                    {...atribut('email', true)}
+                    {...atribut('email', true, false)}
                     type="email"
                     inputMode="email"
                     className="form-input"

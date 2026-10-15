@@ -9,7 +9,7 @@ function baris(s: Partial<RekapPenangananRow> = {}): RekapPenangananRow {
     saluran: 'walk_in', penangan_id: 'fo-1', penangan_nama: 'Sari Wulandari', status: 'selesai', hasil: 'selesai',
     topik: 'Informasi umum', catatan: 'Sudah dijelaskan', batal_karena: null,
     mulai_at: '2026-10-12T02:00:00Z', selesai_at: '2026-10-12T02:10:00Z', created_at: '2026-10-12T02:00:00Z',
-    tanggal: '2026-10-12', durasi_menit: 10, pengunjung_nama: 'Budi', pengunjung_instansi: 'CV Maju', tiket: null,
+    tanggal: '2026-10-12', durasi_menit: 10, pengunjung_nama: 'Budi', pengunjung_instansi: 'CV Maju', email: null, tiket: null,
     fo_nama: 'Sari Wulandari', fo_id: 'fo-1',
     ...s,
   };
@@ -35,7 +35,10 @@ describe('buildRekapPenangananWorkbook', () => {
     expect(r2.getCell(3).value).toBe('09:00'); // 02:00Z = 09:00 WIB
     expect(r2.getCell(4).value).toBe('09:10');
     expect(r2.getCell(5).value).toBe(10);
-    expect(ws!.getRow(3).getCell(10).value).toBe('Dieskalasi ke layanan');
+    expect(ws!.getRow(3).getCell(header.indexOf('Hasil') + 1).value).toBe('Dieskalasi ke layanan');
+    // Kolom Email (202610140015): kosong bila tidak ada email
+    expect(header).toContain('Email');
+    expect(ws!.getRow(2).getCell(header.indexOf('Email') + 1).value ?? '').toBe('');
     expect(wb.getWorksheet('Ringkasan')).toBeDefined();
   });
 

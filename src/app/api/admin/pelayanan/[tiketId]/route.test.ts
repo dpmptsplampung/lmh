@@ -779,25 +779,20 @@ describe('API Route /api/admin/pelayanan/[tiketId]', () => {
       return { GET: (await import('./route')).GET, topikChain };
     };
 
-    it('GET tiket hasil eskalasi: dari_eskalasi true + daftar topik aktif milik layanan tiket', async () => {
-      const { GET, topikChain } = await pasangGet(
-        { penanganan_asal_id: 'pn-fo' },
-        [{ id: TOPIK, nama: 'Pendampingan NIB' }],
-      );
+    it('GET tiket hasil eskalasi: dari_eskalasi true, TANPA kueri/daftar topik (202610140015)', async () => {
+      const { GET, topikChain } = await pasangGet({ penanganan_asal_id: 'pn-fo' }, [{ id: TOPIK, nama: 'Pendampingan NIB' }]);
       const res = await GET(buildRequest('GET'), ctx);
       expect(res.status).toBe(200);
-      expect(await res.json()).toMatchObject({
-        dari_eskalasi: true,
-        topik_pilihan: [{ id: TOPIK, nama: 'Pendampingan NIB' }],
-      });
-      expect(topikChain.eq).toHaveBeenCalledWith('aktif', true);
-      expect(topikChain.eq).toHaveBeenCalledWith('layanan_id', 'l1');
+      const json = await res.json();
+      expect(json).toMatchObject({ dari_eskalasi: true });
+      expect(json).not.toHaveProperty('topik_pilihan');
+      expect(topikChain.select).not.toHaveBeenCalled();
     });
 
     it('GET tiket lama: dari_eskalasi false, tanpa kueri topik', async () => {
       const { GET, topikChain } = await pasangGet({ penanganan_asal_id: null });
       const json = await (await GET(buildRequest('GET'), ctx)).json();
-      expect(json).toMatchObject({ dari_eskalasi: false, topik_pilihan: [] });
+      expect(json).toMatchObject({ dari_eskalasi: false });
       expect(topikChain.select).not.toHaveBeenCalled();
     });
   });

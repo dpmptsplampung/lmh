@@ -32,7 +32,12 @@ export function buildContentSecurityPolicy(supabaseUrl: string | undefined, deve
 
 const contentSecurityPolicy = buildContentSecurityPolicy(process.env.NEXT_PUBLIC_SUPABASE_URL, isDevelopment);
 
+const buildId = process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.NEXT_DEPLOYMENT_ID;
+
 const nextConfig: NextConfig = {
+  // Version skew: klien yang memegang build lama otomatis hard-navigate saat ID deploy berbeda.
+  ...(buildId ? { deploymentId: buildId } : {}),
+  env: { NEXT_PUBLIC_BUILD_ID: buildId ?? 'dev' },
   images: {
     remotePatterns: [
       {

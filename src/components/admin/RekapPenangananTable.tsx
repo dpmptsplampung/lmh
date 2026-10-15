@@ -333,6 +333,7 @@ export default function RekapPenangananTable({ peran, isPetugas = false, initial
                 {peran === 'layanan' && <th>Front Office</th>}
                 {peran === 'layanan' && <th>Layanan / Tiket</th>}
                 <th>Pengunjung</th>
+                <th>Email</th>
                 <th>Saluran</th>
                 <th>Mulai - Selesai</th>
                 <th>Durasi</th>
@@ -360,6 +361,8 @@ export default function RekapPenangananTable({ peran, isPetugas = false, initial
                       <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{r.pengunjung_instansi}</div>
                     )}
                   </td>
+                  {/* Email Pendataan petugas layanan bila ada, selain itu email kunjungan (lib/rekap/penanganan emailRekap). */}
+                  <td style={{ fontSize: 'var(--text-xs)', overflowWrap: 'anywhere' }}>{r.email ?? '—'}</td>
                   <td>{labelSaluran(r.saluran)}</td>
                   <td style={{ fontVariantNumeric: 'tabular-nums' }}>
                     {formatWaktuId(r.mulai_at)} - {r.selesai_at ? formatWaktuId(r.selesai_at) : '…'}

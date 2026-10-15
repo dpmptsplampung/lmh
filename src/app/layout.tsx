@@ -5,6 +5,7 @@ import { APP_NAME, APP_DESCRIPTION } from "@/lib/constants";
 import { ToastProvider } from "@/components/Toast";
 import OfflineBanner from "@/components/OfflineBanner";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
+import ChunkErrorRecovery from "@/components/ChunkErrorRecovery";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -46,6 +47,7 @@ export default function RootLayout({
           <main id="main-content">{children}</main>
         </ToastProvider>
         <ServiceWorkerRegister />
+        <ChunkErrorRecovery />
       </body>
     </html>
   );

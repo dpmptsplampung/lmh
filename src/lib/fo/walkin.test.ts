@@ -249,9 +249,15 @@ describe('validasiWalkin (semua isian wajib)', () => {
     expect(validasiWalkin(valid)).toEqual({});
   });
 
-  it('formulir kosong: ketujuh isian wajib, urut sesuai formulir', () => {
+  it('formulir kosong: enam isian wajib (email opsional, 202610140015), urut sesuai formulir', () => {
     const g = validasiWalkin(WALKIN_KOSONG);
-    expect(Object.keys(g)).toEqual(['nama', 'asal_instansi', 'kategori', 'kontak_hp', 'email', 'layanan_saran_id', 'keperluan']);
+    expect(Object.keys(g)).toEqual(['nama', 'asal_instansi', 'kategori', 'kontak_hp', 'layanan_saran_id', 'keperluan']);
+  });
+
+  it('email opsional: kosong lolos (dikirim NULL), terisi tetap divalidasi', () => {
+    expect(validasiWalkin({ ...valid, email: '   ' })).toEqual({});
+    expect(bangunParamFoMulai({ ...valid, email: '  ' }, ID).p_email).toBeNull();
+    expect(validasiWalkin({ ...valid, email: 'budi@gmail' }).email).toBeTruthy();
   });
 });
 
@@ -288,8 +294,9 @@ describe('bangunParamFoMulai', () => {
   it('validasiParamFoMulai memakai aturan yang sama (dipakai sebelum mengantre offline)', () => {
     expect(validasiParamFoMulai(bangunParamFoMulai(valid, ID))).toEqual({});
     expect(validasiParamFoMulai(bangunParamFoMulai({ ...valid, layanan_saran_id: UUID_LAYANAN }, ID))).toEqual({});
-    const rusak = { ...bangunParamFoMulai(valid, ID), p_kontak_hp: '0721481234', p_email: null };
+    const rusak = { ...bangunParamFoMulai(valid, ID), p_kontak_hp: '0721481234', p_email: 'a@b' };
     expect(Object.keys(validasiParamFoMulai(rusak))).toEqual(['kontak_hp', 'email']);
+    expect(validasiParamFoMulai({ ...bangunParamFoMulai(valid, ID), p_email: null })).toEqual({});
   });
 });
 

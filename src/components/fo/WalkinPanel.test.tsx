@@ -110,9 +110,11 @@ describe('Panel Walk-in (/admin/fo/registrasi?tab=walkin, pendaftaran walk-in ol
   describe('struktur dan kemudahan', () => {
     it('semua kolom berlabel, dikelompokkan dalam bagian bernama, dan fokus awal di Nama', async () => {
       await renderHalaman();
-      for (const label of [/Nama Lengkap/, /Asal \/ Instansi/, /Kategori Pengunjung/, /Nomor HP/, /^Email/, /Layanan Saran/, 'Keperluan']) {
+      for (const label of [/Nama Lengkap/, /Asal \/ Instansi/, /Kategori Pengunjung/, /Nomor HP/, /Layanan Saran/, 'Keperluan']) {
         expect(field(label)).toBeRequired();
       }
+      // email opsional sejak 202610140015
+      expect(field(/^Email/)).not.toBeRequired();
       for (const nama of ['Data Pengunjung', 'Kontak', /Keperluan & Tujuan/]) {
         expect(screen.getByRole('region', { name: nama })).toBeInTheDocument();
       }
@@ -232,13 +234,13 @@ describe('Panel Walk-in (/admin/fo/registrasi?tab=walkin, pendaftaran walk-in ol
   });
 
   describe('kirim: ringkasan galat dan fokus', () => {
-    it('semua kosong: ringkasan 7 isian, fokus ke galat pertama, rpc tidak dipanggil', async () => {
+    it('semua kosong: ringkasan 6 isian (email opsional), fokus ke galat pertama, rpc tidak dipanggil', async () => {
       await renderHalaman();
       fireEvent.change(field(/Nama Lengkap/), { target: { value: '' } });
       screen.getByLabelText(/Kategori Pengunjung/).focus(); // pindahkan fokus agar terlihat berpindah kembali
       kirim();
 
-      expect(await screen.findByRole('alert')).toHaveTextContent(/Lengkapi 7 isian/);
+      expect(await screen.findByRole('alert')).toHaveTextContent(/Lengkapi 6 isian/);
       expect(field(/Nama Lengkap/)).toHaveAttribute('aria-invalid', 'true');
       expect(field(/Asal \/ Instansi/)).toHaveAttribute('aria-invalid', 'true');
       expect(field(/Nomor HP/)).toHaveAttribute('aria-invalid', 'true');

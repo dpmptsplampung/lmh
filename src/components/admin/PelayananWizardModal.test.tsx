@@ -592,69 +592,18 @@ describe('PelayananWizardModal component', () => {
   });
 
   // ───────────────────────────────────────────────────────────────────────────────────────────
-  // B4: tiket hasil eskalasi FO -> topik layanan + catatan wajib saat Selesai
+  // Tiket hasil eskalasi FO: cukup Pendataan (keputusan CEO 2026-10-15, migrasi 202610140015). Tidak ada lagi isian
+  // topik / catatan penanganan; DB mengisi topik NULL dan menurunkan catatan dari Pendataan.
   // ───────────────────────────────────────────────────────────────────────────────────────────
-  describe('tiket hasil eskalasi FO (topik + catatan)', () => {
-    const TOPIK = '11111111-1111-4111-8111-111111111111';
+  describe('tiket hasil eskalasi FO (tanpa topik/catatan)', () => {
     const dataEskalasi = (over: Record<string, unknown> = {}) => ({
       dari_eskalasi: true,
-      topik_pilihan: [{ id: TOPIK, nama: 'Pendampingan NIB' }, { id: '22222222-2222-4222-8222-222222222222', nama: 'Lainnya' }],
       data_oss: { ...DATA_OSS_LENGKAP },
       ...over,
     });
     const posts = () => mockFetch.mock.calls.filter((c) => (c[1] as RequestInit | undefined)?.method === 'POST');
 
-    it('langkah 3 menampilkan topik (wajib) dan catatan penanganan dengan label terhubung; catatan otomatis dari Uraian Solusi', async () => {
-      muat(dataEskalasi());
-      render(<PelayananWizardModal isOpen tiketId="t-401" onClose={vi.fn()} />);
-      await screen.findByDisplayValue('Rina');
-      langkah(3);
-      const grup = screen.getByRole('group', { name: /Penanganan tiket eskalasi Front Office/ });
-      const topik = within(grup).getByLabelText(/Topik penanganan/);
-      expect(topik.tagName).toBe('SELECT');
-      expect(within(grup).getByRole('option', { name: 'Pendampingan NIB' })).toBeInTheDocument();
-      const catatan = within(grup).getByLabelText(/Catatan penanganan/);
-      expect(catatan).toHaveValue('NIB dibantu terbit.');
-      expect(grup).toHaveTextContent(/Diisi otomatis dari Uraian Solusi/);
-    });
-
-    it('catatan ikut berubah mengikuti Uraian Solusi sampai petugas mengubahnya sendiri', async () => {
-      muat(dataEskalasi());
-      render(<PelayananWizardModal isOpen tiketId="t-401" onClose={vi.fn()} />);
-      await screen.findByDisplayValue('Rina');
-      langkah(3);
-      fireEvent.change(screen.getByLabelText('Uraian Solusi / Konsultasi'), { target: { value: 'Uraian baru' } });
-      expect(screen.getByLabelText(/Catatan penanganan/)).toHaveValue('Uraian baru');
-      fireEvent.change(screen.getByLabelText(/Catatan penanganan/), { target: { value: 'Catatan saya' } });
-      fireEvent.change(screen.getByLabelText('Uraian Solusi / Konsultasi'), { target: { value: 'Uraian lain lagi' } });
-      expect(screen.getByLabelText(/Catatan penanganan/)).toHaveValue('Catatan saya');
-    });
-
-    it('tanpa topik: galat role=alert pada field topik dan POST tidak dikirim', async () => {
-      muat(dataEskalasi());
-      render(<PelayananWizardModal isOpen tiketId="t-401" onClose={vi.fn()} />);
-      await screen.findByDisplayValue('Rina');
-      langkah(3);
-      fireEvent.click(screen.getByRole('button', { name: /Selesaikan Antrian/i }));
-      const alert = await screen.findByRole('alert');
-      expect(alert).toHaveTextContent('Topik penanganan wajib dipilih');
-      expect(screen.getByLabelText(/Topik penanganan/)).toHaveAttribute('aria-invalid', 'true');
-      expect(posts()).toHaveLength(0);
-    });
-
-    it('catatan kosong (dihapus petugas) ditolak di klien', async () => {
-      muat(dataEskalasi());
-      render(<PelayananWizardModal isOpen tiketId="t-401" onClose={vi.fn()} />);
-      await screen.findByDisplayValue('Rina');
-      langkah(3);
-      fireEvent.change(screen.getByLabelText(/Topik penanganan/), { target: { value: TOPIK } });
-      fireEvent.change(screen.getByLabelText(/Catatan penanganan/), { target: { value: '   ' } });
-      fireEvent.click(screen.getByRole('button', { name: /Selesaikan Antrian/i }));
-      expect(await screen.findByRole('alert')).toHaveTextContent(/Catatan penanganan wajib diisi/);
-      expect(posts()).toHaveLength(0);
-    });
-
-    it('POST membawa topik_id dan catatan_penanganan; sukses menutup dan memanggil onSuccess', async () => {
+    it('langkah 3 tanpa topik/catatan penanganan; POST hanya isi Pendataan; sukses menutup dan memanggil onSuccess', async () => {
       muat(dataEskalasi());
       mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ ok: true }) });
       const onSuccess = vi.fn();
@@ -662,11 +611,15 @@ describe('PelayananWizardModal component', () => {
       render(<PelayananWizardModal isOpen tiketId="t-401" onClose={onClose} onSuccess={onSuccess} />);
       await screen.findByDisplayValue('Rina');
       langkah(3);
-      fireEvent.change(screen.getByLabelText(/Topik penanganan/), { target: { value: TOPIK } });
+      expect(screen.queryByRole('group', { name: /eskalasi/i })).not.toBeInTheDocument();
+      expect(screen.queryByLabelText(/Topik penanganan/)).not.toBeInTheDocument();
+      expect(screen.queryByLabelText(/Catatan penanganan/)).not.toBeInTheDocument();
       fireEvent.click(screen.getByRole('button', { name: /Selesaikan Antrian/i }));
       await waitFor(() => expect(posts()).toHaveLength(1));
       const body = JSON.parse((posts()[0][1] as RequestInit).body as string);
-      expect(body).toMatchObject({ topik_id: TOPIK, catatan_penanganan: 'NIB dibantu terbit.', nama_usaha: 'Toko Rina' });
+      expect(body).toMatchObject({ nama_usaha: 'Toko Rina', uraian_solusi: 'NIB dibantu terbit.' });
+      expect(body).not.toHaveProperty('topik_id');
+      expect(body).not.toHaveProperty('catatan_penanganan');
       await waitFor(() => expect(onSuccess).toHaveBeenCalled());
       expect(onClose).toHaveBeenCalled();
     });
@@ -678,7 +631,6 @@ describe('PelayananWizardModal component', () => {
       render(<PelayananWizardModal isOpen tiketId="t-401" onClose={vi.fn()} />);
       await screen.findByDisplayValue('Rina');
       langkah(3);
-      fireEvent.change(screen.getByLabelText(/Topik penanganan/), { target: { value: TOPIK } });
       const tombol = screen.getByRole('button', { name: /Selesaikan Antrian/i });
       fireEvent.click(tombol);
       const sibuk = await screen.findByRole('button', { name: /Menyelesaikan/i });
@@ -688,77 +640,6 @@ describe('PelayananWizardModal component', () => {
       expect(posts()).toHaveLength(1);
       selesai({ ok: true, status: 200, json: async () => ({ ok: true }) });
       await waitFor(() => expect(screen.queryByRole('button', { name: /Menyelesaikan/i })).not.toBeInTheDocument());
-    });
-
-    it('422 TOPIK_TIDAK_VALID dari server tampil di field topik (langkah 3), bukan sebagai kegagalan umum', async () => {
-      muat(dataEskalasi());
-      mockFetch.mockResolvedValueOnce({
-        ok: false, status: 422,
-        json: async () => ({ error: 'Topik yang dipilih tidak valid atau sudah dinonaktifkan. Pilih topik lain.', kode: 'TOPIK_TIDAK_VALID' }),
-      });
-      render(<PelayananWizardModal isOpen tiketId="t-401" onClose={vi.fn()} />);
-      await screen.findByDisplayValue('Rina');
-      langkah(3);
-      fireEvent.change(screen.getByLabelText(/Topik penanganan/), { target: { value: TOPIK } });
-      fireEvent.click(screen.getByRole('button', { name: /Selesaikan Antrian/i }));
-      expect(await screen.findByRole('alert')).toHaveTextContent(/Topik yang dipilih tidak valid/);
-      expect(screen.getByLabelText(/Topik penanganan/)).toHaveAttribute('aria-invalid', 'true');
-    });
-
-    it('422 CATATAN_TERLALU_PANJANG dari server tampil di field catatan', async () => {
-      muat(dataEskalasi());
-      mockFetch.mockResolvedValueOnce({
-        ok: false, status: 422,
-        json: async () => ({ error: 'Catatan terlalu panjang (maksimal 1000 karakter).', kode: 'CATATAN_TERLALU_PANJANG' }),
-      });
-      render(<PelayananWizardModal isOpen tiketId="t-401" onClose={vi.fn()} />);
-      await screen.findByDisplayValue('Rina');
-      langkah(3);
-      fireEvent.change(screen.getByLabelText(/Topik penanganan/), { target: { value: TOPIK } });
-      fireEvent.click(screen.getByRole('button', { name: /Selesaikan Antrian/i }));
-      expect(await screen.findByRole('alert')).toHaveTextContent(/Catatan terlalu panjang/);
-      expect(screen.getByLabelText(/Catatan penanganan/)).toHaveAttribute('aria-invalid', 'true');
-    });
-
-    it('konfirmasi tutup menyebut bahwa topik/catatan tidak ikut tersimpan sebagai draf', async () => {
-      muat(dataEskalasi());
-      render(<PelayananWizardModal isOpen tiketId="t-401" onClose={vi.fn()} />);
-      await screen.findByDisplayValue('Rina');
-      langkah(3);
-      fireEvent.change(screen.getByLabelText(/Topik penanganan/), { target: { value: TOPIK } });
-      fireEvent.keyDown(document, { key: 'Escape' });
-      expect(await screen.findByRole('alertdialog')).toHaveTextContent(/tidak ikut tersimpan sebagai draf/);
-    });
-
-    it('tiket lama (bukan eskalasi): tanpa isian topik/catatan dan POST tanpa topik_id', async () => {
-      muat({ dari_eskalasi: false, topik_pilihan: [], data_oss: { ...DATA_OSS_LENGKAP, uraian_solusi: 'ok' } });
-      mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ ok: true }) });
-      render(<PelayananWizardModal isOpen tiketId="t-401" onClose={vi.fn()} />);
-      await screen.findByDisplayValue('Rina');
-      langkah(3);
-      expect(screen.queryByRole('group', { name: /eskalasi/i })).not.toBeInTheDocument();
-      expect(screen.queryByLabelText(/Topik penanganan/)).not.toBeInTheDocument();
-      fireEvent.click(screen.getByRole('button', { name: /Selesaikan Antrian/i }));
-      await waitFor(() => expect(posts()).toHaveLength(1));
-      const body = JSON.parse((posts()[0][1] as RequestInit).body as string);
-      expect(body).not.toHaveProperty('topik_id');
-      expect(body).not.toHaveProperty('catatan_penanganan');
-    });
-
-    it('Perizinan: catatan tidak diisi otomatis (tidak ada Uraian Solusi) dan wajib diisi petugas', async () => {
-      muat(dataEskalasi({
-        form_type: 'perizinan', layanan_nama: 'Non OSS (SiCantik Lampung)',
-        data_oss: undefined,
-        data_perizinan: { ...DATA_PERIZINAN_LENGKAP, catatan_petugas: '-' },
-      }));
-      render(<PelayananWizardModal isOpen tiketId="t-401" onClose={vi.fn()} />);
-      await screen.findByDisplayValue('Rina');
-      langkah(3);
-      expect(screen.getByLabelText(/Catatan penanganan/)).toHaveValue('');
-      fireEvent.change(screen.getByLabelText(/Topik penanganan/), { target: { value: TOPIK } });
-      fireEvent.click(screen.getByRole('button', { name: /Selesaikan Antrian/i }));
-      expect(await screen.findByRole('alert')).toHaveTextContent(/Catatan penanganan wajib diisi/);
-      expect(posts()).toHaveLength(0);
     });
   });
 });

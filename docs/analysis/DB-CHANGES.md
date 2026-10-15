@@ -586,3 +586,7 @@
 - Uji perilaku : `scripts/test-walkin-data.mjs --apply supabase/migrations/202610140014_walkin_data_lengkap.sql` — 2026-10-14 ±21:29 WIB, 96 lolos / 0 gagal (ROLLBACK; snapshot rollback identik; baris sebelum == sesudah).
 - Status       : DITULIS, BELUM DITERAPKAN
 ```
+
+### [2026-10-15] — Pendataan tanpa topik/catatan dari petugas, email walk-in opsional (M-202610140015_pendataan_tanpa_topik_email_opsional) — DITERAPKAN 2026-10-15 (atomik, dry-run lalu COMMIT; ledger terisi)
+- Permintaan CEO: (1) petugas layanan tidak lagi diminta topik + catatan penanganan pada tiket eskalasi FO; topik tahap layanan NULL, catatan diturunkan di server dari payload Pendataan (tindak_lanjut + uraian_solusi/catatan_petugas, ≤1000, '-' bila kosong). Layanan tanpa Pendataan (mis. BPJS/Bank) tetap wajib topik+catatan lewat SelesaiEskalasiModal. (2) Email walk-in FO opsional (NULL bila kosong; bila diisi tetap divalidasi); email wajib dilengkapi petugas layanan di Pendataan ('Tidak berlaku' bila tidak ada). Rekap FO/layanan: kolom Email dari Pendataan tiket, lalu Pendataan terbaru pada kunjungan sama, lalu email kunjungan.
+- Rollback: `docs/rollback-pendataan-tanpa-topik-email-opsional-202610140015.sql`. Belum diuji perilaku terhadap DB (hanya dry-run + test statis); `scripts/test-walkin-data.mjs` perlu diperbarui (email kini opsional).

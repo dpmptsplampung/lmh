@@ -9,7 +9,9 @@ export default function ServiceWorkerRegister() {
     if (process.env.NODE_ENV !== 'production') return;
 
     const register = () => {
-      navigator.serviceWorker.register('/sw.js').catch(() => {
+      // ?v=<build id>: URL skrip berubah tiap rilis -> SW baru terpasang & cache lama dibuang.
+      const build = encodeURIComponent(process.env.NEXT_PUBLIC_BUILD_ID ?? 'dev');
+      navigator.serviceWorker.register(`/sw.js?v=${build}`).catch(() => {
         // non-fatal — offline support unavailable
       });
     };

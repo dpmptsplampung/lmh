@@ -7,7 +7,8 @@
 //   - Layanan pendataan diselesaikan lewat PelayananWizardModal -> POST /api/admin/pelayanan/[tiketId].
 //   - Admin dapat "Ambil alih" tiket yang dilayani orang lain (rpc admin_ambil_alih, alasan wajib).
 // B4 (migrasi 202610140004, kontrak docs/analysis/FO-ESKALASI-KONTRAK-RPC.md): tiket HASIL ESKALASI Front Office
-//   (penanganan_asal_id terisi) menampilkan catatan eskalasi FO; menyelesaikannya wajib topik + catatan
+//   (penanganan_asal_id terisi) menampilkan catatan eskalasi FO; menyelesaikannya: layanan ber-Pendataan cukup
+//   Pendataan (202610140015: topik NULL, catatan diturunkan DB), layanan tanpa Pendataan wajib topik + catatan
 //   (layanan_selesai 5 parameter), pemilik dapat "Kembalikan ke FO" (layanan_kembalikan), Admin dapat "Alihkan"
 //   (admin_alihkan). Tiket lama (penanganan_asal_id null) tetap tanpa topik/catatan.
 // RPC bekerja langsung pada kunjungan/tiket/penanganan (visit = arsip sejak WP-24; SKM/notifikasi/estimasi lewat trigger kunjungan).
@@ -363,7 +364,7 @@ export default function AntrianPage() {
 
   const handleSelesaikan = (a: AntrianRow) => {
     if (punyaPendataan(a)) {
-      // Wizard pendataan (juga mengumpulkan topik + catatan untuk tiket hasil eskalasi).
+      // Wizard pendataan. Tiket hasil eskalasi: cukup Pendataan (tanpa topik/catatan; 202610140015).
       setActiveWizardTiketId(a.id);
       return Promise.resolve();
     }

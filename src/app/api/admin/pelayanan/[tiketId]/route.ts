@@ -194,19 +194,9 @@ export async function GET(
       }
     }
 
-    // Tiket hasil eskalasi FO: petugas wajib memilih topik layanan (dan menulis catatan) saat menyelesaikan.
+    // Tiket hasil eskalasi FO (informasi saja): sejak 202610140015 petugas tidak lagi memilih topik / menulis catatan
+    // penanganan; DB menurunkan catatan tahap layanan dari Pendataan (topik NULL).
     const dariEskalasi = !!tiket.penanganan_asal_id;
-    let topikPilihan: { id: string; nama: string }[] = [];
-    if (dariEskalasi) {
-      const { data: tp } = await supabase
-        .from('topik_penanganan')
-        .select('id, nama')
-        .eq('aktif', true)
-        .eq('layanan_id', tiket.layanan_id)
-        .order('urut')
-        .order('nama');
-      topikPilihan = (tp ?? []) as { id: string; nama: string }[];
-    }
 
     const responsePayload: PelayananInitialData = {
       tiket_id: tiket.id,
@@ -225,7 +215,6 @@ export async function GET(
       dilayani_oleh_nama: pelayanData?.nama ?? null,
       boleh_ubah: !isLocked && bolehSelesaikanTiket(staff, { status: tiket.status, dilayani_oleh: tiket.dilayani_oleh }),
       dari_eskalasi: dariEskalasi,
-      topik_pilihan: topikPilihan,
       is_locked: isLocked,
       status_draft: statusDraft,
       data_oss: dataOss,
@@ -440,7 +429,8 @@ export async function POST(
 
     const body = await request.json();
 
-    // Topik + catatan penanganan (tiket hasil eskalasi FO) dibawa wizard di body, terpisah dari isi form pendataan.
+    // Topik + catatan penanganan: wizard sejak 202610140015 tidak mengirimnya (DB menurunkan catatan dari Pendataan);
+    // tetap diterima dari klien lama (opsional, divalidasi DB bila ada), terpisah dari isi form pendataan.
     const bodyObj = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
     const { topik_id: topikRaw, catatan_penanganan: catatanRaw, ...isiForm } = bodyObj;
 
@@ -474,8 +464,7 @@ export async function POST(
       finalData = parsed.data;
     }
 
-    // Topik + catatan: bentuknya dicek di sini (uuid / panjang). WAJIB-nya untuk tiket hasil eskalasi ditegakkan DB
-    // (TOPIK_WAJIB / CATATAN_WAJIB / TOPIK_TIDAK_VALID) sebelum apa pun ditulis; tiket lama mengabaikannya.
+    // Topik + catatan (opsional): bentuknya dicek di sini (uuid / panjang); DB memvalidasi isinya bila dikirim.
     let topikId: string | null = null;
     if (topikRaw !== undefined && topikRaw !== null && topikRaw !== '') {
       if (typeof topikRaw !== 'string' || !z.uuid().safeParse(topikRaw).success) {

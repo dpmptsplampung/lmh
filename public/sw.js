@@ -3,7 +3,17 @@
 // Framework-agnostic (no build step) — served from /public.
 // Registered by root layout (offline) + /me/notifications (push).
 
-const CACHE_VERSION = 'lmh-v2';
+// Versi cache diturunkan dari ?v=<build id> pada URL pendaftaran (ServiceWorkerRegister) sehingga
+// tiap rilis memakai cache baru dan cache rilis lama dibuang saat activate (anti version skew).
+function bacaVersiBuild() {
+  try {
+    const m = /[?&]v=([^&]+)/.exec((self.location && self.location.search) || '');
+    return m ? decodeURIComponent(m[1]) : 'v3';
+  } catch {
+    return 'v3';
+  }
+}
+const CACHE_VERSION = 'lmh-' + bacaVersiBuild();
 const PRECACHE_URLS = [
   '/',
   '/offline',
@@ -79,6 +89,18 @@ self.addEventListener('fetch', (event) => {
   // API dinamis (antrean, rekap, pengaduan, dsb.) tidak boleh tersaji dari
   // cache stale-while-revalidate — data lama membuat petugas melihat antrean beku.
   if (url.pathname.startsWith('/api/')) return;
+
+  // Permintaan RSC/payload navigasi Next (fetch klien, bukan navigasi dokumen) tidak boleh dari
+  // cache: payload lama merujuk chunk build lama -> "module factory is not available".
+  if (
+    req.headers.get('rsc') ||
+    req.headers.get('next-router-state-tree') ||
+    req.headers.get('next-router-prefetch') ||
+    url.searchParams.has('_rsc') ||
+    url.pathname.startsWith('/_next/data/')
+  ) {
+    return;
+  }
 
   // Static assets: cache-first
   if (url.pathname.startsWith('/_next/static/') || url.pathname === '/logo.png' || url.pathname === '/manifest.json') {

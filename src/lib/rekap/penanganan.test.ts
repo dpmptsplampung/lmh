@@ -7,6 +7,7 @@ import {
   namaFoSebelum,
   foSebelum,
   daftarOpsiFo,
+  emailRekap,
   saringFo,
   ringkasPenanganan,
   tentukanCakupan,
@@ -20,7 +21,7 @@ function baris(sebagian: Partial<RekapPenangananRow> = {}): RekapPenangananRow {
     saluran: 'walk_in', penangan_id: 'fo-1', penangan_nama: 'Sari', status: 'selesai', hasil: 'selesai',
     topik: 'Informasi umum', catatan: 'ok', batal_karena: null,
     mulai_at: '2026-10-12T02:00:00Z', selesai_at: '2026-10-12T02:10:00Z', created_at: '2026-10-12T02:00:00Z',
-    tanggal: '2026-10-12', durasi_menit: 10, pengunjung_nama: 'Budi', pengunjung_instansi: 'CV Maju', tiket: null,
+    tanggal: '2026-10-12', durasi_menit: 10, pengunjung_nama: 'Budi', pengunjung_instansi: 'CV Maju', email: null, tiket: null,
     fo_nama: 'Sari', fo_id: 'fo-1',
     ...sebagian,
   };
@@ -66,6 +67,25 @@ describe('tentukanCakupan (hak akses rekap penanganan)', () => {
   it('peran tak dikenal ditolak untuk rekap layanan', () => {
     expect(tentukanCakupan({ id: 'x', role: 'pengunjung', layanan_id: null }, { peran: 'layanan' }))
       .toMatchObject({ ok: false, status: 403 });
+  });
+});
+
+describe('emailRekap (kolom Email rekap, 202610140015)', () => {
+  it('Pendataan tiket -> Pendataan terbaru kunjungan (eskalasi) -> email kunjungan -> null', () => {
+    const kunj = {
+      email: 'fo@x.id',
+      pelayanan_oss: [{ email: 'lama@x.id', updated_at: '2026-10-12T01:00:00Z' }, { email: 'baru@x.id', updated_at: '2026-10-12T03:00:00Z' }],
+      pelayanan_perizinan: [],
+    };
+    expect(emailRekap(kunj, { pelayanan_oss: { email: 'tiket@x.id' } })).toBe('tiket@x.id');
+    expect(emailRekap(kunj, null)).toBe('baru@x.id');
+    expect(emailRekap({ email: ' fo@x.id ', pelayanan_oss: [{ email: '  ' }] }, null)).toBe('fo@x.id');
+    expect(emailRekap({ email: null }, null)).toBeNull();
+    const fo = mapRawPenangananRow({
+      id: 'p', kunjungan_id: 'k', tahap_ke: 1, peran_tahap: 'fo', saluran: 'walk_in', status: 'selesai',
+      created_at: '2026-10-12T00:00:00Z', kunjungan: { nama: 'A', email: null, pelayanan_perizinan: [{ email: 'Tidak berlaku' }] },
+    });
+    expect(fo.email).toBe('Tidak berlaku');
   });
 });
 

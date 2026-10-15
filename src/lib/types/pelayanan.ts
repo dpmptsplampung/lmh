@@ -200,10 +200,8 @@ export interface PelayananInitialData {
    * hanya saat itu draf boleh disimpan dan layanan boleh diselesaikan. Selain itu wizard baca-saja.
    */
   boleh_ubah: boolean;
-  /** true bila tiket hasil eskalasi Front Office (penanganan_asal_id terisi): menyelesaikan WAJIB topik + catatan. */
+  /** true bila tiket hasil eskalasi Front Office (penanganan_asal_id terisi). Informasi saja sejak 202610140015. */
   dari_eskalasi?: boolean;
-  /** Topik aktif milik layanan tiket (hanya diisi bila dari_eskalasi). */
-  topik_pilihan?: { id: string; nama: string }[];
   is_locked: boolean;
   status_draft: 'draft' | 'selesai' | 'belum_diisi';
   // Data Form Eksisting (bila sudah ada draft / final)

@@ -79,6 +79,7 @@ export const FORWARD_MIGRATION_FILES = [
   '202610140012_perbaikan_review.sql',
   '202610140013_fo_keterbukaan_data.sql',
   '202610140014_walkin_data_lengkap.sql',
+  '202610140015_pendataan_tanpa_topik_email_opsional.sql',
 ] as const;
 
 export function listMigrationFiles(): string[] {
