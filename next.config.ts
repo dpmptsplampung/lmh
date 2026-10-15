@@ -32,7 +32,8 @@ export function buildContentSecurityPolicy(supabaseUrl: string | undefined, deve
 
 const contentSecurityPolicy = buildContentSecurityPolicy(process.env.NEXT_PUBLIC_SUPABASE_URL, isDevelopment);
 
-const buildId = process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.NEXT_DEPLOYMENT_ID;
+// deploymentId Vercel maksimal 32 karakter; SHA commit penuh (40) membuat build gagal.
+const buildId = (process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.NEXT_DEPLOYMENT_ID)?.slice(0, 12);
 
 const nextConfig: NextConfig = {
   // Version skew: klien yang memegang build lama otomatis hard-navigate saat ID deploy berbeda.
