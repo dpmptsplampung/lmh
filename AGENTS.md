@@ -35,6 +35,18 @@ Model akun mitra: **individual account** (satu akun per individu), bukan akun be
 - Sebelum menyatakan selesai, baca diff aktual, scan secret, dan laporkan skill yang dipakai serta bukti test/lint/typecheck/build.
 - Jangan mengubah data nyata, `.env`, credential, backup, atau konfigurasi deployment tanpa instruksi eksplisit.
 
+## Keamanan data dan server (wajib)
+
+Berlaku untuk semua AI agent, di laptop maupun di server. Sumber: `/opt/serverkit/docs/DECISIONS.md` D-24, D-25, D-29, D-30, D-31.
+
+1. Jangan menjalankan perintah yang menghapus atau mengosongkan database selain database lokal atau database percobaan: `prisma migrate reset`, `prisma db push --force-reset`, `supabase db reset --linked`, `DROP DATABASE`, `DROP SCHEMA`, `DROP TABLE`, `TRUNCATE`, `DELETE` tanpa `WHERE`, dan sejenisnya. Sebelum perintah apa pun yang mengubah database, tampilkan host tujuan (tanpa password) dan berhenti jika host itu bukan `localhost`, `127.0.0.1`, atau container percobaan.
+2. Jangan menyimpan, meminta, atau memakai kunci production. Di laptop hanya config Doppler `dev`; di server hanya `stg` dan kunci read-only backup. Jangan menjalankan `doppler login` dengan akun pribadi.
+3. Restore ke production hanya lewat script restore resmi, dijalankan oleh pemilik, dengan konfirmasi pemilik.
+4. Jangan menghapus, memindahkan, atau menimpa isi `/backup`, partisi `backup2`, atau `/srv/data`.
+5. Jangan menghentikan, mengubah, atau merapikan `9router`, `9remote`, `hermes-gateway`, dan Tramo.
+6. Jangan mencetak nilai secret ke terminal, log, commit, atau chat. Sebutkan nama variabelnya saja.
+7. Jika ragu apakah sebuah perintah aman, berhenti dan tanya pemilik.
+
 ## Remote safety
 
 - Jangan mengubah URL remote tanpa persetujuan pengguna.
