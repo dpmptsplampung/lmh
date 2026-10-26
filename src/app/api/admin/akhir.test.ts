@@ -197,13 +197,11 @@ describe('layanan', () => {
     expect(logger.logServerEvent).toHaveBeenCalledWith('error', expect.objectContaining({ operation: 'admin.layanan.bot', asalCode: '08006' }));
   });
 
-  it('PATCH: rename yang mengubah jenis form pendataan ditolak 422; rename aman lolos', async () => {
+  it('PATCH: rename bebas (form pendataan tidak lagi ditebak dari nama), hanya nama yang ditulis', async () => {
     const s = await setup({ tables: { layanan: { data: { id: ID, nama: 'Layanan OSS' } } } });
     const m = await import('./layanan/[id]/route');
-    expect((await m.PATCH(req('PATCH', { nama: 'Layanan Umum' }), ctx)).status).toBe(422);
-    expect((await m.PATCH(req('PATCH', { nama: 'Layanan Non OSS' }), ctx)).status).toBe(422);
-    expect(callOf(s.calls, 'layanan', 'update')).toBeUndefined();
-    expect((await m.PATCH(req('PATCH', { nama: 'Layanan OSS Terpadu' }), ctx)).status).toBe(200);
+    expect((await m.PATCH(req('PATCH', { nama: 'Layanan Umum' }), ctx)).status).toBe(200);
+    expect(callOf(s.calls, 'layanan', 'update')?.[0]).toEqual({ nama: 'Layanan Umum' });
   });
 
   it('bot: Admin saja', async () => {
