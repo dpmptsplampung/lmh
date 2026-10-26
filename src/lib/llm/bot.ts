@@ -12,6 +12,7 @@ import { getLlmSpecs } from '@/lib/settings/llm-config';
 import { logServerEvent } from '@/lib/observability/logger';
 import { detectPromptInjection, redactPii } from '@/lib/pii';
 import { addDaysWIB, todayWIB } from '@/lib/time';
+import { teksProfilLayanan, type ProfilLayanan } from '@/lib/llm/profil-layanan';
 import { hitungMode, labelTanggalID, parseJamTutup, type ModeLayanan } from '@/lib/llm/bot-waktu';
 
 const SIMILARITY_THRESHOLD = 0.7;
@@ -96,6 +97,8 @@ export async function jalankanBot(input: {
   rawPertanyaan: string;
   layananId: string;
   layananNama?: string | null;
+  /** Profil resmi layanan (deskripsi, instansi, website terkait); disisipkan di depan konteks FAQ/dokumen. */
+  profilLayanan?: ProfilLayanan;
   now?: Date;
 }): Promise<BotHasil> {
   const { admin, pertanyaan, layananId } = input;
@@ -194,6 +197,8 @@ export async function jalankanBot(input: {
   const isGreeting = trimmed.length <= 30 && !trimmed.includes('?') && GREETING_RE.test(trimmed);
 
   const lingkup = aturanLingkup(layananNama);
+  // Setelah aturan lingkup, sebelum FAQ/dokumen. Jalur sapaan sengaja tanpa profil (hanya perkenalan singkat).
+  const profil = input.profilLayanan ? teksProfilLayanan(input.profilLayanan) : '';
   const dokCtx = adaDokumen ? buildDokumenContext(dokumen) : '';
   const faqCtx = (n: number) => (faqMatches.length > 0 ? buildRagContext(faqMatches.slice(0, n)) : '');
   const gabung = (...p: string[]) => p.filter(Boolean).join('\n\n');
@@ -204,16 +209,16 @@ export async function jalankanBot(input: {
     const sebab = mode.alasan === 'setelah_jam_tutup' ? 'layanan sudah tutup untuk hari ini' : mode.alasan === 'libur_nasional' ? 'hari ini hari libur' : 'hari ini Sabtu/Minggu';
     context = gabung(
       `[MODE DI LUAR JAM LAYANAN]: ${sebab} — petugas tidak bertugas. Jawab HANYA pertanyaan umum seputar layanan, persyaratan, dan jam operasional berdasarkan konteks resmi. Jika pertanyaan membutuhkan petugas atau di luar konteks, sampaikan dengan sopan bahwa petugas akan membantu pada ${sampai}. JANGAN menawarkan eskalasi atau koneksi langsung ke petugas.`,
-      lingkup, faqCtx(3), dokCtx,
+      lingkup, profil, faqCtx(3), dokCtx,
     );
   } else if (isExactMatch) {
-    context = gabung(lingkup, buildRagContext(faqMatches), dokCtx);
+    context = gabung(lingkup, profil, buildRagContext(faqMatches), dokCtx);
   } else if (isGreeting) {
     context = `[SAPAAN]: Pengunjung membuka dengan sapaan/basa-basi. Balas dengan ramah dan hangat, perkenalkan diri sebagai asisten virtual ${layananNama ?? 'layanan ini'}, dan tawarkan bantuan (mis. tanyakan apa yang ingin mereka ketahui seputar layanan, persyaratan, atau jam operasional). JANGAN menawarkan eskalasi ke petugas.`;
   } else {
     context = gabung(
       '[INFORMASI LAYANAN]: Jawablah pertanyaan pengunjung secara ramah dan membantu HANYA dalam lingkup layanan ini, berdasarkan konteks resmi di bawah. Jika konteks tidak memuat jawabannya tetapi pertanyaan masih seputar layanan ini, katakan dengan jujur bahwa Anda belum yakin dan petugas kami siap membantu.',
-      lingkup, faqCtx(3), dokCtx,
+      lingkup, profil, faqCtx(3), dokCtx,
     );
   }
 

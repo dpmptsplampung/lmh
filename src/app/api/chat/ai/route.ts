@@ -3,6 +3,7 @@ import { createClient as createServiceClient, type SupabaseClient } from '@supab
 import { z } from 'zod';
 import { createClient as createServerClient } from '@/lib/supabase/server';
 import { jalankanBot, FALLBACK_TEXT } from '@/lib/llm/bot';
+import type { ProfilLayanan } from '@/lib/llm/profil-layanan';
 import { logServerEvent } from '@/lib/observability/logger';
 import { redactPii } from '@/lib/pii';
 import { mutasiBolehKosong, mutasiInsert } from '@/lib/supabase/mutate';
@@ -43,6 +44,26 @@ function ignoredBody(status: SesiStatus) {
   return {
     ignored: true, jawaban: null, sumber: [], eskalasi: false,
     reason: status === 'aktif' ? 'sesi_aktif' : 'sesi_selesai', pesan: null, status,
+  };
+}
+
+type LayananProfilRow = {
+  nama: string;
+  deskripsi?: string | null;
+  instansi?: { nama?: string | null } | Array<{ nama?: string | null }> | null;
+  layanan_tautan?: Array<{ label: string; url: string; urut?: number | null }> | null;
+};
+
+// Baris layanan (embed PostgREST) -> profil untuk bot. Tautan diurutkan menurut `urut` di sini (urutan embed
+// tidak dijamin). Kolom/relasi yang belum ada atau kosong = profil kosong, bot tetap jalan seperti sebelumnya.
+function susunProfilLayanan(row: LayananProfilRow): ProfilLayanan {
+  const inst = Array.isArray(row.instansi) ? row.instansi[0] : row.instansi;
+  const tautan = [...(row.layanan_tautan ?? [])].sort((a, b) => (a.urut ?? 0) - (b.urut ?? 0));
+  return {
+    nama: row.nama,
+    instansi: inst?.nama ?? null,
+    deskripsi: row.deskripsi ?? null,
+    websiteTerkait: tautan.map((t) => ({ label: t.label, url: t.url })),
   };
 }
 
@@ -186,13 +207,14 @@ export async function POST(request: NextRequest) {
   // Bot hidup/mati ditegakkan di server (bukan hanya disembunyikan di layar pengunjung).
   const { data: layananData } = await adminClient
     .from('layanan')
-    .select('nama, chatbot_aktif')
+    .select('nama, chatbot_aktif, deskripsi, instansi:instansi_id(nama), layanan_tautan(label, url, urut)')
     .eq('id', layanan_id)
     .single();
   if (!layananData) {
     return NextResponse.json({ error: 'Layanan tidak ditemukan' }, { status: 404 });
   }
   const layananNama = layananData.nama;
+  const profilLayanan = susunProfilLayanan(layananData);
   if (layananData.chatbot_aktif === false) {
     return NextResponse.json({ ...ignoredBody(sesiStatus), reason: 'bot_nonaktif' });
   }
@@ -237,7 +259,7 @@ export async function POST(request: NextRequest) {
   // Logika bot (injeksi prompt -> FAQ FTS -> embedding FAQ + Dokumen Peraturan -> LLM) ada di lib/llm/bot.ts
   // dan dipakai bersama "Coba tanya bot" admin. Route ini hanya mengurus auth, status sesi, dan penyimpanan.
   const hasil = await jalankanBot({
-    admin: adminClient, pertanyaan, rawPertanyaan, layananId: layanan_id, layananNama,
+    admin: adminClient, pertanyaan, rawPertanyaan, layananId: layanan_id, layananNama, profilLayanan,
   });
   if (hasil.kind === 'gagal') {
     // Hari tanpa pelayanan (Sabtu/Minggu/hari_libur; keputusan CEO 2026-10-14): live chat dengan petugas tidak

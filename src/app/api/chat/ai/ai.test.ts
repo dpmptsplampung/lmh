@@ -88,6 +88,12 @@ vi.mock('@/lib/gemini', () => ({
   SYSTEM_PROMPT_RAG: 'system-prompt',
 }));
 
+// Pembungkus pengintai: perilaku asli jalankanBot tetap jalan; test hanya membaca argumen pemanggilan.
+vi.mock('@/lib/llm/bot', async (importOriginal) => {
+  const asli = await importOriginal<typeof import('@/lib/llm/bot')>();
+  return { ...asli, jalankanBot: vi.fn(asli.jalankanBot) };
+});
+
 import type { NextRequest } from 'next/server';
 
 const buildRequest = (body: unknown): NextRequest => {
@@ -120,6 +126,8 @@ interface MockServiceOpts {
   // Konsol: bot hidup/mati, Dokumen Peraturan, kalender
   chatbotAktif?: boolean;
   layananHilang?: boolean;
+  /** Kolom tambahan baris layanan (deskripsi, instansi, layanan_tautan) seperti hasil embed PostgREST. */
+  layananExtra?: Record<string, unknown>;
   dokData?: unknown[] | null;
   dokError?: { message: string } | null;
   jamTutup?: string | null;
@@ -245,7 +253,7 @@ const mockServiceClient = async (opts: MockServiceOpts = {}) => {
           select: vi.fn().mockReturnValue({
             eq: vi.fn().mockReturnThis(),
             single: vi.fn().mockResolvedValue({
-              data: opts.layananHilang ? null : { nama: 'Dinas A', ...(opts.chatbotAktif === undefined ? {} : { chatbot_aktif: opts.chatbotAktif }) },
+              data: opts.layananHilang ? null : { nama: 'Dinas A', ...(opts.chatbotAktif === undefined ? {} : { chatbot_aktif: opts.chatbotAktif }), ...(opts.layananExtra ?? {}) },
               error: null,
             }),
           })
@@ -884,6 +892,41 @@ describe('POST /api/chat/ai — konsol: bot hidup/mati, lingkup, dokumen, jam la
     expect(json.jawaban).toBeNull();
     expect(mock.rpc).not.toHaveBeenCalled();
     expect(mock.from.mock.calls.some((c: unknown[]) => c[0] === 'chat_pesan')).toBe(false);
+  });
+
+  it('jalankanBot dipanggil dengan profilLayanan dari baris layanan', async () => {
+    await ask({
+      chatbotAktif: true,
+      rpcData: faqExact,
+      layananExtra: {
+        deskripsi: 'Perizinan berusaha terintegrasi.',
+        instansi: { nama: 'DPMPTSP Provinsi Lampung' },
+        // sengaja tak berurutan: route harus mengurutkan menurut `urut`
+        layanan_tautan: [
+          { label: 'Panduan', url: 'https://contoh.go.id/panduan', urut: 2 },
+          { label: 'Portal OSS', url: 'https://oss.go.id', urut: 1 },
+        ],
+      },
+    }, 'Apa syarat membuat NIB?');
+    const { jalankanBot } = await import('@/lib/llm/bot');
+    const arg = vi.mocked(jalankanBot).mock.calls.at(-1)?.[0];
+    expect(arg?.profilLayanan).toEqual({
+      nama: 'Dinas A',
+      instansi: 'DPMPTSP Provinsi Lampung',
+      deskripsi: 'Perizinan berusaha terintegrasi.',
+      websiteTerkait: [
+        { label: 'Portal OSS', url: 'https://oss.go.id' },
+        { label: 'Panduan', url: 'https://contoh.go.id/panduan' },
+      ],
+    });
+  });
+
+  it('baris layanan tanpa kolom profil: profilLayanan kosong, bot tetap menjawab', async () => {
+    const { json } = await ask({ chatbotAktif: true, rpcData: faqExact }, 'Apa syarat membuat NIB?');
+    const { jalankanBot } = await import('@/lib/llm/bot');
+    const arg = vi.mocked(jalankanBot).mock.calls.at(-1)?.[0];
+    expect(arg?.profilLayanan).toEqual({ nama: 'Dinas A', instansi: null, deskripsi: null, websiteTerkait: [] });
+    expect(json.jawaban).toBe('Jawaban dari AI [1]');
   });
 
   it('layanan tidak ditemukan: 404 tanpa memanggil LLM', async () => {
