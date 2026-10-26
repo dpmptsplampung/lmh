@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react';
 
 vi.mock('@/components/layout/PageHeader', () => ({ default: () => null }));
 vi.mock('@/components/Toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
@@ -185,6 +185,25 @@ describe('kelola layanan', () => {
         return resp(200, { ok: true });
       });
       vi.stubGlobal('fetch', fetchMock);
+    });
+
+    it('baris lama aktif=false tanpa diarsipkan_at tampil di "Diarsipkan" dengan "Aktifkan lagi", bukan di daftar aktif', async () => {
+      layananList = [
+        lay({ slug: 'helpdesk-oss', instansi_id: 'i1', urutan: 10, deskripsi: null, konten_sumber_url: null, website_terkait: [], diarsipkan_at: null }),
+        lay({ id: 'l7', nama: 'Layanan Lawas', aktif: false, slug: 'layanan-lawas', diarsipkan_at: null, website_terkait: [] }),
+      ];
+      render(<KelolaLayananPage />);
+      const judul = await screen.findByRole('heading', { name: 'Diarsipkan' });
+      const bagianArsip = judul.closest('section') as HTMLElement;
+      expect(within(bagianArsip).getByText('Layanan Lawas')).toBeTruthy();
+      expect(within(bagianArsip).getAllByText('—').length).toBeGreaterThan(0); // tanggal kosong
+      fireEvent.click(within(bagianArsip).getByRole('button', { name: 'Aktifkan lagi Layanan Lawas' }));
+      await waitFor(() => expect(panggilan('POST', '/l7/arsip')).toHaveLength(1));
+      expect(JSON.parse(panggilan('POST', '/l7/arsip')[0][1].body)).toEqual({ arsip: false });
+      // tidak muncul di tabel aktif
+      const tabelAktif = screen.getByRole('table', { name: 'Daftar layanan aktif' });
+      expect(within(tabelAktif).queryByText('Layanan Lawas')).toBeNull();
+      expect(within(tabelAktif).getByText('Helpdesk OSS')).toBeTruthy();
     });
 
     it('"Tambah layanan" membuka form kosong dan mengirim POST dengan form_pendataan eksplisit', async () => {

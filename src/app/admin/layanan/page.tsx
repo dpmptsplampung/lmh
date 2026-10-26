@@ -169,8 +169,9 @@ export default function KelolaLayananPage() {
     return i ? (i.singkatan ?? i.nama) : '—';
   };
 
-  const aktif = rows.filter((r) => !r.diarsipkan_at);
-  const arsip = rows.filter((r) => r.diarsipkan_at);
+  // Arsip = aktif === false (sama dengan gerbang DB); diarsipkan_at hanya informasi tanggal (bisa kosong pada data lama).
+  const aktif = rows.filter((r) => r.aktif !== false);
+  const arsip = rows.filter((r) => r.aktif === false);
 
   return (
     <>
