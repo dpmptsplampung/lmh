@@ -71,13 +71,13 @@ Pola umum: halaman (`page.tsx`) adalah **client component besar yang berisi logi
 **Admin** (`/admin/*`, akses per role di `lib/admin-nav.ts`): `/admin` dashboard · `kunjungan` · `scan` (QR) · `antrian` (panggil/selesai, `PelayananWizardModal`) · `absensi` · `chat` (+`faq`, `ai-log`) · `umkm` · `gallery` · `investasi-leads` · `skm` · `pengaduan` · `petugas` (+`invite`) · `rekap` · `dokumen` (RAG peraturan) · `layar` · `data-governance` · `settings` (+`jadwal`, `landing`).
 
 **API route handlers** (`src/app/api/**/route.ts`, tiap route punya `*.test.ts` di sebelahnya; kebanyakan `force-dynamic`, validasi zod, service-role bila perlu):
-- `admin/`: `dokumen/embed`, `faq/embed`, `layar`, `pelayanan/[tiketId]`, `pengaduan`, `petugas/{invite,status}`, `rekap/{export,layanan-options,rollup,tickets}`
+- `admin/`: `dokumen/embed`, `faq/embed`, `instansi[/id]`, `layanan[/id[/arsip|/tautan]]` (kelola layanan dinamis, admin saja; galat via `layanan/_galat.ts`), `layar`, `pelayanan/[tiketId]`, `pengaduan`, `petugas/{invite,status}`, `rekap/{export,layanan-options,rollup,tickets}`
 - `chat/`: `ai` (RAG), `ai/draft` (draft balasan untuk petugas), `messages`, `sesi`
 - publik: `skm/submit`, `pengaduan`, `pengaduan/lacak`, `umkm/{inquiry,inquiry/[id],request-edit-link}`, `investasi/lead[/id]`
 - `investment-docs/`: `upload`, `[id]`, `page-image`, `public-view`, `signed-url`
 - `notif/{send,retry}` (cron, `CRON_SECRET`) · `health/{live,ready,error}` (logika di `health.ts`)
 
-**`src/lib/`** — `time.ts` (WIB) · `constants.ts` (nama layanan & status; nama layanan harus cocok seed DB) · `utils.ts` (format tanggal/durasi, `waLink`, `cn`) · `pelayanan.ts` + `types/pelayanan.ts` (tipe form pendataan OSS/perizinan, akses petugas) · `admin-nav.ts` · `ikm.ts` · `csv.ts` · `pii.ts` · `email-html.ts` · `site-settings.ts` · `gemini.ts` (embedding + prompt RAG) · `llm/registry.ts` · `chat/normalize.ts` · `hooks/useRealtimeRefetch.ts` · `offline/{queue,replay}.ts` · `observability/logger.ts` · `env/{server,client}.ts` · `supabase/{client,server,service}.ts` · `rekap/{query,rows,schemas,format,excel,exportAll}.ts`.
+**`src/lib/`** — `time.ts` (WIB) · `constants.ts` (nama layanan & status; nama layanan harus cocok seed DB) · `utils.ts` (format tanggal/durasi, `waLink`, `cn`) · `pelayanan.ts` + `types/pelayanan.ts` (tipe form pendataan OSS/perizinan, akses petugas) · `admin-nav.ts` · `ikm.ts` · `csv.ts` · `pii.ts` · `email-html.ts` · `site-settings.ts` · `gemini.ts` (embedding + prompt RAG) · `llm/registry.ts` · `llm/profil-layanan.ts` (profil layanan untuk prompt bot; select layanan fallback bila kolom baru belum ada) · `layanan/schemas.ts` (zod instansi/layanan/tautan: https saja, batas panjang) · `chat/normalize.ts` · `hooks/useRealtimeRefetch.ts` · `offline/{queue,replay}.ts` · `observability/logger.ts` · `env/{server,client}.ts` · `supabase/{client,server,service}.ts` · `rekap/{query,rows,schemas,format,excel,exportAll}.ts`.
 
 **`src/components/`** — `WalkinWizard`, `EstimasiAntrean`, `IkmPanel`, `QRCode`, `Toast`, `Pagination`, `OfflineBanner`, `ServiceWorkerRegister`, `ProfileCompletenessGate`; `admin/{AbsensiWizardModal,PelayananWizardModal,RekapLayananTable,RekapTiketDetailPanel}`; `layout/{AdminGuard,Sidebar,PageHeader}`.
 
@@ -86,7 +86,7 @@ Pola umum: halaman (`page.tsx`) adalah **client component besar yang berisi logi
 ## Peta database (Supabase/Postgres)
 
 Dari 50-an migrasi di `supabase/migrations/` (urutan = nama file). Kelompok tabel:
-- Pelayanan: `layanan`, `layanan_{jadwal,hari,libur,kontak}`, `jadwal_{harian_beku,pengecualian,standby}`, `hari_libur`, `kunjungan`, `tiket_antrean`, `antrean_counter`, `visit` (lama, dual-write), `buku_tamu`, `absensi_petugas`, `pelayanan_{oss,perizinan}`, `pengunjung`, `petugas`, `layar_token`, `rekap_harian_layanan`, `laporan_snapshot`
+- Pelayanan: `instansi` (migrasi `202610270001`), `layanan` (+ `instansi_id`, `slug`, `deskripsi`, `urutan`, `konten_sumber_url`, `konten_diperbarui_at`, `diarsipkan_at`), `layanan_tautan` (website terkait), `layanan_{hari,kontak}`, `jadwal_{harian_beku,pengecualian,standby}`, `hari_libur`, `kunjungan`, `tiket_antrean`, `antrean_counter`, `visit` (lama, dual-write), `buku_tamu`, `absensi_petugas`, `pelayanan_{oss,perizinan}`, `pengunjung`, `petugas`, `layar_token`, `rekap_harian_layanan`, `laporan_snapshot`
 - Chat/AI: `chat_sesi`, `chat_pesan`, `chat_ai_log`, `faq_knowledge_base`, `faq_sinonim`, `dokumen_peraturan`, `dokumen_potongan`
 - UMKM/investasi: `listing_umkm`, `umkm_inquiry`, `umkm_listing_owner`, `umkm_verifikasi_jejak`, `investment_documents`, `investasi_lead`, `jejak_minat_investasi`
 - Lain: `skm_respons`, `skm_response_rate`, `pengaduan`, `pengaduan_riwayat`, `standar_pelayanan`, `notifikasi`, `push_subscriptions`, `landing_content`, `site_settings`, `konten_versi`, `audit_log`, `consent_log`, `error_log`, `anon_rate_limit`
@@ -94,6 +94,8 @@ Dari 50-an migrasi di `supabase/migrations/` (urutan = nama file). Kelompok tabe
 - RPC/fungsi kunci: `terbit_tiket`/`terbit_nomor_antrean`/`generate_nomor_tiket` (nomor antrean atomik), `panggil_tiket`, `finalize_pelayanan`, `catat_absensi`/`catat_pulang`, `check_anon_rate`, `match_faq`/`match_faq_teks`/`match_dokumen` (RAG), `submit_skm_response`/`hitung_ikm`, `buat_pengaduan`/`lacak_pengaduan`, `rollup_rekap_harian`, `validate_layar_token`, `set_user_role_claim` (Auth Hook), `get_my_role`/`is_ptsp_staff` (helper RLS), `queue_notifikasi`/`claim_notifikasi`.
 - Job `pg_cron`: `notif_h0_pagi`, `notif_h1_sore`, `notif_eskalasi` + job otomatis lain (alpa otomatis, no-show reservasi, akhir hari, prune, anonimisasi). `vercel.json` kosong — penjadwalan ada di DB.
 - Daftar tepat bisa berubah: cek `grep -l <nama> supabase/migrations/*.sql` atau `scripts/introspect-schema.mjs` sebelum mengandalkan daftar ini.
+
+**Layanan dinamis (Fase 1, migrasi `202610270001`/`0002`, belum diterapkan):** admin menambah/mengarsipkan layanan dan mengelola Instansi + website terkait di `/admin/layanan` (view publik `v_layanan_publik`). **Sumber kebenaran jadwal = `jadwal_standby` + `hari_libur`** (halaman `/admin/settings/jadwal` menulis keduanya; layanan baru otomatis dapat jadwal default Senin–Jumat 08:00–15:30; jam tutup per layanan ≤ `jam_tutup_layanan()` 16:00). Tabel `layanan_jadwal`/`layanan_libur` tidak lagi dibaca/ditulis aplikasi (dibiarkan, data lama utuh). `is_layanan_buka_jadwal` menolak layanan terarsip dan `hari_libur`. Konteks: `GLOSSARY.md`, `docs/adr/`, spesifikasi `docs/superpowers/specs/2026-10-26-layanan-dinamis-design.md`.
 
 ## Database & migrasi
 
@@ -104,4 +106,4 @@ Dari 50-an migrasi di `supabase/migrations/` (urutan = nama file). Kelompok tabe
 
 ## Dokumen rujukan cepat
 
-`docs/STATUS.md` (status WP-01…32), `docs/DECISION_LOG.md`, `docs/DEPLOY_RUNBOOK.md`, `docs/ENVIRONMENT_VARIABLES.md`, `docs/TESTING.md`, `docs/OBSERVABILITY.md`, `docs/analysis/04-RBAC-MATRIX*.md` (matriks hak akses), `docs/superpowers/{specs,plans}` (spesifikasi/rencana fitur terbaru). `.superpowers/sdd/progress.md` melacak pekerjaan subagent-driven yang sedang berjalan. `docs/archive/` sudah tidak akurat.
+`docs/STATUS.md` (status WP-01…32), `docs/DECISION_LOG.md`, `docs/DEPLOY_RUNBOOK.md`, `docs/ENVIRONMENT_VARIABLES.md`, `docs/TESTING.md`, `docs/OBSERVABILITY.md`, `docs/analysis/04-RBAC-MATRIX*.md` (matriks hak akses), `docs/superpowers/{specs,plans}` (spesifikasi/rencana fitur terbaru), `GLOSSARY.md` (istilah domain), `docs/adr/` (keputusan arsitektur). `.superpowers/sdd/progress.md` melacak pekerjaan subagent-driven yang sedang berjalan. `docs/archive/` sudah tidak akurat.

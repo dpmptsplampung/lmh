@@ -73,6 +73,32 @@ sehingga perubahan yang bisa memutus alur pengguna (mis. policy `visit`/`kunjung
 Runbook lengkap RBAC Tahap 0: `docs/RUNBOOK_RBAC_TAHAP0.md`. Tes perilaku (transaksi + ROLLBACK): `npm run test:rls:tahap0`.
 Skrip ini menyentuh DB produksi (terapan nyata butuh izin CEO).
 
+## Layanan dinamis Fase 1 (202610270001, 202610270002) — BELUM DITERAPKAN
+
+| Versi | Berkas | Isi | Status |
+|---|---|---|---|
+| 202610270001 | `202610270001_instansi_layanan_konten.sql` | Tabel `instansi` dan `layanan_tautan`; kolom baru `layanan.instansi_id`, `slug`, `deskripsi`, `urutan`, `konten_sumber_url`, `konten_diperbarui_at`, `diarsipkan_at`; `v_layanan_publik` diperluas; trigger tebakan `form_pendataan` dari nama layanan dihapus. Satu-satunya UPDATE: mengisi `layanan.slug`. | **DITULIS, BELUM DITERAPKAN** |
+| 202610270002 | `202610270002_jadwal_tunggal_layanan.sql` | Satu sumber jadwal (`jadwal_standby` + `hari_libur`): `is_layanan_buka_jadwal` menolak layanan terarsip dan `hari_libur`; fungsi baru `layanan_sudah_tutup_untuk`; trigger jadwal default (Senin–Jumat 08:00–15:30) untuk layanan baru; penjaga jam tutup `jadwal_standby` ≤ 16:00; `fo_eskalasi`/`admin_alihkan` memakai jam tutup per layanan; `reservasi_buat` (akhir pekan hanya `bertemu_seseorang`, plus `hari_libur`); `v_antrian_loket` hanya layanan `punya_antrean`. | **DITULIS, BELUM DITERAPKAN** |
+
+Tidak ada `DELETE`/`TRUNCATE`/`DROP TABLE`/`DROP COLUMN`; tabel lama `layanan_jadwal`, `layanan_libur`, `jadwal_harian_beku`, `layanan_hari` dibiarkan (aplikasi tidak lagi memakai `layanan_jadwal`/`layanan_libur`). Belum ada berkas SQL rollback (migrasi aditif; fungsi lama dapat dipulihkan dari berkas migrasi sebelumnya bila perlu).
+
+**Urutan terap (hanya pemilik/CEO, atomik):** `202610270001` lebih dulu, lalu `202610270002`.
+
+```
+node scripts/apply-migration.mjs supabase/migrations/202610270001_instansi_layanan_konten.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202610270001_instansi_layanan_konten.sql --atomic
+node scripts/apply-migration.mjs supabase/migrations/202610270002_jadwal_tunggal_layanan.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202610270002_jadwal_tunggal_layanan.sql --atomic
+```
+
+**Urutan deploy:** terapkan kedua migrasi SEBELUM (atau bersamaan dengan) men-deploy branch `feat/fase-1-fondasi-layanan`. Sebelum diterapkan, halaman admin Kelola Layanan (GET memilih kolom baru) akan galat; bot chat aman (select layanan fallback ke kolom lama).
+
+**Catatan setelah terap:**
+
+- `scripts/test-fo-eskalasi.mjs` dan `scripts/test-perbaikan-review.mjs` membuat layanan fixture yang mengharapkan TANPA jadwal; trigger jadwal default membuat fixture itu buka Senin–Jumat, sehingga ekspektasi `LAYANAN_TIDAK_BUKA` gagal pada hari kerja. Fixture perlu diperbarui sebelum verifikasi pasca-terap (skrip menyentuh produksi; tidak diubah/dijalankan di branch ini).
+- Migrasi `202610260001` ada di branch lain (`claude/busy-poitras-cb912c`). Bila kedua branch di-merge, `supabase/migrations/MANIFEST.json` perlu digabung (entri dari kedua branch dipertahankan).
+- Setelah diterapkan, ledger produksi tertinggal lagi (`apply-migration` tidak menulis ledger): ulangi verifikasi ledger.
+
 ## Migrasi forward (status penerapan produksi)
 
 > **Status per 2026-10-14 malam:** semua migrasi di tabel ini sudah DITERAPKAN ke produksi (0002-0009, 0011, 0012, 0013 pada ±17:52-17:57 WIB, tanpa 0010 karena tidak ada berkasnya). Terapan atomik (`apply-migration --atomic`, dry-run lalu COMMIT) dan diverifikasi read-only. Ledger `supabase_migrations.schema_migrations` sudah diisi (12 baris, `scripts/fill-migration-ledger.mjs --apply --yes`; verifikasi `docs/analysis/LEDGER-VERIFIKASI-2026-10-14.md`). Perintah "Cara menerapkan" di bawah dipertahankan sebagai catatan prosedur, bukan langkah yang masih tertunda. Yang BELUM TERBUKTI: tampilan di browser, konkurensi sejati, kueri rekap FO pada PostgREST sungguhan, `session_id` JWT stabil setelah refresh; flag `sesi_tunggal_aktif` masih `false`.
