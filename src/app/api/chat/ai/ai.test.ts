@@ -128,6 +128,8 @@ interface MockServiceOpts {
   layananHilang?: boolean;
   /** Kolom tambahan baris layanan (deskripsi, instansi, layanan_tautan) seperti hasil embed PostgREST. */
   layananExtra?: Record<string, unknown>;
+  /** Galat select layanan: `profil` = select dengan kolom profil, `fallback` = select `nama, chatbot_aktif`. */
+  layananError?: { profil?: { message: string; code?: string }; fallback?: { message: string; code?: string } };
   dokData?: unknown[] | null;
   dokError?: { message: string } | null;
   jamTutup?: string | null;
@@ -250,12 +252,16 @@ const mockServiceClient = async (opts: MockServiceOpts = {}) => {
       }
       if (table === 'layanan') {
         return {
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnThis(),
-            single: vi.fn().mockResolvedValue({
-              data: opts.layananHilang ? null : { nama: 'Dinas A', ...(opts.chatbotAktif === undefined ? {} : { chatbot_aktif: opts.chatbotAktif }), ...(opts.layananExtra ?? {}) },
-              error: null,
-            }),
+          select: vi.fn((kolom: string) => {
+            const denganProfil = kolom.includes('deskripsi');
+            const galat = denganProfil ? opts.layananError?.profil : opts.layananError?.fallback;
+            const baris = { nama: 'Dinas A', ...(opts.chatbotAktif === undefined ? {} : { chatbot_aktif: opts.chatbotAktif }), ...(denganProfil ? (opts.layananExtra ?? {}) : {}) };
+            return {
+              eq: vi.fn().mockReturnThis(),
+              single: vi.fn().mockResolvedValue(
+                galat ? { data: null, error: galat } : { data: opts.layananHilang ? null : baris, error: null },
+              ),
+            };
           })
         };
       }
@@ -927,6 +933,43 @@ describe('POST /api/chat/ai — konsol: bot hidup/mati, lingkup, dokumen, jam la
     const arg = vi.mocked(jalankanBot).mock.calls.at(-1)?.[0];
     expect(arg?.profilLayanan).toEqual({ nama: 'Dinas A', instansi: null, deskripsi: null, websiteTerkait: [] });
     expect(json.jawaban).toBe('Jawaban dari AI [1]');
+  });
+
+  it('select profil galat (bukan PGRST116): diulang tanpa kolom profil, bot tetap menjawab (bukan 404)', async () => {
+    const { mock, json, status } = await ask({
+      chatbotAktif: true, rpcData: faqExact,
+      layananError: { profil: { message: 'column layanan.deskripsi does not exist', code: '42703' } },
+    }, 'Apa syarat membuat NIB?');
+    expect(status).toBe(200);
+    expect(json.jawaban).toBe('Jawaban dari AI [1]');
+    const kolom = (mock.from.mock.results as Array<{ value?: { select?: { mock: { calls: unknown[][] } } } }>)
+      .map((r) => r.value?.select?.mock?.calls?.[0]?.[0])
+      .filter((k: unknown) => typeof k === 'string' && k.startsWith('nama, chatbot_aktif'));
+    expect(kolom).toEqual(['nama, chatbot_aktif, deskripsi, instansi:instansi_id(nama), layanan_tautan(label, url, urut)', 'nama, chatbot_aktif']);
+    const { jalankanBot } = await import('@/lib/llm/bot');
+    const arg = vi.mocked(jalankanBot).mock.calls.at(-1)?.[0];
+    expect(arg?.profilLayanan).toEqual({ nama: 'Dinas A', instansi: null, deskripsi: null, websiteTerkait: [] });
+  });
+
+  it('select profil dan fallback sama-sama galat: 503 tanpa LLM', async () => {
+    const { mock, json, status } = await ask({
+      rpcData: faqExact,
+      layananError: { profil: { message: 'boom', code: '42703' }, fallback: { message: 'db down', code: '08006' } },
+    });
+    expect(status).toBe(503);
+    expect(json.error).toBe('Layanan sementara tidak tersedia. Coba lagi beberapa saat.');
+    expect(mock.rpc).not.toHaveBeenCalled();
+  });
+
+  it('PGRST116 (baris tidak ada): 404, tanpa mengulang select', async () => {
+    const { mock, status } = await ask({
+      rpcData: faqExact,
+      layananError: { profil: { message: 'JSON object requested, multiple (or no) rows returned', code: 'PGRST116' } },
+    });
+    expect(status).toBe(404);
+    expect(mock.rpc).not.toHaveBeenCalled();
+    const jumlahSelect = mock.from.mock.calls.filter((c: unknown[]) => c[0] === 'layanan').length;
+    expect(jumlahSelect).toBe(1);
   });
 
   it('layanan tidak ditemukan: 404 tanpa memanggil LLM', async () => {

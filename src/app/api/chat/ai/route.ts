@@ -55,7 +55,8 @@ type LayananProfilRow = {
 };
 
 // Baris layanan (embed PostgREST) -> profil untuk bot. Tautan diurutkan menurut `urut` di sini (urutan embed
-// tidak dijamin). Kolom/relasi yang belum ada atau kosong = profil kosong, bot tetap jalan seperti sebelumnya.
+// tidak dijamin). Kolom/relasi kosong atau tak ada pada baris = profil kosong. Galat query profil ditangani
+// pemanggil (ulang tanpa kolom profil), bukan di sini.
 function susunProfilLayanan(row: LayananProfilRow): ProfilLayanan {
   const inst = Array.isArray(row.instansi) ? row.instansi[0] : row.instansi;
   const tautan = [...(row.layanan_tautan ?? [])].sort((a, b) => (a.urut ?? 0) - (b.urut ?? 0));
@@ -205,11 +206,35 @@ export async function POST(request: NextRequest) {
   }
 
   // Bot hidup/mati ditegakkan di server (bukan hanya disembunyikan di layar pengunjung).
-  const { data: layananData } = await adminClient
+  const primer = await adminClient
     .from('layanan')
     .select('nama, chatbot_aktif, deskripsi, instansi:instansi_id(nama), layanan_tautan(label, url, urut)')
     .eq('id', layanan_id)
     .single();
+  let layananData: (LayananProfilRow & { chatbot_aktif?: boolean | null }) | null = primer.data;
+  // Galat selain "baris tidak ada" (PGRST116), mis. kolom/relasi profil belum termigrasi atau DB sesaat bermasalah:
+  // catat, lalu ulangi sekali tanpa kolom profil agar bot tetap jalan (profil kosong). Gagal lagi = 503, bukan 404.
+  if (primer.error && primer.error.code !== 'PGRST116') {
+    logServerEvent('error', {
+      operation: 'chat.ai.layanan_profil', route: ROUTE, sesiId: sesi_id, cause: cause(primer.error.message),
+    });
+    const fallback = await adminClient
+      .from('layanan')
+      .select('nama, chatbot_aktif')
+      .eq('id', layanan_id)
+      .single();
+    if (fallback.error && fallback.error.code !== 'PGRST116') {
+      logServerEvent('error', {
+        operation: 'chat.ai.layanan', route: ROUTE, sesiId: sesi_id, cause: cause(fallback.error.message),
+      });
+      return NextResponse.json(
+        { error: 'Layanan sementara tidak tersedia. Coba lagi beberapa saat.' },
+        { status: 503 },
+      );
+    }
+    layananData = fallback.data;
+  }
+  // 404 hanya bila baris memang tidak ada (PGRST116 atau data null tanpa galat).
   if (!layananData) {
     return NextResponse.json({ error: 'Layanan tidak ditemukan' }, { status: 404 });
   }
