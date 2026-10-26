@@ -317,8 +317,10 @@ describe('survei_undangan: view v_survei_status', () => {
 });
 
 describe('survei_undangan: rollback', () => {
-  it('membatalkan semua objek dalam urutan terbalik (view, QR, trigger, fungsi trigger, ensure, tabel)', () => {
-    expect(pernyataanRollback).toEqual([
+  it('penjaga DO di urutan PERTAMA, lalu membatalkan semua objek dalam urutan terbalik (view, QR, trigger, fungsi trigger, ensure, tabel)', () => {
+    expect(pernyataanRollback[0]).toMatch(/^DO \$\$/);
+    expect(pernyataanRollback.filter((p) => /^DO\b/.test(p))).toHaveLength(1);
+    expect(pernyataanRollback.slice(1)).toEqual([
       'DROP VIEW IF EXISTS public.v_survei_status',
       'DROP FUNCTION IF EXISTS public.ambil_qr_survei(uuid)',
       'DROP TRIGGER IF EXISTS trg_kunjungan_selesai_undangan ON public.kunjungan',
@@ -328,7 +330,34 @@ describe('survei_undangan: rollback', () => {
     ]);
   });
 
-  it('tanpa CASCADE (ketergantungan tak terduga harus menggagalkan, bukan terhapus diam-diam); memperingatkan data hilang', () => {
+  it('penjaga: menolak (PRASYARAT ROLLBACK) bila fungsi public lain, selain tiga yang di-DROP, menyebut ensure_undangan/survei_undangan di badannya', () => {
+    // Postgres TIDAK mencatat ketergantungan dari badan plpgsql ke fungsi/tabel yang dipanggilnya, jadi DROP tidak
+    // menggagalkan pemakai semacam itu; satu-satunya pengaman ialah penjaga ini (dibuktikan di skenario PGlite).
+    const awalGuard = rollback.indexOf('DO $$');
+    const akhirGuard = rollback.indexOf('END $$;');
+    expect(awalGuard).toBeGreaterThanOrEqual(0);
+    expect(akhirGuard).toBeGreaterThan(awalGuard);
+    expect(awalGuard).toBeLessThan(rollback.search(/\bDROP\b/i)); // penjaga mendahului DROP pertama
+    const guard = rapikan(rollback.slice(awalGuard, akhirGuard));
+    expect(guard).toMatch(/FROM pg_catalog\.pg_proc AS p JOIN pg_catalog\.pg_namespace AS n ON n\.oid = p\.pronamespace/);
+    expect(guard).toMatch(/WHERE n\.nspname = 'public'/);
+    // Pengecualian persis tiga fungsi milik migrasi ini (nama dari migrasi, bukan nama task lain).
+    const dikecualikan = guard.match(/p\.proname NOT IN \(([^)]*)\)/)?.[1].split(',').map((x) => x.trim().replace(/'/g, '')).sort();
+    expect(dikecualikan).toEqual(['ambil_qr_survei', 'ensure_undangan', 'kunjungan_selesai_undangan']);
+    expect(guard).toMatch(/p\.prosrc ~\* '\(ensure_undangan\|survei_undangan\)'/);
+    expect(guard).toMatch(/RAISE EXCEPTION 'PRASYARAT ROLLBACK: /);
+    expect(guard).toMatch(/IF v_fungsi IS NOT NULL THEN RAISE EXCEPTION/);
+    // Tidak menyebut nama fungsi/tabel milik task 3-5 (generik).
+    expect(guard).not.toMatch(/notify_kunjungan_status|spak|submit_survei|get_survei/i);
+  });
+
+  it('header tidak lagi menjanjikan bahwa DROP menolak pemakai plpgsql (premis salah); menjelaskan penjaga', () => {
+    expect(rollbackRaw).toMatch(/TIDAK ada ketergantungan tercatat/);
+    expect(rollbackRaw).toMatch(/PENJAGA/);
+    expect(rollbackRaw).not.toMatch(/DROP gagal dan seluruh rollback batal/);
+  });
+
+  it('tanpa CASCADE (ketergantungan yang DICATAT Postgres, mis. view/FK, menggagalkan DROP, bukan menghapus objek lain diam-diam); memperingatkan data hilang', () => {
     expect(rollback).not.toMatch(/\bCASCADE\b/i);
     expect(rollbackRaw).toMatch(/menghapus (?:SEMUA )?data undangan/i);
     expect(rollbackRaw).toMatch(/apply-migration\.mjs docs\/rollback-survei-undangan-202610270001\.sql --atomic --dry-run/);

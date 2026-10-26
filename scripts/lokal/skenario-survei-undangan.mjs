@@ -331,7 +331,65 @@ cek('tepat satu trigger trg_kunjungan_selesai_undangan', nTrig === 1);
 // --- Rollback (docs/rollback-survei-undangan-202610270001.sql) -------------------------------------------
 console.log('rollback');
 const ROLLBACK = fileURLToPath(new URL('../../docs/rollback-survei-undangan-202610270001.sql', import.meta.url));
-await terapkanBerkas(db, ROLLBACK);
+
+/** Keadaan objek migrasi: true = ADA. Dipakai untuk membuktikan "tidak ada yang terhapus" dan "semua terhapus". */
+const adaObjek = async () => (await pg(
+  `SELECT pg_catalog.to_regclass('public.survei_undangan') IS NOT NULL AS tabel,
+          pg_catalog.to_regclass('public.v_survei_status') IS NOT NULL AS tampilan,
+          pg_catalog.to_regprocedure('public.ensure_undangan(uuid)') IS NOT NULL AS ensure,
+          pg_catalog.to_regprocedure('public.ambil_qr_survei(uuid)') IS NOT NULL AS qr,
+          pg_catalog.to_regprocedure('public.kunjungan_selesai_undangan()') IS NOT NULL AS fungsi_trigger,
+          (SELECT count(*)::int FROM pg_catalog.pg_trigger WHERE tgrelid = 'public.kunjungan'::regclass AND tgname = 'trg_kunjungan_selesai_undangan') AS trigger_ada`,
+))[0];
+const semuaAda = (k) => k.tabel && k.tampilan && k.ensure && k.qr && k.fungsi_trigger && k.trigger_ada === 1;
+
+/** Terapkan rollback; kembalikan pesan galat ('' bila berhasil). */
+async function jalankanRollback() {
+  try {
+    await terapkanBerkas(db, ROLLBACK);
+    return '';
+  } catch (e) {
+    return String(e.message);
+  }
+}
+
+// Penjaga rollback (review putaran 1). PREMIS: Postgres tidak mencatat ketergantungan dari badan plpgsql/sql ke fungsi
+// atau tabel yang dipanggilnya, jadi DROP tanpa CASCADE TIDAK menolak pemakai semacam itu (nanti gagal saat dipakai:
+// "function ... does not exist"). Dibuktikan dulu di blok DO yang selalu dibatalkan (RAISE di akhir = ROLLBACK).
+console.log('rollback: penjaga terhadap pemakai plpgsql yang tidak tercatat sebagai ketergantungan');
+await pg(`CREATE FUNCTION public.pemakai_ensure_uji() RETURNS void LANGUAGE plpgsql AS $$
+  BEGIN PERFORM public.ensure_undangan(NULL::uuid); END $$`);
+const premisFungsi = await sebagai(db, 'postgres', null,
+  `DO $$ BEGIN DROP FUNCTION public.ensure_undangan(uuid); RAISE EXCEPTION 'PREMIS_TERBUKTI'; END $$`);
+cek('premis: tanpa penjaga, DROP FUNCTION ensure_undangan BERHASIL walau fungsi plpgsql lain memanggilnya',
+  premisFungsi.ok === false && /PREMIS_TERBUKTI/.test(premisFungsi.pesan), JSON.stringify(premisFungsi));
+const premisTabel = await sebagai(db, 'postgres', null,
+  `DO $$ BEGIN DROP VIEW public.v_survei_status; DROP FUNCTION public.ambil_qr_survei(uuid); DROP TABLE public.survei_undangan; RAISE EXCEPTION 'PREMIS_TERBUKTI'; END $$`);
+cek('premis: DROP TABLE survei_undangan (tanpa CASCADE) berhasil walau badan fungsi masih menyebutnya',
+  premisTabel.ok === false && /PREMIS_TERBUKTI/.test(premisTabel.pesan), JSON.stringify(premisTabel));
+cek('premis tidak mengubah apa pun (blok DO dibatalkan)', semuaAda(await adaObjek()));
+
+const fotoSebelumTolak = await snapshot();
+const tolakEnsure = await jalankanRollback();
+cek('penjaga: rollback DITOLAK (PRASYARAT ROLLBACK) bila fungsi plpgsql lain memanggil ensure_undangan, nama fungsi disebut',
+  /PRASYARAT ROLLBACK/.test(tolakEnsure) && /pemakai_ensure_uji/.test(tolakEnsure), tolakEnsure.slice(0, 300));
+const keadaanTolak = await adaObjek();
+cek('penjaga: tidak ada yang terhapus (tabel, view, 3 fungsi, trigger) dan data undangan utuh', semuaAda(keadaanTolak) && (await snapshot()) === fotoSebelumTolak, JSON.stringify(keadaanTolak));
+const masihBerfungsi = await qr(U_FO, K_LAYANAN);
+cek('penjaga: sesudah penolakan ambil_qr_survei dan trigger tetap berfungsi', masihBerfungsi.status === 'belum_diisi' && typeof masihBerfungsi.token === 'string', JSON.stringify(masihBerfungsi));
+
+await pg('DROP FUNCTION public.pemakai_ensure_uji()');
+await pg(`CREATE FUNCTION public.pemakai_tabel_uji() RETURNS bigint LANGUAGE sql AS $$ SELECT count(*) FROM public.survei_undangan $$`);
+const tolakTabel = await jalankanRollback();
+cek('penjaga: rollback juga DITOLAK bila fungsi lain (sql) hanya menyebut tabel survei_undangan',
+  /PRASYARAT ROLLBACK/.test(tolakTabel) && /pemakai_tabel_uji/.test(tolakTabel), tolakTabel.slice(0, 300));
+cek('penjaga: tetap tidak ada yang terhapus pada penolakan kedua', semuaAda(await adaObjek()) && (await snapshot()) === fotoSebelumTolak);
+await pg('DROP FUNCTION public.pemakai_tabel_uji()');
+// Tanpa pemakai lain, rollback lolos penjaga walau tiga fungsi sendiri saling menyebut (ambil_qr_survei menyebut
+// survei_undangan, fungsi trigger menyebut ensure_undangan): berhasil pada langkah berikut.
+
+const galatRollback = await jalankanRollback();
+cek('penjaga: setelah pemakai lain dihapus, rollback BERHASIL (tiga fungsi milik sendiri tidak dihitung)', galatRollback === '', galatRollback.slice(0, 300));
 const sisa = (await pg(
   `SELECT pg_catalog.to_regclass('public.survei_undangan') IS NULL AS tabel,
           pg_catalog.to_regclass('public.v_survei_status') IS NULL AS tampilan,
