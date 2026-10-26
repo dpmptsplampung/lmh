@@ -105,6 +105,9 @@ export default function AdminJadwalPage() {
   const [saving, setSaving] = useState(false);
   const [canEdit, setCanEdit] = useState(false);
   const [galatJadwal, setGalatJadwal] = useState<string | null>(null);
+  // Gagal memuat (bukan gagal menyimpan): editor disembunyikan agar jadwal kosong palsu tak bisa disimpan.
+  const [galatMuatJadwal, setGalatMuatJadwal] = useState<string | null>(null);
+  const [galatMuatLibur, setGalatMuatLibur] = useState<string | null>(null);
 
   const [liburTanggal, setLiburTanggal] = useState('');
   const [liburKeterangan, setLiburKeterangan] = useState('');
@@ -115,25 +118,49 @@ export default function AdminJadwalPage() {
 
   const loadJadwal = useCallback(async (layananId: string) => {
     const muatan = ++muatanTerakhir.current;
-    const supabase = createClient();
-    const { data } = await supabase
-      .from('jadwal_standby')
-      .select('hari, jam_mulai, jam_selesai, aktif')
-      .eq('layanan_id', layananId);
-    if (muatan !== muatanTerakhir.current) return;
-    setJadwal(dariBaris((data ?? []) as JadwalStandbyRow[]));
+    setJadwal(null);
+    setGalatMuatJadwal(null);
     setGalatJadwal(null);
+    let rows: JadwalStandbyRow[] | null = null;
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('jadwal_standby')
+        .select('hari, jam_mulai, jam_selesai, aktif')
+        .eq('layanan_id', layananId);
+      if (!error) rows = (data ?? []) as JadwalStandbyRow[];
+    } catch {
+      rows = null;
+    }
+    if (muatan !== muatanTerakhir.current) return;
+    if (rows === null) {
+      // Jangan render jadwal kosong (semua hari nonaktif): menyimpannya akan menutup layanan.
+      setGalatMuatJadwal('Jadwal layanan ini tidak dapat dimuat. Periksa koneksi Anda lalu coba lagi.');
+      return;
+    }
+    setJadwal(dariBaris(rows));
   }, []);
 
   // Hari libur nasional berlaku global; daftar dimulai dari hari ini (WIB).
   const loadLibur = useCallback(async () => {
-    const supabase = createClient();
-    const { data } = await supabase
-      .from('hari_libur')
-      .select('tanggal, keterangan')
-      .gte('tanggal', todayWIB())
-      .order('tanggal');
-    setLiburList((data ?? []) as HariLibur[]);
+    setGalatMuatLibur(null);
+    let rows: HariLibur[] | null = null;
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('hari_libur')
+        .select('tanggal, keterangan')
+        .gte('tanggal', todayWIB())
+        .order('tanggal');
+      if (!error) rows = (data ?? []) as HariLibur[];
+    } catch {
+      rows = null;
+    }
+    if (rows === null) {
+      setGalatMuatLibur('Daftar hari libur tidak dapat dimuat. Periksa koneksi Anda lalu coba lagi.');
+      return;
+    }
+    setLiburList(rows);
   }, []);
 
   useEffect(() => {
@@ -166,6 +193,7 @@ export default function AdminJadwalPage() {
   }, [loadJadwal, loadLibur]);
 
   const handleSelectLayanan = async (id: string) => {
+    // Jadwal layanan sebelumnya langsung dikosongkan (di dalam loadJadwal) agar tak bisa tersimpan ke layanan baru.
     setSelectedLayananId(id);
     await loadJadwal(id);
   };
@@ -307,6 +335,31 @@ export default function AdminJadwalPage() {
           </select>
         </div>
 
+        {!jadwal && !galatMuatJadwal && selectedLayananId && (
+          <p role="status" style={{ marginTop: 'var(--space-4)', color: 'var(--text-tertiary)', fontSize: 'var(--text-sm)' }}>
+            Memuat jadwal...
+          </p>
+        )}
+
+        {galatMuatJadwal && (
+          <div
+            role="alert"
+            style={{
+              marginTop: 'var(--space-4)',
+              padding: 'var(--space-3) var(--space-4)',
+              borderRadius: 'var(--radius-lg)',
+              borderLeft: '4px solid var(--color-error-500, #b91c1c)',
+              color: 'var(--color-error-700, #991b1b)',
+              fontSize: 'var(--text-sm)',
+            }}
+          >
+            <p style={{ marginBottom: 'var(--space-2)' }}>{galatMuatJadwal}</p>
+            <button type="button" className="btn btn--secondary btn--sm" onClick={() => loadJadwal(selectedLayananId)}>
+              Coba lagi
+            </button>
+          </div>
+        )}
+
         {jadwal && (
           <section
             className="table-wrapper"
@@ -420,7 +473,14 @@ export default function AdminJadwalPage() {
             </form>
           )}
 
-          {liburList.length === 0 ? (
+          {galatMuatLibur ? (
+            <div role="alert" style={{ color: 'var(--color-error-700, #991b1b)', fontSize: 'var(--text-sm)' }}>
+              <p style={{ marginBottom: 'var(--space-2)' }}>{galatMuatLibur}</p>
+              <button type="button" className="btn btn--secondary btn--sm" onClick={() => loadLibur()}>
+                Coba lagi
+              </button>
+            </div>
+          ) : liburList.length === 0 ? (
             <p style={{ color: 'var(--text-tertiary)', fontSize: 'var(--text-sm)' }}>
               Belum ada hari libur nasional yang akan datang.{canEdit ? ' Tambahkan tanggalnya di atas.' : ''}
             </p>

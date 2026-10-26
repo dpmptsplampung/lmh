@@ -17,6 +17,9 @@ const h = vi.hoisted(() => ({
   state: {
     role: 'petugas' as string,
     jadwalRows: [] as { hari: number; jam_mulai: string; jam_selesai: string; aktif: boolean }[],
+    jadwalError: null as Err,
+    jadwalGate: null as Promise<void> | null, // bila diisi, pembacaan jadwal_standby menunggu gerbang ini
+    liburError: null as Err,
     upsertError: null as Err,
     upsertRows: null as { hari: number }[] | null, // null = sama dengan baris yang dikirim
     insertError: null as Err,
@@ -44,13 +47,19 @@ vi.mock('@/lib/supabase/client', () => {
           error: null,
         };
       }
-      if (table === 'jadwal_standby') return { data: h.state.jadwalRows, error: null };
+      if (table === 'jadwal_standby') {
+        const hasil = h.state.jadwalError
+          ? { data: null, error: h.state.jadwalError }
+          : { data: h.state.jadwalRows, error: null };
+        return h.state.jadwalGate ? h.state.jadwalGate.then(() => hasil) : hasil;
+      }
       if (table === 'hari_libur' && op === 'delete') {
         h.deleteSelected(selected);
         return selected ? h.state.deleteResult : { ...h.state.deleteResult, data: null };
       }
       if (table === 'hari_libur') {
         h.liburReads();
+        if (h.state.liburError) return { data: null, error: h.state.liburError };
         return { data: [{ tanggal: '2099-12-25', keterangan: 'Natal' }], error: null };
       }
       return { data: [], error: null };
@@ -120,6 +129,9 @@ describe('admin jadwal: jadwal_standby + hari libur nasional', () => {
     h.fromCalls.length = 0;
     h.state.role = 'petugas';
     h.state.jadwalRows = SENIN_SAMPAI_RABU;
+    h.state.jadwalError = null;
+    h.state.jadwalGate = null;
+    h.state.liburError = null;
     h.state.upsertError = null;
     h.state.upsertRows = null;
     h.state.insertError = null;
@@ -265,6 +277,58 @@ describe('admin jadwal: jadwal_standby + hari libur nasional', () => {
     await waitFor(() => expect((screen.getByRole('checkbox', { name: 'Sabtu' }) as HTMLInputElement).checked).toBe(true));
     expect((screen.getByRole('checkbox', { name: 'Senin' }) as HTMLInputElement).checked).toBe(false);
     expect(jamBuka('Sabtu').value).toBe('10:00');
+  });
+
+  it('gagal memuat jadwal -> galat + tanpa editor/tombol simpan; "Coba lagi" memuat ulang', async () => {
+    h.state.role = 'admin';
+    h.state.jadwalError = { message: 'TypeError: Failed to fetch', code: '' };
+    render(<AdminJadwalPage />);
+    const alert = await screen.findByText(/Jadwal layanan ini tidak dapat dimuat/);
+    expect(alert).toBeTruthy();
+    expect(screen.queryByRole('checkbox', { name: 'Senin' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Simpan jadwal/ })).toBeNull();
+    expect(h.writes).not.toHaveBeenCalled();
+
+    h.state.jadwalError = null;
+    fireEvent.click(screen.getByRole('button', { name: 'Coba lagi' }));
+    await waitFor(() => expect((screen.getByRole('checkbox', { name: 'Senin' }) as HTMLInputElement).checked).toBe(true));
+    expect(screen.getByRole('button', { name: /Simpan jadwal/ })).toBeTruthy();
+    expect(screen.queryByText(/Jadwal layanan ini tidak dapat dimuat/)).toBeNull();
+  });
+
+  it('gagal memuat hari libur -> galat + "Coba lagi", bukan pesan "Belum ada hari libur"', async () => {
+    h.state.role = 'admin';
+    h.state.liburError = { message: 'TypeError: Failed to fetch', code: '' };
+    render(<AdminJadwalPage />);
+    expect(await screen.findByText(/Daftar hari libur tidak dapat dimuat/)).toBeTruthy();
+    expect(screen.queryByText(/Belum ada hari libur/)).toBeNull();
+
+    h.state.liburError = null;
+    const coba = screen.getAllByRole('button', { name: 'Coba lagi' });
+    fireEvent.click(coba[coba.length - 1]);
+    expect(await screen.findByText('Natal')).toBeTruthy();
+    expect(screen.queryByText(/Daftar hari libur tidak dapat dimuat/)).toBeNull();
+  });
+
+  it('ganti layanan: sebelum jadwal baru termuat, tombol simpan hilang (tak bisa menulis minggu lama ke layanan baru)', async () => {
+    h.state.role = 'admin';
+    render(<AdminJadwalPage />);
+    await screen.findByRole('checkbox', { name: 'Senin' });
+    let buka!: () => void;
+    h.state.jadwalGate = new Promise<void>((r) => { buka = r; });
+    h.state.jadwalRows = [{ hari: 6, jam_mulai: '10:00:00', jam_selesai: '12:00:00', aktif: true }];
+    fireEvent.change(screen.getByLabelText('Layanan'), { target: { value: 'l2' } });
+    await waitFor(() => expect(screen.queryByRole('button', { name: /Simpan jadwal/ })).toBeNull());
+    expect(screen.queryByRole('checkbox', { name: 'Senin' })).toBeNull();
+    expect(h.writes).not.toHaveBeenCalled();
+
+    buka();
+    await waitFor(() => expect((screen.getByRole('checkbox', { name: 'Sabtu' }) as HTMLInputElement).checked).toBe(true));
+    await klikSimpan();
+    await waitFor(() => expect(h.writes).toHaveBeenCalled());
+    const values = h.writes.mock.calls.find((c) => c[0] === 'upsert')![2] as Record<string, unknown>[];
+    expect(values.every((v) => v.layanan_id === 'l2')).toBe(true);
+    expect(values[0]).toMatchObject({ hari: 1, aktif: false }); // bukan minggu layanan lama
   });
 
   it('bagian "Hari libur nasional" menambah baris ke hari_libur dan menampilkan daftar mulai hari ini (WIB)', async () => {
