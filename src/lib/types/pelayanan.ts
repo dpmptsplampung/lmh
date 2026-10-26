@@ -200,6 +200,8 @@ export interface PelayananInitialData {
    * hanya saat itu draf boleh disimpan dan layanan boleh diselesaikan. Selain itu wizard baca-saja.
    */
   boleh_ubah: boolean;
+  /** Fase 3: boleh menyelesaikan (pemilik tiket). Tidak ada = sama dengan boleh_ubah (respons lama). */
+  boleh_selesaikan?: boolean;
   /** true bila tiket hasil eskalasi Front Office (penanganan_asal_id terisi). Informasi saja sejak 202610140015. */
   dari_eskalasi?: boolean;
   is_locked: boolean;

@@ -110,3 +110,7 @@ CREATE POLICY perizinan_update_staff ON public.pelayanan_perizinan
     )
   );
 ```
+
+## Pembaruan 2026-10-29 (Fase 3, migrasi `202610290001`, BELUM DITERAPKAN)
+
+Policy baca `oss_read_staff`/`perizinan_read_staff` kini `boleh_baca_pendataan(tiket_id, petugas_id)` (lingkup per orang/Koordinator + jendela operasional hari ini/terbuka); policy tulis draf memakai `boleh_sunting_pendataan(tiket_id)` (pemilik tiket, atau pemegang lama yang diambil alih Koordinator). Rinci: `docs/analysis/04-RBAC-MATRIX.md` §7.

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { audit, json, requireAdmin } from '@/lib/akun/server';
 import { MutasiError, mutasiInsert, mutasiWajibBaris } from '@/lib/supabase/mutate';
 import { catatMutasiGagal, kodeDbMutasi, pesanDbMutasi } from '@/app/api/admin/_mutasi';
+import { objekBelumAda } from '@/lib/akses-data/galat';
 import { isSyntheticEmail, isValidUsername, normalizeNoHp, normalizeUsername, usernameToEmail } from '@/lib/akun/login';
 
 export const dynamic = 'force-dynamic';
@@ -88,6 +89,21 @@ export async function PATCH(request: NextRequest, { params }: Ctx) {
     if (isSyntheticEmail(b.email_login)) return json({ error: 'Gunakan username untuk email login sintetis' }, 400);
   }
 
+  // Fase 3 (review keamanan): penanda Koordinator memberi lingkup data UNIT. Pencabutan dilakukan DB secara atomik
+  // (pemicu trg_petugas_cabut_koordinator, migrasi 202610290001) dalam UPDATE yang sama dengan perubahan role/layanan_id.
+  // Di sini hanya dibaca keadaan SEBELUM tulis untuk audit (koordinator_dicabut). Kolom belum ada (migrasi belum
+  // diterapkan) = tidak ada penanda; galat baca lain = tolak SEBELUM menulis apa pun (tidak dilewati diam-diam).
+  const unitBerubah = 'role' in upd || ('layanan_id' in upd && upd.layanan_id !== target.layanan_id);
+  let koordinatorDicabut = false;
+  if (unitBerubah) {
+    const { data: penanda, error: ePenanda } = await service.from('petugas').select('koordinator').eq('id', id).maybeSingle();
+    if (ePenanda && !objekBelumAda(ePenanda)) {
+      console.error('[admin/petugas PATCH] gagal membaca penanda Koordinator', ePenanda.message);
+      return json({ error: 'Gagal membaca penanda Koordinator; tidak ada perubahan yang disimpan' }, 500);
+    }
+    koordinatorDicabut = !ePenanda && (penanda as { koordinator?: unknown } | null)?.koordinator === true;
+  }
+
   // ---- tulis petugas ----
   if (Object.keys(upd).length > 0) {
     try {
@@ -154,6 +170,7 @@ export async function PATCH(request: NextRequest, { params }: Ctx) {
     username: usernameBaru ? { dari: target.username, ke: usernameBaru } : undefined,
     email_login_diganti: emailAuthBaru ? true : undefined,
     sesi_diakhiri: emailAuthBaru && !self ? !sesiGagal : undefined,
+    koordinator_dicabut: koordinatorDicabut || undefined,
   });
   // Perubahan sudah tersimpan; kegagalan mengakhiri sesi dikabarkan lewat `peringatan` (pola yang sama dengan /status).
   return json({

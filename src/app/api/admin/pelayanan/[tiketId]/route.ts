@@ -64,20 +64,46 @@ const STATUS_GALAT_ANTREAN: Record<KodeGalatAntrean, number> = {
   BUKAN_HARI_INI: 409,
   LAYANAN_TIDAK_BUKA: 409,
   LAYANAN_TUTUP: 409,
+  // Fase 3: ambil alih Koordinator (tidak dipakai route ini, wajib ada agar peta lengkap).
+  BUKAN_SATU_UNIT: 403,
+  KANAL_CHAT: 409,
 };
 
 function responsGalatAntrean(kode: KodeGalatAntrean, pesan?: string) {
   return NextResponse.json({ error: pesan ?? PESAN_GALAT_ANTREAN[kode], kode }, { status: STATUS_GALAT_ANTREAN[kode] });
 }
 
-// Draf hanya boleh ditulis pemilik tiket yang sedang 'dilayani' (keputusan CEO 7.5; RLS pemilik_tiket menegakkan
-// hal yang sama di DB). Admin yang perlu mengisi draf tiket orang lain harus "Ambil alih" dulu.
-function tolakDrafBukanPemilik(
+type KlienRpc = Awaited<ReturnType<typeof createClient>>;
+
+// Fase 3 (spec §6.2, migrasi 202610290001): pemegang lama yang pendataannya diambil alih Koordinator tetap boleh
+// menyunting draf selama tiket masih 'dilayani'. Ditentukan DB (boleh_sunting_pendataan, juga dipakai RLS draf);
+// sebelum migrasi diterapkan RPC belum ada -> false (perilaku lama: hanya pemilik).
+async function bolehSuntingDraf(
+  supabase: KlienRpc,
   staff: { id: string; role: string | null },
-  tiket: { status?: string | null; dilayani_oleh?: string | null },
+  tiket: { id: string; status?: string | null; dilayani_oleh?: string | null },
+): Promise<boolean> {
+  const status = tiket.status ?? '';
+  if (bolehSelesaikanTiket(staff, { status, dilayani_oleh: tiket.dilayani_oleh })) return true;
+  if (status !== 'dilayani' || (staff.role !== 'petugas' && staff.role !== 'admin')) return false;
+  try {
+    const { data, error } = await supabase.rpc('boleh_sunting_pendataan', { p_tiket_id: tiket.id });
+    return !error && data === true;
+  } catch {
+    return false;
+  }
+}
+
+// Draf hanya boleh ditulis pemilik tiket yang sedang 'dilayani' (keputusan CEO 7.5; RLS menegakkan hal yang sama di
+// DB) atau pemegang lama yang diambil alih Koordinator. Admin yang perlu mengisi draf tiket orang lain harus
+// "Ambil alih" dulu.
+async function tolakDrafBukanPemilik(
+  supabase: KlienRpc,
+  staff: { id: string; role: string | null },
+  tiket: { id: string; status?: string | null; dilayani_oleh?: string | null },
 ) {
   const status = tiket.status ?? '';
-  if (bolehSelesaikanTiket(staff, { status, dilayani_oleh: tiket.dilayani_oleh })) return null;
+  if (await bolehSuntingDraf(supabase, staff, tiket)) return null;
   if (status !== 'dilayani') {
     return responsGalatAntrean(
       'INVALID_STATUS',
@@ -213,7 +239,9 @@ export async function GET(
       status_tiket: tiket.status,
       dilayani_oleh: tiket.dilayani_oleh ?? null,
       dilayani_oleh_nama: pelayanData?.nama ?? null,
-      boleh_ubah: !isLocked && bolehSelesaikanTiket(staff, { status: tiket.status, dilayani_oleh: tiket.dilayani_oleh }),
+      boleh_ubah: !isLocked && (await bolehSuntingDraf(supabase, staff, tiket)),
+      // Menyelesaikan tetap hanya pemilik tiket (layanan_selesai); pemegang lama setelah ambil alih hanya menyunting draf.
+      boleh_selesaikan: !isLocked && bolehSelesaikanTiket(staff, { status: tiket.status, dilayani_oleh: tiket.dilayani_oleh }),
       dari_eskalasi: dariEskalasi,
       is_locked: isLocked,
       status_draft: statusDraft,
@@ -274,7 +302,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'Layanan tidak valid' }, { status: 400 });
     }
 
-    const tolak = tolakDrafBukanPemilik(staff, tiket);
+    const tolak = await tolakDrafBukanPemilik(supabase, staff, tiket);
     if (tolak) return tolak;
 
     const body = await request.json();

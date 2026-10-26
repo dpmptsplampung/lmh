@@ -1,631 +1,346 @@
 'use client';
 
-// WP-30 & Fitur Pendataan Pelayanan: Admin recap dashboard.
-// Mendukung:
-// 1. Rekap Agregat Harian Layanan (rekap_harian_layanan)
-// 2. Rekap Pelayanan Helpdesk OSS (v_rekap_pelayanan_oss)
-// 3. Rekap Pelayanan Non OSS / SiCantik Lampung (v_rekap_pelayanan_perizinan)
-
-import { useState, useEffect, useCallback } from 'react';
-import { todayWIB, addDaysWIB } from '@/lib/time';
-import {
-  BarChart2,
-  RefreshCw,
-  Download,
-  TrendingUp,
-  CheckCircle2,
-  XCircle,
-  Building2,
-  FileCheck,
-  Loader2,
-} from 'lucide-react';
+// Rekap terpadu (Fase 3, spec §6.3): satu halaman, otomatis dibatasi lingkup akses §6.1 (ditegakkan RPC database
+// migrasi 202610290002, lewat /api/admin/rekap/terpadu). Tiga bagian: Rekap Harian, Data Pelayanan (+ unduh Excel),
+// Kinerja Petugas. Menggantikan tab OSS / Non OSS / Per Layanan / Petugas Layanan dan halaman Rekap Front Office.
+// Satu definisi "dilayani" untuk semua angka (lihat DEFINISI_DILAYANI). Tidak ada tombol "Rollup": selalu terkini.
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { BarChart2, Download, Loader2, RefreshCw, Table2, Users } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
-import { createClient } from '@/lib/supabase/client';
-import { useToast } from '@/components/Toast';
 import RoleNote from '@/components/admin/RoleNote';
-import RekapLayananTable, { type LayananOption } from '@/components/admin/RekapLayananTable';
-import RekapPenangananTable from '@/components/admin/RekapPenangananTable';
-import { tambahNamaFo } from '@/lib/rekap/foTiket';
+import Pagination from '@/components/Pagination';
+import { useToast } from '@/components/Toast';
+import { addDaysWIB, todayWIB } from '@/lib/time';
+import { formatMenit, formatTanggalId } from '@/lib/rekap/format';
+import { DEFINISI_DILAYANI } from '@/lib/rekap/excelTerpadu';
+import {
+  kolomDataPelayanan,
+  namaUnit,
+  type BarisHarian,
+  type BarisKinerja,
+  type BarisPelayanan,
+  type FormPendataan,
+  type RingkasanHarian,
+  type UnitRekap,
+} from '@/lib/rekap/terpadu';
+import styles from './rekap.module.css';
 
-interface RekapRow {
-  layanan_id: string;
-  tanggal: string;
-  total_hadir: number;
-  total_selesai: number;
-  total_tidak_terlayani: number;
-  total_batal: number;
-  rata_durasi_menit: number | null;
-  petugas_hadir: boolean;
-  petugas_alpa: boolean;
-  layanan?: { nama: string } | null;
+type Bagian = 'harian' | 'data' | 'kinerja';
+
+const BAGIAN: { kunci: Bagian; label: string; ikon: typeof BarChart2 }[] = [
+  { kunci: 'harian', label: 'Rekap Harian', ikon: BarChart2 },
+  { kunci: 'data', label: 'Data Pelayanan', ikon: Table2 },
+  { kunci: 'kinerja', label: 'Kinerja Petugas', ikon: Users },
+];
+
+const UKURAN_HALAMAN = 50;
+
+interface InfoLingkup {
+  label: string;
+  opsi_layanan: { id: string; nama: string; form_pendataan: string | null }[];
+  unit_opsi: UnitRekap[];
 }
 
-interface RekapOssRow {
-  id: string;
-  tiket_id: string;
-  nomor_display: string;
-  tanggal: string;
-  nama_pemohon: string;
-  no_hp: string | null;
-  nama_usaha: string;
-  tipe_pelaku_usaha: string | null;
-  status_penanaman_modal: string | null;
-  lokasi_usaha: string | null;
-  skala_usaha: string | null;
-  sektor_usaha_kbli: string | null;
-  tindak_lanjut: string;
-  uraian_solusi: string;
-  nama_petugas: string;
-  /** Front Office dari tahap FO pada kunjungan tiket; null = tiket lama tanpa tahap FO. */
-  fo_nama?: string | null;
-  status_draft: string;
-  is_locked: boolean;
-  created_at: string;
+type Status = { jenis: 'siap' } | { jenis: 'migrasi'; pesan: string } | { jenis: 'galat'; pesan: string };
+
+async function ambilJson(url: string): Promise<{ ok: boolean; status: number; body: Record<string, unknown> }> {
+  const res = await fetch(url);
+  const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  return { ok: res.ok, status: res.status, body };
 }
 
-interface RekapPerizinanRow {
-  id: string;
-  tiket_id: string;
-  nomor_display: string;
-  tanggal: string;
-  nama_pemohon: string;
-  no_hp: string | null;
-  nama_perusahaan: string;
-  opd_teknis: string;
-  uraian_permohonan: string;
-  tindak_lanjut: string;
-  catatan_petugas: string | null;
-  nama_petugas: string;
-  fo_nama?: string | null;
-  status_draft: string;
-  is_locked: boolean;
-  created_at: string;
-}
-
-type TabType = 'umum' | 'oss' | 'perizinan' | 'layanan' | 'penanganan';
-
-export default function AdminRekapPage() {
+function RekapTerpadu() {
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState<TabType>('umum');
-  const [rows, setRows] = useState<RekapRow[]>([]);
-  const [ossRows, setOssRows] = useState<RekapOssRow[]>([]);
-  const [perizinanRows, setPerizinanRows] = useState<RekapPerizinanRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [rolling, setRolling] = useState(false);
-  const [exporting, setExporting] = useState(false);
-  const [mulai, setMulai] = useState(addDaysWIB(-6));
-  const [selesai, setSelesai] = useState(todayWIB());
-  // Role-scoped options for the Layanan tab (lifted from RekapLayananTable so the
-  // page knows whether to render the Layanan tab with a locked layanan filter).
-  const [isPetugas, setIsPetugas] = useState(false);
-  // Tab Rekap Petugas Layanan terbuka untuk Admin, Petugas, dan Front Office (keputusan CEO 2026-10-14). Cakupan
-  // ditegakkan server (api/admin/rekap/penanganan): Admin & FO semua (keterbukaan antar FO), Petugas layanannya.
-  const [initialLayananId, setInitialLayananId] = useState<string | null>(null);
-  const [layananOptions, setLayananOptions] = useState<LayananOption[]>([]);
+  const sp = useSearchParams();
+  const bagianAwal = sp.get('bagian');
+  const unitAwal = sp.get('unit');
+  const [bagian, setBagian] = useState<Bagian>(
+    bagianAwal === 'data' || bagianAwal === 'kinerja' ? bagianAwal : 'harian',
+  );
+  const [dari, setDari] = useState(addDaysWIB(-6));
+  const [sampai, setSampai] = useState(todayWIB());
+  const [unit, setUnit] = useState<'' | UnitRekap>(unitAwal === 'fo' || unitAwal === 'layanan' ? unitAwal : '');
+  const [layananId, setLayananId] = useState('');
+  const [info, setInfo] = useState<InfoLingkup | null>(null);
+  const [status, setStatus] = useState<Status>({ jenis: 'siap' });
+  const [memuat, setMemuat] = useState(true);
+  const [mengekspor, setMengekspor] = useState(false);
+  const [harian, setHarian] = useState<{ rows: BarisHarian[]; ringkasan: RingkasanHarian } | null>(null);
+  const [data, setData] = useState<{ rows: BarisPelayanan[]; total: number; form_type: FormPendataan | null } | null>(null);
+  const [kinerja, setKinerja] = useState<BarisKinerja[] | null>(null);
+  const [halaman, setHalaman] = useState(0);
+
+  const params = useMemo(() => {
+    const p = new URLSearchParams({ dari, sampai });
+    if (unit) p.set('unit', unit);
+    if (layananId && unit !== 'fo') p.set('layanan_id', layananId);
+    return p;
+  }, [dari, sampai, unit, layananId]);
+
+  const tanganiGagal = useCallback((r: { status: number; body: Record<string, unknown> }) => {
+    const pesan = typeof r.body.error === 'string' ? r.body.error : 'Gagal memuat rekap';
+    if (r.status === 409 && r.body.kode === 'MIGRASI_BELUM_DITERAPKAN') setStatus({ jenis: 'migrasi', pesan });
+    else setStatus({ jenis: 'galat', pesan });
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
+    let batal = false;
     (async () => {
       try {
-        const res = await fetch('/api/admin/rekap/layanan-options');
-        const body = await res.json();
-        if (!cancelled && res.ok) {
-          setIsPetugas(!!body.is_petugas);
-          setInitialLayananId(body.default_layanan_id ?? null);
-          setLayananOptions((body.options ?? []) as LayananOption[]);
-        }
+        const r = await ambilJson('/api/admin/rekap/terpadu?bagian=lingkup');
+        if (batal) return;
+        if (!r.ok) return tanganiGagal(r);
+        setInfo(r.body as unknown as InfoLingkup);
       } catch {
-        // silent — RekapLayananTable will retry on mount
+        if (!batal) setStatus({ jenis: 'galat', pesan: 'Gagal memuat lingkup data' });
       }
     })();
     return () => {
-      cancelled = true;
+      batal = true;
     };
-  }, []);
+  }, [tanganiGagal]);
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
+  const muat = useCallback(async () => {
+    setMemuat(true);
     try {
-      const supabase = createClient();
-
-      if (activeTab === 'umum') {
-        const { data, error } = await supabase
-          .from('rekap_harian_layanan')
-          .select('*, layanan:layanan_id(nama)')
-          .gte('tanggal', mulai)
-          .lte('tanggal', selesai)
-          .order('tanggal', { ascending: false })
-          .order('layanan_id');
-        if (error) throw error;
-        setRows((data ?? []) as RekapRow[]);
-      } else if (activeTab === 'oss') {
-        const { data, error } = await supabase
-          .from('v_rekap_pelayanan_oss')
-          .select('*')
-          .gte('tanggal', mulai)
-          .lte('tanggal', selesai)
-          .order('created_at', { ascending: false });
-        if (error) throw error;
-        // Nama FO dimuat terpisah (view tidak memuat penanganan); gagal -> '—', rekap tetap tampil.
-        setOssRows(await tambahNamaFo(supabase, (data ?? []) as RekapOssRow[]));
-      } else if (activeTab === 'perizinan') {
-        const { data, error } = await supabase
-          .from('v_rekap_pelayanan_perizinan')
-          .select('*')
-          .gte('tanggal', mulai)
-          .lte('tanggal', selesai)
-          .order('created_at', { ascending: false });
-        if (error) throw error;
-        setPerizinanRows(await tambahNamaFo(supabase, (data ?? []) as RekapPerizinanRow[]));
+      const p = new URLSearchParams(params);
+      p.set('bagian', bagian);
+      if (bagian === 'data') {
+        p.set('page', String(halaman));
+        p.set('page_size', String(UKURAN_HALAMAN));
       }
+      const r = await ambilJson(`/api/admin/rekap/terpadu?${p}`);
+      if (!r.ok) return tanganiGagal(r);
+      setStatus({ jenis: 'siap' });
+      if (bagian === 'harian') setHarian(r.body as unknown as { rows: BarisHarian[]; ringkasan: RingkasanHarian });
+      else if (bagian === 'data') setData(r.body as unknown as { rows: BarisPelayanan[]; total: number; form_type: FormPendataan | null });
+      else setKinerja((r.body.rows ?? []) as BarisKinerja[]);
     } catch {
-      toast('Gagal memuat rekap', 'error');
+      setStatus({ jenis: 'galat', pesan: 'Gagal memuat rekap' });
     } finally {
-      setLoading(false);
+      setMemuat(false);
     }
-  }, [activeTab, mulai, selesai, toast]);
+  }, [bagian, halaman, params, tanganiGagal]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    loadData();
-  }, [loadData]);
+    muat();
+  }, [muat]);
 
-  const handleRollupHariIni = async () => {
-    setRolling(true);
+  const unduh = async () => {
+    setMengekspor(true);
     try {
-      // rollup_rekap_harian hanya bisa dieksekusi service_role — panggil
-      // endpoint server, bukan rpc dari browser (yang selalu ditolak RLS).
-      const res = await fetch('/api/admin/rekap/rollup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dari: todayWIB(), sampai: todayWIB() }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error ?? 'Gagal menjalankan rollup');
-      toast('Rekap hari ini berhasil diperbarui', 'success');
-      await loadData();
-    } catch (e) {
-      toast(e instanceof Error ? e.message : 'Gagal menjalankan rollup', 'error');
-    } finally {
-      setRolling(false);
-    }
-  };
-
-  // Unduh Excel per tab via endpoint server (audit_log dicatat di sisi server).
-  // Tab 'layanan' punya tombol Download Excel sendiri di dalam RekapLayananTable.
-  const handleExportExcel = async (tab: 'umum' | 'oss' | 'perizinan') => {
-    setExporting(true);
-    try {
-      const params = new URLSearchParams({ tab, dari: mulai, sampai: selesai });
-      const res = await fetch(`/api/admin/rekap/export?${params}`);
+      const res = await fetch(`/api/admin/rekap/terpadu/export?${params}`);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        toast(body.error ?? 'Gagal mengekspor Excel', 'error');
+        toast(body.error ?? 'Gagal mengunduh Excel', 'error');
         return;
       }
       const blob = await res.blob();
-      const dispo = res.headers.get('Content-Disposition') ?? '';
-      const match = /filename="?([^";]+)"?/.exec(dispo);
-      const filename = match?.[1] ?? `rekap_${tab}_${mulai}_${selesai}.xlsx`;
+      const nama = /filename="?([^";]+)"?/.exec(res.headers.get('Content-Disposition') ?? '')?.[1]
+        ?? `data-pelayanan-${dari}-sd-${sampai}.xlsx`;
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = filename;
+      a.download = nama;
       a.click();
       URL.revokeObjectURL(url);
-      if (res.headers.get('X-Rekap-Truncated') === 'true') {
-        toast('Data terpotong ke 50.000 baris. Persempit rentang tanggal.', 'warning');
-      } else {
-        toast('Berkas Excel berhasil diunduh', 'success');
-      }
+      toast(
+        res.headers.get('X-Rekap-Truncated') === 'true'
+          ? 'Data terpotong ke 50.000 baris. Persempit rentang tanggal.'
+          : 'Berkas Excel berhasil diunduh',
+        res.headers.get('X-Rekap-Truncated') === 'true' ? 'warning' : 'success',
+      );
     } catch {
-      toast('Gagal mengekspor Excel', 'error');
+      toast('Gagal mengunduh Excel', 'error');
     } finally {
-      setExporting(false);
+      setMengekspor(false);
     }
   };
 
-  const totalHadir   = rows.reduce((s, r) => s + r.total_hadir, 0);
-  const totalSelesai = rows.reduce((s, r) => s + r.total_selesai, 0);
-  const totalAlpa    = rows.filter(r => r.petugas_alpa).length;
+  const ubahFilter = <T,>(setter: (v: T) => void) => (v: T) => {
+    setHalaman(0);
+    setter(v);
+  };
+
+  const kolom = kolomDataPelayanan(data?.form_type ?? null);
+  const pilihLayanan = (info?.opsi_layanan.length ?? 0) > 0 && unit !== 'fo';
 
   return (
     <>
-      <PageHeader
-        title="Rekapitulasi Pelayanan &amp; Kunjungan"
-        description="Laporan agregat harian dan data substantif konsultasi perizinan"
-      >
-        <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center', flexWrap: 'wrap' }}>
-          <button className="btn btn--ghost btn--sm" onClick={loadData}>
-            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} /> Refresh
-          </button>
-          {activeTab === 'umum' && (
-            <button className="btn btn--primary btn--sm" onClick={handleRollupHariIni} disabled={rolling}>
-              <BarChart2 size={16} /> {rolling ? 'Memproses…' : 'Rollup Hari Ini'}
-            </button>
-          )}
-        </div>
+      <PageHeader title="Rekap Pelayanan" description="Rekap harian, data pelayanan, dan kinerja petugas sesuai hak akses Anda">
+        <button type="button" className="btn btn--ghost btn--sm" onClick={muat} disabled={memuat}>
+          <RefreshCw size={16} className={memuat ? 'animate-spin' : ''} aria-hidden="true" /> Muat ulang
+        </button>
       </PageHeader>
 
-      <div style={{ padding: 'var(--space-8)' }}>
-        {isPetugas && (
-          <RoleNote>
-            Data ini hanya untuk layanan{' '}
-            {layananOptions.find((o) => o.id === initialLayananId)?.nama ?? 'Anda'}. Setiap ekspor tercatat.
-          </RoleNote>
-        )}
-        {/* Navigation Tabs */}
-        <div
-          style={{
-            display: 'flex',
-            gap: 'var(--space-2)',
-            borderBottom: '1px solid var(--border-default)',
-            marginBottom: 'var(--space-6)',
-          }}
-        >
-          <button
-            className={`btn ${activeTab === 'umum' ? 'btn--primary' : 'btn--ghost'} btn--sm`}
-            onClick={() => setActiveTab('umum')}
-            style={{ borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }}
-          >
-            <BarChart2 size={16} /> Rekap Umum Harian
-          </button>
-          <button
-            className={`btn ${activeTab === 'oss' ? 'btn--primary' : 'btn--ghost'} btn--sm`}
-            onClick={() => setActiveTab('oss')}
-            style={{ borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }}
-          >
-            <Building2 size={16} /> Pendataan Helpdesk OSS
-          </button>
-          <button
-            className={`btn ${activeTab === 'perizinan' ? 'btn--primary' : 'btn--ghost'} btn--sm`}
-            onClick={() => setActiveTab('perizinan')}
-            style={{ borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }}
-          >
-            <FileCheck size={16} /> Non OSS (SiCantik Lampung)
-          </button>
-          <button
-            className={`btn ${activeTab === 'layanan' ? 'btn--primary' : 'btn--ghost'} btn--sm`}
-            onClick={() => setActiveTab('layanan')}
-            style={{ borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }}
-          >
-            <BarChart2 size={16} /> Rekap Per Layanan
-          </button>
-          <button
-            className={`btn ${activeTab === 'penanganan' ? 'btn--primary' : 'btn--ghost'} btn--sm`}
-            onClick={() => setActiveTab('penanganan')}
-            style={{ borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }}
-          >
-            <FileCheck size={16} /> Rekap Petugas Layanan
-          </button>
+      <div className={styles.wadah}>
+        {info && <RoleNote>{info.label} Setiap unduhan tercatat.</RoleNote>}
+        <p className={styles.definisi}>{DEFINISI_DILAYANI}</p>
+
+        {status.jenis === 'migrasi' && <p className={styles.peringatan} role="status">{status.pesan}</p>}
+        {status.jenis === 'galat' && <p className={styles.peringatan} role="alert">{status.pesan}</p>}
+
+        <div className={styles.filter}>
+          <div className="form-group">
+            <label className="form-label" htmlFor="rekap-dari">Dari tanggal</label>
+            <input id="rekap-dari" type="date" className="form-input" value={dari} max={sampai}
+              onChange={(e) => ubahFilter(setDari)(e.target.value)} />
+          </div>
+          <div className="form-group">
+            <label className="form-label" htmlFor="rekap-sampai">Sampai tanggal</label>
+            <input id="rekap-sampai" type="date" className="form-input" value={sampai} min={dari}
+              onChange={(e) => ubahFilter(setSampai)(e.target.value)} />
+          </div>
+          {info && info.unit_opsi.length > 1 && (
+            <div className="form-group">
+              <label className="form-label" htmlFor="rekap-unit">Unit</label>
+              <select id="rekap-unit" className="form-input" value={unit}
+                onChange={(e) => ubahFilter(setUnit)(e.target.value as '' | UnitRekap)}>
+                <option value="">Semua unit</option>
+                <option value="fo">Front Office</option>
+                <option value="layanan">Layanan</option>
+              </select>
+            </div>
+          )}
+          {pilihLayanan && info && (
+            <div className="form-group">
+              <label className="form-label" htmlFor="rekap-layanan">Layanan</label>
+              <select id="rekap-layanan" className="form-input" value={layananId}
+                onChange={(e) => ubahFilter(setLayananId)(e.target.value)}>
+                <option value="">Semua Layanan</option>
+                {info.opsi_layanan.map((o) => <option key={o.id} value={o.id}>{o.nama}</option>)}
+              </select>
+            </div>
+          )}
         </div>
 
-        {/* Filter bar per tab (umum/oss/perizinan): rentang tanggal + Download Excel di kanan.
-            Tab layanan punya filter sendiri di dalam RekapLayananTable. */}
-        {activeTab !== 'layanan' && activeTab !== 'penanganan' && (
-          <div
-            style={{
-              display: 'flex',
-              gap: 'var(--space-3)',
-              alignItems: 'flex-end',
-              flexWrap: 'wrap',
-              marginBottom: 'var(--space-6)',
-            }}
-          >
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label" htmlFor="rekap-dari">Dari tanggal</label>
-              <input
-                id="rekap-dari"
-                type="date"
-                className="form-input"
-                value={mulai}
-                onChange={(e) => setMulai(e.target.value)}
-                style={{ width: 160 }}
-              />
-            </div>
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label" htmlFor="rekap-sampai">Sampai tanggal</label>
-              <input
-                id="rekap-sampai"
-                type="date"
-                className="form-input"
-                value={selesai}
-                onChange={(e) => setSelesai(e.target.value)}
-                style={{ width: 160 }}
-              />
-            </div>
-            <div style={{ marginLeft: 'auto' }}>
-              <button
-                className="btn btn--primary btn--sm"
-                onClick={() => handleExportExcel(activeTab as 'umum' | 'oss' | 'perizinan')}
-                disabled={loading || exporting}
-              >
-                {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-                {' '}Download Excel
-              </button>
-            </div>
-          </div>
-        )}
+        <div className={styles.tab} role="tablist" aria-label="Bagian rekap">
+          {BAGIAN.map(({ kunci, label, ikon: Ikon }) => (
+            <button
+              key={kunci}
+              type="button"
+              role="tab"
+              id={`tab-${kunci}`}
+              aria-selected={bagian === kunci}
+              aria-controls={`panel-${kunci}`}
+              className={`btn ${bagian === kunci ? 'btn--primary' : 'btn--ghost'} btn--sm`}
+              onClick={() => { setHalaman(0); setBagian(kunci); }}
+            >
+              <Ikon size={16} aria-hidden="true" /> {label}
+            </button>
+          ))}
+        </div>
 
-        {/* TAB 1: REKAP UMUM */}
-        {activeTab === 'umum' && (
-          <>
-            <RoleNote>
-              Rekap harian lama (historis). Kolom Hadir tidak menghitung tiket yang dialihkan Admin ke layanan lain;
-              tiket yang dikembalikan petugas ke Front Office atau dialihkan tidak termasuk Selesai.
-              Untuk rincian per tahap (topik, hasil, durasi) lihat Rekap Front Office dan tab Rekap Petugas Layanan.
-            </RoleNote>
-            <div className="grid-stats" style={{ marginBottom: 'var(--space-8)' }}>
-              <div className="stat-card">
-                <div className="stat-card__icon" style={{ background: 'var(--color-primary-50)', color: 'var(--color-primary-600)' }}>
-                  <TrendingUp size={22} />
-                </div>
-                <span className="stat-card__value">{totalHadir}</span>
-                <span className="stat-card__label">Total Hadir (periode)</span>
+        <div role="tabpanel" id={`panel-${bagian}`} aria-labelledby={`tab-${bagian}`} aria-busy={memuat}>
+          {bagian === 'harian' && (
+            <>
+              <div className={styles.kartu}>
+                <div className="stat-card"><span className="stat-card__value">{harian?.ringkasan.jumlah ?? 0}</span><span className="stat-card__label">Dilayani (periode)</span></div>
+                <div className="stat-card"><span className="stat-card__value">{harian?.ringkasan.tatap_muka ?? 0}</span><span className="stat-card__label">Tatap muka</span></div>
+                <div className="stat-card"><span className="stat-card__value">{harian?.ringkasan.live_chat ?? 0}</span><span className="stat-card__label">Live Chat</span></div>
               </div>
-              <div className="stat-card">
-                <div className="stat-card__icon" style={{ background: 'var(--color-success-50)', color: 'var(--color-success-600)' }}>
-                  <CheckCircle2 size={22} />
-                </div>
-                <span className="stat-card__value">{totalSelesai}</span>
-                <span className="stat-card__label">Selesai Dilayani</span>
-              </div>
-              <div className="stat-card">
-                <div className="stat-card__icon" style={{ background: 'var(--color-danger-50)', color: 'var(--color-danger-600)' }}>
-                  <XCircle size={22} />
-                </div>
-                <span className="stat-card__value">{totalAlpa}</span>
-                <span className="stat-card__label">Hari-Layanan Petugas Alpa</span>
-              </div>
-            </div>
-
-            <div className="table-wrapper">
-              {loading ? (
-                <table className="table" aria-hidden="true">
-                  <tbody>
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <tr key={i}>
-                        <td colSpan={7}><div className="skeleton" style={{ height: 20, width: '100%' }} /></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              ) : (
+              <div className="table-wrapper">
                 <table className="table">
+                  <caption className={styles.caption}>Jumlah pelayanan dilayani per tanggal dan unit</caption>
                   <thead>
                     <tr>
-                      <th>Tanggal</th>
-                      <th>Layanan</th>
-                      <th>Hadir</th>
-                      <th>Selesai</th>
-                      <th>Tidak Terlayani</th>
-                      <th>Rata Durasi</th>
-                      <th>Petugas</th>
+                      <th scope="col">Tanggal</th><th scope="col">Unit</th><th scope="col">Tatap muka</th>
+                      <th scope="col">Live Chat</th><th scope="col">Jumlah</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.length === 0 ? (
-                      <tr>
-                        <td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: 'var(--space-8)' }}>
-                          Belum ada rekap. Klik “Rollup Hari Ini” untuk mengisi data.
-                        </td>
-                      </tr>
+                    {(harian?.rows ?? []).length === 0 ? (
+                      <tr><td colSpan={5} className={styles.kosong}>{memuat ? 'Memuat…' : 'Belum ada pelayanan dilayani pada rentang ini.'}</td></tr>
                     ) : (
-                      rows.map((r, i) => {
-                        const layananNama = r.layanan ? (Array.isArray(r.layanan) ? r.layanan[0]?.nama : r.layanan.nama) : r.layanan_id;
-                        return (
-                          <tr key={i}>
-                            <td style={{ fontVariantNumeric: 'tabular-nums' }}>{r.tanggal}</td>
-                            <td style={{ fontWeight: 600 }}>{layananNama}</td>
-                            <td>{r.total_hadir}</td>
-                            <td><span style={{ color: 'var(--color-success-700)', fontWeight: 600 }}>{r.total_selesai}</span></td>
-                            <td>{r.total_tidak_terlayani > 0 ? <span style={{ color: 'var(--color-danger-700)' }}>{r.total_tidak_terlayani}</span> : '0'}</td>
-                            <td>{r.rata_durasi_menit != null ? `${Math.round(r.rata_durasi_menit)} mnt` : '—'}</td>
-                            <td>
-                              {r.petugas_alpa ? (
-                                <span className="badge badge--nonaktif">Alpa</span>
-                              ) : r.petugas_hadir ? (
-                                <span className="badge badge--aktif">Hadir</span>
-                              ) : (
-                                <span className="badge badge--draft">—</span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })
+                      harian!.rows.map((r) => (
+                        <tr key={`${r.tanggal}-${r.unit}-${r.layanan_id ?? 'fo'}`}>
+                          <td className={styles.angka}>{formatTanggalId(r.tanggal)}</td>
+                          <td style={{ fontWeight: 600 }}>{namaUnit(r)}</td>
+                          <td className={styles.angka}>{r.tatap_muka}</td>
+                          <td className={styles.angka}>{r.live_chat}</td>
+                          <td className={styles.angka} style={{ fontWeight: 700 }}>{r.jumlah}</td>
+                        </tr>
+                      ))
                     )}
                   </tbody>
                 </table>
-              )}
+              </div>
+            </>
+          )}
+
+          {bagian === 'data' && (
+            <>
+              <div className={styles.aksi}>
+                <span>{data ? `${data.total} pelayanan` : ''}{!data?.form_type && ' · pilih satu Layanan ber-formulir untuk menampilkan kolom formulirnya'}</span>
+                <button type="button" className="btn btn--primary btn--sm" onClick={unduh}
+                  disabled={memuat || mengekspor || status.jenis !== 'siap'}>
+                  {mengekspor ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Download size={14} aria-hidden="true" />}
+                  {' '}Unduh Excel
+                </button>
+              </div>
+              <div className="table-wrapper">
+                <table className="table">
+                  <caption className={styles.caption}>Data pelayanan, satu baris per pelayanan</caption>
+                  <thead>
+                    <tr>{kolom.map((k) => <th key={k.kunci} scope="col">{k.judul}</th>)}</tr>
+                  </thead>
+                  <tbody>
+                    {(data?.rows ?? []).length === 0 ? (
+                      <tr><td colSpan={kolom.length} className={styles.kosong}>{memuat ? 'Memuat…' : 'Belum ada pelayanan dilayani pada rentang ini.'}</td></tr>
+                    ) : (
+                      data!.rows.map((r) => (
+                        <tr key={r.pelayanan_id}>
+                          {kolom.map((k) => <td key={k.kunci} className={styles.selSempit}>{k.ambil(r) ?? '—'}</td>)}
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+                {data && <Pagination page={halaman} pageSize={UKURAN_HALAMAN} total={data.total} onPageChange={setHalaman} />}
+              </div>
+            </>
+          )}
+
+          {bagian === 'kinerja' && (
+            <div className="table-wrapper">
+              <table className="table">
+                <caption className={styles.caption}>Kinerja petugas: jumlah pelayanan dilayani per petugas dan unit</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Petugas</th><th scope="col">Unit</th><th scope="col">Dilayani</th>
+                    <th scope="col">Live Chat</th><th scope="col">Rata durasi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(kinerja ?? []).length === 0 ? (
+                    <tr><td colSpan={5} className={styles.kosong}>{memuat ? 'Memuat…' : 'Belum ada data kinerja pada rentang ini.'}</td></tr>
+                  ) : (
+                    kinerja!.map((r) => (
+                      <tr key={`${r.penangan_id}-${r.unit}-${r.layanan_id ?? 'fo'}`}>
+                        <td style={{ fontWeight: 600 }}>{r.penangan_nama ?? '(tanpa nama)'}</td>
+                        <td>{namaUnit(r)}</td>
+                        <td className={styles.angka}>{r.jumlah}</td>
+                        <td className={styles.angka}>{r.live_chat}</td>
+                        <td className={styles.angka}>{formatMenit(r.rata_durasi_menit)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
-          </>
-        )}
-
-        {/* TAB 2: PENDATAAN HELPDESK OSS */}
-        {activeTab === 'oss' && (
-          <div className="table-wrapper">
-            {loading ? (
-              <table className="table" aria-hidden="true">
-                <tbody>
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <tr key={i}>
-                      <td colSpan={9}><div className="skeleton" style={{ height: 20, width: '100%' }} /></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Tanggal / Tiket</th>
-                    <th>Pemohon</th>
-                    <th>Nama Usaha &amp; Tipe</th>
-                    <th>Lokasi &amp; Penanaman Modal</th>
-                    <th>KBLI &amp; Skala</th>
-                    <th>Tindakan</th>
-                    <th>Uraian Solusi</th>
-                    <th>Petugas</th>
-                    <th>Front Office</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {ossRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={9} style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: 'var(--space-8)' }}>
-                        Belum ada data pendataan Helpdesk OSS pada rentang tanggal ini.
-                      </td>
-                    </tr>
-                  ) : (
-                    ossRows.map((r) => (
-                      <tr key={r.id}>
-                        <td>
-                          <div style={{ fontWeight: 700, color: 'var(--color-primary-700)' }}>{r.nomor_display}</div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{r.tanggal}</div>
-                        </td>
-                        <td>
-                          <div style={{ fontWeight: 600 }}>{r.nama_pemohon}</div>
-                          {r.no_hp && <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{r.no_hp}</div>}
-                        </td>
-                        <td>
-                          <div style={{ fontWeight: 600 }}>{r.nama_usaha}</div>
-                          {r.tipe_pelaku_usaha && (
-                            <div style={{ fontSize: '11px', color: 'var(--color-primary-700)' }}>
-                              {r.tipe_pelaku_usaha === 'perseorangan' ? 'Perseorangan' : r.tipe_pelaku_usaha === 'tidak_berlaku' ? 'Tidak berlaku' : 'Badan Usaha'}
-                            </div>
-                          )}
-                        </td>
-                        <td>
-                          <div>{r.lokasi_usaha || '—'}</div>
-                          {r.status_penanaman_modal && r.status_penanaman_modal !== 'tidak_ada' && (
-                            <span className="badge badge--aktif" style={{ fontSize: '10px', marginTop: '2px' }}>
-                              {r.status_penanaman_modal}
-                            </span>
-                          )}
-                        </td>
-                        <td>
-                          <div>{r.sektor_usaha_kbli || '—'}</div>
-                          {r.skala_usaha && (
-                            <span className="badge badge--draft" style={{ fontSize: '10px', marginTop: '2px' }}>
-                              {r.skala_usaha}
-                            </span>
-                          )}
-                        </td>
-                        <td>
-                          <span className="badge badge--aktif" style={{ fontSize: '11px' }}>
-                            {r.tindak_lanjut}
-                          </span>
-                        </td>
-                        <td style={{ maxWidth: '240px', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                          {r.uraian_solusi}
-                        </td>
-                        <td style={{ fontSize: '12px', fontWeight: 500 }}>{r.nama_petugas}</td>
-                        <td style={{ fontSize: '12px' }}>{r.fo_nama ?? '—'}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            )}
-          </div>
-        )}
-
-        {/* TAB 3: PENDATAAN NON OSS (SICANTIK LAMPUNG) */}
-        {activeTab === 'perizinan' && (
-          <div className="table-wrapper">
-            {loading ? (
-              <table className="table" aria-hidden="true">
-                <tbody>
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <tr key={i}>
-                      <td colSpan={8}><div className="skeleton" style={{ height: 20, width: '100%' }} /></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Tanggal / Tiket</th>
-                    <th>Pemohon / Perusahaan</th>
-                    <th>OPD Teknis</th>
-                    <th>Uraian Permohonan</th>
-                    <th>Tindak Lanjut</th>
-                    <th>Catatan Petugas</th>
-                    <th>Petugas</th>
-                    <th>Front Office</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {perizinanRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: 'var(--space-8)' }}>
-                        Belum ada data pendataan Non OSS (SiCantik Lampung) pada rentang tanggal ini.
-                      </td>
-                    </tr>
-                  ) : (
-                    perizinanRows.map((r) => (
-                      <tr key={r.id}>
-                        <td>
-                          <div style={{ fontWeight: 700, color: 'var(--color-primary-700)' }}>{r.nomor_display}</div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{r.tanggal}</div>
-                        </td>
-                        <td>
-                          <div style={{ fontWeight: 600 }}>{r.nama_pemohon}</div>
-                          {r.nama_perusahaan && (
-                            <div style={{ fontSize: '12px', color: 'var(--color-primary-700)', fontWeight: 500 }}>
-                              {r.nama_perusahaan}
-                            </div>
-                          )}
-                          {r.no_hp && <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{r.no_hp}</div>}
-                        </td>
-                        <td>
-                          <span className="badge badge--aktif" style={{ fontSize: '11px' }}>
-                            {r.opd_teknis}
-                          </span>
-                        </td>
-                        <td style={{ maxWidth: '240px', fontSize: '12px', color: 'var(--text-primary)', fontWeight: 500 }}>
-                          {r.uraian_permohonan}
-                        </td>
-                        <td>
-                          <span className="badge badge--draft" style={{ fontSize: '11px' }}>
-                            {r.tindak_lanjut}
-                          </span>
-                        </td>
-                        <td style={{ maxWidth: '240px', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                          {r.catatan_petugas || '—'}
-                        </td>
-                        <td style={{ fontSize: '12px', fontWeight: 500 }}>{r.nama_petugas}</td>
-                        <td style={{ fontSize: '12px' }}>{r.fo_nama ?? '—'}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            )}
-          </div>
-        )}
-
-        {/* TAB 4: REKAP PER LAYANAN */}
-        {activeTab === 'layanan' && (
-          <RekapLayananTable
-            isPetugas={isPetugas}
-            initialLayananId={initialLayananId}
-            options={layananOptions}
-          />
-        )}
-
-        {/* TAB 5: REKAP PETUGAS LAYANAN (tahap layanan + Pendataan Pelayanan per tiket) */}
-        {activeTab === 'penanganan' && (
-          <RekapPenangananTable
-            peran="layanan"
-            isPetugas={isPetugas}
-            initialLayananId={initialLayananId}
-            layananOptions={layananOptions}
-          />
-        )}
+          )}
+        </div>
       </div>
     </>
+  );
+}
+
+export default function AdminRekapPage() {
+  return (
+    <Suspense fallback={null}>
+      <RekapTerpadu />
+    </Suspense>
   );
 }

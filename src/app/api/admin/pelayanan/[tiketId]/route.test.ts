@@ -452,11 +452,16 @@ describe('API Route /api/admin/pelayanan/[tiketId]', () => {
       expect(rpc).toHaveBeenCalledWith('layanan_selesai', expect.objectContaining({ p_tiket_id: 't1', p_form_type: 'oss' }));
     });
 
-    const pasangPatch = async (tiket: Record<string, unknown>, petugas: Record<string, unknown> = {}) => {
+    const pasangPatch = async (
+      tiket: Record<string, unknown>,
+      petugas: Record<string, unknown> = {},
+      bolehSunting: { data: unknown; error: unknown } = { data: false, error: null },
+    ) => {
       const serverMod = await import('@/lib/supabase/server');
       const update = updateChain();
       const insert = vi.fn().mockResolvedValue({ data: null, error: null });
       (serverMod.createClient as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+        rpc: vi.fn(async (nama: string) => (nama === 'boleh_sunting_pendataan' ? bolehSunting : { data: null, error: null })),
         auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'u' } }, error: null }) },
         from: vi.fn((table: string) => {
           if (table === 'petugas') return mockPetugas(petugas);
@@ -504,6 +509,20 @@ describe('API Route /api/admin/pelayanan/[tiketId]', () => {
       expect(insert).not.toHaveBeenCalled();
     });
 
+    it('Fase 3: pemegang lama yang diambil alih Koordinator tetap boleh menyimpan draf (boleh_sunting_pendataan)', async () => {
+      const { PATCH, update } = await pasangPatch({ dilayani_oleh: 'p-koord' }, {}, { data: true, error: null });
+      const res = await PATCH(buildRequest('PATCH', { nama_pemohon: 'X' }), ctx);
+      expect(res.status).toBe(200);
+      expect(update).toHaveBeenCalledTimes(1);
+    });
+
+    it('Fase 3: migrasi belum diterapkan (RPC tidak ada) -> perilaku lama, BUKAN_PEMILIK', async () => {
+      const { PATCH, update } = await pasangPatch({ dilayani_oleh: 'p-koord' }, {}, { data: null, error: { code: 'PGRST202', message: 'x' } });
+      const res = await PATCH(buildRequest('PATCH', { nama_pemohon: 'X' }), ctx);
+      expect(res.status).toBe(403);
+      expect(update).not.toHaveBeenCalled();
+    });
+
     it('PATCH draf oleh pemilik tetap tersimpan (200)', async () => {
       const { PATCH, update } = await pasangPatch({});
       const res = await PATCH(buildRequest('PATCH', { nama_pemohon: 'X' }), ctx);
@@ -511,9 +530,10 @@ describe('API Route /api/admin/pelayanan/[tiketId]', () => {
       expect(update).toHaveBeenCalledTimes(1);
     });
 
-    const pasangGet = async (tiket: Record<string, unknown>, oss: unknown = null) => {
+    const pasangGet = async (tiket: Record<string, unknown>, oss: unknown = null, bolehSunting = false) => {
       const serverMod = await import('@/lib/supabase/server');
       (serverMod.createClient as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+        rpc: vi.fn(async () => ({ data: bolehSunting, error: null })),
         auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'u' } }, error: null }) },
         from: vi.fn((table: string) => {
           if (table === 'petugas') return mockPetugas();
@@ -542,6 +562,12 @@ describe('API Route /api/admin/pelayanan/[tiketId]', () => {
       });
       const json = await (await GET(buildRequest('GET'), ctx)).json();
       expect(json).toMatchObject({ alamat_pemohon: 'Dinas X', email: 'b@x.id', keperluan_awal: 'NIB' });
+    });
+
+    it('GET Fase 3: pemegang lama setelah ambil alih -> boleh_ubah true, boleh_selesaikan false', async () => {
+      const GET = await pasangGet({ dilayani_oleh: 'p-koord', pelayan: { nama: 'Koordinator' } }, null, true);
+      const json = await (await GET(buildRequest('GET'), ctx)).json();
+      expect(json).toMatchObject({ boleh_ubah: true, boleh_selesaikan: false });
     });
 
     it('GET: bukan pemilik / tiket menunggu / data terkunci -> boleh_ubah false (wizard baca-saja)', async () => {

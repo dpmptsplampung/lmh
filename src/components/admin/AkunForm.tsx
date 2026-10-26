@@ -20,6 +20,8 @@ export interface AkunRow {
   email_notifikasi_terverifikasi: boolean;
   last_sign_in_at: string | null;
   belum_pernah_login: boolean;
+  /** Fase 3: penanda Koordinator (bukan role). Tidak ada sebelum migrasi 202610290001 diterapkan. */
+  koordinator?: boolean;
 }
 
 export interface LayananOption {

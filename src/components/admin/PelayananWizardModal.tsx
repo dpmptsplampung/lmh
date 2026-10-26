@@ -130,6 +130,8 @@ export default function PelayananWizardModal({
   const isLocked = initialData?.is_locked ?? false;
   const bacaSaja = isLocked || ditolakServer || !(initialData?.boleh_ubah ?? false);
   const bukanPemilik = !isLocked && !!initialData && initialData.status_tiket === 'dilayani' && !initialData.boleh_ubah;
+  // Fase 3: pemegang lama setelah diambil alih Koordinator boleh menyunting draf, tetapi tidak menyelesaikan.
+  const hanyaSuntingDraf = !bacaSaja && initialData?.boleh_selesaikan === false;
   const formType: FormPelayananType | null = initialData?.form_type ?? null;
   const autosaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -369,7 +371,7 @@ export default function PelayananWizardModal({
 
   // 3. Finalize / Selesaikan Pelayanan
   const handleFinalize = async () => {
-    if (!tiketId || !formType || bacaSaja || finalizing) return;
+    if (!tiketId || !formType || bacaSaja || hanyaSuntingDraf || finalizing) return;
     setValidationErrors({});
     const errors: Record<string, string> = {};
 
@@ -671,6 +673,15 @@ export default function PelayananWizardModal({
               {lastSavedTime && !bacaSaja && ` · Draft tersimpan ${lastSavedTime}`}
               {savingDraft && ' · Menyimpan draft…'}
             </p>
+            {!loading && initialData && hanyaSuntingDraf && (
+              <p
+                role="status"
+                style={{ fontSize: 'var(--text-xs, 0.75rem)', color: 'var(--color-warning-600, #d97706)', margin: '4px 0 0 0' }}
+              >
+                Pendataan ini diambil alih {initialData.dilayani_oleh_nama ?? 'Koordinator'}. Anda masih dapat menyunting
+                draf; penyelesaian dilakukan oleh Koordinator.
+              </p>
+            )}
             {!loading && initialData && bacaSaja && !isLocked && (
               <p
                 role="status"
@@ -1017,7 +1028,7 @@ export default function PelayananWizardModal({
                 Selanjutnya <ChevronRight size={16} aria-hidden="true" />
               </button>
             ) : (
-              !bacaSaja && (
+              !bacaSaja && !hanyaSuntingDraf && (
                 <button
                   type="button"
                   className="btn btn--primary btn--sm"

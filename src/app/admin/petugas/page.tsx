@@ -52,6 +52,9 @@ export default function AdminPetugasPage() {
   const [busy, setBusy] = useState(false);
   const [dialogError, setDialogError] = useState('');
   const [alasan, setAlasan] = useState('');
+  // Fase 3: penanda Koordinator tersedia setelah migrasi 202610290001 (server mengirim koordinator_tersedia).
+  const [koordinatorTersedia, setKoordinatorTersedia] = useState(false);
+  const [mengubahKoordinator, setMengubahKoordinator] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -61,6 +64,7 @@ export default function AdminPetugasPage() {
         api('/api/me/profil', 'GET').catch(() => null),
       ]);
       setRows((daftar.akun ?? []) as AkunRow[]);
+      setKoordinatorTersedia(daftar.koordinator_tersedia === true);
       setLayananList((layanan?.data ?? []) as LayananOption[]);
       setSelfId(me?.profil?.id ?? null);
       setLoadError('');
@@ -104,6 +108,21 @@ export default function AdminPetugasPage() {
       tutup();
       await load();
     });
+
+  // Penanda Koordinator (spec §6.1): memperluas lingkup DATA akun FO/Petugas Layanan; role dan operasional tetap.
+  const ubahKoordinator = async (akun: AkunRow) => {
+    const baru = !akun.koordinator;
+    setMengubahKoordinator(akun.id);
+    try {
+      await api(`/api/admin/petugas/${akun.id}/koordinator`, 'PATCH', { koordinator: baru });
+      toast(baru ? `${akun.nama} kini Koordinator.` : `Penanda Koordinator ${akun.nama} dicabut.`, 'success');
+      await load();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Gagal mengubah penanda Koordinator', 'error');
+    } finally {
+      setMengubahKoordinator(null);
+    }
+  };
 
   const buatAkun = (data: AkunBaruInput) =>
     jalankan(async () => {
@@ -197,6 +216,9 @@ export default function AdminPetugasPage() {
                         <span className={`badge badge--${row.role === 'admin' ? 'aktif' : 'draft'}`}>
                           {ROLE_LABEL[row.role]}
                         </span>
+                        {row.koordinator && row.role !== 'admin' && (
+                          <span className="badge badge--aktif" style={{ marginLeft: 4 }}>Koordinator</span>
+                        )}
                       </td>
                       <td>{row.layanan_nama ?? '—'}</td>
                       <td>{row.no_hp ?? '—'}</td>
@@ -216,6 +238,15 @@ export default function AdminPetugasPage() {
                             aria-label={`Ubah ${row.nama}`} onClick={() => setDialog({ kind: 'edit', akun: row })}>
                             Ubah
                           </button>
+                          {koordinatorTersedia && row.role !== 'admin' && (
+                            <button type="button" className="btn btn--ghost btn--sm"
+                              aria-pressed={!!row.koordinator}
+                              aria-label={`${row.koordinator ? 'Cabut penanda Koordinator' : 'Jadikan Koordinator'} ${row.nama}`}
+                              disabled={mengubahKoordinator === row.id}
+                              onClick={() => ubahKoordinator(row)}>
+                              {row.koordinator ? 'Cabut Koordinator' : 'Jadikan Koordinator'}
+                            </button>
+                          )}
                           <button type="button" className="btn btn--ghost btn--sm"
                             aria-label={`Reset sandi ${row.nama}`} disabled={isSelf}
                             title={isSelf ? 'Gunakan Profil Saya untuk mengganti sandi sendiri' : undefined}

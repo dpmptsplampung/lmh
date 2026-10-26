@@ -195,3 +195,35 @@ Nama FO yang melayani tampil di: Penanganan (riwayat + FO lain), Kotak Masuk FO 
 Audit akses: tidak ada pencatatan per-baca antar-FO (keputusan CEO 2026-10-14); ekspor Excel tetap tercatat `audit_log`; pembacaan hanya oleh staf aktif ber-sesi. Lihat `docs/KEBIJAKAN_PDP.md`. Uji perilaku: `scripts/test-fo-keterbukaan.mjs` (dijalankan 2026-10-14 malam terhadap produksi, ROLLBACK: 26 lolos; hanya di luar jam layanan).
 
 **BERHENTI DI SINI.** Menunggu persetujuan manusia sebelum melanjutkan ke **Fase D (Rencana implementasi)**.
+
+## 7. PEMBARUAN 2026-10-29 — Koordinator dan akses data per orang (Fase 3 layanan dinamis; migrasi `202610290001`/`0002`, BELUM DITERAPKAN)
+
+**Membalik §6.4** (ADR 0003). Role tetap tiga; **Koordinator** = penanda `petugas.koordinator` pada akun FO / Petugas Layanan (diatur Admin di `/admin/petugas`, audit `akun_koordinator`). Unit: Front Office = satu unit; tiap Layanan = satu unit.
+
+| Akun | Operasional antrean (tidak berubah) | Melihat/unduh data (Rekap, Excel, riwayat) |
+|---|---|---|
+| FO biasa | semua Layanan | hanya tahap yang ia tangani (`penangan_id` = dirinya) |
+| FO + Koordinator | semua Layanan | semua data semua Layanan |
+| Petugas biasa | Layanannya | hanya yang ia tangani |
+| Petugas + Koordinator | Layanannya | semua data Layanannya |
+| Admin | semua | semua |
+
+Penegakan per jalur baca (rinci di rencana `docs/superpowers/plans/2026-10-29-fase-3-koordinator-rekap.md`, "Inventaris jalur baca"):
+
+| Jalur | Aturan baru |
+|---|---|
+| RLS `penanganan` (`boleh_penanganan`) | admin; `boleh_data_pelayanan` (lingkup di atas, semua tanggal); selain itu **jendela operasional** saja = pekerjaan terbuka (tahap `menunggu/berjalan`, kunjungan `menunggu/dilayani` >= kemarin WIB, reservasi `terjadwal` hari ini) dengan aturan lama (FO semua, petugas layanannya + konteks). Yang sudah ditutup, termasuk hari ini, hanya dalam lingkup |
+| RLS `kunjungan` (`boleh_kunjungan`) | admin & FO Koordinator semua; Petugas Koordinator kunjungan ber-tiket/tahap/chat di layanannya; milik sendiri (dibuat_oleh, tahap, tiket, Pendataan); selain itu jendela operasional |
+| RLS `pelayanan_oss`/`pelayanan_perizinan` baca (`boleh_baca_pendataan`; juga view `v_rekap_pelayanan_*` security_invoker) | admin & FO Koordinator; Petugas Koordinator tiket layanannya; pendata/pemegang/penangan = dirinya; selain itu hanya tiket terbuka (>= kemarin) + `boleh_tiket` |
+| RLS arsip `visit` (`visit_select_own`) | pengunjung miliknya; staf hanya admin + Koordinator unit (sebelumnya semua FO) |
+| RLS draf Pendataan (`boleh_sunting_pendataan`) | pemilik tiket `dilayani`, atau pemegang lama yang diambil alih Koordinator |
+| RLS `rekap_harian_layanan` | admin; FO Koordinator; Petugas Koordinator layanannya |
+| `ambil_alih_pendataan` | SELECT admin, pemegang lama, pemegang baru; tulis hanya RPC |
+| RPC `rekap_data_pelayanan`/`rekap_harian_terpadu`/`rekap_kinerja_petugas` | lingkup **ketat** dihitung fungsi (tanpa jendela operasional) |
+| `/admin/rekap` (+ `/api/admin/rekap/terpadu[/export]`) | semua role staf; isi otomatis sesuai lingkup; ekspor tercatat `audit_log` (`rekap_data_pelayanan`) |
+| `/admin/rekap-fo` | redirect ke `/admin/rekap?bagian=data&unit=fo` (entri nav tersembunyi) |
+| `/admin/performa` | tetap Admin saja |
+
+Ambil alih pendataan: Koordinator Petugas -> tiket `dilayani` milik petugas lain di layanannya (`koordinator_ambil_alih_tiket`); Koordinator FO -> tahap FO `berjalan` milik FO lain, bukan chat (`koordinator_ambil_alih_fo`). Alasan 5-500 karakter, `audit_log` (`koordinator_ambil_alih`, nilai lama/baru), notifikasi web push + kartu pemberitahuan untuk pemegang lama. Pelayanan tercatat atas nama Koordinator (yang menyelesaikan); pemegang lama tetap boleh menyimpan draf, tidak menyelesaikan.
+
+**Celah yang diketahui (Fase 5/6):** `tiket_antrean` `tiket_staff_select` (tanpa `TO`), `buku_tamu` (semua FO, semua tanggal), `chat_sesi`/`chat_pesan` (FO lintas Layanan).

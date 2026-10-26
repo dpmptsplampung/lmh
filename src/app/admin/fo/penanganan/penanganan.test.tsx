@@ -85,7 +85,7 @@ describe('Penanganan: memuat data', () => {
     expect(screen.getByText('Walk-in')).toBeInTheDocument();
 
     const kueri = m.h.log.find((l) => l.tabel === 'penanganan' && punyaOp(l.ops, 'eq', 'status', 'berjalan'))!;
-    // Keterbukaan antar FO (keputusan CEO 2026-10-14): kueri tidak dibatasi ke penangan sendiri; dipisah di klien.
+    // Tahap berjalan = operasional (semua FO): kueri tidak dibatasi ke penangan sendiri; dipisah di klien.
     expect(kueri.ops.some(([op, a]) => op === 'eq' && a[0] === 'penangan_id')).toBe(false);
     expect(punyaOp(kueri.ops, 'eq', 'peran_tahap', 'fo')).toBe(true);
     expect(m.realtime).toHaveBeenCalledWith(expect.any(Function), expect.objectContaining({ table: 'penanganan' }));
@@ -99,6 +99,20 @@ describe('Penanganan: memuat data', () => {
     const kueri = m.h.log.find((l) => l.tabel === 'penanganan' && !punyaOp(l.ops, 'eq', 'status', 'berjalan'))!;
     const gte = kueri.ops.find(([op, a]) => op === 'gte' && a[0] === 'mulai_at')!;
     expect(String(gte[1][1])).toMatch(/T17:00:00\.000Z$/);
+    // Fase 3 (ADR 0003): FO biasa hanya riwayat miliknya sendiri.
+    expect(punyaOp(kueri.ops, 'eq', 'penangan_id', 'p-saya')).toBe(true);
+    expect(screen.getByRole('heading', { name: /Riwayat hari ini \(milik Anda\)/ })).toBeInTheDocument();
+  });
+
+  it('Koordinator FO: riwayat hari ini semua Front Office (tanpa filter penangan)', async () => {
+    siapkan();
+    m.h.tabel.petugas = (ops: Op[]) =>
+      punyaOp(ops, 'select', 'koordinator')
+        ? { data: [{ koordinator: true }], error: null }
+        : { data: [{ id: 'p-saya', role: 'front_office' }], error: null };
+    render(<PenangananFoPage />);
+    expect(await screen.findByRole('heading', { name: /Riwayat hari ini \(semua Front Office\)/ })).toBeInTheDocument();
+    const kueri = m.h.log.find((l) => l.tabel === 'penanganan' && !punyaOp(l.ops, 'eq', 'status', 'berjalan'))!;
     expect(kueri.ops.some(([op, a]) => op === 'eq' && a[0] === 'penangan_id')).toBe(false);
   });
 
@@ -138,6 +152,47 @@ describe('Penanganan: memuat data', () => {
     expect(within(riwayat).getByRole('columnheader', { name: 'Front Office' })).toBeInTheDocument();
     expect(within(riwayat).getByText('Anda')).toBeInTheDocument();
     expect(within(riwayat).getByText('Bayu FO')).toBeInTheDocument();
+  });
+
+  it('Koordinator FO (Fase 3): tombol Ambil alih pada tahap FO lain (bukan chat) memanggil koordinator_ambil_alih_fo', async () => {
+    siapkan({
+      berjalan: [
+        berjalan({
+          id: 'pn-9', kunjungan_id: 'k-9', penangan_id: 'p-lain', penangan: { nama: 'Bayu FO' },
+          kunjungan: { nama: 'Dewi Lestari', asal_instansi: null, keperluan: null, layanan_saran_id: null },
+        }),
+        berjalan({
+          id: 'pn-8', kunjungan_id: 'k-8', penangan_id: 'p-lain', saluran: 'chat', penangan: { nama: 'Bayu FO' },
+          kunjungan: { nama: 'Eka Chat', asal_instansi: null, keperluan: null, layanan_saran_id: null },
+        }),
+      ],
+    });
+    m.h.tabel.petugas = (ops: Op[]) =>
+      punyaOp(ops, 'select', 'koordinator')
+        ? { data: [{ koordinator: true }], error: null }
+        : { data: [{ id: 'p-saya', role: 'front_office' }], error: null };
+    m.h.rpc = () => ({ data: { ok: true }, error: null });
+    render(<PenangananFoPage />);
+    const tombol = await screen.findByRole('button', { name: 'Ambil alih penanganan Dewi Lestari' });
+    expect(screen.queryByRole('button', { name: 'Ambil alih penanganan Eka Chat' })).toBeNull();
+    expect(screen.getByText('Live chat: tidak dapat diambil alih')).toBeInTheDocument();
+    fireEvent.click(tombol);
+    const dialog = await screen.findByRole('dialog', { name: /Ambil alih penanganan Dewi Lestari/ });
+    fireEvent.change(within(dialog).getByLabelText(/Alasan ambil alih/i), { target: { value: 'FO pulang mendadak' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /^Ambil alih$/ }));
+    await waitFor(() => expect(m.h.rpcLog).toContainEqual({
+      nama: 'koordinator_ambil_alih_fo', args: { p_penanganan_id: 'pn-9', p_alasan: 'FO pulang mendadak' },
+    }));
+  });
+
+  it('FO biasa (bukan Koordinator): tanpa kolom Aksi pada tahap FO lain', async () => {
+    siapkan({
+      berjalan: [berjalan({ id: 'pn-9', penangan_id: 'p-lain', penangan: { nama: 'Bayu FO' },
+        kunjungan: { nama: 'Dewi Lestari', asal_instansi: null, keperluan: null, layanan_saran_id: null } })],
+    });
+    render(<PenangananFoPage />);
+    await screen.findByText('Dewi Lestari');
+    expect(screen.queryByRole('button', { name: /Ambil alih/ })).toBeNull();
   });
 
   it('tanpa FO lain yang sedang menangani: pesan kosong pada seksi FO lain', async () => {

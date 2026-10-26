@@ -149,6 +149,35 @@ ORDER BY urutan, nama;
 
 Jalankan keduanya lalu cocokkan judul lama dengan nama layanan secara manual.
 
+## Fase 3 layanan dinamis: Koordinator, akses data per orang, rekap terpadu (202610290001, 202610290002) — BELUM DITERAPKAN
+
+| Versi | Berkas | Isi | Status |
+|---|---|---|---|
+| 202610290001 | `202610290001_koordinator_akses_data.sql` | Kolom `petugas.koordinator` (default false) + pemicu `trg_petugas_cabut_koordinator` (penanda dicabut atomik saat role/layanan_id berubah); RPC `fo_status_qr` (kategori status QR tanpa PII untuk FO/Admin); helper `staf_lingkup`, `boleh_data_pelayanan`, `kunjungan_operasional`; **membalik 202610140013**: `boleh_penanganan`/`boleh_kunjungan` diganti isinya (lingkup data per orang/Koordinator + jendela operasional = hanya pekerjaan terbuka); policy baca `pelayanan_oss`/`pelayanan_perizinan` -> `boleh_baca_pendataan`; policy tulis draf -> `boleh_sunting_pendataan` (pemilik + pemegang lama yang diambil alih Koordinator); `rekap_harian_staff_read` dan arsip `visit_select_own` -> admin + Koordinator unit; tabel `ambil_alih_pendataan` (SELECT admin/pemegang lama/baru); RPC `koordinator_ambil_alih_tiket`, `koordinator_ambil_alih_fo`, `ambil_alih_tandai_dilihat` (audit_log + `queue_notifikasi`). | **DITULIS, BELUM DITERAPKAN** |
+| 202610290002 | `202610290002_rekap_terpadu.sql` | Fungsi baca SECURITY DEFINER: dasar internal `rekap_pelayanan_inti` (satu definisi "dilayani"; lingkup ketat; tanpa GRANT ke klien), `lingkup_data_saya`, `rekap_data_pelayanan` (jsonb, halaman maks 1000 + keyset), `rekap_harian_terpadu`/`rekap_kinerja_petugas` (agregat SQL satu jsonb). Tanpa tabel/policy/data baru. | **DITULIS, BELUM DITERAPKAN** |
+
+**Urutan terap (hanya pemilik, atomik, dry-run dulu):** `202610270001`, `202610270002`, `202610280001`, lalu `202610290001`, lalu `202610290002` (0001 menolak berjalan bila `instansi`/`homepage_blok` belum ada; 0002 menolak bila `staf_lingkup` belum ada).
+
+```bash
+node scripts/apply-migration.mjs supabase/migrations/202610290001_koordinator_akses_data.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202610290001_koordinator_akses_data.sql --atomic
+node scripts/apply-migration.mjs supabase/migrations/202610290002_rekap_terpadu.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202610290002_rekap_terpadu.sql --atomic
+```
+
+**Deploy dan migrasi WAJIB dalam SATU jendela** (urutan: terapkan 0001 + 0002, lalu deploy klien; atau sebaliknya dengan jeda sesingkat mungkin). Di antara keduanya halaman Rekap kosong (409).
+
+**Perilaku bila belum diterapkan (aplikasi tidak crash):** halaman Rekap menampilkan pemberitahuan "Rekap terpadu belum tersedia" (API `/api/admin/rekap/terpadu[/export]` menjawab 409 `MIGRASI_BELUM_DITERAPKAN`); Kelola Petugas tidak menampilkan tombol Koordinator (PATCH penanda = 409); Antrian/Penanganan FO membaca penanda = false (tanpa tombol ambil alih Koordinator); sunting draf Pendataan = pemilik saja (RPC `boleh_sunting_pendataan` belum ada); kartu pemberitahuan ambil alih tidak tampil. RLS lama (keterbukaan 202610140013) tetap berlaku sampai 0001 diterapkan.
+
+**Daftar periksa pemilik:**
+1. Sebelum terap: pastikan Fase 1/Fase 2 (`202610270001`, `202610270002`, `202610280001`) sudah diterapkan.
+2. Setelah 0001: tandai Koordinator di `/admin/petugas` (tombol "Jadikan Koordinator" per akun FO/Petugas Layanan; penanda otomatis dicabut bila role/layanan akun diubah). Tanpa penanda, **semua** FO/petugas hanya melihat data yang ia tangani sendiri; selain itu hanya pekerjaan yang masih terbuka (antrean berjalan, reservasi hari ini). Beri tahu staf bahwa riwayat rekan kini tertutup (ADR 0003).
+3. Uji baca-saja dengan akun FO biasa, FO Koordinator, Petugas biasa, Petugas Koordinator: buka `/admin/rekap` rentang 7 hari; angka harus sesuai lingkup. Kunjungan/dasbor/Antrian FO biasa: kunjungan rekan yang sudah ditutup (termasuk hari ini) tidak terbaca; arsip `visit` hanya admin/Koordinator (keputusan K1/K15 rencana Fase 3).
+4. Uji ambil alih pada antrean nyata (tiket `dilayani` milik rekan di layanan yang sama), lalu periksa `audit_log` (`aksi = 'koordinator_ambil_alih'`) dan `ambil_alih_pendataan`.
+5. Uji perilaku RLS (`npm run test:rls`) **belum** mencakup Fase 3: kebijakan baru hanya diuji statis (`supabase/migrations/koordinator_akses_data.test.ts`, `rekap_terpadu.test.ts`).
+
+**Rollback (urutan terbalik, atomik, dry-run dulu):** `docs/rollback-rekap-terpadu-202610290002.sql` (menghapus fungsi rekap baru), lalu `docs/rollback-koordinator-akses-data-202610290001.sql` (memulihkan `boleh_penanganan` 0013 + penandanya, `boleh_kunjungan` 0009, policy Pendataan/rekap_harian/visit lama, mencabut hak RPC ambil alih; kolom `petugas.koordinator` dan tabel `ambil_alih_pendataan` dibiarkan, B1). Rollback 0012/0013 kini menolak selama penanda 0029 masih ada.
+
 ## Migrasi forward (status penerapan produksi)
 
 > **Status per 2026-10-14 malam:** semua migrasi di tabel ini sudah DITERAPKAN ke produksi (0002-0009, 0011, 0012, 0013 pada ±17:52-17:57 WIB, tanpa 0010 karena tidak ada berkasnya). Terapan atomik (`apply-migration --atomic`, dry-run lalu COMMIT) dan diverifikasi read-only. Ledger `supabase_migrations.schema_migrations` sudah diisi (12 baris, `scripts/fill-migration-ledger.mjs --apply --yes`; verifikasi `docs/analysis/LEDGER-VERIFIKASI-2026-10-14.md`). Perintah "Cara menerapkan" di bawah dipertahankan sebagai catatan prosedur, bukan langkah yang masih tertunda. Yang BELUM TERBUKTI: tampilan di browser, konkurensi sejati, kueri rekap FO pada PostgREST sungguhan, `session_id` JWT stabil setelah refresh; flag `sesi_tunggal_aktif` masih `false`.

@@ -89,7 +89,7 @@ export const LABEL_STATUS_PENANGANAN: Record<string, string> = {
 
 export const LABEL_BATAL_KARENA: Record<string, string> = {
   dialihkan: 'Dialihkan ke layanan lain',
-  diambil_alih: 'Diambil alih Admin',
+  diambil_alih: 'Diambil alih (Admin/Koordinator)',
   tidak_terlayani: 'Tidak terlayani (lewat jam tutup)',
 };
 

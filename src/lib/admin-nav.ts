@@ -102,9 +102,10 @@ export const ADMIN_NAV: AdminNavEntry[] = [
   { label: 'Kelola FAQ', href: '/admin/chat/faq', iconKey: 'faq', roles: ['admin', 'petugas', 'front_office'], group: 'layananOnline' },
   { label: 'Log AI Chat', href: '/admin/chat/ai-log', iconKey: 'aiLog', roles: ['admin'], group: 'layananOnline' },
 
-  // Laporan & Evaluasi. Tahap D: rekap harian FO (Admin dan semua FO melihat semua FO, keputusan CEO 2026-10-14) dan performa (Admin).
-  { label: 'Rekap Harian', href: '/admin/rekap', iconKey: 'rekap', roles: ['admin', 'petugas', 'front_office'], group: 'laporan' },
-  { label: 'Rekap Front Office', href: '/admin/rekap-fo', iconKey: 'rekapFo', roles: ['admin', 'front_office'], group: 'laporan' },
+  // Laporan & Evaluasi. Fase 3: satu halaman Rekap terpadu (lingkup data per orang/Koordinator ditegakkan DB, ADR 0003);
+  // halaman lama Rekap Front Office kini redirect ke Rekap (entri tersembunyi agar tetap lolos AdminGuard).
+  { label: 'Rekap', href: '/admin/rekap', iconKey: 'rekap', roles: ['admin', 'petugas', 'front_office'], group: 'laporan' },
+  { label: 'Rekap Front Office', href: '/admin/rekap-fo', iconKey: 'rekapFo', roles: ['admin', 'front_office'], group: 'laporan', hidden: true, tampilSebagai: '/admin/rekap' },
   { label: 'Hasil SKM', href: '/admin/skm', iconKey: 'skm', roles: ['admin', 'petugas', 'front_office'], group: 'laporan' },
   { label: 'Performa Pelayanan', href: '/admin/performa', iconKey: 'performa', roles: ['admin'], group: 'laporan' },
 

@@ -164,7 +164,8 @@ const ROLES_SEBELUM: Record<string, string[]> = {
 };
 
 // Halaman lama yang digabung ke /admin/fo/registrasi: tersembunyi dari sidebar, tetap boleh dibuka.
-const HIDDEN = ['/admin/fo/daftar', '/admin/scan'];
+// Fase 3: /admin/rekap-fo kini redirect ke Rekap terpadu (tersembunyi, tetap admin + front_office).
+const HIDDEN = ['/admin/fo/daftar', '/admin/scan', '/admin/rekap-fo'];
 
 const urutanHref = (items: AdminNavTreeItem[]) =>
   items.flatMap((i) => (i.type === 'link' ? [i.entry.href] : i.children.map((c) => c.href)));
@@ -191,7 +192,7 @@ describe('pengelompokan menu: data', () => {
     expect(anak('frontOffice')).toEqual(['Registrasi Pengunjung', 'Kotak Masuk FO', 'Penanganan']);
     expect(anak('antrean')).toEqual(['Antrian', 'Absensi', 'Kunjungan', 'Buku Tamu']);
     expect(anak('layananOnline')).toEqual(['Live Chat', 'Pengaduan', 'Kelola FAQ', 'Log AI Chat']);
-    expect(anak('laporan')).toEqual(['Rekap Harian', 'Rekap Front Office', 'Hasil SKM', 'Performa Pelayanan']);
+    expect(anak('laporan')).toEqual(['Rekap', 'Hasil SKM', 'Performa Pelayanan']);
     expect(anak('pengelolaan')).toEqual(['Jadwal Layanan', 'Kelola Layanan', 'Topik Penanganan', 'Kelola Layar']);
     expect(anak('kemitraan')).toEqual(['UMKM', 'Lead Investasi', 'Investment Gallery']);
     expect(anak('konten')).toEqual(['Dokumen Peraturan', 'Konten Landing']);
@@ -225,7 +226,7 @@ describe('buildNavTree', () => {
       ['Front Office', '/admin/fo/registrasi', '/admin/fo/kotak-masuk', '/admin/fo/penanganan'],
       ['Antrean & Kehadiran', '/admin/antrian', '/admin/absensi', '/admin/kunjungan', '/admin/buku-tamu'],
       ['Layanan Online', '/admin/chat', '/admin/pengaduan', '/admin/chat/faq'],
-      ['Laporan & Evaluasi', '/admin/rekap', '/admin/rekap-fo', '/admin/skm'],
+      ['Laporan & Evaluasi', '/admin/rekap', '/admin/skm'],
       ['Pengelolaan Layanan', '/admin/settings/jadwal', '/admin/layanan'],
       '/admin/profil',
       '/',
@@ -292,7 +293,8 @@ describe('findActiveNavEntry / findGroupForPath', () => {
   });
 
   it('batas prefiks "/": /admin/rekap-fo bukan anak /admin/rekap', () => {
-    expect(findActiveNavEntry('/admin/rekap-fo')?.href).toBe('/admin/rekap-fo');
+    // Rekap Front Office lama tersembunyi dan dipetakan ke Rekap terpadu (Fase 3).
+    expect(findActiveNavEntry('/admin/rekap-fo')?.href).toBe('/admin/rekap');
     expect(findActiveNavEntry('/admin/rekap')?.href).toBe('/admin/rekap');
     expect(findActiveNavEntry('/admin/rekap/x')?.href).toBe('/admin/rekap');
   });
@@ -337,7 +339,7 @@ describe('peta badge menu', () => {
 });
 
 describe('entri tersembunyi (halaman lama digabung ke Registrasi Pengunjung)', () => {
-  it('hanya /admin/fo/daftar dan /admin/scan yang tersembunyi', () => {
+  it('hanya /admin/fo/daftar, /admin/scan, dan /admin/rekap-fo yang tersembunyi', () => {
     expect(ADMIN_NAV.filter((e) => e.hidden).map((e) => e.href).sort()).toEqual([...HIDDEN].sort());
   });
 
@@ -362,11 +364,16 @@ describe('entri tersembunyi (halaman lama digabung ke Registrasi Pengunjung)', (
   });
 
   it('dipetakan ke grup Front Office dan menandai entri Registrasi Pengunjung sebagai aktif', () => {
-    for (const href of [...HIDDEN, '/admin/fo/registrasi']) {
+    for (const href of ['/admin/fo/daftar', '/admin/scan', '/admin/fo/registrasi']) {
       expect(findGroupForPath(href), href).toBe('frontOffice');
       expect(findActiveNavEntry(href)?.href, href).toBe('/admin/fo/registrasi');
     }
     // Query string bukan bagian pathname: ?tab=scan tetap memetakan ke Registrasi.
     expect(findActiveNavEntry('/admin/fo/registrasi')?.label).toBe('Registrasi Pengunjung');
+  });
+
+  it('/admin/rekap-fo dipetakan ke Rekap terpadu (grup Laporan)', () => {
+    expect(findGroupForPath('/admin/rekap-fo')).toBe('laporan');
+    expect(findActiveNavEntry('/admin/rekap-fo')?.href).toBe('/admin/rekap');
   });
 });

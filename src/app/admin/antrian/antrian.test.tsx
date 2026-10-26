@@ -82,6 +82,8 @@ function buildMock(opts: {
   penanganan?: Array<{ id: string; topik: string | null; catatan: string | null; penangan: { nama: string } | null }>;
   topik?: Array<{ id: string; nama: string }>;
   layananTujuan?: Array<{ id: string; nama: string }>;
+  /** Fase 3: penanda Koordinator akun pemanggil (dibaca terpisah lewat petugas.select('koordinator')). */
+  koordinator?: boolean;
 } = {}) {
   const rows = opts.rows ?? [];
   const role = opts.role ?? 'admin';
@@ -97,7 +99,10 @@ function buildMock(opts: {
     data: { id: SAYA, role, layanan_id: layananId, layanan: { nama: 'Helpdesk OSS' } },
     error: null,
   });
-  const petugasEq = vi.fn().mockReturnValue({ single: petugasSingle });
+  const petugasEq = vi.fn().mockReturnValue({
+    single: petugasSingle,
+    maybeSingle: vi.fn().mockResolvedValue({ data: { koordinator: opts.koordinator ?? false }, error: null }),
+  });
   const petugasSelect = vi.fn().mockReturnValue({ eq: petugasEq });
 
   // visit TIDAK boleh lagi di-UPDATE oleh halaman ini (A3): spy untuk membuktikannya.
@@ -108,6 +113,7 @@ function buildMock(opts: {
     layanan_mulai: { data: { ok: true, sudah_milik_anda: false }, error: null },
     layanan_selesai: { data: { ok: true, is_locked: false }, error: null },
     admin_ambil_alih: { data: { ok: true, sudah_milik_anda: false }, error: null },
+    koordinator_ambil_alih_tiket: { data: { ok: true, sudah_milik_anda: false }, error: null },
     layanan_kembalikan: { data: { ok: true }, error: null },
     admin_alihkan: { data: { ok: true, nomor_display: 'BP-003', layanan_nama: 'BPJS Kesehatan', petugas_hadir: true }, error: null },
   };
@@ -450,6 +456,29 @@ describe('Admin antrian: Selesai hanya oleh pemilik (rpc layanan_selesai)', () =
     fireEvent.click(await screen.findByRole('button', { name: /^selesai$/i }));
     await waitFor(() => expect(toastMock).toHaveBeenCalledWith(expect.stringContaining('Gagal menyelesaikan antrian'), 'error'));
     expect(toastMock).not.toHaveBeenCalledWith('Kunjungan berhasil diselesaikan', 'success');
+  });
+});
+
+describe('Antrian: ambil alih oleh Koordinator Petugas Layanan (Fase 3)', () => {
+  it('Koordinator melihat "Ambil alih" pada tiket rekan di layanannya dan memanggil koordinator_ambil_alih_tiket', async () => {
+    const mock = buildMock({ rows: [dilayaniLain()], role: 'petugas', koordinator: true });
+    render(<AntrianPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /ambil alih/i }));
+    const dialog = await screen.findByRole('dialog', { name: /Ambil alih tiket A-001/i });
+    expect(within(dialog).getByText(/Petugas semula tetap dapat menyunting draf/)).toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText(/Alasan ambil alih/i), { target: { value: 'petugas izin mendadak' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /^Ambil alih$/i }));
+    await waitFor(() =>
+      expect(mock.rpc).toHaveBeenCalledWith('koordinator_ambil_alih_tiket', { p_tiket_id: 't-1', p_alasan: 'petugas izin mendadak' }),
+    );
+    expect(mock.rpc.mock.calls.filter(([n]) => n === 'admin_ambil_alih')).toHaveLength(0);
+  });
+
+  it('Petugas biasa (bukan Koordinator) tidak melihat tombol Ambil alih', async () => {
+    buildMock({ rows: [dilayaniLain()], role: 'petugas', koordinator: false });
+    render(<AntrianPage />);
+    await screen.findByText('A-001');
+    expect(screen.queryByRole('button', { name: /ambil alih/i })).not.toBeInTheDocument();
   });
 });
 

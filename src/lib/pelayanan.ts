@@ -152,10 +152,13 @@ export type KodeGalatAntrean =
   // Perbaikan review (migrasi 202610140012): antrean tanggal lain, layanan tujuan alih libur/tutup.
   | 'BUKAN_HARI_INI'
   | 'LAYANAN_TIDAK_BUKA'
-  | 'LAYANAN_TUTUP';
+  | 'LAYANAN_TUTUP'
+  // Fase 3 (migrasi 202610290001): ambil alih pendataan oleh Koordinator.
+  | 'BUKAN_SATU_UNIT'
+  | 'KANAL_CHAT';
 
 const POLA_GALAT_ANTREAN =
-  /\b(SUDAH_DIAMBIL|BUKAN_PEMILIK|INVALID_STATUS|DIVERGENSI|SESI_TIDAK_SAH|NOT_FOUND|FORBIDDEN|ALASAN_WAJIB|TRANSISI_LEWAT_RPC|LOCKED|INVALID_FORM|INVALID_PAYLOAD|TOPIK_WAJIB|TOPIK_TIDAK_VALID|CATATAN_WAJIB|CATATAN_TERLALU_PANJANG|TIKET_LAMA|LAYANAN_SAMA|LAYANAN_TIDAK_VALID|BUKAN_HARI_INI|LAYANAN_TIDAK_BUKA|LAYANAN_TUTUP)\b/;
+  /\b(SUDAH_DIAMBIL|BUKAN_PEMILIK|INVALID_STATUS|DIVERGENSI|SESI_TIDAK_SAH|NOT_FOUND|FORBIDDEN|ALASAN_WAJIB|TRANSISI_LEWAT_RPC|LOCKED|INVALID_FORM|INVALID_PAYLOAD|TOPIK_WAJIB|TOPIK_TIDAK_VALID|CATATAN_WAJIB|CATATAN_TERLALU_PANJANG|TIKET_LAMA|LAYANAN_SAMA|LAYANAN_TIDAK_VALID|BUKAN_HARI_INI|LAYANAN_TIDAK_BUKA|LAYANAN_TUTUP|BUKAN_SATU_UNIT|KANAL_CHAT)\b/;
 
 /** Pesan siap tampil per kode galat RPC antrean (tanpa detail teknis). */
 export const PESAN_GALAT_ANTREAN: Record<KodeGalatAntrean, string> = {
@@ -181,6 +184,8 @@ export const PESAN_GALAT_ANTREAN: Record<KodeGalatAntrean, string> = {
   BUKAN_HARI_INI: 'Tiket ini bukan antrean hari ini sehingga tidak dapat dimulai. Muat ulang daftar antrean.',
   LAYANAN_TIDAK_BUKA: 'Layanan tujuan tidak beroperasi hari ini (libur atau di luar jadwal). Pilih layanan lain.',
   LAYANAN_TUTUP: 'Layanan hari ini sudah tutup, sehingga tiket tidak dapat dialihkan.',
+  BUKAN_SATU_UNIT: 'Pendataan ini dipegang akun di luar unit Anda, sehingga tidak dapat diambil alih.',
+  KANAL_CHAT: 'Penanganan live chat belum dapat diambil alih Koordinator.',
 };
 
 /** Kode galat dari pesan error database/RPC (awalan `KODE:`), atau null bila bukan galat antrean yang dikenal. */

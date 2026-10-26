@@ -17,6 +17,11 @@
 
 DO $$
 BEGIN
+  -- 202610290001 (Fase 3, Koordinator) harus di-rollback lebih dulu (penanda: komentar boleh_penanganan).
+  IF COALESCE(pg_catalog.obj_description(
+       pg_catalog.to_regprocedure('public.boleh_penanganan(uuid,text,uuid,uuid,text)'), 'pg_proc'), '') LIKE '%202610290001%' THEN
+    RAISE EXCEPTION 'ROLLBACK DITOLAK: 202610290001 masih terpasang (jalankan docs/rollback-koordinator-akses-data-202610290001.sql dulu)';
+  END IF;
   IF pg_catalog.to_regprocedure('public.boleh_penanganan(uuid,text,uuid,uuid,text)') IS NULL THEN
     RAISE EXCEPTION 'ROLLBACK DITOLAK: boleh_penanganan tidak ada (keadaan tak terduga)';
   END IF;

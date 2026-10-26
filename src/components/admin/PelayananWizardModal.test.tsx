@@ -249,6 +249,18 @@ describe('PelayananWizardModal component', () => {
       expect(mockFetch.mock.calls.filter((c) => (c[1] as RequestInit | undefined)?.method === 'PATCH')).toHaveLength(0);
     });
 
+    it('Fase 3: pemegang lama setelah diambil alih Koordinator: draf bisa disunting, tanpa tombol Selesaikan', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => dataOss({ dilayani_oleh: 'p-koord', dilayani_oleh_nama: 'Koord Satu', boleh_ubah: true, boleh_selesaikan: false }),
+      });
+      render(<PelayananWizardModal isOpen={true} tiketId="t-301" onClose={vi.fn()} />);
+      expect(await screen.findByDisplayValue('Rina')).not.toBeDisabled();
+      expect(screen.getByRole('status')).toHaveTextContent(/diambil alih Koord Satu/);
+      fireEvent.click(screen.getByRole('button', { name: /3\. Tindakan & Solusi/i }));
+      expect(screen.queryByRole('button', { name: /Selesaikan Antrian/i })).not.toBeInTheDocument();
+    });
+
     it('tiket belum dimulai (menunggu): baca-saja dengan pesan mulai layanan dulu', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
