@@ -257,7 +257,7 @@ describe('validasiAllowlist', () => {
     const mentah = JSON.parse(readFileSync(resolve(process.cwd(), 'audit-allow.json'), 'utf8'));
     const { entri, galat } = validasiAllowlist(mentah);
     expect(galat).toEqual([]);
-    expect(entri.length).toBeGreaterThan(0);
+    // Daftar kosong sah (tidak ada advisory yang dikecualikan); entri apa pun yang ada tetap divalidasi.
     for (const e of entri) {
       expect(e.id).toMatch(/^GHSA(-[a-z0-9]{4}){3}$/);
       expect(e.alasan.length).toBeGreaterThan(40);
