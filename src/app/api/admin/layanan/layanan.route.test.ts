@@ -53,7 +53,8 @@ async function setup(o: {
         single: () => { single = true; return b; },
         maybeSingle: () => { single = true; return b; },
         then: (res: (v: Hasil) => unknown, rej?: (e: unknown) => unknown) => {
-          if (table === 'petugas') {
+          // Pencarian aktor (requireAdmin/requireStaf) = petugas difilter auth_user_id; hitung pemakaian layanan memakai layanan_id.
+          if (table === 'petugas' && c.filters.some(([k]) => k === 'auth_user_id')) {
             return Promise.resolve({ data: role ? { id: 'p1', role, aktif: true } : null, error: null }).then(res, rej);
           }
           calls.push(c);
@@ -252,15 +253,37 @@ describe('DELETE /api/admin/layanan/[id]', () => {
     expect(s.calls.find((c) => c.table === 'kunjungan')?.filters).toContainEqual(['layanan_saran_id', ID]);
     expect(s.calls.some((c) => c.op === 'delete')).toBe(false);
   });
-  it.each(['tiket_antrean', 'penanganan', 'chat_sesi'])('menolak 409 bila %s merujuk', async (tabel) => {
+  it.each(['tiket_antrean', 'penanganan', 'chat_sesi'])('menolak 409 bila %s (RESTRICT) merujuk', async (tabel) => {
     await setup({ jawab: (c) => (c.table === tabel && c.op === 'select' ? { data: null, count: 1 } : undefined) });
     expect((await (await import('./[id]/route')).DELETE(req('DELETE'), ctx())).status).toBe(409);
   });
-  it('layanan bersih dihapus -> 200 setelah keempat tabel dicek', async () => {
+  it.each(['pengaduan', 'petugas', 'dokumen_peraturan'])('menolak 409 bila hanya %s (SET NULL) yang merujuk', async (tabel) => {
+    const s = await setup({ jawab: (c) => (c.table === tabel && c.op === 'select' ? { data: null, count: 2 } : undefined) });
+    const res = await (await import('./[id]/route')).DELETE(req('DELETE'), ctx());
+    expect(res.status).toBe(409);
+    expect((await res.json()).kode).toBe('SUDAH_DIPAKAI');
+    expect(s.calls.some((c) => c.op === 'delete')).toBe(false);
+  });
+  it.each(['rekap_harian_layanan', 'skm_response_rate'])('menolak 409 bila hanya %s (CASCADE riwayat) yang merujuk', async (tabel) => {
+    const s = await setup({ jawab: (c) => (c.table === tabel && c.op === 'select' ? { data: null, count: 5 } : undefined) });
+    const res = await (await import('./[id]/route')).DELETE(req('DELETE'), ctx());
+    expect(res.status).toBe(409);
+    expect((await res.json()).kode).toBe('SUDAH_DIPAKAI');
+    expect(s.calls.some((c) => c.op === 'delete')).toBe(false);
+  });
+  it('galat saat menghitung pemakaian -> 500 tanpa menghapus', async () => {
+    const s = await setup({ jawab: (c) => (c.table === 'petugas' && c.op === 'select' ? { data: null, error: { message: 'boom' } } : undefined) });
+    expect((await (await import('./[id]/route')).DELETE(req('DELETE'), ctx())).status).toBe(500);
+    expect(s.calls.some((c) => c.op === 'delete')).toBe(false);
+  });
+  it('layanan bersih dihapus -> 200 setelah kesembilan tabel dicek', async () => {
     const s = await setup();
     const res = await (await import('./[id]/route')).DELETE(req('DELETE'), ctx());
     expect(res.status).toBe(200);
-    expect(s.calls.filter((c) => c.op === 'select').map((c) => c.table).sort()).toEqual(['chat_sesi', 'kunjungan', 'penanganan', 'tiket_antrean']);
+    expect(s.calls.filter((c) => c.op === 'select').map((c) => c.table).sort()).toEqual([
+      'chat_sesi', 'dokumen_peraturan', 'kunjungan', 'penanganan', 'pengaduan', 'petugas',
+      'rekap_harian_layanan', 'skm_response_rate', 'tiket_antrean',
+    ]);
     expect(s.calls.find((c) => c.op === 'delete')).toMatchObject({ table: 'layanan', filters: [['id', ID]] });
   });
   it('FK 23503 saat hapus -> 409; tidak ada baris -> 404; non-admin -> 403', async () => {

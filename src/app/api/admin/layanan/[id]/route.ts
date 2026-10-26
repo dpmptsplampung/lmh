@@ -64,13 +64,24 @@ export async function PATCH(request: NextRequest, { params }: Ctx) {
   return json({ ok: true });
 }
 
-// Tabel yang merujuk layanan dan TIDAK boleh kehilangan induknya. kunjungan.layanan_saran_id ON DELETE SET NULL
-// akan diam-diam mengubah baris lama, jadi dicek di sini (bukan diserahkan ke FK).
+// Tabel yang merujuk layanan dan TIDAK boleh kehilangan induknya. Tiga golongan (FK-nya, diverifikasi di migrasi):
+//  - RESTRICT / NO ACTION (tiket_antrean, penanganan, chat_sesi): DB sendiri menolak (23503), dicek di sini agar pesannya jelas.
+//  - ON DELETE SET NULL (kunjungan.layanan_saran_id, pengaduan, petugas, dokumen_peraturan): DB DIAM-DIAM menulis ulang
+//    baris lama, jadi WAJIB dicek di sini.
+//  - ON DELETE CASCADE yang berisi RIWAYAT (rekap_harian_layanan, skm_response_rate): DB diam-diam MENGHAPUS riwayat.
+// Tabel konfigurasi yang ikut terhapus (layanan_hari, antrean_counter, topik_penanganan, jadwal_standby/pengecualian/
+// harian_beku, standar_pelayanan, faq, layanan_tautan) sengaja diizinkan. Kolom penghitung = kolom FK itu sendiri
+// (rekap_harian_layanan & skm_response_rate tidak punya kolom id).
 const RUJUKAN_LAYANAN: Array<{ tabel: string; kolom: string }> = [
   { tabel: 'tiket_antrean', kolom: 'layanan_id' },
   { tabel: 'penanganan', kolom: 'layanan_id' },
   { tabel: 'chat_sesi', kolom: 'layanan_id' },
   { tabel: 'kunjungan', kolom: 'layanan_saran_id' },
+  { tabel: 'pengaduan', kolom: 'layanan_id' },
+  { tabel: 'petugas', kolom: 'layanan_id' },
+  { tabel: 'dokumen_peraturan', kolom: 'layanan_id' },
+  { tabel: 'rekap_harian_layanan', kolom: 'layanan_id' },
+  { tabel: 'skm_response_rate', kolom: 'layanan_id' },
 ];
 
 // DELETE layanan (Admin). Hanya layanan yang belum pernah dipakai; yang sudah dipakai harus diarsipkan.
@@ -82,25 +93,29 @@ export async function DELETE(_request: NextRequest, { params }: Ctx) {
 
   const supabase = await createClient();
   const sudahDipakai = () => json({
-    error: 'Layanan sudah pernah dipakai (tiket, penanganan, chat, atau kunjungan). Arsipkan saja, jangan dihapus.',
+    error: 'Layanan sudah pernah dipakai (tiket, penanganan, chat, kunjungan, pengaduan, petugas, dokumen, atau rekap). Arsipkan saja, jangan dihapus.',
     kode: 'SUDAH_DIPAKAI',
   }, 409);
 
-  for (const { tabel, kolom } of RUJUKAN_LAYANAN) {
-    const { count, error } = await supabase.from(tabel).select('id', { count: 'exact', head: true }).eq(kolom, id);
-    if (error) {
-      console.error('[admin/layanan DELETE] gagal memeriksa pemakaian', tabel, error.message);
-      return json({ error: 'Gagal memeriksa pemakaian layanan' }, 500);
-    }
-    if ((count ?? 0) > 0) return sudahDipakai();
+  const hitung = await Promise.all(
+    RUJUKAN_LAYANAN.map(async ({ tabel, kolom }) => ({
+      tabel,
+      ...(await supabase.from(tabel).select(kolom, { count: 'exact', head: true }).eq(kolom, id)),
+    })),
+  );
+  const gagal = hitung.find((h) => h.error);
+  if (gagal) {
+    console.error('[admin/layanan DELETE] gagal memeriksa pemakaian', gagal.tabel, gagal.error?.message);
+    return json({ error: 'Gagal memeriksa pemakaian layanan' }, 500);
   }
+  if (hitung.some((h) => (h.count ?? 0) > 0)) return sudahDipakai();
 
   try {
     await mutasiWajibBaris(supabase.from('layanan').delete().eq('id', id).select('id'));
   } catch (e) {
     if (!(e instanceof MutasiError)) throw e;
     if (e.kode === 'tidak_ada_baris') return json({ error: 'Layanan tidak ditemukan' }, 404);
-    // 23503 = FK: ada rujukan yang muncul di antara pemeriksaan dan penghapusan (atau tabel lain yang tak terdaftar).
+    // 23503 = FK RESTRICT/NO ACTION: rujukan yang muncul di antara pemeriksaan dan penghapusan (balapan) atau tabel RESTRICT tak terdaftar.
     if (kodeDbMutasi(e) === '23503') return sudahDipakai();
     catatMutasiGagal('/api/admin/layanan/[id]', 'admin.layanan.hapus', e, { layananId: id });
     return json({ error: 'Gagal menghapus layanan' }, 500);
