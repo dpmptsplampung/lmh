@@ -187,11 +187,25 @@ export default function ReservasiPage() {
       setError(`Tanggal kedatangan maksimal ${MAX_BOOKING_DAYS} hari ke depan.`);
       return;
     }
-    // 0 = Minggu, 6 = Sabtu (parse eksplisit agar tidak tergantung timezone)
-    const dayOfWeek = new Date(`${form.tanggal_rencana}T00:00:00`).getDay();
-    if (dayOfWeek === 0 || dayOfWeek === 6) {
-      setError('Reservasi hanya tersedia pada hari kerja (Senin–Jumat). Mau tanya dulu? Live chat tersedia.');
-      return;
+    // Tujuan "bertemu seseorang" tidak punya jadwal layanan: hanya hari kerja kantor dan bukan hari libur nasional
+    // (mirror validasi reservasi_buat). Tujuan "loket" mengikuti jadwal layanan (termasuk Sabtu) lewat RPC di bawah.
+    if (form.tujuan === 'bertemu_seseorang') {
+      // 0 = Minggu, 6 = Sabtu (parse eksplisit agar tidak tergantung timezone)
+      const dayOfWeek = new Date(`${form.tanggal_rencana}T00:00:00`).getDay();
+      if (dayOfWeek === 0 || dayOfWeek === 6) {
+        setError('Reservasi hanya tersedia pada hari kerja (Senin–Jumat). Mau tanya dulu? Live chat tersedia.');
+        return;
+      }
+      const { data: libur, error: liburError } = await createClient()
+        .from('hari_libur')
+        .select('tanggal')
+        .eq('tanggal', form.tanggal_rencana)
+        .maybeSingle();
+      // Error baca diperlakukan "tidak diketahui" -> tidak menolak; validasi sesungguhnya di DB.
+      if (!liburError && libur) {
+        setError('Kantor libur pada tanggal tersebut.');
+        return;
+      }
     }
     // SCH-01/SCH-11: tolak di luar jadwal standby dengan menyebut jadwal terdekat (P3).
     if (form.tujuan === 'loket' && form.layanan_id) {
