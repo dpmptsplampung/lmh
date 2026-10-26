@@ -56,7 +56,8 @@ Urutan (berhenti di langkah pertama yang gagal):
   sesudahnya gerbang gagal lagi sampai dikaji ulang (perbarui dependensi, atau perpanjang tenggat dengan alasan baru).
 - Berkas cacat (alasan kosong, tenggat tidak valid, id ganda) membuat gerbang gagal. Entri yang tidak lagi dipakai dicetak
   sebagai PERINGATAN "basi" (tidak menggagalkan) — hapus entrinya.
-- Entri saat ini: `GHSA-vfj7-8cjw-p6xm` (braces, rantai dev-only lewat `eslint-config-next`), tenggat 2027-01-13.
+- Entri saat ini: tidak ada (daftar kosong sejak 2026-10-26). Entri lama `GHSA-vfj7-8cjw-p6xm` (braces) dihapus karena
+  rantainya tidak lagi dilaporkan `npm audit`.
 
 **Hook pre-push.** `.githooks/pre-push` menjalankan `npm run verify:baseline`; bila gagal, push dibatalkan. Aktifkan sekali per
 clone:
