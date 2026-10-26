@@ -226,6 +226,23 @@ node scripts/apply-migration.mjs supabase/migrations/202610140013_fo_keterbukaan
 
 Dry-run terhadap produksi 2026-10-14 (siang, read-only, di-ROLLBACK, saat 0003 belum terpasang): berhenti di `PRASYARAT: tabel penanganan / boleh_penanganan belum ada (202610140003_fo_model_data)` (benar); malam harinya diterapkan (dry-run lalu COMMIT). Dry-run kedua rollback (0013 dan 0012 yang diberi penjaga baru) juga berhenti di penjaganya masing-masing tanpa perubahan. Klien (rekap tanpa batas "milik sendiri", kolom Front Office) aman di-deploy sebelum/sesudah 0013: tanpa 0013 RLS lama hanya membuat data FO tidak lengkap, tidak bocor. Uji perilaku: `scripts/test-fo-keterbukaan.mjs` (dijalankan 2026-10-14 malam terhadap produksi, ROLLBACK: 26 lolos; skrip menolak Senin-Jumat 07:00-16:59 WIB). Belum terbukti: kueri rekap FO pada PostgREST sungguhan.
 
+## Survei terpadu Fase A (202610270001-202610270004)
+
+Spesifikasi: `docs/superpowers/specs/2026-10-26-survei-terpadu-design.md`; rencana: `docs/superpowers/plans/2026-10-26-survei-terpadu-fase-a.md`. Seri empat migrasi ADITIF (tanpa menghapus kolom atau data produksi) untuk survei terpadu (SPAK + SKM 11 unsur) dengan undangan berbasis QR. Urutan penerapan 0001 -> 0002 -> 0003 -> 0004; urutan rollback kebalikannya (0004 pertama, 0001 terakhir). Semuanya DITULIS tetapi BELUM DITERAPKAN: penerapan hanya oleh pemilik setelah konfirmasi CEO, lewat `scripts/apply-migration.mjs --atomic` (dry-run dulu). Perilaku diuji lebih dulu di PGlite lokal (`scripts/lokal/`, tanpa DB nyata); itu BUKAN pengganti dry-run pada DB nyata.
+
+| Versi | Berkas | Prasyarat | Rollback | Status |
+|---|---|---|---|---|
+| 202610270001 | `202610270001_survei_undangan.sql` | kolom `kunjungan.selesai_at` (`202610140003_fo_model_data`), `kunjungan_layanan_skm(uuid)` (`202610140007_wp24_akhiri_dual_write`), `boleh_kunjungan(uuid)` (`202610140009_chat_online`) — penjaga `PRASYARAT` | `docs/rollback-survei-undangan-202610270001.sql` (PALING AKHIR dalam seri; MENGHAPUS semua data undangan) | **DITULIS, BELUM DITERAPKAN.** Uji perilaku PGlite: 85 lolos, 0 gagal |
+
+**0001 (undangan survei per kunjungan selesai):** tabel `survei_undangan` (`kunjungan_id` unik, `token` unik 64 heksadesimal, `unit` `layanan`/`fo`, `kedaluwarsa_pada`, `diisi_pada`, `saran_dikirim`, `pengaduan_dikirim`; RLS aktif TANPA policy, hak dicabut dari PUBLIC/anon/authenticated); `ensure_undangan(uuid)` idempoten (service_role; `ON CONFLICT (kunjungan_id) DO NOTHING`, batas `selesai_at` + 32 jam tidak pernah bergeser); trigger `trg_kunjungan_selesai_undangan` (`AFTER UPDATE OF status`, klausa `WHEN` hanya saat status BERUBAH menjadi `selesai`; kunjungan lama tidak di-backfill); `ambil_qr_survei(uuid)` (authenticated; penjaga `boleh_kunjungan`, `FORBIDDEN` SQLSTATE 42501; token hanya untuk `belum_diisi`); view `v_survei_status` (tanpa token, tanpa `security_invoker`, disaring `boleh_kunjungan`, ditambah `security_barrier`; GRANT SELECT authenticated). Tanpa DML, tanpa mengubah objek lama.
+
+```
+node scripts/apply-migration.mjs supabase/migrations/202610270001_survei_undangan.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202610270001_survei_undangan.sql --atomic
+```
+
+Uji: kontrak statis `supabase/migrations/survei_undangan.test.ts`; perilaku `node scripts/lokal/skenario-survei-undangan.mjs` (PGlite; tidak masuk `npm test`). Migrasi 0002-0004 menambah baris pada tabel di atas.
+
 ```markdown
 ## Data walk-in lengkap (0014)
 

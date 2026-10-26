@@ -73,6 +73,7 @@
     "202610140012_perbaikan_review.sql": "9c69f2b8028550dc415e983c8d81945bdff6f554dae7ea768f6552fd3119b13b",
     "202610140013_fo_keterbukaan_data.sql": "283d422311cb2c84eed26006fdc890fc543c42a46ae8c5cacf15b72d44a2ee7f",
     "202610140014_walkin_data_lengkap.sql": "00c69141cf2362e6e81faf18505a12e7f60caac4aa5e603b96479d18dafb8ec3",
-    "202610140015_pendataan_tanpa_topik_email_opsional.sql": "c00ef7f5317c9c651ae4ee622b3f8662fa70a1d38112ab8fad055cfaf49a9424"
+    "202610140015_pendataan_tanpa_topik_email_opsional.sql": "c00ef7f5317c9c651ae4ee622b3f8662fa70a1d38112ab8fad055cfaf49a9424",
+    "202610270001_survei_undangan.sql": "b64c615c7f2be15f9db5c769710de554362e786a2f38a2327bc7ba78f98d4423"
   }
 }
