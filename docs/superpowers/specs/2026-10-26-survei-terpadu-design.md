@@ -44,7 +44,7 @@ Default yang bisa diubah pemilik: petugas layanan **tidak** membaca SPAK, saran,
 Semua perubahan **aditif** (tanpa menghapus kolom atau data produksi). Migrasi forward baru bernomor di atas `202610260001`, masing-masing dengan test kontrak, rollback di `docs/`, entri `MANIFEST.json`, `docs/MIGRATIONS.md`, dan `docs/analysis/DB-CHANGES.md` (aturan `docs/ATURAN_MIGRASI.md`).
 
 ### 4.1 `survei_undangan` (baru)
-- `id`, `kunjungan_id` (unik, FK `kunjungan` ON DELETE CASCADE), `token` (unik, acak 256-bit; sumber acak dipastikan saat perencanaan, mis. `extensions.gen_random_bytes`), `layanan_id` (boleh kosong), `unit` (`layanan` atau `fo`), `dibuat_pada`, `kedaluwarsa_pada` (= `kunjungan.selesai_at` + 32 jam), `diisi_pada`, `saran_dikirim` (bool), `pengaduan_dikirim` (bool).
+- `id`, `kunjungan_id` (unik, FK `kunjungan` ON DELETE CASCADE), `token` (unik, 64 karakter heksadesimal dari dua `gen_random_uuid()` (CSPRNG) yang digabung tanpa tanda hubung, sekitar 244 bit entropi, tanpa ekstensi tambahan), `layanan_id` (boleh kosong), `unit` (`layanan` atau `fo`), `dibuat_pada`, `kedaluwarsa_pada` (= `kunjungan.selesai_at` + 32 jam), `diisi_pada`, `saran_dikirim` (bool), `pengaduan_dikirim` (bool).
 - `unit` dan `layanan_id` dihitung dari `kunjungan_layanan_skm(kunjungan_id)`; hasil `NULL` berarti `unit = fo`.
 - Status turunan, tanpa kolom: `diisi_pada` terisi = Sudah diisi; lewat `kedaluwarsa_pada` = Kedaluwarsa; selain itu Belum diisi. Kunjungan tanpa undangan (belum selesai, batal, no-show, atau sebelum fitur ini) tampil "—".
 - Fungsi idempoten `ensure_undangan(kunjungan_id)` dipanggil trigger `AFTER UPDATE` pada `kunjungan` (status menjadi `selesai`) dan oleh `notify_kunjungan_status`, sehingga urutan trigger tidak berpengaruh. Kunjungan lama tidak di-backfill.
@@ -89,7 +89,7 @@ Semua perubahan **aditif** (tanpa menghapus kolom atau data produksi). Migrasi f
 | `GET /api/admin/survei/export` | Admin, FO | unduhan XLSX (§9) |
 
 - Semua RPC anon `SECURITY DEFINER`, `search_path` tetap, `REVOKE` dari `PUBLIC`, lalu `GRANT` eksplisit.
-- Penulisan dari anon lewat route handler (zod, pembatasan laju lewat `check_anon_rate`, log `logServerEvent`), seperti `/api/skm/submit`. Pembatasan laju `lacak` dipindahkan dari bucket memori per instance ke penyimpanan database.
+- Penulisan dari anon lewat route handler (zod, log `logServerEvent`), seperti `/api/skm/submit`. Di Fase A route kirim cukup mengandalkan token yang tak tertebak dan batas satu kali per undangan. Di Fase B pembatasan laju berbasis IP untuk saran, pengaduan, dan pantau memakai fungsi dan tabel baru yang dipanggil service role (`check_anon_rate` tidak cocok karena hanya untuk pengguna terautentikasi), menggantikan bucket memori per instance di route lacak.
 - Berkas tanggapan: JPG, PNG, WEBP, PDF, DOCX, XLSX; maksimal 5 MB per berkas dan 3 berkas per tanggapan; jenis diperiksa dari isi berkas (bukan hanya ekstensi); nama penyimpanan diacak; unduhan dokumen dengan `Content-Disposition: attachment`.
 
 ## 6. Hak akses
