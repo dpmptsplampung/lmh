@@ -942,6 +942,12 @@ describe('POST /api/chat/ai — konsol: bot hidup/mati, lingkup, dokumen, jam la
     });
   });
 
+  it('profilLayanan memuat slug layanan bila kolom ada (alamat popup etalase)', async () => {
+    await ask({ chatbotAktif: true, rpcData: faqExact, layananExtra: { slug: 'dinas-a' } }, 'Apa syarat membuat NIB?');
+    const { jalankanBot } = await import('@/lib/llm/bot');
+    expect(vi.mocked(jalankanBot).mock.calls.at(-1)?.[0]?.profilLayanan?.slug).toBe('dinas-a');
+  });
+
   it('profilLayanan memuat jadwal aktif layanan (HH:MM, urut hari)', async () => {
     await ask({
       chatbotAktif: true,
@@ -988,7 +994,7 @@ describe('POST /api/chat/ai — konsol: bot hidup/mati, lingkup, dokumen, jam la
     const kolom = (mock.from.mock.results as Array<{ value?: { select?: { mock: { calls: unknown[][] } } } }>)
       .map((r) => r.value?.select?.mock?.calls?.[0]?.[0])
       .filter((k: unknown) => typeof k === 'string' && k.startsWith('nama, chatbot_aktif'));
-    expect(kolom).toEqual(['nama, chatbot_aktif, deskripsi, instansi:instansi_id(nama), layanan_tautan(label, url, urut)', 'nama, chatbot_aktif']);
+    expect(kolom).toEqual(['nama, chatbot_aktif, deskripsi, slug, instansi:instansi_id(nama), layanan_tautan(label, url, urut)', 'nama, chatbot_aktif']);
     const { jalankanBot } = await import('@/lib/llm/bot');
     const arg = vi.mocked(jalankanBot).mock.calls.at(-1)?.[0];
     expect(arg?.profilLayanan).toEqual({ nama: 'Dinas A', instansi: null, deskripsi: null, websiteTerkait: [], jadwal: [] });

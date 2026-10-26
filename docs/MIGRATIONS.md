@@ -109,6 +109,46 @@ node scripts/apply-migration.mjs supabase/migrations/202610270002_jadwal_tunggal
 - Migrasi `202610260001` ada di branch lain (`claude/busy-poitras-cb912c`). Bila kedua branch di-merge, `supabase/migrations/MANIFEST.json` perlu digabung (entri dari kedua branch dipertahankan).
 - Setelah diterapkan, ledger produksi tertinggal lagi (`apply-migration` tidak menulis ledger): ulangi verifikasi ledger.
 
+## Homepage etalase Fase 2 (202610280001) — BELUM DITERAPKAN
+
+| Versi | Berkas | Isi | Status |
+|---|---|---|---|
+| 202610280001 | `202610280001_homepage_etalase.sql` | Kolom baru `layanan.tampil_di_homepage` (default true); `v_layanan_publik` memuatnya (kolom di akhir); tabel `homepage_blok` (aktif/urutan/teks per jenis blok, baca publik, tulis Admin `TO authenticated`, audit) berikut 7 baris awal insert-if-missing (teks hero/layanan/ajakan/footer disalin dari `landing_content`, baris lama tidak diubah); fungsi publik `layanan_status_hari_ini()` (status buka/tutup SAAT INI, hari + jam WIB, lewat `is_layanan_buka_jadwal` + jadwal mingguan; sesudah jam tutup hasilnya tutup); `audit_perubahan()` diganti dengan salinan utuh yang hanya menambah `jenis` pada COALESCE `entitas_id` (agar audit `homepage_blok` tidak berisi `entitas_id` NULL; tabel lain tidak terpengaruh). | **DITULIS, BELUM DITERAPKAN** |
+
+Tidak ada `DELETE`/`TRUNCATE`/`DROP`/`UPDATE`. Spesifikasi: bagian 5 rancangan layanan dinamis; rencana `docs/superpowers/plans/2026-10-28-fase-2-homepage-etalase.md`.
+
+**Urutan terap (hanya pemilik/CEO, atomik):** `202610270001`, `202610270002`, lalu `202610280001` (migrasi ini membaca kolom/tabel Fase 1: `slug`, `instansi`, `layanan_tautan`).
+
+```
+node scripts/apply-migration.mjs supabase/migrations/202610280001_homepage_etalase.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202610280001_homepage_etalase.sql --atomic
+```
+
+**Perilaku bila belum diterapkan (homepage tidak boleh 500):** pemuat `src/lib/homepage/data.ts` turun ke bawaan. Tanpa 0001 Fase 2: blok memakai bawaan kode (semua menyala, papan kinerja mati), kartu dimuat tanpa saklar homepage (semua layanan publik tampil), status buka/tutup dan jadwal popup **dihilangkan** (bukan ditebak), halaman admin `/admin/settings/landing` memberi pesan migrasi dan tombol simpan nonaktif (hanya untuk galat tabel hilang 42P01/PGRST205; galat baca lain tampil sebagai galat + Coba lagi), GET/POST/PATCH `/api/admin/layanan` mengulang tanpa kolom `tampil_di_homepage` (PATCH yang HANYA mengubah saklar itu dijawab 409 MIGRASI_BELUM_DITERAPKAN). Halaman `/` menunggu tiap pemuat paling lama 6 detik lalu memakai bawaan. Tanpa migrasi Fase 1: kartu dimuat dari kolom lama dan slug diturunkan dari nama (jalur darurat).
+
+**Catatan setelah terap:** judul bagian layanan memakai `{jumlah}` (hitungan dari data); judul lama "10 Layanan..." di `landing_content` tidak disalin. Blok mati tidak tampil sama sekali; tautan Kebijakan Privasi tetap tampil di luar blok footer.
+
+**LANGKAH ADMIN WAJIB setelah terap: isi Deskripsi tiap layanan.** Deskripsi lama kartu (baris `landing_content` bertipe `service`) SENGAJA tidak disalin otomatis (pencocokan nama ke layanan bersifat kabur dan melanggar prinsip B1). Setelah migrasi dan deploy, buka `/admin/layanan`, ubah tiap layanan, dan isi kolom Deskripsi (juga Instansi dan website terkait); tanpa itu kartu dan popup tampil tanpa deskripsi. Bantuan baca-saja (pemilik, tidak mengubah data) untuk menyalin teks lama:
+
+```sql
+-- 1) Teks lama kartu layanan (landing_content, tipe service), per urutan
+SELECT item_order,
+       max(item_value) FILTER (WHERE item_key = 'title')       AS judul_lama,
+       max(item_value) FILTER (WHERE item_key = 'description') AS deskripsi_lama
+FROM public.landing_content
+WHERE section = 'service'
+GROUP BY item_order
+ORDER BY item_order;
+
+-- 2) Layanan yang perlu diisi (deskripsi kosong ditandai)
+SELECT nama, slug, (deskripsi IS NULL OR btrim(deskripsi) = '') AS deskripsi_kosong
+FROM public.layanan
+WHERE aktif = true
+ORDER BY urutan, nama;
+```
+
+Jalankan keduanya lalu cocokkan judul lama dengan nama layanan secara manual.
+
 ## Migrasi forward (status penerapan produksi)
 
 > **Status per 2026-10-14 malam:** semua migrasi di tabel ini sudah DITERAPKAN ke produksi (0002-0009, 0011, 0012, 0013 pada ±17:52-17:57 WIB, tanpa 0010 karena tidak ada berkasnya). Terapan atomik (`apply-migration --atomic`, dry-run lalu COMMIT) dan diverifikasi read-only. Ledger `supabase_migrations.schema_migrations` sudah diisi (12 baris, `scripts/fill-migration-ledger.mjs --apply --yes`; verifikasi `docs/analysis/LEDGER-VERIFIKASI-2026-10-14.md`). Perintah "Cara menerapkan" di bawah dipertahankan sebagai catatan prosedur, bukan langkah yang masih tertunda. Yang BELUM TERBUKTI: tampilan di browser, konkurensi sejati, kueri rekap FO pada PostgREST sungguhan, `session_id` JWT stabil setelah refresh; flag `sesi_tunggal_aktif` masih `false`.

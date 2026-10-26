@@ -28,3 +28,13 @@ export function petaGalatTulisLayanan(e: MutasiError): GalatHttp | null {
   }
   return null;
 }
+
+/**
+ * Migrasi 202610280001 belum diterapkan: kolom layanan.tampil_di_homepage belum ada
+ * (Postgres 42703 "column ... does not exist", atau PGRST204 "Could not find the ... column" dari PostgREST).
+ * Route POST/PATCH mengulang tanpa kolom itu supaya Kelola Layanan tidak rusak sebelum migrasi diterapkan.
+ */
+export function kolomHomepageBelumAda(e: MutasiError): boolean {
+  const kode = kodeDbMutasi(e);
+  return (kode === '42703' || kode === 'PGRST204') && /tampil_di_homepage/i.test(pesanDbMutasi(e));
+}

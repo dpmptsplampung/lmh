@@ -41,7 +41,12 @@ function waitLevel(row: LoketEstimasi, tutup: boolean): WaitLevel {
   return 'normal';
 }
 
-export default function EstimasiAntrean() {
+const JUDUL_BAWAAN = 'Estimasi Antrean Sekarang';
+const PENJELASAN_BAWAAN =
+  'Perkiraan waktu tunggu realtime. Jika belum ada data histori durasi, angka ditandai sebagai perkiraan sementara.';
+
+/** `judul`/`penjelasan` opsional: blok "Status hari ini" di homepage bisa mengubah teksnya (admin). */
+export default function EstimasiAntrean({ judul, penjelasan }: { judul?: string; penjelasan?: string } = {}) {
   const [lokets, setLokets] = useState<LoketEstimasi[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -130,10 +135,10 @@ export default function EstimasiAntrean() {
       <div className={styles.header}>
         <h2 className={styles.title}>
           <Clock size={20} />
-          Estimasi Antrean Sekarang
+          {judul || JUDUL_BAWAAN}
         </h2>
         <p className={styles.subtitle}>
-          Perkiraan waktu tunggu realtime. Jika belum ada data histori durasi, angka ditandai sebagai perkiraan sementara.
+          {penjelasan || PENJELASAN_BAWAAN}
         </p>
       </div>
 

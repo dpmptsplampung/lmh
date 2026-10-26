@@ -1,324 +1,261 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+// Editor blok homepage (Fase 2): admin menyalakan/mematikan, mengurutkan, dan mengubah teks tiap blok berjenis
+// tetap (bukan page builder). Kartu layanan TIDAK diatur di sini: terisi otomatis dari Kelola Layanan.
+// Blok mati tidak tampil di homepage (tanpa teks cadangan). Isian kosong = teks bawaan (tampil sebagai placeholder).
+// Simpan = satu upsert 7 baris yang DICEK: 0 baris (RLS menolak diam-diam) atau sebagian bukan "berhasil".
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import {
-  ArrowLeft,
-  Save,
-  Loader2,
-  ChevronUp,
-  ChevronDown,
-  LayoutTemplate,
-} from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronUp, Loader2, Save } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import { createClient } from '@/lib/supabase/client';
 import { mutasiWajibBaris, pesanMutasi } from '@/lib/supabase/mutate';
 import { useToast } from '@/components/Toast';
+import {
+  DEFINISI_BLOK,
+  JENIS_BLOK,
+  gabungkanBlok,
+  linkAman,
+  type BarisBlok,
+  type JenisBlok,
+} from '@/lib/homepage/blok';
 import styles from './landing.module.css';
 
-interface LandingItem {
-  id: string;
-  section: string;
-  item_key: string;
-  item_value: string | null;
-  item_order: number;
-  is_active: boolean;
-}
+type TeksEdit = Record<string, string>;
 
-const SECTION_LABELS: Record<string, string> = {
-  hero: 'Hero',
-  section_header: 'Section Header',
-  service: 'Layanan',
-  cta: 'Call to Action',
-  footer: 'Footer',
-};
+// Hanya galat "relasi tidak ada" (Postgres 42P01, PostgREST PGRST205) yang berarti migrasi belum diterapkan;
+// galat lain (timeout, jaringan, RLS) adalah kegagalan baca biasa.
+const KODE_TABEL_HILANG = new Set(['42P01', 'PGRST205']);
 
-const SECTION_ORDER = ['hero', 'section_header', 'service', 'cta', 'footer'];
+const PESAN_TAUTAN = 'Tautan harus diawali / atau https:// (atau dikosongkan untuk memakai bawaan).';
 
-const TEXTAREA_KEYS = new Set(['description', 'jawaban', 'copyright']);
+const kosongTeks = (): Record<JenisBlok, TeksEdit> =>
+  Object.fromEntries(JENIS_BLOK.map((j) => [j, {}])) as unknown as Record<JenisBlok, TeksEdit>;
 
-export default function LandingContentEditorPage() {
+export default function EditorBlokHomepagePage() {
   const { toast } = useToast();
-  const [items, setItems] = useState<LandingItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<string>('');
-  const [savingSection, setSavingSection] = useState<string | null>(null);
+  /** Tabel homepage_blok belum ada / tak terbaca: editor tampil dengan bawaan, simpan dinonaktifkan. */
+  const [tabelBelumAda, setTabelBelumAda] = useState(false);
+  /** Gagal membaca karena sebab lain: data asli tak diketahui, jadi simpan dinonaktifkan (jangan menimpa dengan bawaan). */
+  const [galatMuat, setGalatMuat] = useState(false);
+  // Urutan jenis tanpa footer (footer selalu terakhir dan tidak bisa dipindah).
+  const [urutan, setUrutan] = useState<JenisBlok[]>(() => JENIS_BLOK.filter((j) => j !== 'footer'));
+  const [aktif, setAktif] = useState<Record<JenisBlok, boolean>>(
+    () => Object.fromEntries(JENIS_BLOK.map((j) => [j, DEFINISI_BLOK[j].aktifBawaan])) as Record<JenisBlok, boolean>,
+  );
+  const [teks, setTeks] = useState<Record<JenisBlok, TeksEdit>>(kosongTeks);
+  const [galat, setGalat] = useState<Record<string, string>>({});
+  const [menyimpan, setMenyimpan] = useState(false);
 
-  const fetchContent = useCallback(async () => {
+  const muat = useCallback(async () => {
     setLoading(true);
+    let rows: BarisBlok[] | null = null;
+    setTabelBelumAda(false);
+    setGalatMuat(false);
     try {
       const supabase = createClient();
-      const { data, error } = await supabase
-        .from('landing_content')
-        .select('*')
-        .order('section', { ascending: true })
-        .order('item_order', { ascending: true });
-
-      if (error) throw error;
-
-      const rows = (data || []) as LandingItem[];
-      setItems(rows);
-
-      const firstSection = SECTION_ORDER.find((s) =>
-        rows.some((r) => r.section === s)
-      );
-      if (firstSection) {
-        setActiveTab(firstSection);
-      }
-    } catch {
-      toast('Gagal memuat konten landing page.', 'error');
-    } finally {
-      setLoading(false);
+      const { data, error } = await supabase.from('homepage_blok').select('jenis, aktif, urutan, teks');
+      if (error || !Array.isArray(data)) throw error ?? new Error('tak terbaca');
+      rows = data as BarisBlok[];
+    } catch (e) {
+      const kode = (e as { code?: unknown } | null)?.code;
+      if (typeof kode === 'string' && KODE_TABEL_HILANG.has(kode)) setTabelBelumAda(true);
+      else setGalatMuat(true);
     }
-  }, [toast]);
+    const tersusun = gabungkanBlok(rows);
+    setUrutan(tersusun.filter((b) => b.jenis !== 'footer').map((b) => b.jenis));
+    setAktif(Object.fromEntries(tersusun.map((b) => [b.jenis, b.aktif])) as Record<JenisBlok, boolean>);
+    // Isian = nilai KUSTOM mentah dari DB (bukan bawaan), agar menyimpan tidak membekukan teks bawaan.
+    const mentah = kosongTeks();
+    for (const r of rows ?? []) {
+      if (!(JENIS_BLOK as readonly string[]).includes(r.jenis) || !r.teks || typeof r.teks !== 'object') continue;
+      const j = r.jenis as JenisBlok;
+      for (const b of DEFINISI_BLOK[j].bidang) {
+        const v = r.teks[b.kunci];
+        if (typeof v === 'string') mentah[j][b.kunci] = v;
+      }
+    }
+    setTeks(mentah);
+    setLoading(false);
+  }, []);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchContent();
-  }, [fetchContent]);
+    muat();
+  }, [muat]);
 
-  const sections = Array.from(new Set(items.map((i) => i.section))).sort(
-    (a, b) => SECTION_ORDER.indexOf(a) - SECTION_ORDER.indexOf(b)
-  );
-
-  const getSectionItems = (section: string) =>
-    items.filter((i) => i.section === section);
-
-  const updateItem = (id: string, field: keyof LandingItem, value: string | number | boolean) => {
-    setItems((prev) =>
-      prev.map((item) =>
-        item.id === id ? { ...item, [field]: value } : item
-      )
-    );
+  const ubahTeks = (jenis: JenisBlok, kunci: string, nilai: string) => {
+    setTeks((prev) => ({ ...prev, [jenis]: { ...prev[jenis], [kunci]: nilai } }));
+    setGalat((g) => (g[`${jenis}.${kunci}`] ? { ...g, [`${jenis}.${kunci}`]: '' } : g));
   };
 
-  const handleReorderService = (serviceIndex: number, direction: 'up' | 'down') => {
-    const serviceItems = getSectionItems('service');
-    const orders = Array.from(new Set(serviceItems.map((s) => s.item_order))).sort(
-      (a, b) => a - b
-    );
-    const currentOrder = serviceItems[serviceIndex].item_order;
-    const orderIdx = orders.indexOf(currentOrder);
-    const targetOrder = direction === 'up' ? orders[orderIdx - 1] : orders[orderIdx + 1];
-    if (targetOrder === undefined) return;
-
-    const currentIds = serviceItems
-      .filter((s) => s.item_order === currentOrder)
-      .map((s) => s.id);
-    const targetIds = serviceItems
-      .filter((s) => s.item_order === targetOrder)
-      .map((s) => s.id);
-
-    setItems((prev) =>
-      prev.map((item) => {
-        if (currentIds.includes(item.id)) {
-          return { ...item, item_order: targetOrder };
-        }
-        if (targetIds.includes(item.id)) {
-          return { ...item, item_order: currentOrder };
-        }
-        return item;
-      })
-    );
+  const pindah = (indeks: number, arah: -1 | 1) => {
+    setUrutan((prev) => {
+      const tujuan = indeks + arah;
+      if (tujuan < 0 || tujuan >= prev.length) return prev;
+      const baru = [...prev];
+      [baru[indeks], baru[tujuan]] = [baru[tujuan], baru[indeks]];
+      return baru;
+    });
   };
 
-  const handleSaveSection = async (section: string) => {
-    setSavingSection(section);
-    const sectionItems = getSectionItems(section);
+  const simpan = async () => {
+    const semua: JenisBlok[] = [...urutan, 'footer'];
+    // Validasi tautan di klien (linkAman juga menyaring saat render).
+    const g: Record<string, string> = {};
+    for (const j of semua) {
+      for (const b of DEFINISI_BLOK[j].bidang) {
+        const v = (teks[j][b.kunci] ?? '').trim();
+        if (b.tautan && v !== '' && linkAman(v, '', { izinkanWa: b.kunci === 'cta_secondary_link' }) === '') {
+          g[`${j}.${b.kunci}`] = PESAN_TAUTAN;
+        }
+      }
+    }
+    setGalat(g);
+    if (Object.keys(g).length > 0) {
+      toast('Periksa isian yang bertanda galat.', 'error');
+      return;
+    }
 
+    const rows = semua.map((j, i) => ({
+      jenis: j,
+      aktif: aktif[j],
+      urutan: (i + 1) * 10,
+      teks: Object.fromEntries(
+        DEFINISI_BLOK[j].bidang
+          .map((b) => [b.kunci, (teks[j][b.kunci] ?? '').trim()] as const)
+          .filter(([, v]) => v !== ''),
+      ),
+    }));
+
+    setMenyimpan(true);
     try {
       const supabase = createClient();
-      // Satu UPDATE per item, paralel. .select('id') + mutasiWajibBaris: RLS yang menolak UPDATE = 0 baris
-      // tanpa error. allSettled (bukan all): semua item tetap dicoba dan kegagalan sebagian dilaporkan jujur.
-      const hasil = await Promise.allSettled(
-        sectionItems.map((item) =>
-          mutasiWajibBaris(
-            supabase
-              .from('landing_content')
-              .update({
-                item_value: item.item_value,
-                is_active: item.is_active,
-                item_order: item.item_order,
-              })
-              .eq('id', item.id)
-              .select('id'),
-          ),
-        ),
+      // Isian di layar SENGAJA tidak dimuat ulang saat gagal (tidak membuang ketikan); upsert idempoten.
+      const tersimpan = await mutasiWajibBaris(
+        supabase.from('homepage_blok').upsert(rows, { onConflict: 'jenis' }).select('jenis'),
       );
-      const gagal = hasil.filter((h): h is PromiseRejectedResult => h.status === 'rejected');
-      if (gagal.length > 0) {
-        // Isian di layar SENGAJA tidak dimuat ulang: memuat ulang akan membuang ketikan pengguna yang belum
-        // tersimpan (juga di bagian lain). Menyimpan ulang aman karena tiap UPDATE idempoten.
-        const pesan = pesanMutasi(gagal[0].reason);
-        toast(
-          gagal.length === sectionItems.length
-            ? `Gagal menyimpan konten. ${pesan}`
-            : `Sebagian konten gagal disimpan (${gagal.length} dari ${sectionItems.length} item). ${pesan} Simpan ulang untuk mencoba lagi.`,
-          'error',
-        );
+      if (tersimpan.length < rows.length) {
+        toast(`Hanya ${tersimpan.length} dari ${rows.length} blok tersimpan. Simpan ulang untuk mencoba lagi.`, 'error');
         return;
       }
-
-      toast(`Konten "${SECTION_LABELS[section] || section}" berhasil disimpan!`, 'success');
-    } catch {
-      toast('Gagal menyimpan konten. Silakan coba lagi.', 'error');
+      toast('Blok homepage berhasil disimpan!', 'success');
+    } catch (e) {
+      toast(`Gagal menyimpan blok homepage. ${pesanMutasi(e)}`, 'error');
     } finally {
-      setSavingSection(null);
+      setMenyimpan(false);
     }
   };
 
-  const renderField = (item: LandingItem) => {
-    const isTextarea = TEXTAREA_KEYS.has(item.item_key);
-    const label = item.item_key.replace(/_/g, ' ');
-
-    return (
-      <div key={item.id} className="form-group">
-        <label className="form-label" style={{ textTransform: 'capitalize' }}>
-          {label}
-        </label>
-        {isTextarea ? (
-          <textarea
-            className="form-textarea"
-            rows={3}
-            value={item.item_value || ''}
-            onChange={(e) => updateItem(item.id, 'item_value', e.target.value)}
-          />
-        ) : (
-          <input
-            type="text"
-            className="form-input"
-            value={item.item_value || ''}
-            onChange={(e) => updateItem(item.id, 'item_value', e.target.value)}
-          />
-        )}
-      </div>
-    );
-  };
-
-  const renderServiceEditor = () => {
-    const serviceItems = getSectionItems('service');
-    const orders = Array.from(new Set(serviceItems.map((s) => s.item_order))).sort(
-      (a, b) => a - b
-    );
-
-    return (
-      <div className={styles.serviceCards}>
-        {orders.map((order, orderIdx) => {
-          const cardItems = serviceItems.filter((s) => s.item_order === order);
-          const titleItem = cardItems.find((s) => s.item_key === 'title');
-          return (
-            <div key={order} className={styles.serviceCard}>
-              <div className={styles.serviceCardHeader}>
-                <div className={styles.serviceCardTitle}>
-                  <span className={styles.serviceOrderBadge}>{order}</span>
-                  {titleItem?.item_value || `Service ${order}`}
-                </div>
-                <div className={styles.serviceReorder}>
-                  <button
-                    type="button"
-                    className={styles.reorderBtn}
-                    onClick={() => handleReorderService(orderIdx, 'up')}
-                    disabled={orderIdx === 0}
-                    aria-label="Move up"
-                  >
-                    <ChevronUp size={16} />
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.reorderBtn}
-                    onClick={() => handleReorderService(orderIdx, 'down')}
-                    disabled={orderIdx === orders.length - 1}
-                    aria-label="Move down"
-                  >
-                    <ChevronDown size={16} />
-                  </button>
-                </div>
-              </div>
-
-              <div className={styles.fieldGrid}>
-                {cardItems.map((item) => (
-                  <div
-                    key={item.id}
-                    className={
-                      item.item_key === 'description'
-                        ? styles.fieldGridFull
-                        : ''
-                    }
-                  >
-                    <div className="form-group">
-                      <label className="form-label" style={{ textTransform: 'capitalize' }}>
-                        {item.item_key}
-                      </label>
-                      {item.item_key === 'description' ? (
-                        <textarea
-                          className="form-textarea"
-                          rows={2}
-                          value={item.item_value || ''}
-                          onChange={(e) => updateItem(item.id, 'item_value', e.target.value)}
-                        />
-                      ) : (
-                        <input
-                          type="text"
-                          className="form-input"
-                          value={item.item_value || ''}
-                          onChange={(e) => updateItem(item.id, 'item_value', e.target.value)}
-                        />
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className={styles.toggleRow}>
-                <label className={styles.toggleSwitch}>
-                  <input
-                    type="checkbox"
-                    checked={cardItems[0]?.is_active ?? true}
-                    onChange={(e) => {
-                      const ids = cardItems.map((c) => c.id);
-                      setItems((prev) =>
-                        prev.map((item) =>
-                          ids.includes(item.id)
-                            ? { ...item, is_active: e.target.checked }
-                            : item
-                        )
-                      );
-                    }}
-                  />
-                  <span className={styles.toggleSlider} />
-                </label>
-                <span className={styles.toggleLabel}>Aktif</span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    );
-  };
+  const judul = 'Blok Homepage';
+  const deskripsi = 'Atur blok yang tampil di halaman utama: nyalakan, urutkan, dan ubah teksnya';
 
   if (loading) {
     return (
       <>
-        <PageHeader
-          title="Konten Landing Page"
-          description="Edit konten yang ditampilkan di halaman utama"
-        />
+        <PageHeader title={judul} description={deskripsi} />
         <div className={styles.landingPage}>
           <div className={styles.loadingState}>
             <Loader2 size={20} className="animate-spin" />
-            Memuat konten...
+            Memuat blok…
           </div>
         </div>
       </>
     );
   }
 
+  const kartuBlok = (jenis: JenisBlok, indeks: number | null) => {
+    const def = DEFINISI_BLOK[jenis];
+    return (
+      <fieldset key={jenis} className={styles.serviceCard} style={{ margin: 0 }}>
+        <legend className={styles.sectionTitle} style={{ padding: '0 var(--space-2)' }}>{def.label}</legend>
+
+        {def.catatan && <p className="form-hint">{def.catatan}</p>}
+
+        <div className={styles.serviceCardHeader}>
+          <div className={styles.toggleRow}>
+            <label className={styles.toggleSwitch}>
+              <input
+                type="checkbox"
+                aria-label="Tampilkan blok ini di homepage"
+                checked={aktif[jenis]}
+                onChange={(e) => setAktif((prev) => ({ ...prev, [jenis]: e.target.checked }))}
+              />
+              <span className={styles.toggleSlider} />
+            </label>
+            <span className={styles.toggleLabel}>Tampilkan blok ini di homepage</span>
+          </div>
+          {indeks !== null && (
+            <div className={styles.serviceReorder}>
+              <button
+                type="button"
+                className={styles.reorderBtn}
+                onClick={() => pindah(indeks, -1)}
+                disabled={indeks === 0}
+                aria-label={`Naikkan blok ${def.label}`}
+              >
+                <ChevronUp size={16} aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className={styles.reorderBtn}
+                onClick={() => pindah(indeks, 1)}
+                disabled={indeks === urutan.length - 1}
+                aria-label={`Turunkan blok ${def.label}`}
+              >
+                <ChevronDown size={16} aria-hidden="true" />
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className={styles.fieldGrid}>
+          {def.bidang.map((b) => {
+            const id = `blok-${jenis}-${b.kunci}`;
+            const kunciGalat = `${jenis}.${b.kunci}`;
+            const bantu = galat[kunciGalat] ? `${id}-galat` : undefined;
+            const nilai = teks[jenis][b.kunci] ?? '';
+            return (
+              <div key={b.kunci} className={b.panjang === 'panjang' ? styles.fieldGridFull : ''}>
+                <div className="form-group">
+                  <label className="form-label" htmlFor={id}>{b.label}</label>
+                  {b.panjang === 'panjang' ? (
+                    <textarea
+                      id={id}
+                      className="form-textarea"
+                      rows={3}
+                      value={nilai}
+                      placeholder={def.bawaan[b.kunci]}
+                      aria-invalid={galat[kunciGalat] ? true : undefined}
+                      aria-describedby={bantu}
+                      onChange={(e) => ubahTeks(jenis, b.kunci, e.target.value)}
+                    />
+                  ) : (
+                    <input
+                      id={id}
+                      type="text"
+                      className="form-input"
+                      value={nilai}
+                      placeholder={def.bawaan[b.kunci]}
+                      aria-invalid={galat[kunciGalat] ? true : undefined}
+                      aria-describedby={bantu}
+                      onChange={(e) => ubahTeks(jenis, b.kunci, e.target.value)}
+                    />
+                  )}
+                  {galat[kunciGalat] && <p id={`${id}-galat`} className="form-error" role="alert">{galat[kunciGalat]}</p>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </fieldset>
+    );
+  };
+
   return (
     <>
-      <PageHeader
-        title="Konten Landing Page"
-        description="Edit konten yang ditampilkan di halaman utama"
-      />
+      <PageHeader title={judul} description={deskripsi} />
 
       <div className={styles.landingPage}>
         <Link href="/admin/settings" className={styles.backLink}>
@@ -326,102 +263,51 @@ export default function LandingContentEditorPage() {
           Kembali ke Pengaturan
         </Link>
 
-        {sections.length === 0 ? (
-          <div className={styles.loadingState}>
-            <LayoutTemplate size={24} />
-            Tidak ada konten landing page ditemukan.
+        {galatMuat && (
+          <div className="form-error" role="alert">
+            <p>Gagal memuat blok homepage. Perubahan belum bisa disimpan agar data yang ada tidak tertimpa; coba muat ulang.</p>
+            <button type="button" className="btn btn--secondary btn--sm" onClick={() => void muat()}>
+              Coba lagi
+            </button>
           </div>
-        ) : (
-          <>
-            <div className={styles.tabBar}>
-              {sections.map((section) => (
-                <button
-                  key={section}
-                  type="button"
-                  className={`${styles.tab} ${activeTab === section ? styles.tabActive : ''}`}
-                  onClick={() => setActiveTab(section)}
-                >
-                  {SECTION_LABELS[section] || section}
-                </button>
-              ))}
-            </div>
-
-            {sections.map((section) => {
-              if (section !== activeTab) return null;
-
-              return (
-                <div key={section} className={styles.sectionPanel}>
-                  <h3 className={styles.sectionTitle}>
-                    {SECTION_LABELS[section] || section}
-                  </h3>
-
-                  {section === 'service' ? (
-                    renderServiceEditor()
-                  ) : (
-                    <div className={styles.fieldGrid}>
-                      {getSectionItems(section).map((item) => (
-                        <div
-                          key={item.id}
-                          className={
-                            TEXTAREA_KEYS.has(item.item_key)
-                              ? styles.fieldGridFull
-                              : ''
-                          }
-                        >
-                          {renderField(item)}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {section !== 'service' && (
-                    <div className={styles.toggleRow}>
-                      <label className={styles.toggleSwitch}>
-                        <input
-                          type="checkbox"
-                          checked={getSectionItems(section)[0]?.is_active ?? true}
-                          onChange={(e) => {
-                            const ids = getSectionItems(section).map((i) => i.id);
-                            setItems((prev) =>
-                              prev.map((item) =>
-                                ids.includes(item.id)
-                                  ? { ...item, is_active: e.target.checked }
-                                  : item
-                              )
-                            );
-                          }}
-                        />
-                        <span className={styles.toggleSlider} />
-                      </label>
-                      <span className={styles.toggleLabel}>Tampilkan di landing page</span>
-                    </div>
-                  )}
-
-                  <div className={styles.saveBar}>
-                    <button
-                      type="button"
-                      className="btn btn--primary"
-                      onClick={() => handleSaveSection(section)}
-                      disabled={savingSection === section}
-                    >
-                      {savingSection === section ? (
-                        <>
-                          <Loader2 size={16} className="animate-spin" />
-                          Menyimpan...
-                        </>
-                      ) : (
-                        <>
-                          <Save size={16} />
-                          Simpan Perubahan
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </>
         )}
+        {tabelBelumAda && (
+          <p className="form-error" role="alert">
+            Tabel blok homepage belum tersedia. Terapkan migrasi 202610280001 lebih dulu; sementara itu homepage memakai
+            pengaturan bawaan dan perubahan di sini belum bisa disimpan.
+          </p>
+        )}
+        <p className="form-hint">
+          Kartu layanan terisi otomatis dari <Link href="/admin/layanan">Kelola Layanan</Link>. Isian yang dikosongkan memakai
+          teks bawaan (ditampilkan abu-abu). Blok yang dimatikan tidak tampil sama sekali.
+        </p>
+
+        <div className={styles.serviceCards}>
+          {urutan.map((jenis, i) => kartuBlok(jenis, i))}
+          {kartuBlok('footer', null)}
+        </div>
+
+        <div className={styles.saveBar}>
+          <button
+            type="button"
+            className="btn btn--primary"
+            onClick={simpan}
+            disabled={menyimpan || tabelBelumAda || galatMuat}
+            aria-busy={menyimpan}
+          >
+            {menyimpan ? (
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                Menyimpan...
+              </>
+            ) : (
+              <>
+                <Save size={16} />
+                Simpan Perubahan
+              </>
+            )}
+          </button>
+        </div>
       </div>
     </>
   );

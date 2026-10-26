@@ -9,6 +9,7 @@ export type LayananProfilRow = {
   nama: string;
   chatbot_aktif?: boolean | null;
   deskripsi?: string | null;
+  slug?: string | null;
   instansi?: { nama?: string | null } | Array<{ nama?: string | null }> | null;
   layanan_tautan?: Array<{ label: string; url: string; urut?: number | null }> | null;
 };
@@ -17,7 +18,7 @@ export type HasilMuatLayanan =
   | { ok: true; layanan: { nama: string; chatbot_aktif?: boolean | null }; profil: ProfilLayanan }
   | { ok: false; status: 404 | 503 };
 
-const SELECT_PROFIL = 'nama, chatbot_aktif, deskripsi, instansi:instansi_id(nama), layanan_tautan(label, url, urut)';
+const SELECT_PROFIL = 'nama, chatbot_aktif, deskripsi, slug, instansi:instansi_id(nama), layanan_tautan(label, url, urut)';
 const SELECT_DASAR = 'nama, chatbot_aktif';
 
 function cause(e: unknown): string {
@@ -33,6 +34,7 @@ export function susunProfilLayanan(row: LayananProfilRow, jadwal: JadwalProfil[]
     nama: row.nama,
     instansi: inst?.nama ?? null,
     deskripsi: row.deskripsi ?? null,
+    ...(row.slug ? { slug: row.slug } : {}),
     websiteTerkait: tautan.map((t) => ({ label: t.label, url: t.url })),
     jadwal,
   };

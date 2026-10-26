@@ -1,19 +1,22 @@
 // @vitest-environment jsdom
-// Audit T2d: simpan konten landing = banyak UPDATE paralel (satu per item). Penolakan RLS = 0 baris tanpa
-// error -> jangan lapor "berhasil disimpan"; kegagalan sebagian harus dilaporkan jujur.
+// Editor blok homepage (Fase 2). Simpan = satu upsert 7 baris yang DICEK (0 baris karena RLS = galat, bukan
+// "berhasil"); kegagalan tidak membuang isian pengguna.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, cleanup, fireEvent, within } from '@testing-library/react';
 
 type DbError = { message: string; code?: string };
-type UpdateResult = { data: { id: string }[] | null; error: DbError | null };
+type HasilUpsert = { data: { jenis: string }[] | null; error: DbError | null };
 
 const h = vi.hoisted(() => ({
   toast: vi.fn(),
   selects: vi.fn(),
-  updates: [] as { id: string; payload: Record<string, unknown> }[],
+  upserts: [] as { rows: Array<Record<string, unknown>>; opsi: Record<string, unknown> }[],
   state: {
-    items: [] as unknown[],
-    updateResult: ((id: string) => ({ data: [{ id }], error: null })) as (id: string) => UpdateResult,
+    rows: [] as unknown,
+    selectError: null as DbError | null,
+    upsertResult: ((rows: Array<{ jenis: string }>) => ({ data: rows.map((r) => ({ jenis: r.jenis })), error: null })) as (
+      rows: Array<{ jenis: string }>,
+    ) => HasilUpsert,
   },
 }));
 
@@ -25,101 +28,162 @@ vi.mock('next/link', () => ({
 vi.mock('@/lib/supabase/client', () => ({
   createClient: () => ({
     from: () => ({
-      // dua .order() berantai: order('section') -> order('item_order')
-      select: () => ({
-        order: () => ({
-          order: () => {
-            h.selects();
-            return Promise.resolve({ data: h.state.items, error: null });
-          },
-        }),
-      }),
-      update: (payload: Record<string, unknown>) => ({
-        eq: (_kolom: string, id: string) => ({
-          select: () => {
-            h.updates.push({ id, payload });
-            return Promise.resolve(h.state.updateResult(id));
-          },
-        }),
+      select: () => {
+        h.selects();
+        return Promise.resolve({ data: h.state.selectError ? null : h.state.rows, error: h.state.selectError });
+      },
+      upsert: (rows: Array<Record<string, unknown>>, opsi: Record<string, unknown>) => ({
+        select: () => {
+          h.upserts.push({ rows, opsi });
+          return Promise.resolve(h.state.upsertResult(rows as Array<{ jenis: string }>));
+        },
       }),
     }),
   }),
 }));
 
-import LandingContentEditorPage from './page';
+import EditorBlokHomepagePage from './page';
 
-const item = (id: string, key: string, value: string, order = 1) => ({
-  id,
-  section: 'hero',
-  item_key: key,
-  item_value: value,
-  item_order: order,
-  is_active: true,
-});
+const baris = (jenis: string, aktif: boolean, urutan: number, teks: Record<string, string> = {}) => ({ jenis, aktif, urutan, teks });
+const SEMUA = [
+  baris('hero', true, 10, { description: 'Deskripsi hero kustom' }),
+  baris('jalur_cepat', true, 20),
+  baris('status_hari_ini', true, 30),
+  baris('layanan', true, 40),
+  baris('papan_kinerja', false, 50),
+  baris('ajakan', true, 60),
+  baris('footer', true, 70),
+];
 
-async function bukaDanSimpan() {
-  render(<LandingContentEditorPage />);
-  const tombol = await screen.findByRole('button', { name: /Simpan Perubahan/i });
-  fireEvent.click(tombol);
-}
+const simpan = () => fireEvent.click(screen.getByRole('button', { name: /Simpan Perubahan/i }));
+const kartu = (judul: RegExp) => screen.getByRole('group', { name: judul });
 
-describe('Admin landing: simpan konten dicek (tidak ada sukses palsu)', () => {
+describe('Admin editor blok homepage', () => {
   beforeEach(() => {
     h.toast.mockClear();
     h.selects.mockClear();
-    h.updates.length = 0;
-    h.state.items = [item('i1', 'title', 'Judul'), item('i2', 'subtitle', 'Subjudul', 2)];
-    h.state.updateResult = (id) => ({ data: [{ id }], error: null });
+    h.upserts.length = 0;
+    h.state.rows = SEMUA;
+    h.state.selectError = null;
+    h.state.upsertResult = (rows) => ({ data: rows.map((r) => ({ jenis: r.jenis })), error: null });
   });
   afterEach(cleanup);
 
-  it('semua item terbukti tersimpan -> toast sukses', async () => {
-    await bukaDanSimpan();
-    await waitFor(() =>
-      expect(h.toast).toHaveBeenCalledWith('Konten "Hero" berhasil disimpan!', 'success'),
-    );
-    expect(h.updates.map((u) => u.id).sort()).toEqual(['i1', 'i2']);
-    expect(h.toast).not.toHaveBeenCalledWith(expect.anything(), 'error');
+  it('memuat tujuh blok berurutan; footer tidak bisa dipindah; papan kinerja mati + catatan belum tersedia', async () => {
+    render(<EditorBlokHomepagePage />);
+    await screen.findByRole('group', { name: /Hero/ });
+    expect(screen.getAllByRole('group')).toHaveLength(7);
+    const footer = kartu(/Footer/);
+    expect(within(footer).queryByRole('button', { name: /naik|turun/i })).toBeNull();
+    const papan = kartu(/Papan kinerja/);
+    expect(within(papan).getByRole('checkbox', { name: /Tampilkan blok/ })).not.toBeChecked();
+    expect(within(papan).getByText(/belum tersedia/i)).toBeInTheDocument();
+    expect(within(kartu(/Hero/)).getByDisplayValue('Deskripsi hero kustom')).toBeInTheDocument();
   });
 
-  it('semua item 0 baris (RLS menolak diam-diam) -> toast gagal jelas, BUKAN sukses', async () => {
-    h.state.updateResult = () => ({ data: [], error: null });
-    await bukaDanSimpan();
-    await waitFor(() =>
-      expect(h.toast).toHaveBeenCalledWith(expect.stringContaining('tidak berwenang'), 'error'),
-    );
+  it('tabel belum ada: pesan migrasi, editor tetap tampil dengan bawaan, tombol simpan nonaktif', async () => {
+    h.state.selectError = { message: 'relation "homepage_blok" does not exist', code: '42P01' };
+    render(<EditorBlokHomepagePage />);
+    expect(await screen.findByText(/migrasi 202610280001/)).toBeInTheDocument();
+    expect(screen.getAllByRole('group')).toHaveLength(7);
+    expect(screen.getByRole('button', { name: /Simpan Perubahan/i })).toBeDisabled();
+  });
+
+  it('PGRST205 (tabel tak ada di schema cache) juga dianggap migrasi belum diterapkan', async () => {
+    h.state.selectError = { message: "Could not find the table 'public.homepage_blok' in the schema cache", code: 'PGRST205' };
+    render(<EditorBlokHomepagePage />);
+    expect(await screen.findByText(/migrasi 202610280001/)).toBeInTheDocument();
+  });
+
+  it('galat baca lain (mis. timeout): pesan galat + Coba lagi, BUKAN pesan migrasi; simpan nonaktif agar bawaan tidak menimpa data', async () => {
+    h.state.selectError = { message: 'canceling statement due to statement timeout', code: '57014' };
+    render(<EditorBlokHomepagePage />);
+    expect(await screen.findByText(/Gagal memuat blok homepage/)).toBeInTheDocument();
+    expect(screen.queryByText(/migrasi 202610280001/)).toBeNull();
+    expect(screen.getByRole('button', { name: /Simpan Perubahan/i })).toBeDisabled();
+    h.state.selectError = null;
+    fireEvent.click(screen.getByRole('button', { name: /Coba lagi/i }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /Simpan Perubahan/i })).toBeEnabled());
+    expect(screen.queryByText(/Gagal memuat blok homepage/)).toBeNull();
+    expect(h.selects).toHaveBeenCalledTimes(2);
+  });
+
+  it('simpan: satu upsert 7 baris onConflict jenis, urutan 10..70, hanya teks yang diisi', async () => {
+    render(<EditorBlokHomepagePage />);
+    await screen.findByRole('group', { name: /Hero/ });
+    simpan();
+    await waitFor(() => expect(h.toast).toHaveBeenCalledWith('Blok homepage berhasil disimpan!', 'success'));
+    expect(h.upserts).toHaveLength(1);
+    const { rows, opsi } = h.upserts[0];
+    expect(opsi).toEqual({ onConflict: 'jenis' });
+    expect(rows.map((r) => r.jenis)).toEqual(['hero', 'jalur_cepat', 'status_hari_ini', 'layanan', 'papan_kinerja', 'ajakan', 'footer']);
+    expect(rows.map((r) => r.urutan)).toEqual([10, 20, 30, 40, 50, 60, 70]);
+    expect(rows[0].teks).toEqual({ description: 'Deskripsi hero kustom' });
+    expect(rows[1].teks).toEqual({});
+    expect(rows[4].aktif).toBe(false);
+  });
+
+  it('menyalakan blok, mengubah teks, dan memindah blok memengaruhi data tersimpan', async () => {
+    render(<EditorBlokHomepagePage />);
+    await screen.findByRole('group', { name: /Hero/ });
+    fireEvent.click(within(kartu(/Papan kinerja/)).getByRole('checkbox', { name: /Tampilkan blok/ }));
+    fireEvent.change(within(kartu(/Papan kinerja/)).getByLabelText('Judul'), { target: { value: '  Kinerja  ' } });
+    fireEvent.click(within(kartu(/Ajakan bertindak/)).getByRole('button', { name: /Naikkan/ }));
+    simpan();
+    await waitFor(() => expect(h.upserts).toHaveLength(1));
+    const rows = h.upserts[0].rows;
+    const urut = rows.map((r) => r.jenis);
+    expect(urut.indexOf('ajakan')).toBeLessThan(urut.indexOf('papan_kinerja'));
+    expect(urut[urut.length - 1]).toBe('footer');
+    const papan = rows.find((r) => r.jenis === 'papan_kinerja')!;
+    expect(papan.aktif).toBe(true);
+    expect(papan.teks).toEqual({ title: 'Kinerja' });
+  });
+
+  it('tautan yang tidak aman ditolak di klien tanpa menyimpan', async () => {
+    render(<EditorBlokHomepagePage />);
+    await screen.findByRole('group', { name: /Hero/ });
+    fireEvent.change(within(kartu(/Ajakan bertindak/)).getByLabelText(/Tombol: tautan/), { target: { value: 'javascript:alert(1)' } });
+    simpan();
+    expect(await screen.findByText(/diawali \/ atau https:\/\//)).toBeInTheDocument();
+    expect(h.upserts).toHaveLength(0);
+  });
+
+  it('0 baris (RLS menolak diam-diam) -> toast gagal jelas, BUKAN sukses', async () => {
+    h.state.upsertResult = () => ({ data: [], error: null });
+    render(<EditorBlokHomepagePage />);
+    await screen.findByRole('group', { name: /Hero/ });
+    simpan();
+    await waitFor(() => expect(h.toast).toHaveBeenCalledWith(expect.stringContaining('tidak berwenang'), 'error'));
     expect(h.toast).not.toHaveBeenCalledWith(expect.anything(), 'success');
   });
 
-  it('sebagian item gagal -> pesan jujur sebagian (n dari m), BUKAN sukses; semua item tetap dicoba', async () => {
-    h.state.updateResult = (id) => (id === 'i2' ? { data: [], error: null } : { data: [{ id }], error: null });
-    await bukaDanSimpan();
-    await waitFor(() =>
-      expect(h.toast).toHaveBeenCalledWith(expect.stringContaining('1 dari 2'), 'error'),
-    );
+  it('sebagian baris tersimpan -> pesan jujur sebagian, BUKAN sukses', async () => {
+    h.state.upsertResult = (rows) => ({ data: rows.slice(0, 4).map((r) => ({ jenis: r.jenis })), error: null });
+    render(<EditorBlokHomepagePage />);
+    await screen.findByRole('group', { name: /Hero/ });
+    simpan();
+    await waitFor(() => expect(h.toast).toHaveBeenCalledWith(expect.stringContaining('4 dari 7'), 'error'));
     expect(h.toast).not.toHaveBeenCalledWith(expect.anything(), 'success');
-    // Promise.allSettled: kegagalan satu item tidak membatalkan item lain
-    expect(h.updates).toHaveLength(2);
   });
 
   it('error DB -> toast gagal, BUKAN sukses', async () => {
-    h.state.updateResult = () => ({ data: null, error: { message: 'boom', code: 'XX000' } });
-    await bukaDanSimpan();
-    await waitFor(() =>
-      expect(h.toast).toHaveBeenCalledWith(expect.stringContaining('Gagal menyimpan konten'), 'error'),
-    );
+    h.state.upsertResult = () => ({ data: null, error: { message: 'boom', code: 'XX000' } });
+    render(<EditorBlokHomepagePage />);
+    await screen.findByRole('group', { name: /Hero/ });
+    simpan();
+    await waitFor(() => expect(h.toast).toHaveBeenCalledWith(expect.stringContaining('Gagal menyimpan'), 'error'));
     expect(h.toast).not.toHaveBeenCalledWith(expect.anything(), 'success');
   });
 
-  it('setelah gagal, isian pengguna TIDAK hilang dan tidak dimuat ulang (agar bisa disimpan ulang)', async () => {
-    h.state.updateResult = () => ({ data: [], error: null });
-    render(<LandingContentEditorPage />);
-    const input = (await screen.findByDisplayValue('Judul')) as HTMLInputElement;
-    fireEvent.change(input, { target: { value: 'Judul Baru' } });
-    fireEvent.click(screen.getByRole('button', { name: /Simpan Perubahan/i }));
-
+  it('setelah gagal, isian pengguna TIDAK hilang dan tidak dimuat ulang', async () => {
+    h.state.upsertResult = () => ({ data: [], error: null });
+    render(<EditorBlokHomepagePage />);
+    const input = (await screen.findByDisplayValue('Deskripsi hero kustom')) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: 'Teks baru' } });
+    simpan();
     await waitFor(() => expect(h.toast).toHaveBeenCalledWith(expect.anything(), 'error'));
-    expect((screen.getByDisplayValue('Judul Baru') as HTMLInputElement).value).toBe('Judul Baru');
+    expect((screen.getByDisplayValue('Teks baru') as HTMLTextAreaElement).value).toBe('Teks baru');
     expect(h.selects).toHaveBeenCalledTimes(1);
   });
 });

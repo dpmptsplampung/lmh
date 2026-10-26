@@ -5,7 +5,7 @@ import { MutasiError, mutasiWajibBaris } from '@/lib/supabase/mutate';
 import { catatMutasiGagal, kodeDbMutasi } from '@/app/api/admin/_mutasi';
 import { json, requireAdmin } from '@/lib/akun/server';
 import { layananUbahSchema } from '@/lib/layanan/schemas';
-import { petaGalatTulisLayanan } from '../_galat';
+import { kolomHomepageBelumAda, petaGalatTulisLayanan } from '../_galat';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,8 +50,25 @@ export async function PATCH(request: NextRequest, { params }: Ctx) {
     if (berubah) upd.konten_diperbarui_at = new Date().toISOString();
   }
 
+  const perbarui = (u: Record<string, unknown>) =>
+    mutasiWajibBaris(supabase.from('layanan').update(u).eq('id', id).select('id'));
   try {
-    await mutasiWajibBaris(supabase.from('layanan').update(upd).eq('id', id).select('id'));
+    try {
+      await perbarui(upd);
+    } catch (e) {
+      // Migrasi 202610280001 belum diterapkan: kolom saklar homepage belum ada. Ulangi tanpa kolom itu;
+      // bila hanya itu yang diubah, jujur menolak (jangan melapor sukses).
+      if (!(e instanceof MutasiError) || !('tampil_di_homepage' in upd) || !kolomHomepageBelumAda(e)) throw e;
+      const { tampil_di_homepage: _abaikan, ...sisa } = upd;
+      void _abaikan;
+      if (Object.keys(sisa).length === 0) {
+        return json({
+          error: 'Pengaturan homepage belum tersedia: migrasi 202610280001 belum diterapkan.',
+          kode: 'MIGRASI_BELUM_DITERAPKAN',
+        }, 409);
+      }
+      await perbarui(sisa);
+    }
   } catch (e) {
     if (!(e instanceof MutasiError)) throw e;
     // 0 baris (id salah / RLS) = 404 (kontrak lama).

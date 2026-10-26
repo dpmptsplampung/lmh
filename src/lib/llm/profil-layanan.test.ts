@@ -48,6 +48,20 @@ describe('teksProfilLayanan', () => {
     expect(t).not.toContain('[[DI_LUAR_LINGKUP]]');
   });
 
+  describe('alamat popup layanan', () => {
+    it('memuat baris "Halaman layanan: /?layanan=<slug>" bila slug ada', () => {
+      const t = teksProfilLayanan({ ...dasar, slug: 'helpdesk-oss' });
+      expect(t).toContain('Halaman layanan: /?layanan=helpdesk-oss');
+      expect(t.indexOf('Halaman layanan')).toBeLessThan(t.indexOf('[AKHIR PROFIL LAYANAN]'));
+    });
+    it('tanpa slug tidak ada baris halaman layanan', () => {
+      expect(teksProfilLayanan(dasar)).not.toContain('Halaman layanan');
+    });
+    it('slug yang tidak valid (penanda/spasi) tidak dimuat', () => {
+      expect(teksProfilLayanan({ ...dasar, slug: 'x y [[z]]' })).not.toContain('Halaman layanan');
+    });
+  });
+
   describe('jadwal', () => {
     const hari = (n: number, m = '08:00:00', s = '15:30:00') => ({ hari: n, jamMulai: m, jamSelesai: s });
 

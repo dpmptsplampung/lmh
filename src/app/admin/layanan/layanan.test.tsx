@@ -61,6 +61,17 @@ describe('kelola layanan', () => {
       expect(JSON.parse(patchCalls()[0][1].body)).toEqual({ status_tampilan: 'nonaktif', tampil_di_layar: false, prefiks: 'HD' });
     });
 
+    it('kotak "Tampil di homepage" (default tercentang): mengubahnya hanya mengirim tampil_di_homepage', async () => {
+      render(<KelolaLayananPage />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Ubah Helpdesk OSS' }));
+      const kotak = screen.getByLabelText('Tampil di homepage') as HTMLInputElement;
+      expect(kotak.checked).toBe(true);
+      fireEvent.click(kotak);
+      fireEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+      await waitFor(() => expect(patchCalls()).toHaveLength(1));
+      expect(JSON.parse(patchCalls()[0][1].body)).toEqual({ tampil_di_homepage: false });
+    });
+
     it('prefiks: tepat 2 huruf, otomatis kapital, hanya huruf, dan tidak lebih dari 2', async () => {
       render(<KelolaLayananPage />);
       fireEvent.click(await screen.findByRole('button', { name: 'Ubah Helpdesk OSS' }));
@@ -216,6 +227,7 @@ describe('kelola layanan', () => {
       const body = JSON.parse(panggilan('POST', '/api/admin/layanan')[0][1].body);
       expect(body.nama).toBe('Konsultasi Investasi');
       expect(body).toHaveProperty('form_pendataan', null);
+      expect(body).toHaveProperty('tampil_di_homepage', true);
       expect(panggilan('PUT', '/tautan')).toHaveLength(0);
     });
 

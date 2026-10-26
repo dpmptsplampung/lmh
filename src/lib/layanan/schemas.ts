@@ -38,6 +38,8 @@ export const layananKontenSchema = z.object({
   prefiks: prefiksSchema,
   status_tampilan: z.enum(['aktif', 'coming_soon', 'nonaktif']),
   tampil_di_layar: z.boolean(),
+  // Saklar etalase homepage (migrasi 202610280001): kartu layanan tampil di halaman utama.
+  tampil_di_homepage: z.boolean(),
   punya_antrean: z.boolean(),
   punya_chat: z.boolean(),
   // Formulir Pendataan wajib saat layanan diselesaikan (migrasi 202610140012; ditegakkan layanan_selesai).
@@ -73,6 +75,7 @@ export type LayananAdmin = {
   penyerta: boolean;
   status_tampilan: 'aktif' | 'coming_soon' | 'nonaktif';
   tampil_di_layar: boolean;
+  tampil_di_homepage: boolean;
   punya_antrean: boolean;
   punya_chat: boolean;
   chatbot_aktif: boolean;

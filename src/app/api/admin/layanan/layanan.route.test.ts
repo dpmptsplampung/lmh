@@ -96,6 +96,44 @@ describe('GET /api/admin/layanan', () => {
     expect(body.layanan[0].website_terkait).toEqual([{ label: 'A', url: 'https://a.id' }, { label: 'B', url: 'https://b.id' }]);
     expect(body.layanan[0]).not.toHaveProperty('layanan_tautan');
   });
+  it('memilih kolom tampil_di_homepage; bila kolom belum ada (migrasi 202610280001) diulang tanpa kolom itu', async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://supabase.local';
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'svc';
+    let percobaan = 0;
+    const kolomDiminta: string[] = [];
+    const serverMod = await import('@/lib/supabase/server');
+    (serverMod.createClient as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'auth-1' } } }) },
+      from: (table: string) => {
+        const b: Record<string, unknown> = {};
+        Object.assign(b, {
+          select: (kolom?: string) => { if (table === 'layanan') kolomDiminta.push(String(kolom)); return b; },
+          eq: () => b,
+          order: () => b,
+          single: () => b,
+          maybeSingle: () => b,
+          then: (res: (v: Hasil) => unknown, rej?: (e: unknown) => unknown) => {
+            if (table === 'petugas') return Promise.resolve({ data: { id: 'p1', role: 'admin', aktif: true }, error: null }).then(res, rej);
+            if (table === 'layanan') {
+              percobaan += 1;
+              const hasil: Hasil = percobaan === 1
+                ? { data: null, error: { code: '42703', message: 'column layanan.tampil_di_homepage does not exist' } }
+                : { data: [{ id: ID, nama: 'A', aktif: true, layanan_tautan: [] }], error: null };
+              return Promise.resolve(hasil).then(res, rej);
+            }
+            return Promise.resolve({ data: [], error: null }).then(res, rej);
+          },
+        });
+        return b;
+      },
+    });
+    const res = await (await import('./route')).GET();
+    expect(res.status).toBe(200);
+    expect(kolomDiminta).toHaveLength(2);
+    expect(kolomDiminta[0]).toContain('tampil_di_homepage');
+    expect(kolomDiminta[1]).not.toContain('tampil_di_homepage');
+    expect((await res.json()).layanan[0].tampil_di_homepage).toBe(true);
+  });
   it('Front Office: 200 dengan bisa_ubah false; petugas: 403', async () => {
     await setup({ role: 'front_office' });
     const res = await (await import('./route')).GET();
@@ -136,6 +174,41 @@ describe('POST /api/admin/layanan', () => {
     expect(ins?.values).toMatchObject({ nama: 'Layanan Baru', instansi_id: INSTANSI });
     expect(ins?.values).toHaveProperty('form_pendataan', null);
   });
+  it.each([
+    ['42703', 'column "tampil_di_homepage" of relation "layanan" does not exist'],
+    ['PGRST204', "Could not find the 'tampil_di_homepage' column of 'layanan' in the schema cache"],
+  ])('kolom tampil_di_homepage belum ada (%s): POST diulang tanpa kolom itu dan tetap 201', async (code, message) => {
+    let kali = 0;
+    const s = await setup({
+      jawab: (c) => {
+        if (c.op !== 'insert') return undefined;
+        kali += 1;
+        return kali === 1 ? { data: null, error: { code, message } } : undefined;
+      },
+    });
+    const res = await (await import('./route')).POST(req('POST', { nama: 'Layanan Baru', tampil_di_homepage: true }));
+    expect(res.status).toBe(201);
+    const inserts = s.calls.filter((c) => c.op === 'insert');
+    expect(inserts).toHaveLength(2);
+    expect(inserts[0].values).toHaveProperty('tampil_di_homepage', true);
+    expect(inserts[1].values).not.toHaveProperty('tampil_di_homepage');
+    expect(inserts[1].values).toMatchObject({ nama: 'Layanan Baru' });
+  });
+  it('galat 42703 untuk kolom lain tidak diulang (500)', async () => {
+    const s = await setup({
+      jawab: (c) => (c.op === 'insert' ? { data: null, error: { code: '42703', message: 'column "lain" does not exist' } } : undefined),
+    });
+    const res = await (await import('./route')).POST(req('POST', { nama: 'Layanan Baru' }));
+    expect(res.status).toBe(500);
+    expect(s.calls.filter((c) => c.op === 'insert')).toHaveLength(1);
+  });
+  it('tampil_di_homepage diteruskan ke baris yang disisipkan; nilai bukan boolean ditolak (400)', async () => {
+    const s = await setup();
+    const { POST } = await import('./route');
+    await POST(req('POST', { nama: 'Layanan Baru', tampil_di_homepage: false }));
+    expect(s.calls.find((c) => c.op === 'insert')?.values).toMatchObject({ tampil_di_homepage: false });
+    expect((await POST(req('POST', { nama: 'Layanan Baru', tampil_di_homepage: 'ya' }))).status).toBe(400);
+  });
   it('form_pendataan eksplisit diteruskan', async () => {
     const s = await setup();
     await (await import('./route')).POST(req('POST', { nama: 'Layanan Baru', form_pendataan: 'oss' }));
@@ -175,6 +248,40 @@ describe('PATCH /api/admin/layanan/[id]', () => {
     const res = await (await import('./[id]/route')).PATCH(req('PATCH', { nama: 'Helpdesk OSS Baru' }), ctx());
     expect(res.status).toBe(200);
     expect(s.calls.find((c) => c.op === 'update')?.values).toEqual({ nama: 'Helpdesk OSS Baru' });
+  });
+  it.each([
+    ['42703', 'column "tampil_di_homepage" of relation "layanan" does not exist'],
+    ['PGRST204', "Could not find the 'tampil_di_homepage' column of 'layanan' in the schema cache"],
+  ])('kolom tampil_di_homepage belum ada (%s): PATCH diulang tanpa kolom itu bila masih ada field lain', async (code, message) => {
+    let kali = 0;
+    const s = await setup({
+      jawab: (c) => {
+        if (c.op !== 'update') return undefined;
+        kali += 1;
+        return kali === 1 ? { data: null, error: { code, message } } : undefined;
+      },
+    });
+    const res = await (await import('./[id]/route')).PATCH(req('PATCH', { nama: 'Baru', tampil_di_homepage: false }), ctx());
+    expect(res.status).toBe(200);
+    const updates = s.calls.filter((c) => c.op === 'update');
+    expect(updates).toHaveLength(2);
+    expect(updates[1].values).toEqual({ nama: 'Baru' });
+  });
+  it('kolom tampil_di_homepage belum ada dan hanya itu yang diubah: 409 MIGRASI_BELUM_DITERAPKAN (bukan sukses palsu)', async () => {
+    await setup({
+      jawab: (c) => (c.op === 'update'
+        ? { data: null, error: { code: '42703', message: 'column "tampil_di_homepage" of relation "layanan" does not exist' } }
+        : undefined),
+    });
+    const res = await (await import('./[id]/route')).PATCH(req('PATCH', { tampil_di_homepage: false }), ctx());
+    expect(res.status).toBe(409);
+    expect((await res.json()).kode).toBe('MIGRASI_BELUM_DITERAPKAN');
+  });
+  it('tampil_di_homepage bisa diubah lewat PATCH', async () => {
+    const s = await setup();
+    const res = await (await import('./[id]/route')).PATCH(req('PATCH', { tampil_di_homepage: false }), ctx());
+    expect(res.status).toBe(200);
+    expect(s.calls.find((c) => c.op === 'update')?.values).toEqual({ tampil_di_homepage: false });
   });
   it('deskripsi yang berubah mengisi konten_diperbarui_at', async () => {
     const s = await setup({ jawab: (c) => (c.op === 'select' ? { data: { deskripsi: 'lama', konten_sumber_url: null } } : undefined) });

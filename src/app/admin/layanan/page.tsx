@@ -210,7 +210,7 @@ export default function KelolaLayananPage() {
               <caption className={styles.srOnly}>Daftar layanan aktif</caption>
               <thead>
                 <tr>
-                  <th>Layanan</th><th>Instansi</th><th>Loket</th><th>Prefiks</th><th>Halaman utama</th>
+                  <th>Layanan</th><th>Instansi</th><th>Loket</th><th>Prefiks</th><th>Halaman utama</th><th>Homepage</th>
                   <th>Layar TV</th><th>Antrean</th><th>Pendataan</th><th>Chat</th><th>Bot</th>
                   {bisaUbah && <th>Aksi</th>}
                 </tr>
@@ -223,6 +223,7 @@ export default function KelolaLayananPage() {
                     <td>{r.nomor_loket ?? '—'}</td>
                     <td>{r.prefiks_antrean ?? '—'}</td>
                     <td>{STATUS_LABEL[r.status_tampilan] ?? r.status_tampilan}</td>
+                    <td>{ya(r.tampil_di_homepage ?? true)}</td>
                     <td>{ya(r.tampil_di_layar)}</td>
                     <td>{ya(r.punya_antrean)}</td>
                     <td>{r.form_pendataan ? FORM_PENDATAAN_LABEL[r.form_pendataan] : '—'}</td>

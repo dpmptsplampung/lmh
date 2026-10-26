@@ -9,8 +9,8 @@ export type StatusTampilan = 'aktif' | 'coming_soon' | 'nonaktif';
 export type FormPendataan = 'oss' | 'perizinan';
 
 /** Baris layanan dari GET /api/admin/layanan. Kolom konten (Fase 1) bisa belum ada pada data lama/uji, jadi dibaca defensif. */
-export type LayananRow = Omit<LayananAdmin, 'slug' | 'urutan' | 'website_terkait'> &
-  Partial<Pick<LayananAdmin, 'slug' | 'urutan' | 'website_terkait' | 'instansi_id' | 'deskripsi' | 'konten_sumber_url' | 'diarsipkan_at'>>;
+export type LayananRow = Omit<LayananAdmin, 'slug' | 'urutan' | 'website_terkait' | 'tampil_di_homepage'> &
+  Partial<Pick<LayananAdmin, 'slug' | 'urutan' | 'website_terkait' | 'instansi_id' | 'deskripsi' | 'konten_sumber_url' | 'diarsipkan_at' | 'tampil_di_homepage'>>;
 
 export const FORM_PENDATAAN_LABEL: Record<FormPendataan, string> = {
   oss: 'OSS (Helpdesk OSS)',
@@ -60,6 +60,7 @@ export default function LayananForm({
   const [prefiks, setPrefiks] = useState(layanan?.prefiks_antrean ?? '');
   const [status, setStatus] = useState<StatusTampilan>(layanan?.status_tampilan ?? 'aktif');
   const [layar, setLayar] = useState(layanan?.tampil_di_layar ?? true);
+  const [homepage, setHomepage] = useState(layanan?.tampil_di_homepage ?? true);
   const [antrean, setAntrean] = useState(layanan?.punya_antrean ?? true);
   const [chat, setChat] = useState(layanan?.punya_chat ?? true);
   const [form, setForm] = useState<string>(layanan?.form_pendataan ?? '');
@@ -96,6 +97,7 @@ export default function LayananForm({
         nama: nama.trim(),
         status_tampilan: status,
         tampil_di_layar: layar,
+        tampil_di_homepage: homepage,
         punya_antrean: antrean,
         punya_chat: chat,
         // Dikirim eksplisit: null = "Tanpa formulir tetap" (tidak lagi ditebak dari nama).
@@ -117,6 +119,7 @@ export default function LayananForm({
     if ((prefiks.trim().toUpperCase() || null) !== layanan.prefiks_antrean) patch.prefiks = prefiks.trim().toUpperCase() || null;
     if (status !== layanan.status_tampilan) patch.status_tampilan = status;
     if (layar !== layanan.tampil_di_layar) patch.tampil_di_layar = layar;
+    if (homepage !== (layanan.tampil_di_homepage ?? true)) patch.tampil_di_homepage = homepage;
     if (antrean !== layanan.punya_antrean) patch.punya_antrean = antrean;
     if (chat !== layanan.punya_chat) patch.punya_chat = chat;
     if ((form || null) !== (layanan.form_pendataan ?? null)) patch.form_pendataan = form || null;
@@ -277,6 +280,9 @@ export default function LayananForm({
           Bila memilih OSS atau Perizinan, petugas WAJIB mengisi formulir itu (semua field) sebelum tiket layanan dapat diselesaikan.
         </p>
       </div>
+      <label style={{ display: 'flex', gap: 'var(--space-2)' }}>
+        <input type="checkbox" checked={homepage} onChange={(e) => setHomepage(e.target.checked)} /> Tampil di homepage
+      </label>
       <label style={{ display: 'flex', gap: 'var(--space-2)' }}>
         <input type="checkbox" checked={layar} onChange={(e) => setLayar(e.target.checked)} /> Tampil di layar TV
       </label>

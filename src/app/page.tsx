@@ -1,187 +1,45 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import type { ElementType } from 'react';
+// Homepage = etalase layanan. Tersusun dari blok berjenis tetap (lib/homepage/blok.ts) yang diatur admin di
+// /admin/settings/landing: hero, jalur cepat, status hari ini (antrean), cari & daftar layanan, papan kinerja
+// (tercadang), ajakan, footer. Blok mati TIDAK dirender. Kartu layanan terisi otomatis dari Kelola Layanan
+// (v_layanan_publik); klik kartu membuka popup dengan alamat /?layanan=<slug>.
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { usePathname } from 'next/navigation';
-import {
-  Building2,
-  ClipboardCheck,
-  MessageCircle,
-  Store,
-  FileText,
-  HeartHandshake,
-  Sparkles,
-  ArrowRight,
-  Shield,
-  LogOut,
-  User,
-  MessageSquare,
-  Menu,
-  X,
-  MapPin,
-  Clock,
-  Mail,
-} from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
+import { LogOut, User, MessageSquare, Menu, X } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { keluarDariSesi } from '@/lib/sesi-staf';
-import { APP_NAME, WA_NUMBER, WA_DEFAULT_MESSAGE } from '@/lib/constants';
+import { WA_NUMBER, WA_DEFAULT_MESSAGE } from '@/lib/constants';
 import { getSiteSettings } from '@/lib/site-settings';
 import { waLink } from '@/lib/utils';
 import EstimasiAntrean from '@/components/EstimasiAntrean';
+import DaftarLayanan from '@/components/homepage/DaftarLayanan';
+import PopupDariUrl from '@/components/homepage/PopupDariUrl';
+import {
+  BlokAjakan,
+  BlokFooter,
+  BlokHero,
+  BlokJalurCepat,
+  BlokPapanKinerja,
+  TautanKebijakan,
+  type KontakFooter,
+} from '@/components/homepage/BlokLain';
+import { blokTampil, gabungkanBlok, type BlokTersusun } from '@/lib/homepage/blok';
+import {
+  denganBatasWaktu,
+  muatBlok,
+  muatLayanan,
+  muatStatusHariIni,
+  type LayananEtalase,
+  type StatusHariIni,
+} from '@/lib/homepage/data';
 import styles from './landing.module.css';
+import etalase from '@/components/homepage/Homepage.module.css';
 
-const iconMap: Record<string, ElementType> = {
-  Building2,
-  ClipboardCheck,
-  Store,
-  FileText,
-  HeartHandshake,
-  Sparkles,
-  Shield,
-};
-
-const FALLBACK_SERVICES = [
-  {
-    icon: 'ClipboardCheck' as const,
-    title: 'Helpdesk OSS',
-    description: 'Konsultasi perizinan usaha melalui Online Single Submission. Petugas siap membantu proses NIB dan izin berusaha Anda.',
-    color: 'serviceIconPrimary',
-  },
-  {
-    icon: 'Shield' as const,
-    title: 'Sertifikasi Halal',
-    description: 'Pendampingan proses sertifikasi halal untuk produk UMKM. Konsultasi gratis langsung dengan petugas terlatih.',
-    color: 'serviceIconSuccess',
-  },
-  {
-    icon: 'HeartHandshake' as const,
-    title: 'BPJS Kesehatan',
-    description: 'Layanan informasi dan bantuan terkait BPJS Kesehatan. Tersedia konsultasi tatap muka dan online.',
-    color: 'serviceIconAccent',
-  },
-  {
-    icon: 'Store' as const,
-    title: 'Matchmaking UMKM',
-    description: 'Platform penghubung kebutuhan UMKM — dari bahan baku hingga kemitraan bisnis. Tersedia juga layanan PEMBIAYAAN UMKM.',
-    color: 'serviceIconPrimary',
-  },
-  {
-    icon: 'FileText' as const,
-    title: 'Investment Gallery',
-    description: 'Pameran potensi investasi Provinsi Lampung. Dokumen IPRO dan Peta Potensi tersedia untuk dilihat secara daring.',
-    color: 'serviceIconAccent',
-  },
-  {
-    icon: 'Building2' as const,
-    title: 'Bank Lampung',
-    description: 'Layanan perbankan daerah pendukung ekosistem UMKM dan investasi.',
-    color: 'serviceIconPrimary',
-  },
-  {
-    icon: 'Sparkles' as const,
-    title: 'Balai Monitor SFR',
-    description: 'Pelayanan Balai Monitor Spektrum Frekuensi Radio, meliputi perizinan frekuensi dan sertifikasi alat telekomunikasi.',
-    color: 'serviceIconSuccess',
-  },
-  {
-    icon: 'Shield' as const,
-    title: 'Sertifikasi Mutu Keamanan Hasil Perikanan',
-    description: 'Sertifikasi Kelayakan Pengolahan (SKP) produk perikanan untuk menjamin mutu dan keamanan pangan standar ekspor.',
-    color: 'serviceIconAccent',
-  },
-  {
-    icon: 'FileText' as const,
-    title: 'Layanan Jasa Industri',
-    description: 'Layanan sertifikasi SNI, pengujian, dan kalibrasi produk industri.',
-    color: 'serviceIconPrimary',
-  },
-];
-
-const FALLBACK_HERO = {
-  badge_text: 'DPMPTSP Provinsi Lampung',
-  description: 'Hub digital yang menyatukan layanan perizinan, sertifikasi halal, BPJS Kesehatan, matchmaking UMKM, dan galeri investasi dalam satu platform terintegrasi.',
-  cta_primary_text: 'Rencanakan Kedatangan',
-  cta_primary_link: '/me/reservasi',
-  cta_secondary_text: 'Chat via WhatsApp',
-  cta_secondary_link: 'wa',
-};
-
-const FALLBACK_SECTION_HEADER = {
-  label: 'Layanan Kami',
-  title: '10 Layanan dalam Satu Atap',
-  description: 'Layanan konsultatif tatap muka dan platform digital yang bisa diakses dari mana saja, kapan saja.',
-};
-
-const FALLBACK_CTA = {
-  title: 'Siap Berkunjung?',
-  description: 'Reservasi kedatangan online terlebih dahulu untuk mempercepat pelayanan Anda di kantor DPMPTSP Provinsi Lampung.',
-  button_text: 'Rencanakan Kedatangan',
-  button_link: '/me/reservasi',
-};
-
-const FALLBACK_FOOTER = {
-  copyright: 'DPMPTSP Provinsi Lampung. Hak cipta dilindungi.',
-};
-
-interface ServiceItem {
-  icon: string;
-  title: string;
-  description: string;
-  color: string;
-}
-
-interface LandingData {
-  hero: Record<string, string>;
-  sectionHeader: Record<string, string>;
-  services: ServiceItem[];
-  cta: Record<string, string>;
-  footer: Record<string, string>;
-}
-
-function parseLandingContent(rows: { section: string; item_key: string; item_value: string | null; item_order: number }[]): LandingData {
-  const hero: Record<string, string> = {};
-  const sectionHeader: Record<string, string> = {};
-  const cta: Record<string, string> = {};
-  const footer: Record<string, string> = {};
-  const serviceMap = new Map<number, ServiceItem>();
-
-  for (const row of rows) {
-    const value = row.item_value ?? '';
-    switch (row.section) {
-      case 'hero':
-        hero[row.item_key] = value;
-        break;
-      case 'section_header':
-        sectionHeader[row.item_key] = value;
-        break;
-      case 'cta':
-        cta[row.item_key] = value;
-        break;
-      case 'footer':
-        footer[row.item_key] = value;
-        break;
-      case 'service': {
-        if (!serviceMap.has(row.item_order)) {
-          serviceMap.set(row.item_order, { icon: '', title: '', description: '', color: '' });
-        }
-        const svc = serviceMap.get(row.item_order)!;
-        if (row.item_key === 'icon') svc.icon = value;
-        else if (row.item_key === 'title') svc.title = value;
-        else if (row.item_key === 'description') svc.description = value;
-        else if (row.item_key === 'color') svc.color = value;
-        break;
-      }
-    }
-  }
-
-  const services = Array.from(serviceMap.entries())
-    .sort((a, b) => a[0] - b[0])
-    .map(([, svc]) => svc);
-
-  return { hero, sectionHeader, services, cta, footer };
-}
+/** Batas tunggu tiap pemuat etalase sebelum memakai bawaan. */
+const BATAS_MUAT_MS = 6000;
 
 interface UserInfo {
   nama: string;
@@ -189,14 +47,22 @@ interface UserInfo {
   role?: string;
 }
 
+interface DataEtalase {
+  blok: BlokTersusun[];
+  layanan: LayananEtalase[];
+  status: Map<string, StatusHariIni> | null;
+}
+
 export default function LandingPage() {
   const [user, setUser] = useState<UserInfo | null>(null);
-  const [landingData, setLandingData] = useState<LandingData | null>(null);
+  const [data, setData] = useState<DataEtalase | null>(null);
   const [waHref, setWaHref] = useState(() => waLink(WA_NUMBER, WA_DEFAULT_MESSAGE));
-  const [contact, setContact] = useState({ address: '', hours: '', email: '' });
+  const [contact, setContact] = useState<KontakFooter>({ address: '', hours: '', email: '' });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const pathname = usePathname();
+  const router = useRouter();
   const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const dariKartuRef = useRef<string | null>(null);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -234,18 +100,16 @@ export default function LandingPage() {
       }
     }
 
-    async function fetchLandingContent() {
+    // Tiap pemuat dibatasi waktu: permintaan yang menggantung (jaringan/DB lambat) jatuh ke bawaan setelah
+    // BATAS_MUAT_MS (blok bawaan, daftar layanan kosong, tanpa status) alih-alih membiarkan "Memuat halaman…" selamanya.
+    async function muatEtalase() {
       const supabase = createClient();
-      const { data, error } = await supabase
-        .from('landing_content')
-        .select('section, item_key, item_value, item_order')
-        .eq('is_active', true)
-        .order('section')
-        .order('item_order');
-
-      if (!error && data && data.length > 0) {
-        setLandingData(parseLandingContent(data as { section: string; item_key: string; item_value: string | null; item_order: number }[]));
-      }
+      const [blok, layanan, status] = await Promise.all([
+        denganBatasWaktu(muatBlok(supabase), BATAS_MUAT_MS, gabungkanBlok(null)),
+        denganBatasWaktu(muatLayanan(supabase), BATAS_MUAT_MS, { layanan: [] as LayananEtalase[], tingkat: 0 as const }),
+        denganBatasWaktu(muatStatusHariIni(supabase), BATAS_MUAT_MS, null),
+      ]);
+      setData({ blok, layanan: layanan.layanan, status });
     }
 
     async function fetchSiteSettings() {
@@ -265,33 +129,17 @@ export default function LandingPage() {
     }
 
     checkUser();
-    fetchLandingContent();
+    muatEtalase();
     fetchSiteSettings();
   }, []);
 
-  const hero = landingData?.hero ?? {};
-  const sectionHeader = landingData?.sectionHeader ?? {};
-  const cta = landingData?.cta ?? {};
-  const footer = landingData?.footer ?? {};
-  const services = landingData?.services?.length ? landingData.services : FALLBACK_SERVICES;
-
-  const heroBadgeText = hero.badge_text || FALLBACK_HERO.badge_text;
-  const heroDescription = hero.description || FALLBACK_HERO.description;
-  const heroCtaPrimaryText = hero.cta_primary_text || FALLBACK_HERO.cta_primary_text;
-  const heroCtaPrimaryLink = hero.cta_primary_link || FALLBACK_HERO.cta_primary_link;
-  const heroCtaSecondaryText = hero.cta_secondary_text || FALLBACK_HERO.cta_secondary_text;
-  const heroCtaSecondaryLink = hero.cta_secondary_link || FALLBACK_HERO.cta_secondary_link;
-
-  const sectionLabel = sectionHeader.label || FALLBACK_SECTION_HEADER.label;
-  const sectionTitle = sectionHeader.title || FALLBACK_SECTION_HEADER.title;
-  const sectionDescription = sectionHeader.description || FALLBACK_SECTION_HEADER.description;
-
-  const ctaTitle = cta.title || FALLBACK_CTA.title;
-  const ctaDescription = cta.description || FALLBACK_CTA.description;
-  const ctaButtonText = cta.button_text || FALLBACK_CTA.button_text;
-  const ctaButtonLink = cta.button_link || FALLBACK_CTA.button_link;
-
-  const footerCopyright = footer.copyright || FALLBACK_FOOTER.copyright;
+  const bukaLayanan = useCallback(
+    (slug: string) => {
+      dariKartuRef.current = slug;
+      router.push(`/?layanan=${encodeURIComponent(slug)}`, { scroll: false });
+    },
+    [router],
+  );
 
   const handleLogout = async () => {
     const supabase = createClient();
@@ -299,23 +147,48 @@ export default function LandingPage() {
     setUser(null);
   };
 
+  // Menu "Layanan" hanya berguna bila blok daftar layanan tampil (sebelum data siap dianggap ada).
+  const adaBlokLayanan = data ? data.blok.some((b) => b.jenis === 'layanan' && b.aktif) : true;
+  const kartu = data ? data.layanan.filter((l) => l.tampilDiHomepage) : [];
+
+  const renderBlok = (b: BlokTersusun) => {
+    switch (b.jenis) {
+      case 'hero':
+        return <BlokHero key={b.jenis} teks={b.teks} waHref={waHref} />;
+      case 'jalur_cepat':
+        return <BlokJalurCepat key={b.jenis} teks={b.teks} />;
+      case 'status_hari_ini':
+        return <EstimasiAntrean key={b.jenis} judul={b.teks.title} penjelasan={b.teks.description} />;
+      case 'layanan':
+        return (
+          <DaftarLayanan key={b.jenis} layanan={kartu} status={data?.status ?? null} teks={b.teks} onBuka={bukaLayanan} />
+        );
+      case 'papan_kinerja':
+        return <BlokPapanKinerja key={b.jenis} teks={b.teks} />;
+      case 'ajakan':
+        return <BlokAjakan key={b.jenis} teks={b.teks} />;
+      case 'footer':
+        return <BlokFooter key={b.jenis} teks={b.teks} kontak={contact} />;
+    }
+  };
+
   return (
     <div className={styles.landing}>
       {/* Navbar */}
       <nav className={styles.navbar}>
         <Link href="/" className={styles.navBrand} style={{ display: 'flex', alignItems: 'center' }}>
-          <Image 
-            src="/logo.png" 
-            alt="Lampung Maju Hub Logo" 
-            width={120} 
-            height={50} 
-            style={{ objectFit: 'contain' }} 
+          <Image
+            src="/logo.png"
+            alt="Lampung Maju Hub Logo"
+            width={120}
+            height={50}
+            style={{ objectFit: 'contain' }}
             priority
           />
         </Link>
 
         <ul className={styles.navLinks}>
-          <li><a href="#layanan" className={styles.navLink}>Layanan</a></li>
+          {adaBlokLayanan && <li><a href="#layanan" className={styles.navLink}>Layanan</a></li>}
           <li><Link href="/umkm" className={styles.navLink}>UMKM</Link></li>
           <li><Link href="/gallery" className={styles.navLink}>Investasi</Link></li>
           <li><Link href="/chat" className={styles.navLink}>Live Chat</Link></li>
@@ -363,14 +236,16 @@ export default function LandingPage() {
       {mobileMenuOpen && (
         <div id="mobile-nav-menu" className={styles.mobileMenu}>
           <ul className={styles.mobileMenuList}>
-            <li><a href="#layanan" className={styles.mobileMenuLink} onClick={() => setMobileMenuOpen(false)}>Layanan</a></li>
+            {adaBlokLayanan && (
+              <li><a href="#layanan" className={styles.mobileMenuLink} onClick={() => setMobileMenuOpen(false)}>Layanan</a></li>
+            )}
             <li><Link href="/umkm" className={styles.mobileMenuLink}>UMKM</Link></li>
             <li><Link href="/gallery" className={styles.mobileMenuLink}>Investasi</Link></li>
             <li><Link href="/chat" className={styles.mobileMenuLink}>Live Chat</Link></li>
             <li><Link href="/transparansi" className={styles.mobileMenuLink}>Transparansi</Link></li>
             <li>
               {user ? (
-                user.role === 'admin' || user.role === 'petugas' ? (
+                user.role === 'admin' || user.role === 'petugas' || user.role === 'front_office' ? (
                   <Link href="/admin" className={styles.mobileMenuLink}>Panel Admin</Link>
                 ) : (
                   <Link href="/me" className={styles.mobileMenuLink}>Dashboard Saya</Link>
@@ -383,129 +258,20 @@ export default function LandingPage() {
         </div>
       )}
 
-      {/* Hero Section */}
-      <section className={styles.hero}>
-        <div className={styles.heroGlow} />
-        <div className={styles.heroContent}>
-          <div className={styles.heroBadge}>
-            <Sparkles size={14} />
-            {heroBadgeText}
-          </div>
-          <div className={styles.heroLogo}>
-            <Image
-              src="/logo.png"
-              alt=""
-              width={240}
-              height={100}
-              style={{ objectFit: 'contain', maxWidth: '100%', height: 'auto' }}
-              priority
-            />
-          </div>
-          <h1 className={styles.heroTitle}>
-            Pelayanan Terpadu Satu Pintu untuk{' '}
-            <span className={styles.heroTitleAccent}>Lampung Maju</span>
-          </h1>
-          <p className={styles.heroDescription}>
-            {heroDescription}
-          </p>
-          <div className={styles.heroActions}>
-            <Link href={heroCtaPrimaryLink} className="btn btn--primary btn--lg">
-              <ClipboardCheck size={20} />
-              {heroCtaPrimaryText}
-            </Link>
-            {heroCtaSecondaryLink === 'wa' ? (
-              <a
-                href={waHref}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="btn btn--secondary btn--lg"
-              >
-                <MessageCircle size={20} />
-                {heroCtaSecondaryText}
-              </a>
-            ) : (
-              <Link href={heroCtaSecondaryLink} className="btn btn--secondary btn--lg">
-                <MessageCircle size={20} />
-                {heroCtaSecondaryText}
-              </Link>
-            )}
-          </div>
-        </div>
-      </section>
+      {/* Blok homepage: dirender hanya bila data konfigurasi siap (menghindari kilasan blok yang dimatikan admin). */}
+      {data === null ? (
+        <p className={etalase.memuat} role="status" aria-busy="true">Memuat halaman…</p>
+      ) : (
+        blokTampil(data.blok).map(renderBlok)
+      )}
 
-      {/* Estimasi Antrean Realtime */}
-      <EstimasiAntrean />
+      {/* Selalu tampil, tidak bergantung pada blok footer. */}
+      {data !== null && <TautanKebijakan />}
 
-      {/* Services */}
-      <section id="layanan" className={styles.services}>
-        <div className={styles.sectionHeader}>
-          <p className={styles.sectionLabel}>{sectionLabel}</p>
-          <h2 className={styles.sectionTitle}>{sectionTitle}</h2>
-          <p className={styles.sectionDescription}>
-            {sectionDescription}
-          </p>
-        </div>
-
-        <div className={styles.serviceGrid}>
-          {services.map((service, index) => {
-            const IconComponent = iconMap[service.icon] || ClipboardCheck;
-            const colorClass = styles[service.color] || styles.serviceIconPrimary;
-            return (
-              <div key={service.title || index} className={styles.serviceCard}>
-                <div className={`${styles.serviceIcon} ${colorClass}`}>
-                  <IconComponent size={28} />
-                </div>
-                <h3 className={styles.serviceTitle}>{service.title}</h3>
-                <p className={styles.serviceDescription}>{service.description}</p>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* CTA */}
-      <section className={styles.cta}>
-        <div className={styles.ctaContent}>
-          <h2 className={styles.ctaTitle}>{ctaTitle}</h2>
-          <p className={styles.ctaDescription}>
-            {ctaDescription}
-          </p>
-          <Link href={ctaButtonLink} className="btn btn--accent btn--lg">
-            {ctaButtonText}
-            <ArrowRight size={20} />
-          </Link>
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer className={styles.footer}>
-        {(contact.address || contact.hours || contact.email) && (
-          <div className={styles.footerContact}>
-            {contact.address && (
-              <p className={styles.footerContactItem}>
-                <MapPin size={14} />
-                <span>{contact.address}</span>
-              </p>
-            )}
-            {contact.hours && (
-              <p className={styles.footerContactItem}>
-                <Clock size={14} />
-                <span>{contact.hours}</span>
-              </p>
-            )}
-            {contact.email && (
-              <p className={styles.footerContactItem}>
-                <Mail size={14} />
-                <a href={`mailto:${contact.email}`}>{contact.email}</a>
-              </p>
-            )}
-          </div>
-        )}
-        <p>© {new Date().getFullYear()} {APP_NAME} — {footerCopyright}</p>
-        <p className={styles.footerLinks}>
-          <Link href="/kebijakan-privasi">Kebijakan Privasi</Link>
-        </p>
-      </footer>
+      {/* Popup layanan (alamat /?layanan=<slug>); Suspense karena useSearchParams. */}
+      <Suspense fallback={null}>
+        {data && <PopupDariUrl layanan={data.layanan} status={data.status} dariKartuRef={dariKartuRef} />}
+      </Suspense>
 
       {/* Floating Chat Widget */}
       <Link href="/chat" className={styles.floatingChat}>

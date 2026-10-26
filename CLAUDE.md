@@ -56,7 +56,7 @@ Pola umum: halaman (`page.tsx`) adalah **client component besar yang berisi logi
 **Halaman publik/pengunjung** (`src/app/…/page.tsx`)
 | Path | Fungsi | API/DB utama |
 |---|---|---|
-| `/` | landing (konten dari `landing_content`/`site_settings`) | `lib/site-settings` |
+| `/` | etalase: blok tetap (`homepage_blok`, diatur `/admin/settings/landing`) + kartu layanan otomatis + popup `/?layanan=<slug>` | `lib/homepage/{blok,data,status}`, `components/homepage/*`, `v_layanan_publik`, RPC `layanan_status_hari_ini` |
 | `/login`, `/auth/callback` | login Google OAuth/magic-link/anon | Supabase Auth |
 | `/checkin` | halaman informasi statis (walk-in & scan QR dilakukan Front Office: `/admin/fo/daftar`, `/admin/scan`; `api/checkin` dihapus, RPC `fo_mulai_kunjungan`) | `WalkinWizard` (dipakai FO), `lib/offline/*` |
 | `/me`, `/me/reservasi`, `/me/notifications` | dashboard pengunjung | `kunjungan`, `notifikasi` |
@@ -89,11 +89,13 @@ Dari 50-an migrasi di `supabase/migrations/` (urutan = nama file). Kelompok tabe
 - Pelayanan: `instansi` (migrasi `202610270001`), `layanan` (+ `instansi_id`, `slug`, `deskripsi`, `urutan`, `konten_sumber_url`, `konten_diperbarui_at`, `diarsipkan_at`), `layanan_tautan` (website terkait), `layanan_{hari,kontak}`, `jadwal_{harian_beku,pengecualian,standby}`, `hari_libur`, `kunjungan`, `tiket_antrean`, `antrean_counter`, `visit` (lama, dual-write), `buku_tamu`, `absensi_petugas`, `pelayanan_{oss,perizinan}`, `pengunjung`, `petugas`, `layar_token`, `rekap_harian_layanan`, `laporan_snapshot`
 - Chat/AI: `chat_sesi`, `chat_pesan`, `chat_ai_log`, `faq_knowledge_base`, `faq_sinonim`, `dokumen_peraturan`, `dokumen_potongan`
 - UMKM/investasi: `listing_umkm`, `umkm_inquiry`, `umkm_listing_owner`, `umkm_verifikasi_jejak`, `investment_documents`, `investasi_lead`, `jejak_minat_investasi`
-- Lain: `skm_respons`, `skm_response_rate`, `pengaduan`, `pengaduan_riwayat`, `standar_pelayanan`, `notifikasi`, `push_subscriptions`, `landing_content`, `site_settings`, `konten_versi`, `audit_log`, `consent_log`, `error_log`, `anon_rate_limit`
+- Lain: `skm_respons`, `skm_response_rate`, `pengaduan`, `pengaduan_riwayat`, `standar_pelayanan`, `notifikasi`, `push_subscriptions`, `landing_content` (tidak dipakai lagi oleh homepage; hanya sumber salinan awal `homepage_blok`), `homepage_blok` (migrasi `202610280001`), `site_settings`, `konten_versi`, `audit_log`, `consent_log`, `error_log`, `anon_rate_limit`
 - View: `v_antrian_loket`, `v_layar_antrian`, `v_rekap_pelayanan_{oss,perizinan}`, `v_umkm_public`, `v_umkm_match`
 - RPC/fungsi kunci: `terbit_tiket`/`terbit_nomor_antrean`/`generate_nomor_tiket` (nomor antrean atomik), `panggil_tiket`, `finalize_pelayanan`, `catat_absensi`/`catat_pulang`, `check_anon_rate`, `match_faq`/`match_faq_teks`/`match_dokumen` (RAG), `submit_skm_response`/`hitung_ikm`, `buat_pengaduan`/`lacak_pengaduan`, `rollup_rekap_harian`, `validate_layar_token`, `set_user_role_claim` (Auth Hook), `get_my_role`/`is_ptsp_staff` (helper RLS), `queue_notifikasi`/`claim_notifikasi`.
 - Job `pg_cron`: `notif_h0_pagi`, `notif_h1_sore`, `notif_eskalasi` + job otomatis lain (alpa otomatis, no-show reservasi, akhir hari, prune, anonimisasi). `vercel.json` kosong — penjadwalan ada di DB.
 - Daftar tepat bisa berubah: cek `grep -l <nama> supabase/migrations/*.sql` atau `scripts/introspect-schema.mjs` sebelum mengandalkan daftar ini.
+
+**Homepage etalase (Fase 2, migrasi `202610280001`, belum diterapkan):** `src/app/page.tsx` merakit blok dari `lib/homepage/blok.ts` (7 jenis tetap, blok mati tidak dirender, footer selalu terakhir); data dimuat `lib/homepage/data.ts` dengan fallback berlapis agar tidak 500 sebelum migrasi diterapkan; saklar `layanan.tampil_di_homepage`; popup = `components/homepage/{LayananPopup,PopupDariUrl}` (alamat lewat `useSearchParams` di dalam `<Suspense>`); pemadat jadwal bersama bot & etalase = `lib/jadwal-teks.ts`. Rencana + keputusan: `docs/superpowers/plans/2026-10-28-fase-2-homepage-etalase.md`.
 
 **Layanan dinamis (Fase 1, migrasi `202610270001`/`0002`, belum diterapkan):** admin menambah/mengarsipkan layanan dan mengelola Instansi + website terkait di `/admin/layanan` (view publik `v_layanan_publik`). **Sumber kebenaran jadwal = `jadwal_standby` + `hari_libur`** (halaman `/admin/settings/jadwal` menulis keduanya; layanan baru otomatis dapat jadwal default Senin–Jumat 08:00–15:30; jam tutup per layanan ≤ `jam_tutup_layanan()` 16:00). Tabel `layanan_jadwal`/`layanan_libur` tidak lagi dibaca/ditulis aplikasi (dibiarkan, data lama utuh). `is_layanan_buka_jadwal` menolak layanan terarsip dan `hari_libur`. Konteks: `GLOSSARY.md`, `docs/adr/`, spesifikasi `docs/superpowers/specs/2026-10-26-layanan-dinamis-design.md`.
 
