@@ -17,6 +17,7 @@ const L1 = '00000000-0000-4000-8000-0000000000b1';
 const L2 = '00000000-0000-4000-8000-0000000000b2';
 const K1 = '00000000-0000-4000-8000-0000000000c1';
 const K2 = '00000000-0000-4000-8000-0000000000c2';
+const K3 = '00000000-0000-4000-8000-0000000000c3';
 
 const db = await bukaDb();
 
@@ -126,9 +127,28 @@ cek('selesai_at NULL sebelum selesai', awal[0].selesai_at === null);
 await seed(`UPDATE public.kunjungan SET status = 'selesai' WHERE id = $1`, [K2]);
 const akhir = await seed('SELECT selesai_at FROM public.kunjungan WHERE id = $1', [K2]);
 cek('selesai_at terisi saat status menjadi selesai', akhir[0].selesai_at !== null);
-await seed(`UPDATE public.kunjungan SET nama = 'Tamu Dua (ubah)' WHERE id = $1`, [K2]);
-const tetap = await seed('SELECT selesai_at FROM public.kunjungan WHERE id = $1', [K2]);
-cek('selesai_at dipertahankan bila status tidak berubah', String(tetap[0].selesai_at) === String(akhir[0].selesai_at));
+
+// Pelestarian selesai_at: kunjungan dibuat langsung 'selesai' dengan selesai_at 2 hari lalu (INSERT memakai
+// COALESCE, jadi nilai kiriman dipakai). UPDATE yang tidak mengubah status harus membiarkannya. Dengan jarak
+// 2 hari, trigger yang salah men-stempel ulang now() pada tiap UPDATE pasti terdeteksi; membandingkan
+// String(Date) tidak cukup karena resolusinya satu detik, jadi dibandingkan lewat getTime() (milidetik).
+await seed(
+  `INSERT INTO public.kunjungan (id, nama, asal, tanggal, status, selesai_at)
+   VALUES ('${K3}', 'Tamu Tiga', 'walk_in', current_date, 'selesai', now() - interval '2 days')`,
+);
+const mundur = await seed('SELECT selesai_at FROM public.kunjungan WHERE id = $1', [K3]);
+cek(
+  'INSERT status selesai memakai selesai_at kiriman (prasyarat cek berikut)',
+  mundur[0].selesai_at instanceof Date && Date.now() - mundur[0].selesai_at.getTime() > 24 * 3600 * 1000,
+  String(mundur[0].selesai_at),
+);
+await seed(`UPDATE public.kunjungan SET nama = 'Tamu Tiga (ubah)' WHERE id = $1`, [K3]);
+const tetap = await seed('SELECT selesai_at FROM public.kunjungan WHERE id = $1', [K3]);
+cek(
+  'selesai_at dipertahankan bila status tidak berubah',
+  tetap[0].selesai_at instanceof Date && tetap[0].selesai_at.getTime() === mundur[0].selesai_at.getTime(),
+  `sebelum=${mundur[0].selesai_at?.toISOString?.()} sesudah=${tetap[0].selesai_at?.toISOString?.()}`,
+);
 
 const dup = await sebagai(db, 'postgres', null, `INSERT INTO public.skm_respons (layanan_id, kunjungan_id) VALUES ('${L1}', '${K1}')`);
 cek('indeks unik parsial: kunjungan_id ganda ditolak (23505)', dup.ok === false && dup.kode === '23505', JSON.stringify(dup));
