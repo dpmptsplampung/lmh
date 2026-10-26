@@ -399,4 +399,70 @@ describe('POST bot/coba', () => {
     expect(m.log.some((l) => ['insert', 'update', 'upsert', 'delete'].includes(l.op))).toBe(false);
     vi.doUnmock('@/lib/llm/bot');
   });
+
+  describe('profil layanan di pratinjau', () => {
+    const okBot = () => vi.fn(async () => ({
+      kind: 'ok', jawaban: 'x', sumber: [], sumberDokumen: [], eskalasi: false, reason: null, faqIds: [], topSim: 0.9,
+      sumberFaqId: null, provider: 'GW', mode: { tutup: false, alasan: null, kerjaBerikutnya: null },
+    }));
+    it('meneruskan profilLayanan (deskripsi, instansi, tautan berurutan, jadwal) ke jalankanBot', async () => {
+      const jalankanBot = okBot();
+      vi.doMock('@/lib/llm/bot', () => ({ jalankanBot }));
+      g.service = makeService({
+        layanan: {
+          data: {
+            nama: 'Dinas A', chatbot_aktif: true, deskripsi: 'Deskripsi resmi', instansi: { nama: 'DPMPTSP' },
+            layanan_tautan: [{ label: 'B', url: 'https://b.id', urut: 2 }, { label: 'A', url: 'https://a.id', urut: 1 }],
+          },
+          error: null,
+        },
+        jadwal_standby: { data: [{ hari: 1, jam_mulai: '08:00:00', jam_selesai: '15:30:00' }], error: null },
+      }).service;
+      stafOf('admin', null);
+      const res = await (await import('./bot/coba/route')).POST(req({ pertanyaan: 'apa syarat NIB', layanan_id: LAY }));
+      expect(res.status).toBe(200);
+      const arg = (jalankanBot.mock.calls as unknown as Array<[Record<string, unknown>]>)[0][0];
+      expect(arg.layananNama).toBe('Dinas A');
+      expect(arg.profilLayanan).toEqual({
+        nama: 'Dinas A', instansi: 'DPMPTSP', deskripsi: 'Deskripsi resmi',
+        websiteTerkait: [{ label: 'A', url: 'https://a.id' }, { label: 'B', url: 'https://b.id' }],
+        jadwal: [{ hari: 1, jamMulai: '08:00', jamSelesai: '15:30' }],
+      });
+      vi.doUnmock('@/lib/llm/bot');
+    });
+    it('jadwal gagal dibaca: pratinjau tetap jalan dengan jadwal kosong', async () => {
+      const jalankanBot = okBot();
+      vi.doMock('@/lib/llm/bot', () => ({ jalankanBot }));
+      g.service = makeService({
+        layanan: { data: { nama: 'Dinas A', chatbot_aktif: true }, error: null },
+        jadwal_standby: { data: null, error: { message: 'boom' } },
+      }).service;
+      stafOf('admin', null);
+      const res = await (await import('./bot/coba/route')).POST(req({ pertanyaan: 'apa syarat NIB', layanan_id: LAY }));
+      expect(res.status).toBe(200);
+      const arg = (jalankanBot.mock.calls as unknown as Array<[{ profilLayanan: { jadwal: unknown[] } }]>)[0][0];
+      expect(arg.profilLayanan.jadwal).toEqual([]);
+      vi.doUnmock('@/lib/llm/bot');
+    });
+    it('layanan tidak ada: 404 tanpa memanggil bot', async () => {
+      const jalankanBot = okBot();
+      vi.doMock('@/lib/llm/bot', () => ({ jalankanBot }));
+      g.service = makeService({ layanan: { data: null, error: { message: 'no rows', code: 'PGRST116' } } }).service;
+      stafOf('admin', null);
+      const res = await (await import('./bot/coba/route')).POST(req({ pertanyaan: 'apa syarat NIB', layanan_id: LAY }));
+      expect(res.status).toBe(404);
+      expect(jalankanBot).not.toHaveBeenCalled();
+      vi.doUnmock('@/lib/llm/bot');
+    });
+    it('select profil dan fallback sama-sama galat: 503 tanpa memanggil bot', async () => {
+      const jalankanBot = okBot();
+      vi.doMock('@/lib/llm/bot', () => ({ jalankanBot }));
+      g.service = makeService({ layanan: { data: null, error: { message: 'db down', code: '08006' } } }).service;
+      stafOf('admin', null);
+      const res = await (await import('./bot/coba/route')).POST(req({ pertanyaan: 'apa syarat NIB', layanan_id: LAY }));
+      expect(res.status).toBe(503);
+      expect(jalankanBot).not.toHaveBeenCalled();
+      vi.doUnmock('@/lib/llm/bot');
+    });
+  });
 });

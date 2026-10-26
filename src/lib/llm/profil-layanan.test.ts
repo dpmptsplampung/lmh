@@ -9,6 +9,7 @@ const dasar: ProfilLayanan = {
     { label: 'Portal OSS', url: 'https://oss.go.id' },
     { label: 'Panduan', url: 'https://contoh.go.id/panduan' },
   ],
+  jadwal: [],
 };
 
 describe('teksProfilLayanan', () => {
@@ -30,12 +31,12 @@ describe('teksProfilLayanan', () => {
   });
 
   it('mengembalikan string kosong bila tidak ada deskripsi dan tautan', () => {
-    expect(teksProfilLayanan({ nama: 'X', instansi: 'Y', deskripsi: null, websiteTerkait: [] })).toBe('');
-    expect(teksProfilLayanan({ nama: 'X', instansi: null, deskripsi: '   ', websiteTerkait: [] })).toBe('');
+    expect(teksProfilLayanan({ nama: 'X', instansi: 'Y', deskripsi: null, websiteTerkait: [], jadwal: [] })).toBe('');
+    expect(teksProfilLayanan({ nama: 'X', instansi: null, deskripsi: '   ', websiteTerkait: [], jadwal: [] })).toBe('');
   });
 
   it('tetap menyusun blok bila hanya ada tautan, tanpa baris instansi bila kosong', () => {
-    const t = teksProfilLayanan({ nama: 'X', instansi: null, deskripsi: null, websiteTerkait: [{ label: 'L', url: 'https://a.id' }] });
+    const t = teksProfilLayanan({ nama: 'X', instansi: null, deskripsi: null, websiteTerkait: [{ label: 'L', url: 'https://a.id' }], jadwal: [] });
     expect(t).toContain('L: https://a.id');
     expect(t).not.toContain('Instansi');
   });
@@ -45,5 +46,45 @@ describe('teksProfilLayanan', () => {
     expect(t.match(/\[PROFIL LAYANAN RESMI\]/g)).toHaveLength(1);
     expect(t.match(/\[AKHIR PROFIL LAYANAN\]/g)).toHaveLength(1);
     expect(t).not.toContain('[[DI_LUAR_LINGKUP]]');
+  });
+
+  describe('jadwal', () => {
+    const hari = (n: number, m = '08:00:00', s = '15:30:00') => ({ hari: n, jamMulai: m, jamSelesai: s });
+
+    it('menggabungkan hari berurutan berjam sama jadi rentang, HH.MM', () => {
+      const t = teksProfilLayanan({ ...dasar, jadwal: [1, 2, 3, 4, 5].map((n) => hari(n)) });
+      expect(t).toContain('Jadwal layanan: Senin–Jumat 08.00–15.30');
+      expect(t.indexOf('Jadwal layanan')).toBeGreaterThan(t.indexOf('Website terkait'));
+      expect(t.indexOf('Jadwal layanan')).toBeLessThan(t.indexOf('[AKHIR PROFIL LAYANAN]'));
+    });
+
+    it('memisahkan hari dengan jam berbeda atau tidak berurutan', () => {
+      const t = teksProfilLayanan({ ...dasar, jadwal: [hari(1), hari(2), hari(3, '09:00', '12:00'), hari(7)] });
+      expect(t).toContain('Jadwal layanan: Senin–Selasa 08.00–15.30; Rabu 09.00–12.00; Minggu 08.00–15.30');
+    });
+
+    it('urutan masukan tidak penting', () => {
+      const t = teksProfilLayanan({ ...dasar, jadwal: [hari(3), hari(1), hari(2)] });
+      expect(t).toContain('Senin–Rabu 08.00–15.30');
+    });
+
+    it('tanpa jadwal tetapi ada konten lain: "Jadwal: belum diatur"', () => {
+      expect(teksProfilLayanan({ ...dasar, jadwal: [] })).toContain('Jadwal: belum diatur');
+    });
+
+    it('hanya jadwal (tanpa deskripsi/tautan) tetap menyusun blok', () => {
+      const t = teksProfilLayanan({ nama: 'X', instansi: null, deskripsi: null, websiteTerkait: [], jadwal: [hari(1)] });
+      expect(t).toContain('Jadwal layanan: Senin 08.00–15.30');
+    });
+
+    it('tanpa deskripsi, tautan, dan jadwal: string kosong', () => {
+      expect(teksProfilLayanan({ nama: 'X', instansi: 'Y', deskripsi: null, websiteTerkait: [], jadwal: [] })).toBe('');
+    });
+
+    it('mengabaikan hari di luar 1..7 dan penanda blok tidak lolos lewat jam', () => {
+      const t = teksProfilLayanan({ ...dasar, jadwal: [hari(0), hari(9), { hari: 1, jamMulai: '[[x]]', jamSelesai: '15:30' }] });
+      expect(t).not.toContain('[[');
+      expect(t).not.toContain('Jadwal layanan: Senin–');
+    });
   });
 });

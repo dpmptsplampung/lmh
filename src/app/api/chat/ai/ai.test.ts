@@ -129,6 +129,9 @@ interface MockServiceOpts {
   /** Kolom tambahan baris layanan (deskripsi, instansi, layanan_tautan) seperti hasil embed PostgREST. */
   layananExtra?: Record<string, unknown>;
   /** Galat select layanan: `profil` = select dengan kolom profil, `fallback` = select `nama, chatbot_aktif`. */
+  /** Baris jadwal_standby layanan (hari, jam_mulai, jam_selesai, aktif) dan galat bacanya. */
+  jadwalStandby?: Array<{ hari: number; jam_mulai: string; jam_selesai: string; aktif?: boolean }>;
+  jadwalError?: { message: string };
   layananError?: { profil?: { message: string; code?: string }; fallback?: { message: string; code?: string } };
   dokData?: unknown[] | null;
   dokError?: { message: string } | null;
@@ -264,6 +267,17 @@ const mockServiceClient = async (opts: MockServiceOpts = {}) => {
             };
           })
         };
+      }
+      if (table === 'jadwal_standby') {
+        const chain: Record<string, unknown> = {};
+        chain.select = vi.fn(() => chain);
+        chain.eq = vi.fn(() => chain);
+        chain.order = vi.fn().mockResolvedValue(
+          opts.jadwalError
+            ? { data: null, error: opts.jadwalError }
+            : { data: (opts.jadwalStandby ?? []).filter((r) => r.aktif !== false), error: null },
+        );
+        return chain;
       }
       if (table === 'site_settings' && (opts.jamTutup !== undefined || opts.kanal)) {
         return {
@@ -924,14 +938,43 @@ describe('POST /api/chat/ai — konsol: bot hidup/mati, lingkup, dokumen, jam la
         { label: 'Portal OSS', url: 'https://oss.go.id' },
         { label: 'Panduan', url: 'https://contoh.go.id/panduan' },
       ],
+      jadwal: [],
     });
+  });
+
+  it('profilLayanan memuat jadwal aktif layanan (HH:MM, urut hari)', async () => {
+    await ask({
+      chatbotAktif: true,
+      rpcData: faqExact,
+      jadwalStandby: [
+        { hari: 2, jam_mulai: '08:00:00', jam_selesai: '15:30:00' },
+        { hari: 1, jam_mulai: '08:00:00', jam_selesai: '15:30:00' },
+        { hari: 6, jam_mulai: '08:00:00', jam_selesai: '12:00:00', aktif: false },
+      ],
+    }, 'Apa syarat membuat NIB?');
+    const { jalankanBot } = await import('@/lib/llm/bot');
+    const arg = vi.mocked(jalankanBot).mock.calls.at(-1)?.[0];
+    expect(arg?.profilLayanan?.jadwal).toEqual([
+      { hari: 1, jamMulai: '08:00', jamSelesai: '15:30' },
+      { hari: 2, jamMulai: '08:00', jamSelesai: '15:30' },
+    ]);
+  });
+
+  it('jadwal gagal dibaca: jadwal kosong, bot tetap menjawab', async () => {
+    const { json, status } = await ask({
+      chatbotAktif: true, rpcData: faqExact, jadwalError: { message: 'relation does not exist' },
+    }, 'Apa syarat membuat NIB?');
+    expect(status).toBe(200);
+    expect(json.jawaban).toBe('Jawaban dari AI [1]');
+    const { jalankanBot } = await import('@/lib/llm/bot');
+    expect(vi.mocked(jalankanBot).mock.calls.at(-1)?.[0]?.profilLayanan?.jadwal).toEqual([]);
   });
 
   it('baris layanan tanpa kolom profil: profilLayanan kosong, bot tetap menjawab', async () => {
     const { json } = await ask({ chatbotAktif: true, rpcData: faqExact }, 'Apa syarat membuat NIB?');
     const { jalankanBot } = await import('@/lib/llm/bot');
     const arg = vi.mocked(jalankanBot).mock.calls.at(-1)?.[0];
-    expect(arg?.profilLayanan).toEqual({ nama: 'Dinas A', instansi: null, deskripsi: null, websiteTerkait: [] });
+    expect(arg?.profilLayanan).toEqual({ nama: 'Dinas A', instansi: null, deskripsi: null, websiteTerkait: [], jadwal: [] });
     expect(json.jawaban).toBe('Jawaban dari AI [1]');
   });
 
@@ -948,7 +991,7 @@ describe('POST /api/chat/ai — konsol: bot hidup/mati, lingkup, dokumen, jam la
     expect(kolom).toEqual(['nama, chatbot_aktif, deskripsi, instansi:instansi_id(nama), layanan_tautan(label, url, urut)', 'nama, chatbot_aktif']);
     const { jalankanBot } = await import('@/lib/llm/bot');
     const arg = vi.mocked(jalankanBot).mock.calls.at(-1)?.[0];
-    expect(arg?.profilLayanan).toEqual({ nama: 'Dinas A', instansi: null, deskripsi: null, websiteTerkait: [] });
+    expect(arg?.profilLayanan).toEqual({ nama: 'Dinas A', instansi: null, deskripsi: null, websiteTerkait: [], jadwal: [] });
   });
 
   it('select profil dan fallback sama-sama galat: 503 tanpa LLM', async () => {

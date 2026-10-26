@@ -3,7 +3,7 @@ import { createClient as createServiceClient, type SupabaseClient } from '@supab
 import { z } from 'zod';
 import { createClient as createServerClient } from '@/lib/supabase/server';
 import { jalankanBot, FALLBACK_TEXT } from '@/lib/llm/bot';
-import type { ProfilLayanan } from '@/lib/llm/profil-layanan';
+import { muatLayananDanProfil } from '@/lib/llm/profil-layanan-server';
 import { logServerEvent } from '@/lib/observability/logger';
 import { redactPii } from '@/lib/pii';
 import { mutasiBolehKosong, mutasiInsert } from '@/lib/supabase/mutate';
@@ -44,27 +44,6 @@ function ignoredBody(status: SesiStatus) {
   return {
     ignored: true, jawaban: null, sumber: [], eskalasi: false,
     reason: status === 'aktif' ? 'sesi_aktif' : 'sesi_selesai', pesan: null, status,
-  };
-}
-
-type LayananProfilRow = {
-  nama: string;
-  deskripsi?: string | null;
-  instansi?: { nama?: string | null } | Array<{ nama?: string | null }> | null;
-  layanan_tautan?: Array<{ label: string; url: string; urut?: number | null }> | null;
-};
-
-// Baris layanan (embed PostgREST) -> profil untuk bot. Tautan diurutkan menurut `urut` di sini (urutan embed
-// tidak dijamin). Kolom/relasi kosong atau tak ada pada baris = profil kosong. Galat query profil ditangani
-// pemanggil (ulang tanpa kolom profil), bukan di sini.
-function susunProfilLayanan(row: LayananProfilRow): ProfilLayanan {
-  const inst = Array.isArray(row.instansi) ? row.instansi[0] : row.instansi;
-  const tautan = [...(row.layanan_tautan ?? [])].sort((a, b) => (a.urut ?? 0) - (b.urut ?? 0));
-  return {
-    nama: row.nama,
-    instansi: inst?.nama ?? null,
-    deskripsi: row.deskripsi ?? null,
-    websiteTerkait: tautan.map((t) => ({ label: t.label, url: t.url })),
   };
 }
 
@@ -206,41 +185,16 @@ export async function POST(request: NextRequest) {
   }
 
   // Bot hidup/mati ditegakkan di server (bukan hanya disembunyikan di layar pengunjung).
-  const primer = await adminClient
-    .from('layanan')
-    .select('nama, chatbot_aktif, deskripsi, instansi:instansi_id(nama), layanan_tautan(label, url, urut)')
-    .eq('id', layanan_id)
-    .single();
-  let layananData: (LayananProfilRow & { chatbot_aktif?: boolean | null }) | null = primer.data;
-  // Galat selain "baris tidak ada" (PGRST116), mis. kolom/relasi profil belum termigrasi atau DB sesaat bermasalah:
-  // catat, lalu ulangi sekali tanpa kolom profil agar bot tetap jalan (profil kosong). Gagal lagi = 503, bukan 404.
-  if (primer.error && primer.error.code !== 'PGRST116') {
-    logServerEvent('error', {
-      operation: 'chat.ai.layanan_profil', route: ROUTE, sesiId: sesi_id, cause: cause(primer.error.message),
-    });
-    const fallback = await adminClient
-      .from('layanan')
-      .select('nama, chatbot_aktif')
-      .eq('id', layanan_id)
-      .single();
-    if (fallback.error && fallback.error.code !== 'PGRST116') {
-      logServerEvent('error', {
-        operation: 'chat.ai.layanan', route: ROUTE, sesiId: sesi_id, cause: cause(fallback.error.message),
-      });
-      return NextResponse.json(
-        { error: 'Layanan sementara tidak tersedia. Coba lagi beberapa saat.' },
-        { status: 503 },
-      );
-    }
-    layananData = fallback.data;
+  // Profil (deskripsi, instansi, tautan, jadwal) dimuat bersama; logikanya dipakai bersama pratinjau admin.
+  const muat = await muatLayananDanProfil(adminClient, layanan_id, { route: ROUTE, sesiId: sesi_id });
+  if (!muat.ok) {
+    return muat.status === 503
+      ? NextResponse.json({ error: 'Layanan sementara tidak tersedia. Coba lagi beberapa saat.' }, { status: 503 })
+      : NextResponse.json({ error: 'Layanan tidak ditemukan' }, { status: 404 });
   }
-  // 404 hanya bila baris memang tidak ada (PGRST116 atau data null tanpa galat).
-  if (!layananData) {
-    return NextResponse.json({ error: 'Layanan tidak ditemukan' }, { status: 404 });
-  }
-  const layananNama = layananData.nama;
-  const profilLayanan = susunProfilLayanan(layananData);
-  if (layananData.chatbot_aktif === false) {
+  const layananNama = muat.layanan.nama;
+  const profilLayanan = muat.profil;
+  if (muat.layanan.chatbot_aktif === false) {
     return NextResponse.json({ ...ignoredBody(sesiStatus), reason: 'bot_nonaktif' });
   }
 
