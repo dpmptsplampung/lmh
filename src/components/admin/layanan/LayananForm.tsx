@@ -42,11 +42,13 @@ const sama = (a: LayananTautan[], b: LayananTautan[]) =>
 
 /** Form tambah (layanan = null) atau ubah layanan (Admin). Mode ubah hanya mengirim field yang berubah; ganti nama butuh konfirmasi. */
 export default function LayananForm({
-  layanan, instansi, saving, error, onSubmit, onCancel,
+  layanan, instansi, saving, error, tautanAwal: tautanDraf, onSubmit, onCancel,
 }: {
   layanan: LayananRow | null;
   instansi: InstansiRow[];
   saving: boolean;
+  /** Isian website terkait yang belum tersimpan (mis. setelah PUT gagal); menggantikan nilai awal dari `layanan`. */
+  tautanAwal?: LayananTautan[];
   error: string;
   onSubmit: (hasil: HasilForm) => void;
   onCancel: () => void;
@@ -66,7 +68,7 @@ export default function LayananForm({
   const [deskripsi, setDeskripsi] = useState(layanan?.deskripsi ?? '');
   const [urutan, setUrutan] = useState(String(layanan?.urutan ?? URUTAN_BAWAAN));
   const [sumber, setSumber] = useState(layanan?.konten_sumber_url ?? '');
-  const [tautan, setTautan] = useState<LayananTautan[]>(() => (layanan?.website_terkait ?? []).map((t) => ({ ...t })));
+  const [tautan, setTautan] = useState<LayananTautan[]>(() => (tautanDraf ?? layanan?.website_terkait ?? []).map((t) => ({ ...t })));
   const [tampilkanGalatTautan, setTampilkanGalatTautan] = useState(false);
   const [localError, setLocalError] = useState('');
   const [galatLokal, setGalatLokal] = useState<Galat>({});

@@ -12,7 +12,7 @@ import LayananForm, {
   FORM_PENDATAAN_LABEL, STATUS_LABEL, type HasilForm, type LayananRow,
 } from '@/components/admin/layanan/LayananForm';
 import InstansiDialog from '@/components/admin/layanan/InstansiDialog';
-import type { InstansiRow } from '@/lib/layanan/schemas';
+import type { InstansiRow, LayananTautan } from '@/lib/layanan/schemas';
 import styles from '@/components/admin/layanan/KelolaLayanan.module.css';
 
 const ya = (v: boolean) => (v ? 'Ya' : 'Tidak');
@@ -40,6 +40,8 @@ export default function KelolaLayananPage() {
   const [buat, setBuat] = useState(false);
   // Naik tiap kali form dibuka agar state form (isian, galat) selalu segar; TIDAK berubah saat daftar dimuat ulang.
   const [kunciForm, setKunciForm] = useState(0);
+  // Website terkait yang gagal tersimpan setelah layanan tersimpan; mengisi ulang form agar pengguna tidak mengetik ulang.
+  const [tautanTertunda, setTautanTertunda] = useState<LayananTautan[] | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const [dialogError, setDialogError] = useState('');
   const [aksi, setAksi] = useState<Aksi | null>(null);
@@ -69,9 +71,9 @@ export default function KelolaLayananPage() {
     load();
   }, [load]);
 
-  const tutup = useCallback(() => { setEdit(null); setBuat(false); setDialogError(''); }, []);
-  const bukaBaru = () => { setDialogError(''); setKunciForm((k) => k + 1); setBuat(true); };
-  const bukaUbah = (row: LayananRow) => { setDialogError(''); setKunciForm((k) => k + 1); setEdit(row); };
+  const tutup = useCallback(() => { setEdit(null); setBuat(false); setDialogError(''); setTautanTertunda(undefined); }, []);
+  const bukaBaru = () => { setDialogError(''); setTautanTertunda(undefined); setKunciForm((k) => k + 1); setBuat(true); };
+  const bukaUbah = (row: LayananRow) => { setDialogError(''); setTautanTertunda(undefined); setKunciForm((k) => k + 1); setEdit(row); };
 
   const simpanTautan = (id: string, tautan: HasilForm['tautan']) =>
     adminFetch(`/api/admin/layanan/${id}/tautan`, 'PUT', { tautan });
@@ -100,7 +102,14 @@ export default function KelolaLayananPage() {
       if (layananTersimpan) {
         const daftar = await load();
         const terbaru = daftar.find((r) => r.id === id);
-        if (terbaru) { setBuat(false); setEdit(terbaru); }
+        if (terbaru) {
+          // Pasang ulang form dari baris yang dimuat ulang: slug/prefiks hasil otomatis server terisi, sehingga percobaan
+          // ulang hanya mengirim website terkait (bukan slug kosong atau prefiks null yang menimpa nilai otomatis).
+          setTautanTertunda(tautan);
+          setKunciForm((k) => k + 1);
+          setBuat(false);
+          setEdit(terbaru);
+        }
         setDialogError(`Layanan sudah tersimpan, tetapi website terkait belum: ${pesan}`);
       } else {
         setDialogError(pesan);
@@ -291,7 +300,7 @@ export default function KelolaLayananPage() {
 
       {(edit || buat) && (
         <AkunDialog title={edit ? `Ubah layanan: ${edit.nama}` : 'Tambah layanan'} onClose={tutup}>
-          <LayananForm key={kunciForm} layanan={edit} instansi={instansi} saving={busy} error={dialogError}
+          <LayananForm key={kunciForm} layanan={edit} instansi={instansi} saving={busy} error={dialogError} tautanAwal={tautanTertunda}
             onSubmit={(hasil) => simpan(edit, hasil)} onCancel={tutup} />
         </AkunDialog>
       )}

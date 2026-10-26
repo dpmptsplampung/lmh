@@ -225,6 +225,46 @@ describe('kelola layanan', () => {
       expect(JSON.parse(panggilan('PUT', '/tautan')[0][1].body)).toEqual({ tautan: [{ label: 'OSS RBA', url: 'https://oss.go.id' }] });
     });
 
+    it('layanan baru: PUT /tautan gagal -> galat tampil; ulang hanya mengirim PUT (tanpa PATCH slug kosong / prefiks null)', async () => {
+      const dasar = fetchMock.getMockImplementation() as (u: string, i?: unknown) => Promise<unknown>;
+      let putKe = 0;
+      fetchMock.mockImplementation((url: string, init?: { method?: string; body?: string }) => {
+        if (url === '/api/admin/layanan' && init?.method === 'POST') {
+          // Slug & prefiks dikosongkan di form; server mengisinya otomatis.
+          layananList = [...layananList, lay({
+            id: 'baru1', nama: 'Konsultasi Investasi', slug: 'konsultasi-investasi', prefiks_antrean: 'KI',
+            instansi_id: null, urutan: 100, deskripsi: null, konten_sumber_url: null, website_terkait: [], diarsipkan_at: null,
+          })];
+          return resp(201, { id: 'baru1', slug: 'konsultasi-investasi' });
+        }
+        if (init?.method === 'PUT') {
+          putKe += 1;
+          return putKe === 1 ? resp(500, { error: 'Gagal menyimpan website terkait' }) : resp(200, { ok: true });
+        }
+        return dasar(url, init);
+      });
+      render(<KelolaLayananPage />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Tambah layanan' }));
+      fireEvent.change(screen.getByLabelText('Nama layanan'), { target: { value: 'Konsultasi Investasi' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Tambah website' }));
+      fireEvent.change(screen.getByLabelText('Nama website 1'), { target: { value: 'OSS RBA' } });
+      fireEvent.change(screen.getByLabelText('Alamat website 1'), { target: { value: 'https://oss.go.id' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(/Layanan sudah tersimpan, tetapi website terkait belum: Gagal menyimpan website terkait/);
+      // Form dipasang ulang dari baris server: nilai otomatis terisi dan isian website tidak hilang.
+      await waitFor(() => expect((screen.getByLabelText('Alamat halaman (slug)') as HTMLInputElement).value).toBe('konsultasi-investasi'));
+      expect((screen.getByLabelText('Prefiks antrean') as HTMLInputElement).value).toBe('KI');
+      expect((screen.getByLabelText('Alamat website 1') as HTMLInputElement).value).toBe('https://oss.go.id');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+      await waitFor(() => expect(panggilan('PUT', '/api/admin/layanan/baru1/tautan')).toHaveLength(2));
+      expect(JSON.parse(panggilan('PUT', '/tautan')[1][1].body)).toEqual({ tautan: [{ label: 'OSS RBA', url: 'https://oss.go.id' }] });
+      expect(patchCalls()).toHaveLength(0);
+      expect(panggilan('POST', '/api/admin/layanan')).toHaveLength(1);
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: /Ubah layanan/ })).toBeNull());
+    });
+
     it('website terkait: tambah/hapus baris; http:// diberi pesan galat dan tidak dikirim; simpan mengirim PUT', async () => {
       render(<KelolaLayananPage />);
       fireEvent.click(await screen.findByRole('button', { name: 'Ubah Helpdesk OSS' }));
