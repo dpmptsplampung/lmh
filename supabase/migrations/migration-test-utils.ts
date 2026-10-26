@@ -85,6 +85,8 @@ export const FORWARD_MIGRATION_FILES = [
   '202610280001_homepage_etalase.sql',
   '202610290001_koordinator_akses_data.sql',
   '202610290002_rekap_terpadu.sql',
+  '202610300001_pendataan_khusus.sql',
+  '202610300002_selesai_dengan_pendataan.sql',
 ] as const;
 
 export function listMigrationFiles(): string[] {

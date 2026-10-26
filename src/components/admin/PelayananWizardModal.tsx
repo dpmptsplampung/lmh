@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/components/Toast';
 import { useDialogFokus } from '@/components/admin/useDialogFokus';
+import { useTopikLayanan } from '@/components/admin/TopikCatatanFields';
 import {
   SKALA_USAHA_OPTIONS,
   TIPE_PELAKU_USAHA_OPTIONS,
@@ -70,8 +71,10 @@ const GAYA_GALAT: React.CSSProperties = { color: 'var(--color-danger-600)', font
 
 // Kepemilikan tiket (migrasi 202610140002): hanya pemilik tiket yang sedang 'dilayani' (initialData.boleh_ubah)
 // yang boleh menyimpan draf dan menyelesaikan. Selain itu wizard BACA-SAJA (tanpa autosave, tanpa tombol simpan).
-// Tiket HASIL ESKALASI Front Office: cukup Pendataan lengkap (keputusan CEO 2026-10-15, migrasi 202610140015); tidak
-// ada lagi isian topik/catatan penanganan. DB mengisi topik tahap layanan NULL dan menurunkan catatannya dari Pendataan.
+// Tiket HASIL ESKALASI Front Office: Pendataan lengkap (keputusan CEO 2026-10-15, migrasi 202610140015) + PILIHAN TOPIK
+// di langkah selesai (Fase 4, spec §7 Q46; menggantikan "tanpa topik" 2026-10-15). Catatan penanganan tetap tidak ditanyakan:
+// DB menurunkan catatan tahap layanan dari Pendataan. Topik wajib di UI bila Layanan punya topik aktif (DB tetap opsional,
+// kontrak 202610140015); data lama tanpa topik tampil "(tidak tercatat)" di rekap.
 // Aksesibilitas (audit T8): setiap field berlabel terhubung, dialog role=dialog aria-modal, Escape menutup (dengan
 // konfirmasi bila ada perubahan belum tersimpan), focus trap, fokus kembali ke pemicu, galat role=alert.
 export default function PelayananWizardModal({
@@ -126,6 +129,10 @@ export default function PelayananWizardModal({
 
   // Server menolak tulis (bukan pemilik / status berubah) setelah wizard dibuka -> kunci formulir.
   const [ditolakServer, setDitolakServer] = useState(false);
+
+  // Topik penanganan (langkah 3). Daftar kosong / gagal dimuat = pilihan topik tidak ditampilkan dan tidak wajib.
+  const [topikId, setTopikId] = useState('');
+  const { topik: daftarTopik } = useTopikLayanan(initialData?.layanan_id ?? null, isOpen && !!initialData);
 
   const isLocked = initialData?.is_locked ?? false;
   const bacaSaja = isLocked || ditolakServer || !(initialData?.boleh_ubah ?? false);
@@ -414,6 +421,7 @@ export default function PelayananWizardModal({
         if (kunci && !errors[kunci]) errors[kunci] = isu.message;
       }
     }
+    if (daftarTopik.length > 0 && !topikId) errors.topik_id = 'Topik penanganan wajib dipilih.';
     if (Object.keys(errors).length > 0) {
       setValidationErrors(errors);
       // Pindah ke langkah pertama yang berisi galat agar pesannya terlihat.
@@ -427,13 +435,13 @@ export default function PelayananWizardModal({
       setFinalizing(true);
       // Lolos validasi di atas: hasilForm.success true (semua field terisi, sudah di-trim).
       const isiForm = hasilForm.success ? hasilForm.data : isiMentah;
-      // Tiket hasil eskalasi FO: topik/catatan penanganan TIDAK dikirim (migrasi 202610140015): topik tahap layanan
-      // NULL dan catatannya diturunkan DB dari Pendataan (tindak lanjut + uraian solusi / catatan petugas).
+      // Topik dikirim bila dipilih (Fase 4). Catatan penanganan TIDAK dikirim: DB menurunkannya dari Pendataan
+      // (migrasi 202610140015: tindak lanjut + uraian solusi / catatan petugas).
 
       const res = await fetch(`/api/admin/pelayanan/${tiketId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(isiForm),
+        body: JSON.stringify(topikId ? { ...isiForm, topik_id: topikId } : isiForm),
       });
 
       const result = await res.json();
@@ -885,6 +893,23 @@ export default function PelayananWizardModal({
               )}
 
               {/* STEP 3: TINDAKAN & SOLUSI */}
+              {step === 3 && !bacaSaja && daftarTopik.length > 0 && (
+                <div className="form-group" style={{ marginBottom: 'var(--space-4)' }}>
+                  <label htmlFor={id('topik')} className="form-label form-label--required">Topik penanganan</label>
+                  <select
+                    id={id('topik')}
+                    className="form-select"
+                    value={topikId}
+                    aria-required="true"
+                    {...atributGalat('topik_id')}
+                    onChange={(e) => { setTopikId(e.target.value); setValidationErrors((v) => { const { topik_id: _t, ...sisa } = v; void _t; return sisa; }); }}
+                  >
+                    <option value="">-- Pilih topik --</option>
+                    {daftarTopik.map((t) => <option key={t.id} value={t.id}>{t.nama}</option>)}
+                  </select>
+                  {galat('topik_id')}
+                </div>
+              )}
               {step === 3 && formType === 'oss' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
                   {medanTeks({

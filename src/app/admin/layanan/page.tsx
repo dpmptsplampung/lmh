@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { Archive, Building2, Loader2, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
@@ -242,6 +243,10 @@ export default function KelolaLayananPage() {
                         <div className={styles.rowActions}>
                           <button type="button" className="btn btn--secondary btn--sm"
                             aria-label={`Ubah ${r.nama}`} onClick={() => bukaUbah(r)}>Ubah</button>
+                          {!r.form_pendataan && (
+                            <Link href={`/admin/layanan/${r.id}/pendataan`} className="btn btn--ghost btn--sm"
+                              aria-label={`Pendataan Khusus ${r.nama}`}>Pendataan Khusus</Link>
+                          )}
                           <button type="button" className="btn btn--ghost btn--sm"
                             aria-label={`Arsipkan ${r.nama}`} onClick={() => setAksi({ jenis: 'arsip', row: r })}>
                             <Archive size={14} aria-hidden="true" /> Arsipkan

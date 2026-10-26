@@ -227,3 +227,12 @@ Penegakan per jalur baca (rinci di rencana `docs/superpowers/plans/2026-10-29-fa
 Ambil alih pendataan: Koordinator Petugas -> tiket `dilayani` milik petugas lain di layanannya (`koordinator_ambil_alih_tiket`); Koordinator FO -> tahap FO `berjalan` milik FO lain, bukan chat (`koordinator_ambil_alih_fo`). Alasan 5-500 karakter, `audit_log` (`koordinator_ambil_alih`, nilai lama/baru), notifikasi web push + kartu pemberitahuan untuk pemegang lama. Pelayanan tercatat atas nama Koordinator (yang menyelesaikan); pemegang lama tetap boleh menyimpan draf, tidak menyelesaikan.
 
 **Celah yang diketahui (Fase 5/6):** `tiket_antrean` `tiket_staff_select` (tanpa `TO`), `buku_tamu` (semua FO, semua tanggal), `chat_sesi`/`chat_pesan` (FO lintas Layanan).
+
+## 8. PEMBARUAN 2026-10-30 — Pendataan Khusus (Fase 4; migrasi `202610300001`/`0002`, BELUM DITERAPKAN)
+
+| Objek | Baca | Tulis |
+|---|---|---|
+| `pendataan_khusus_field` (definisi isian) | staf aktif (admin/petugas/front_office) | admin saja (policy `TO authenticated`); trigger DB: jenis terkunci + tidak dapat dihapus bila pernah diisi, tidak untuk Layanan ber-formulir tetap |
+| `pendataan_khusus_jawaban` | `boleh_baca_khusus` = `boleh_data_pelayanan` (admin; FO Koordinator semua; Petugas Koordinator tahap layanannya; penangan = dirinya; tanpa jendela operasional) | tidak ada hak tulis klien; hanya `layanan_selesai_khusus` / `chat_selesai_khusus` (definer, setelah pemeriksaan peran/kepemilikan `layanan_selesai`/`chat_selesai`) |
+| Identitas kunjungan chat | `boleh_kunjungan` (Fase 3) | hanya `chat_selesai_khusus` oleh pemilik tahap chat; `audit_log` mencatat nama field yang berubah |
+| Rekap Data Pelayanan kolom Khusus | jawaban dibaca klien pengguna lewat RLS di atas, hanya untuk pelayanan yang lolos `rekap_data_pelayanan` | - |

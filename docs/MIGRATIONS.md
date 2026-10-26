@@ -178,6 +178,35 @@ node scripts/apply-migration.mjs supabase/migrations/202610290002_rekap_terpadu.
 
 **Rollback (urutan terbalik, atomik, dry-run dulu):** `docs/rollback-rekap-terpadu-202610290002.sql` (menghapus fungsi rekap baru), lalu `docs/rollback-koordinator-akses-data-202610290001.sql` (memulihkan `boleh_penanganan` 0013 + penandanya, `boleh_kunjungan` 0009, policy Pendataan/rekap_harian/visit lama, mencabut hak RPC ambil alih; kolom `petugas.koordinator` dan tabel `ambil_alih_pendataan` dibiarkan, B1). Rollback 0012/0013 kini menolak selama penanda 0029 masih ada.
 
+## Fase 4 layanan dinamis: Pendataan Khusus, selesai tiket/chat dengan pendataan (202610300001, 202610300002) — BELUM DITERAPKAN
+
+| Versi | Berkas | Isi | Status |
+|---|---|---|---|
+| 202610300001 | `202610300001_pendataan_khusus.sql` | (batas 40 isian + urutan dijaga trigger di bawah kunci penasihat per Layanan; RPC `pendataan_khusus_urutkan` (urutan atomik) dan `pendataan_khusus_peta` (peta jawaban untuk rekap, SECURITY INVOKER = RLS berlaku); topik "Lainnya" hanya Layanan aktif.) Tabel `pendataan_khusus_field` (definisi isian per Layanan; 7 jenis; trigger DB: jenis terkunci dan tidak dapat dihapus bila pernah diisi, `layanan_id` tetap, ditolak untuk Layanan ber-formulir tetap, maks 40 isian, opsi 2-20 butir) dan `pendataan_khusus_jawaban` (per tahap penanganan; kunci `field_id` + salinan label/jenis; FK RESTRICT; klien hanya SELECT); helper `boleh_baca_khusus` (= `boleh_data_pelayanan` Fase 3); fungsi internal `pendataan_khusus_validasi`/`pendataan_khusus_simpan`; topik awal "Lainnya" untuk Layanan tanpa topik (backfill `INSERT` + trigger Layanan baru). | **DITULIS, BELUM DITERAPKAN** |
+| 202610300002 | `202610300002_selesai_dengan_pendataan.sql` | RPC `layanan_selesai_khusus` (memanggil `layanan_selesai` apa adanya + simpan Khusus) dan `chat_selesai_khusus` (memanggil `chat_selesai` + lengkapi identitas kunjungan chat + simpan Khusus tahap Layanan); fungsi internal `pendataan_identitas_validasi`. Tidak mengganti `layanan_selesai`/`chat_selesai`. | **DITULIS, BELUM DITERAPKAN** |
+
+**`202610300001` dan `202610300002` DITERAPKAN BERSAMA dalam satu jendela deploy** (jangan berhenti di 0001: dengan 0001 saja isian Khusus sudah tampil tetapi RPC selesai belum ada; klien hanya turun ke alur lama bila tidak ada isian wajib/jawaban, selain itu menampilkan pesan "belum aktif sepenuhnya di server").
+
+**Urutan terap (hanya pemilik, atomik, dry-run dulu):** setelah `202610270001`, `202610270002`, `202610280001`, `202610290001`, `202610290002`: lalu `202610300001`, lalu `202610300002` (0001 menolak berjalan bila `boleh_data_pelayanan` belum ada; 0002 menolak bila `pendataan_khusus_simpan` belum ada).
+
+```bash
+node scripts/apply-migration.mjs supabase/migrations/202610300001_pendataan_khusus.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202610300001_pendataan_khusus.sql --atomic
+node scripts/apply-migration.mjs supabase/migrations/202610300002_selesai_dengan_pendataan.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202610300002_selesai_dengan_pendataan.sql --atomic
+```
+
+**Perilaku bila belum diterapkan (aplikasi tidak crash):** dialog selesai tiket Layanan non-OSS memakai `layanan_selesai` lama; dialog selesai chat hanya topik + catatan (blok identitas dan Pendataan Khusus tersembunyi karena tabel tidak ada); `/admin/layanan/[id]/pendataan` dan route `api/admin/layanan/[id]/pendataan-khusus` menjawab 409 `MIGRASI_BELUM_DITERAPKAN`; Rekap Data Pelayanan tanpa kolom Khusus; `POST /api/chat/sesi` `selesaikan` dengan `khusus`/`identitas` menjawab 409. Pilihan topik di langkah selesai OSS/Non OSS memakai tabel `topik_penanganan` yang sudah ada (tidak butuh migrasi).
+
+**Daftar periksa pemilik:**
+1. Sebelum terap: pastikan migrasi Fase 1-3 sudah diterapkan. Setelah 0001, buka `/admin/topik`: setiap Layanan tanpa topik kini punya topik "Lainnya" (ganti nama/nonaktifkan bila perlu; Layanan tanpa topik aktif tidak bisa menyelesaikan tiket/chat).
+2. Di `/admin/layanan` klik "Pendataan Khusus" pada Layanan non-OSS (mis. BPJS, Bank Lampung) dan susun isian. Isian yang sudah pernah diisi hanya bisa disembunyikan, jenisnya terkunci. Layanan OSS/Non OSS memakai formulir tetap (tombol tidak tampil).
+3. Uji: selesaikan satu tiket hasil eskalasi di Layanan ber-Khusus (isian tampil, wajib ditegakkan), satu live chat oleh petugas Layanan (identitas terprapengisi dari profil, Khusus tampil) dan satu live chat oleh FO (identitas saja). Periksa `/admin/rekap` > Data Pelayanan dengan satu Layanan dipilih: kolom `[Khusus] ...` dan Excel; kanal Live Chat.
+4. Uji OSS/Non OSS: langkah 3 wizard meminta "Topik penanganan" (wajib bila Layanan punya topik aktif).
+5. RLS jawaban Khusus belum diuji perilaku (`npm run test:rls` belum mencakup): hanya kontrak statis (`supabase/migrations/pendataan_khusus.test.ts`, `selesai_dengan_pendataan.test.ts`).
+6. `audit_log` kini memuat nilai lama/baru identitas yang dikoreksi petugas saat chat selesai (`chat_pendataan_identitas`). `audit_log` hanya terbaca Admin dan **tidak** dianonimkan job retensi (lihat `docs/KEBIJAKAN_PDP.md`): tindak lanjut bila DPO menilai perlu.
+7. Rollback tidak disediakan: migrasi aditif; bila perlu menonaktifkan fitur, sembunyikan semua isian Khusus di Admin (alur selesai kembali seperti sebelumnya).
+
 ## Migrasi forward (status penerapan produksi)
 
 > **Status per 2026-10-14 malam:** semua migrasi di tabel ini sudah DITERAPKAN ke produksi (0002-0009, 0011, 0012, 0013 pada ±17:52-17:57 WIB, tanpa 0010 karena tidak ada berkasnya). Terapan atomik (`apply-migration --atomic`, dry-run lalu COMMIT) dan diverifikasi read-only. Ledger `supabase_migrations.schema_migrations` sudah diisi (12 baris, `scripts/fill-migration-ledger.mjs --apply --yes`; verifikasi `docs/analysis/LEDGER-VERIFIKASI-2026-10-14.md`). Perintah "Cara menerapkan" di bawah dipertahankan sebagai catatan prosedur, bukan langkah yang masih tertunda. Yang BELUM TERBUKTI: tampilan di browser, konkurensi sejati, kueri rekap FO pada PostgREST sungguhan, `session_id` JWT stabil setelah refresh; flag `sesi_tunggal_aktif` masih `false`.

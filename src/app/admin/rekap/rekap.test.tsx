@@ -79,6 +79,27 @@ describe('/admin/rekap (terpadu)', () => {
     expect((screen.getByLabelText('Unit') as HTMLSelectElement).value).toBe('fo');
   });
 
+  it('Fase 4: kolom Pendataan Khusus Layanan terpilih tampil di tabel (isian tersembunyi yang pernah diisi ikut)', async () => {
+    params.nilai = new URLSearchParams('bagian=data');
+    rute({
+      lingkup: { ...LINGKUP, unit_opsi: ['fo', 'layanan'], opsi_layanan: [{ id: 'L1', nama: 'BPJS', form_pendataan: null }] },
+      data: {
+        total: 1, form_type: null,
+        kolom_khusus: [
+          { id: 'f1', layanan_id: 'L1', label: 'Jenis kartu', jenis: 'pilihan_tunggal', wajib: true, opsi: ['A', 'B'], urut: 0, tersembunyi: false, pernah_diisi: true },
+          { id: 'f2', layanan_id: 'L1', label: 'Puas', jenis: 'ya_tidak', wajib: false, opsi: [], urut: 1, tersembunyi: true, pernah_diisi: true },
+        ],
+        rows: [{ pelayanan_id: 'x1', sumber: 'penanganan', tanggal: '2026-10-20', unit: 'layanan', kanal: 'live_chat', pengunjung_nama: 'Andi', hasil: 'selesai', khusus: { f1: 'B', f2: true } }],
+      },
+    });
+    render(<AdminRekapPage />);
+    expect(await screen.findByText('Andi')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: '[Khusus] Jenis kartu' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: '[Khusus] Puas' })).toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: 'B' })).toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: 'Ya' })).toBeInTheDocument();
+  });
+
   it('migrasi belum diterapkan: pemberitahuan jelas, tanpa crash', async () => {
     rute({
       lingkup: new Response(JSON.stringify({ error: 'Rekap terpadu belum tersedia: migrasi 202610290001 dan 202610290002 belum diterapkan.', kode: 'MIGRASI_BELUM_DITERAPKAN' }), { status: 409 }),

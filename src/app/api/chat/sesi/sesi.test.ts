@@ -106,6 +106,58 @@ describe('POST /api/chat/sesi (RPC chat)', () => {
     expect(state.rpc).toHaveBeenCalledWith('chat_selesai', { p_sesi_id: SESI, p_topik_id: TOPIK, p_catatan: 'Selesai dijawab' });
   });
 
+  describe('selesaikan dengan Pendataan Khusus / identitas (Fase 4, migrasi 202610300002)', () => {
+    const FIELD = '8d9c7a2e-0000-4000-8000-000000000001';
+
+    it('khusus atau identitas -> chat_selesai_khusus dengan p_khusus/p_identitas; yang tidak ada dikirim null', async () => {
+      state.rpc.mockResolvedValue(sukses({ khusus_tersimpan: 1, identitas_diubah: ['email'] }));
+      const res = await panggil({
+        sesi_id: SESI, aksi: 'selesaikan', topik_id: TOPIK, catatan: ' Selesai ',
+        khusus: { [FIELD]: 'abc' }, identitas: { email: 'a@b.id' },
+      });
+      expect(res.status).toBe(200);
+      expect(state.rpc).toHaveBeenCalledWith('chat_selesai_khusus', {
+        p_sesi_id: SESI, p_topik_id: TOPIK, p_catatan: 'Selesai', p_khusus: { [FIELD]: 'abc' }, p_identitas: { email: 'a@b.id' },
+      });
+      state.rpc.mockClear();
+      await panggil({ sesi_id: SESI, aksi: 'selesaikan', topik_id: TOPIK, catatan: 'x', identitas: { nama: 'Budi Santoso' } });
+      expect(state.rpc).toHaveBeenCalledWith('chat_selesai_khusus', expect.objectContaining({ p_khusus: null, p_identitas: { nama: 'Budi Santoso' } }));
+    });
+
+    it('tanpa keduanya tetap chat_selesai (alur lama tidak berubah)', async () => {
+      state.rpc.mockResolvedValue(sukses({}));
+      await panggil({ sesi_id: SESI, aksi: 'selesaikan', topik_id: TOPIK, catatan: 'x' });
+      expect(state.rpc).toHaveBeenCalledWith('chat_selesai', { p_sesi_id: SESI, p_topik_id: TOPIK, p_catatan: 'x' });
+    });
+
+    it('kolom identitas asing ditolak 422 dan RPC tidak dipanggil', async () => {
+      const res = await panggil({ sesi_id: SESI, aksi: 'selesaikan', topik_id: TOPIK, catatan: 'x', identitas: { role: 'admin' } });
+      expect(res.status).toBe(422);
+      expect(state.rpc).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['KHUSUS_WAJIB: isian "X" wajib diisi', 'KHUSUS_WAJIB'],
+      ['KHUSUS_TIDAK_VALID: isian "X"', 'KHUSUS_TIDAK_VALID'],
+      ['KHUSUS_TIDAK_BERLAKU: hanya layanan', 'KHUSUS_TIDAK_BERLAKU'],
+      ['DATA_TIDAK_VALID: email tidak valid', 'DATA_TIDAK_VALID'],
+    ])('galat DB %s -> 422 dengan kode dan pesan Indonesia (pesan teknis tidak bocor)', async (message, kode) => {
+      state.rpc.mockResolvedValue(galatRpc(message, '22023'));
+      const res = await panggil({ sesi_id: SESI, aksi: 'selesaikan', topik_id: TOPIK, catatan: 'x', khusus: {} });
+      expect(res.status).toBe(422);
+      const body = await res.json();
+      expect(body.kode).toBe(kode);
+      expect(body.error).not.toContain('"X"');
+    });
+
+    it('fungsi belum ada (migrasi belum diterapkan) -> 409 MIGRASI_BELUM_DITERAPKAN', async () => {
+      state.rpc.mockResolvedValue(galatRpc('Could not find the function', 'PGRST202'));
+      const res = await panggil({ sesi_id: SESI, aksi: 'selesaikan', topik_id: TOPIK, catatan: 'x', khusus: {} });
+      expect(res.status).toBe(409);
+      expect((await res.json()).kode).toBe('MIGRASI_BELUM_DITERAPKAN');
+    });
+  });
+
   it('kembali_ke_bot tidak lagi didukung: 410 dengan pesan jelas, RPC tidak dipanggil', async () => {
     const res = await panggil({ sesi_id: SESI, aksi: 'kembali_ke_bot' });
     expect(res.status).toBe(410);

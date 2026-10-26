@@ -66,7 +66,16 @@ export interface HasilChatSelesai {
 export type AksiChat =
   | { sesi_id: string; aksi: 'takeover'; alasan?: string }
   | { sesi_id: string; aksi: 'teruskan'; layanan_id: string; topik_id: string; catatan: string }
-  | { sesi_id: string; aksi: 'selesaikan'; topik_id: string; catatan: string };
+  | {
+      sesi_id: string;
+      aksi: 'selesaikan';
+      topik_id: string;
+      catatan: string;
+      /** Fase 4: jawaban Pendataan Khusus { id isian: nilai } (hanya tahap layanan). */
+      khusus?: Record<string, unknown>;
+      /** Fase 4: identitas pengunjung yang dilengkapi/dikoreksi petugas (kosong = tidak diubah). */
+      identitas?: Partial<Record<'nama' | 'kontak_hp' | 'email' | 'asal_instansi' | 'kategori' | 'keperluan', string>>;
+    };
 
 // ---------------------------------------------------------------------------
 // Pemetaan galat
@@ -202,12 +211,15 @@ export class GalatAksiChat extends Error {
   readonly status: number;
   /** Pesan Indonesia siap tampil (sama dengan message). */
   readonly pesan: string;
-  constructor(kode: KodeGalatChat | null, pesan: string, status: number) {
+  /** Kode mentah dari badan galat (mis. KHUSUS_TIDAK_VALID, MIGRASI_BELUM_DITERAPKAN) walau bukan kode kontrak chat. */
+  readonly kodeMentah: string | null;
+  constructor(kode: KodeGalatChat | null, pesan: string, status: number, kodeMentah: string | null = null) {
     super(pesan);
     this.name = 'GalatAksiChat';
     this.pesan = pesan;
     this.kode = kode;
     this.status = status;
+    this.kodeMentah = kodeMentah;
   }
 }
 
@@ -234,7 +246,7 @@ export async function kirimAksiChat<T = Record<string, unknown>>(aksi: AksiChat)
       : typeof body.error === 'string' && body.error
         ? body.error
         : 'Terjadi kesalahan, coba lagi.';
-    throw new GalatAksiChat(kode, pesan, res.status);
+    throw new GalatAksiChat(kode, pesan, res.status, typeof body.kode === 'string' ? body.kode : null);
   }
   return (body.data ?? body) as T;
 }

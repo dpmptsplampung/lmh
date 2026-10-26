@@ -14,6 +14,8 @@ import { useToast } from '@/components/Toast';
 import { addDaysWIB, todayWIB } from '@/lib/time';
 import { formatMenit, formatTanggalId } from '@/lib/rekap/format';
 import { DEFINISI_DILAYANI } from '@/lib/rekap/excelTerpadu';
+import { kolomKhusus } from '@/lib/rekap/khusus';
+import type { FieldKhusus } from '@/lib/pendataan-khusus/jenis';
 import {
   kolomDataPelayanan,
   namaUnit,
@@ -67,7 +69,7 @@ function RekapTerpadu() {
   const [memuat, setMemuat] = useState(true);
   const [mengekspor, setMengekspor] = useState(false);
   const [harian, setHarian] = useState<{ rows: BarisHarian[]; ringkasan: RingkasanHarian } | null>(null);
-  const [data, setData] = useState<{ rows: BarisPelayanan[]; total: number; form_type: FormPendataan | null } | null>(null);
+  const [data, setData] = useState<{ rows: BarisPelayanan[]; total: number; form_type: FormPendataan | null; kolom_khusus?: FieldKhusus[] } | null>(null);
   const [kinerja, setKinerja] = useState<BarisKinerja[] | null>(null);
   const [halaman, setHalaman] = useState(0);
 
@@ -114,7 +116,7 @@ function RekapTerpadu() {
       if (!r.ok) return tanganiGagal(r);
       setStatus({ jenis: 'siap' });
       if (bagian === 'harian') setHarian(r.body as unknown as { rows: BarisHarian[]; ringkasan: RingkasanHarian });
-      else if (bagian === 'data') setData(r.body as unknown as { rows: BarisPelayanan[]; total: number; form_type: FormPendataan | null });
+      else if (bagian === 'data') setData(r.body as unknown as { rows: BarisPelayanan[]; total: number; form_type: FormPendataan | null; kolom_khusus?: FieldKhusus[] });
       else setKinerja((r.body.rows ?? []) as BarisKinerja[]);
     } catch {
       setStatus({ jenis: 'galat', pesan: 'Gagal memuat rekap' });
@@ -164,7 +166,7 @@ function RekapTerpadu() {
     setter(v);
   };
 
-  const kolom = kolomDataPelayanan(data?.form_type ?? null);
+  const kolom = kolomDataPelayanan(data?.form_type ?? null, kolomKhusus(data?.kolom_khusus ?? []));
   const pilihLayanan = (info?.opsi_layanan.length ?? 0) > 0 && unit !== 'fo';
 
   return (
@@ -273,7 +275,7 @@ function RekapTerpadu() {
           {bagian === 'data' && (
             <>
               <div className={styles.aksi}>
-                <span>{data ? `${data.total} pelayanan` : ''}{!data?.form_type && ' · pilih satu Layanan ber-formulir untuk menampilkan kolom formulirnya'}</span>
+                <span>{data ? `${data.total} pelayanan` : ''}{!data?.form_type && !(data?.kolom_khusus?.length) && ' · pilih satu Layanan untuk menampilkan kolom formulir / Pendataan Khusus-nya'}</span>
                 <button type="button" className="btn btn--primary btn--sm" onClick={unduh}
                   disabled={memuat || mengekspor || status.jenis !== 'siap'}>
                   {mengekspor ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Download size={14} aria-hidden="true" />}

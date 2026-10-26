@@ -6,6 +6,9 @@ import { labelLingkup } from '@/lib/akses-data/lingkup';
 import { buildDataPelayananWorkbook } from '@/lib/rekap/excelTerpadu';
 import { kolomDataPelayanan, NAMA_UNIT_FO, petaBarisPelayanan, rekapTerpaduExportSchema } from '@/lib/rekap/terpadu';
 import { ambilSemuaDataPelayanan, argRekap, formLayanan, muatLingkup, responsGalatRekap } from '@/lib/rekap/terpaduServer';
+import { kolomKhusus, lampirkanKhusus } from '@/lib/rekap/khusus';
+import type { FieldKhusus } from '@/lib/pendataan-khusus/jenis';
+import { muatFieldKhusus, muatJawabanKhusus } from '@/lib/rekap/khususServer';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -39,15 +42,26 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     return responsGalatRekap(error, LABEL);
   }
-  const rows = hasil.rows.map(petaBarisPelayanan);
+  let rows = hasil.rows.map(petaBarisPelayanan);
   const formType = await formLayanan(supabase, q.layanan_id);
+  // Fase 4: kolom Pendataan Khusus Layanan terpilih (jawaban lewat klien pengguna; RLS = lingkup ketat).
+  let fieldKhusus: FieldKhusus[] = [];
+  try {
+    fieldKhusus = await muatFieldKhusus(supabase, q.layanan_id);
+    if (fieldKhusus.length > 0) {
+      const jawaban = await muatJawabanKhusus(supabase, rows.filter((r) => r.sumber === 'penanganan').map((r) => r.pelayanan_id));
+      rows = lampirkanKhusus(rows, jawaban);
+    }
+  } catch (error) {
+    return responsGalatRekap(error, LABEL);
+  }
   const namaLayanan = q.layanan_id
     ? (rows.find((r) => r.layanan_id === q.layanan_id)?.layanan_nama ?? q.layanan_id)
     : null;
   const unit = q.unit === 'fo' ? NAMA_UNIT_FO : q.unit === 'layanan' ? 'Semua Layanan' : null;
   const filter = [unit, namaLayanan].filter(Boolean).join(' · ') || 'Semua unit';
 
-  const buf = await buildDataPelayananWorkbook(rows, kolomDataPelayanan(formType), {
+  const buf = await buildDataPelayananWorkbook(rows, kolomDataPelayanan(formType, kolomKhusus(fieldKhusus)), {
     dari: q.dari, sampai: q.sampai, lingkup: labelLingkup(staf.lingkup), filter, truncated: hasil.truncated,
   });
 

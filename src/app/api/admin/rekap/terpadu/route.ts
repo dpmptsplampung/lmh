@@ -11,6 +11,9 @@ import {
   type UnitRekap,
 } from '@/lib/rekap/terpadu';
 import { argRekap, formLayanan, muatLingkup, responsGalatRekap } from '@/lib/rekap/terpaduServer';
+import { lampirkanKhusus } from '@/lib/rekap/khusus';
+import type { FieldKhusus } from '@/lib/pendataan-khusus/jenis';
+import { muatFieldKhusus, muatJawabanKhusus } from '@/lib/rekap/khususServer';
 
 export const dynamic = 'force-dynamic';
 
@@ -69,9 +72,23 @@ export async function GET(request: NextRequest) {
   });
   if (error) return responsGalatRekap(error, LABEL);
   const b = (data ?? {}) as { total?: unknown; rows?: unknown };
+  let rows = daftar(b.rows).map(petaBarisPelayanan);
+  // Fase 4: kolom Pendataan Khusus hanya bila satu Layanan dipilih. Jawaban dibaca lewat klien pengguna (RLS = lingkup
+  // ketat) hanya untuk pelayanan yang sudah lolos RPC di atas.
+  let kolom_khusus: FieldKhusus[] = [];
+  try {
+    kolom_khusus = await muatFieldKhusus(supabase, q.layanan_id);
+    if (kolom_khusus.length > 0) {
+      const jawaban = await muatJawabanKhusus(supabase, rows.filter((r) => r.sumber === 'penanganan').map((r) => r.pelayanan_id));
+      rows = lampirkanKhusus(rows, jawaban);
+    }
+  } catch (e) {
+    return responsGalatRekap(e, LABEL);
+  }
   return NextResponse.json({
     total: Number(b.total ?? 0) || 0,
     form_type: await formLayanan(supabase, q.layanan_id),
-    rows: daftar(b.rows).map(petaBarisPelayanan),
+    kolom_khusus,
+    rows,
   });
 }

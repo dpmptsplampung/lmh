@@ -1,8 +1,10 @@
 'use client';
 
-// Menyelesaikan tiket HASIL ESKALASI Front Office pada layanan TANPA form pendataan (mis. BPJS, Bank Lampung).
-// RPC layanan_selesai 5 parameter (kontrak FO-ESKALASI §3.2): tiket hasil eskalasi WAJIB topik (milik layanan tiket)
-// dan catatan 1-1000. Layanan dengan pendataan (OSS / Non OSS) mengisi topik + catatan di PelayananWizardModal.
+// Menyelesaikan tiket HASIL ESKALASI Front Office pada layanan TANPA form pendataan tetap (mis. BPJS, Bank Lampung).
+// Pendataan Umum: topik (milik layanan tiket) + catatan 1-1000 wajib (RPC layanan_selesai, kontrak FO-ESKALASI §3.2).
+// Fase 4: bila Admin menyusun Pendataan Khusus untuk Layanan itu, isiannya ditampilkan di sini dan dikirim bersama
+// lewat RPC layanan_selesai_khusus (migrasi 202610300002). Tanpa isian / migrasi belum diterapkan = alur lama.
+// Layanan dengan formulir tetap (OSS / Non OSS) mengisi topik di PelayananWizardModal.
 // Hanya pemilik tiket yang dapat menyelesaikan (ditegakkan DB: BUKAN_PEMILIK).
 import { useId, useState } from 'react';
 import { CheckCircle2 } from 'lucide-react';
@@ -10,8 +12,17 @@ import { useToast } from '@/components/Toast';
 import { createClient } from '@/lib/supabase/client';
 import { mutasiWajibBaris, pesanMutasi } from '@/lib/supabase/mutate';
 import { kodeGalatDariError, MAX_CATATAN_LAYANAN, PESAN_GALAT_ANTREAN } from '@/lib/pelayanan';
+import { susunJawabanMentah, validasiJawabanKhusus, type NilaiForm } from '@/lib/pendataan-khusus/jawaban';
+import { kodeGalatKhusus, PESAN_GALAT_KHUSUS } from '@/lib/pendataan-khusus/galat';
+import { objekBelumAda } from '@/lib/akses-data/galat';
 import FormDialog from './FormDialog';
+import PendataanKhususFields, { useFieldKhusus } from './PendataanKhususFields';
 import TopikCatatanFields, { useTopikLayanan } from './TopikCatatanFields';
+
+const PESAN_MIGRASI_SEBAGIAN =
+  'Pendataan Khusus belum aktif sepenuhnya di server (migrasi belum lengkap), sehingga tiket belum dapat diselesaikan dengan isian ini. Hubungi Admin.';
+const PESAN_ISIAN_BERUBAH =
+  'Isian Pendataan Khusus Layanan ini berubah. Formulir dimuat ulang; periksa isian lalu kirim lagi.';
 
 export interface TiketSelesaiEskalasi {
   id: string;
@@ -31,6 +42,9 @@ export default function SelesaiEskalasiModal({ tiket, onClose, onSuccess }: Prop
   const { toast } = useToast();
   const idDasar = useId();
   const { topik, memuat, galat: galatMuat } = useTopikLayanan(tiket?.layanan_id ?? null, tiket !== null);
+  const khusus = useFieldKhusus(tiket?.layanan_id ?? null, tiket !== null);
+  const [nilaiKhusus, setNilaiKhusus] = useState<NilaiForm>({});
+  const [galatKhusus, setGalatKhusus] = useState<Record<string, string>>({});
   const [topikId, setTopikId] = useState('');
   const [catatan, setCatatan] = useState('');
   const [mengirim, setMengirim] = useState(false);
@@ -48,21 +62,52 @@ export default function SelesaiEskalasiModal({ tiket, onClose, onSuccess }: Prop
       : catatanBersih.length > MAX_CATATAN_LAYANAN ? PESAN_GALAT_ANTREAN.CATATAN_TERLALU_PANJANG : null;
     setGalatTopik(gTopik);
     setGalatCatatan(gCatatan);
-    if (gTopik || gCatatan) return;
+    const adaKhusus = khusus.tersedia && khusus.fields.length > 0;
+    const hasilKhusus = adaKhusus
+      ? validasiJawabanKhusus(khusus.fields, susunJawabanMentah(khusus.fields, nilaiKhusus))
+      : { galat: {}, payload: {} };
+    setGalatKhusus(hasilKhusus.galat);
+    if (gTopik || gCatatan || Object.keys(hasilKhusus.galat).length > 0) return;
 
     setGalat(null);
     setMengirim(true);
     try {
       const supabase = createClient();
-      await mutasiWajibBaris(
-        supabase.rpc('layanan_selesai', { p_tiket_id: tiket.id, p_topik_id: topikId, p_catatan: catatanBersih }),
-      );
+      const pakaiLama = () =>
+        supabase.rpc('layanan_selesai', { p_tiket_id: tiket.id, p_topik_id: topikId, p_catatan: catatanBersih });
+      let hasil: { peringatan?: string }[];
+      try {
+        hasil = await mutasiWajibBaris<{ peringatan?: string }>(
+          adaKhusus
+            ? supabase.rpc('layanan_selesai_khusus', {
+                p_tiket_id: tiket.id, p_topik_id: topikId, p_catatan: catatanBersih, p_khusus: hasilKhusus.payload,
+              })
+            : pakaiLama(),
+        );
+      } catch (e) {
+        // Deploy sebagian (0001 tanpa 0002): fungsi layanan_selesai_khusus belum ada.
+        const asal = (e as { asal?: unknown }).asal ?? e;
+        if (!adaKhusus || !objekBelumAda(asal)) throw e;
+        const perluKhusus = khusus.fields.some((f) => f.wajib) || Object.keys(hasilKhusus.payload).length > 0;
+        if (perluKhusus) {
+          setGalat(PESAN_MIGRASI_SEBAGIAN);
+          return;
+        }
+        hasil = await mutasiWajibBaris<{ peringatan?: string }>(pakaiLama());
+      }
       toast(`Tiket ${tiket.nomor_display} selesai dilayani`, 'success');
+      if (hasil[0]?.peringatan) toast(hasil[0].peringatan, 'info');
       await onSuccess?.();
       onClose();
     } catch (err) {
       const kode = kodeGalatDariError(err);
-      if (kode === 'TOPIK_WAJIB' || kode === 'TOPIK_TIDAK_VALID') setGalatTopik(PESAN_GALAT_ANTREAN[kode]);
+      const kodeKhusus = kodeGalatKhusus(err);
+      if (kodeKhusus === 'KHUSUS_TIDAK_VALID' || kodeKhusus === 'KHUSUS_WAJIB') {
+        // Isian Layanan berubah (Admin) saat dialog terbuka: muat ulang isian, nilai yang sudah diketik dipertahankan.
+        khusus.muatUlang();
+        setGalat(PESAN_ISIAN_BERUBAH);
+      } else if (kodeKhusus) setGalat(PESAN_GALAT_KHUSUS[kodeKhusus]);
+      else if (kode === 'TOPIK_WAJIB' || kode === 'TOPIK_TIDAK_VALID') setGalatTopik(PESAN_GALAT_ANTREAN[kode]);
       else if (kode === 'CATATAN_WAJIB' || kode === 'CATATAN_TERLALU_PANJANG') setGalatCatatan(PESAN_GALAT_ANTREAN[kode]);
       else setGalat(kode ? PESAN_GALAT_ANTREAN[kode] : `Gagal menyelesaikan tiket. ${pesanMutasi(err)}`);
       // Status/pemilik tiket berubah di tempat lain: segarkan daftar di belakang dialog.
@@ -75,15 +120,16 @@ export default function SelesaiEskalasiModal({ tiket, onClose, onSuccess }: Prop
   return (
     <FormDialog
       judul={<><CheckCircle2 size={18} aria-hidden="true" /> Selesaikan tiket {tiket.nomor_display}</>}
-      deskripsi="Tiket ini berasal dari eskalasi Front Office. Pilih topik penanganan dan tulis catatan hasil layanan sebelum menyelesaikan."
+      deskripsi="Tiket ini berasal dari eskalasi Front Office. Pilih topik penanganan, tulis catatan hasil layanan, dan lengkapi isian Layanan (bila ada) sebelum menyelesaikan."
       labelKirim="Selesaikan"
       mengirim={mengirim}
-      kirimNonaktif={memuat}
+      kirimNonaktif={memuat || khusus.memuat}
       galat={galat}
       onClose={onClose}
       onSubmit={kirim}
     >
       {() => (
+        <>
         <TopikCatatanFields
           idDasar={idDasar}
           topik={topik}
@@ -101,6 +147,21 @@ export default function SelesaiEskalasiModal({ tiket, onClose, onSuccess }: Prop
           galatCatatan={galatCatatan}
           disabled={mengirim}
         />
+        {khusus.tersedia && (
+          <PendataanKhususFields
+            idDasar={idDasar}
+            fields={khusus.fields}
+            nilai={nilaiKhusus}
+            onNilai={(id, v) => {
+              setNilaiKhusus((n) => ({ ...n, [id]: v }));
+              setGalatKhusus((g) => { const { [id]: _hapus, ...sisa } = g; void _hapus; return sisa; });
+              setGalat(null);
+            }}
+            galat={galatKhusus}
+            disabled={mengirim}
+          />
+        )}
+        </>
       )}
     </FormDialog>
   );

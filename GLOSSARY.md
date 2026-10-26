@@ -39,9 +39,13 @@ _Hindari_: pengelola rekap, backoffice, supervisor
 ### Pendataan
 
 **Pendataan Umum**:
-Data yang dicatat untuk setiap pelayanan, sama untuk semua Layanan.
+Data yang dicatat untuk setiap pelayanan, sama untuk semua Layanan: identitas pengunjung (dicatat sekali oleh Front Office, atau dari profil pengunjung chat), topik, dan catatan petugas.
 _Hindari_: data kunjungan dasar
 
 **Pendataan Khusus**:
-Data tambahan yang dicatat petugas untuk satu Layanan tertentu; isiannya berbeda per Layanan dan ditentukan oleh admin.
+Data tambahan yang dicatat petugas untuk satu Layanan tertentu; isiannya berbeda per Layanan dan ditentukan oleh admin (tujuh jenis isian, tanpa unggah berkas). Helpdesk OSS dan Non OSS tidak memakainya: keduanya punya formulir tetap.
 _Hindari_: pendataan eksplisit, form OSS, form perizinan
+
+**Topik**:
+Pilihan jenis persoalan per Layanan (dikelola admin) yang dipilih petugas saat menutup pelayanan; bagian dari Pendataan Umum.
+_Hindari_: kategori penanganan

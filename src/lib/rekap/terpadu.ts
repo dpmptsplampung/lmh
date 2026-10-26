@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { addDaysWIB, todayWIB } from '@/lib/time';
 import { formatTanggalId, formatWaktuId, hitungDurasiMenit, LABEL_HASIL_PENANGANAN, type HasilPenanganan } from './format';
 import { jumlahHariRentang, MAKS_RENTANG_HARI } from './schemas';
+import type { NilaiKhusus } from '@/lib/pendataan-khusus/jenis';
 
 export type UnitRekap = 'fo' | 'layanan';
 export type KanalRekap = 'tatap_muka' | 'live_chat';
@@ -40,6 +41,8 @@ export interface BarisPelayanan {
   keperluan: string | null;
   form_type: FormPendataan | null;
   pendataan: Record<string, unknown> | null;
+  /** Jawaban Pendataan Khusus Fase 4 { id isian: nilai }; diisi route hanya bila satu Layanan dipilih. */
+  khusus?: Record<string, NilaiKhusus>;
 }
 
 /** Satu baris rekap_harian_terpadu. */
