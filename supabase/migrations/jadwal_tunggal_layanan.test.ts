@@ -27,9 +27,9 @@ describe('202610270002_jadwal_tunggal_layanan migration', () => {
     const f = ambilFungsi('is_layanan_buka_jadwal');
     expect(f).toMatch(/p_layanan_id uuid,\s+p_tanggal date,\s+p_jam time DEFAULT NULL/);
     expect(f).toMatch(/RETURNS boolean/);
-    expect(f).toMatch(/aktif = true/);
-    expect(f).toMatch(/FROM public\.hari_libur/);
-    const posAktif = f.indexOf('aktif = true');
+    expect(f).toMatch(/IF NOT EXISTS \(SELECT 1 FROM public\.layanan AS l WHERE l\.id = p_layanan_id AND l\.aktif = true\) THEN\s+RETURN false;\s+END IF;/);
+    expect(f).toMatch(/IF EXISTS \(SELECT 1 FROM public\.hari_libur AS h WHERE h\.tanggal = p_tanggal\) THEN\s+RETURN false;\s+END IF;/);
+    const posAktif = f.indexOf('l.aktif = true');
     const posLibur = f.indexOf('FROM public.hari_libur');
     const posPengecualian = f.indexOf('FROM public.jadwal_pengecualian');
     const posStandby = f.indexOf('FROM public.jadwal_standby');
@@ -56,10 +56,25 @@ describe('202610270002_jadwal_tunggal_layanan migration', () => {
     expect(f).toMatch(/public\.layanan_sudah_tutup\(p_waktu\)/);
     expect(f).toMatch(/p_waktu AT TIME ZONE 'Asia\/Jakarta'/);
     expect(f).toMatch(/EXTRACT\(ISODOW FROM/);
-    expect(f).toMatch(/FROM public\.jadwal_standby/);
-    expect(f).toMatch(/aktif = true/);
-    expect(f).toMatch(/jam_selesai/);
-    expect(f).toMatch(/NOT FOUND|IF NOT FOUND|IS NULL/);
+    // Batas global dulu (OR), lalu pengecualian tanggal, baru pola mingguan.
+    expect(f).toMatch(/IF public\.layanan_sudah_tutup\(p_waktu\) THEN\s+RETURN true;\s+END IF;/);
+    const posGlobal = f.indexOf('public.layanan_sudah_tutup(p_waktu)');
+    const posPengecualian = f.indexOf('FROM public.jadwal_pengecualian');
+    const posStandby = f.indexOf('FROM public.jadwal_standby');
+    expect(posGlobal).toBeGreaterThan(0);
+    expect(posGlobal).toBeLessThan(posPengecualian);
+    expect(posPengecualian).toBeLessThan(posStandby);
+    // Pengecualian (sama dengan is_layanan_buka_jadwal): libur -> tutup; tanpa jam_mulai -> tutup;
+    // selain itu tutup bila jam WIB > jam_selesai pengecualian (default 15:30).
+    expect(f).toMatch(/e\.layanan_id = p_layanan_id AND e\.tanggal = v_tgl/);
+    expect(f).toMatch(/IF v_exc\.jenis = 'libur' THEN\s+RETURN true;\s+END IF;/);
+    expect(f).toMatch(/IF v_exc\.jam_mulai IS NULL THEN\s+RETURN true;\s+END IF;/);
+    expect(f).toMatch(/RETURN v_jam > COALESCE\(v_exc\.jam_selesai, time '15:30'\);/);
+    // Pola mingguan: baris aktif untuk hari ISODOW WIB; tanpa baris -> tutup; jam WIB > jam_selesai -> tutup.
+    expect(f).toMatch(/s\.layanan_id = p_layanan_id\s+AND s\.hari = EXTRACT\(ISODOW FROM v_wib\)::smallint\s+AND s\.aktif = true/);
+    expect(f).toMatch(/IF NOT FOUND THEN\s+RETURN true;\s+END IF;\s+RETURN v_jam > v_selesai;/);
+    expect(f).toMatch(/v_jam\s+time := \(p_waktu AT TIME ZONE 'Asia\/Jakarta'\)::time/);
+    expect(f).toMatch(/v_tgl\s+date := \(p_waktu AT TIME ZONE 'Asia\/Jakarta'\)::date/);
     expect(bare).toMatch(/REVOKE ALL ON FUNCTION public\.layanan_sudah_tutup_untuk\(uuid, timestamptz\) FROM PUBLIC, anon, authenticated/);
     expect(bare).toMatch(/GRANT EXECUTE ON FUNCTION public\.layanan_sudah_tutup_untuk\(uuid, timestamptz\) TO authenticated/);
   });
@@ -135,6 +150,119 @@ describe('202610270002_jadwal_tunggal_layanan migration', () => {
     expect(bare).not.toMatch(/\bUPDATE\s+public\.jadwal_standby\b/i);
     expect(bare).not.toMatch(/\bINSERT\s+INTO\s+public\.layanan\b/i);
     expect(bare).not.toMatch(/\bALTER\s+TABLE\b/i);
+  });
+
+  // Tes anti-drift: badan fungsi/view yang disalin harus sama dengan sumbernya (setelah komentar dibuang
+  // dan spasi dirapatkan), KECUALI blok yang daftar eksplisitnya ada di bawah ini.
+  describe('salinan identik dengan sumber kecuali blok yang sengaja diubah', () => {
+    const baca = (nama: string) => readFileSync(join(__dirname, nama), 'utf8').replace(/\r\n/g, '\n');
+    const rapikan = (s: string) => s.replace(/--[^\n]*/g, '').replace(/\s+/g, ' ').trim();
+    const potong = (src: string, awal: string, akhir: string) => {
+      const s = src.indexOf(awal);
+      expect(s, `awal "${awal}" ada`).toBeGreaterThanOrEqual(0);
+      const e = src.indexOf(akhir, s);
+      expect(e, `akhir "${akhir}" ada`).toBeGreaterThan(s);
+      return rapikan(src.slice(s, e + akhir.length));
+    };
+    const buang = (teks: string, blok: string) => {
+      const n = rapikan(blok);
+      expect(teks.split(n).length - 1, `blok muncul tepat sekali: ${n.slice(0, 60)}`).toBe(1);
+      return teks.replace(n, ' ').replace(/\s+/g, ' ').trim();
+    };
+
+    const CEK_LAMA = `RAISE EXCEPTION 'LAYANAN_TIDAK_BUKA: % tidak beroperasi hari ini (libur/di luar jadwal standby)', v_l.nama
+      USING ERRCODE = 'P0001';
+    END IF;
+    IF public.layanan_sudah_tutup() THEN
+      RAISE EXCEPTION 'LAYANAN_TUTUP: layanan hari ini sudah tutup pukul % WIB', pg_catalog.to_char(public.jam_tutup_layanan(), 'HH24:MI')
+        USING ERRCODE = 'P0001';
+    END IF;`;
+    const cekBaru = (idVar: string) => `RAISE EXCEPTION 'LAYANAN_TIDAK_BUKA: % tidak beroperasi hari ini (libur/di luar jadwal/diarsipkan)', v_l.nama
+      USING ERRCODE = 'P0001';
+    END IF;
+    IF public.layanan_sudah_tutup_untuk(${idVar}) THEN
+      RAISE EXCEPTION 'LAYANAN_TUTUP: % sudah tutup untuk hari ini', v_l.nama USING ERRCODE = 'P0001';
+    END IF;`;
+
+    const kasus: Array<{
+      nama: string;
+      sumber: string;
+      awal: string;
+      akhir: string;
+      lama: string[];
+      baru: string[];
+    }> = [
+      {
+        nama: 'fo_eskalasi',
+        sumber: '202610140007_wp24_akhiri_dual_write.sql',
+        awal: 'CREATE OR REPLACE FUNCTION public.fo_eskalasi(',
+        akhir: 'END $$;',
+        lama: [CEK_LAMA],
+        baru: [cekBaru('p_layanan_id')],
+      },
+      {
+        nama: 'admin_alihkan',
+        sumber: '202610140012_perbaikan_review.sql',
+        awal: 'CREATE OR REPLACE FUNCTION public.admin_alihkan(',
+        akhir: 'END $$;',
+        lama: [CEK_LAMA],
+        baru: [cekBaru('p_layanan_tujuan')],
+      },
+      {
+        nama: 'reservasi_buat',
+        sumber: '202610140012_perbaikan_review.sql',
+        awal: 'CREATE OR REPLACE FUNCTION public.reservasi_buat(',
+        akhir: 'END $$;',
+        lama: [`IF EXTRACT(ISODOW FROM p_tanggal) IN (6, 7) THEN`],
+        baru: [
+          `IF v_tujuan = 'bertemu_seseorang' AND EXTRACT(ISODOW FROM p_tanggal) IN (6, 7) THEN`,
+          `IF EXISTS (SELECT 1 FROM public.hari_libur AS h WHERE h.tanggal = p_tanggal) THEN
+             RAISE EXCEPTION 'TANGGAL_TIDAK_VALID: kantor libur pada tanggal tersebut' USING ERRCODE = '22023';
+           END IF;`,
+        ],
+      },
+      {
+        nama: 'is_layanan_buka_jadwal',
+        sumber: '202607290010_jadwal_standby.sql',
+        awal: 'CREATE OR REPLACE FUNCTION public.is_layanan_buka_jadwal(',
+        akhir: 'END $$;',
+        lama: [],
+        baru: [
+          `IF NOT EXISTS (SELECT 1 FROM public.layanan AS l WHERE l.id = p_layanan_id AND l.aktif = true) THEN
+             RETURN false;
+           END IF;
+           IF EXISTS (SELECT 1 FROM public.hari_libur AS h WHERE h.tanggal = p_tanggal) THEN
+             RETURN false;
+           END IF;`,
+        ],
+      },
+      {
+        nama: 'jadwal_berikutnya',
+        sumber: '202607290010_jadwal_standby.sql',
+        awal: 'CREATE OR REPLACE FUNCTION public.jadwal_berikutnya(',
+        akhir: 'END $$;',
+        lama: [],
+        baru: [],
+      },
+      {
+        nama: 'v_antrian_loket',
+        sumber: '202610140007_wp24_akhiri_dual_write.sql',
+        awal: 'CREATE OR REPLACE VIEW public.v_antrian_loket AS',
+        akhir: 'GROUP BY service.id, service.nama, service.tipe;',
+        lama: [`WHERE service.tipe = 'konsultatif'`],
+        baru: [`WHERE service.punya_antrean = true`],
+      },
+    ];
+
+    for (const k of kasus) {
+      it(`${k.nama}: sama dengan ${k.sumber} kecuali ${k.lama.length + k.baru.length} blok yang sengaja diubah`, () => {
+        let asal = potong(baca(k.sumber), k.awal, k.akhir);
+        let baru = potong(readFileSync(join(__dirname, NAMA_FILE), 'utf8').replace(/\r\n/g, '\n'), k.awal, k.akhir);
+        for (const b of k.lama) asal = buang(asal, b);
+        for (const b of k.baru) baru = buang(baru, b);
+        expect(baru).toBe(asal);
+      });
+    }
   });
 
   it('terdaftar di manifest', () => {

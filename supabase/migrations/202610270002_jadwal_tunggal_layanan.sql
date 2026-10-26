@@ -7,7 +7,8 @@
 --   1. is_layanan_buka_jadwal: layanan harus ada & aktif (arsip = aktif false), lalu hari_libur global,
 --      lalu logika pengecualian/pola mingguan 202607290010 TANPA perubahan. jadwal_berikutnya disalin
 --      utuh karena memanggilnya.
---   2. layanan_sudah_tutup_untuk(layanan, waktu): batas tutup global ATAU jam_selesai jadwal layanan itu.
+--   2. layanan_sudah_tutup_untuk(layanan, waktu): batas tutup global ATAU jadwal layanan itu sudah lewat
+--      (pengecualian tanggal menang atas pola mingguan, seperti is_layanan_buka_jadwal).
 --   3. fo_eskalasi (dari 202610140007) dan admin_alihkan (dari 202610140012): cek tutup memakai batas
 --      per layanan tujuan. Selebihnya identik dengan versi sumber.
 --   4. reservasi_buat (dari 202610140012): akhir pekan hanya menolak bertemu_seseorang; hari libur
@@ -99,7 +100,8 @@ END $$;
 -- 2. Batas tutup per layanan
 -- ============================================================
 -- SECURITY DEFINER seperti layanan_sudah_tutup/jam_tutup_layanan. Tutup bila: batas global terlewati,
--- ATAU layanan tidak punya jadwal aktif pada hari WIB itu, ATAU jam WIB lewat jam_selesai layanan.
+-- ATAU jadwal layanan untuk hari WIB itu sudah lewat. Urutan sama dengan is_layanan_buka_jadwal:
+-- jadwal_pengecualian (libur / ganti jam) menang atas pola jadwal_standby; tanpa baris keduanya = tutup.
 CREATE OR REPLACE FUNCTION public.layanan_sudah_tutup_untuk(
   p_layanan_id uuid,
   p_waktu timestamptz DEFAULT now()
@@ -112,11 +114,30 @@ SET search_path = pg_catalog, public
 AS $$
 DECLARE
   v_wib     timestamp := p_waktu AT TIME ZONE 'Asia/Jakarta';
+  v_tgl     date := (p_waktu AT TIME ZONE 'Asia/Jakarta')::date;
+  v_jam     time := (p_waktu AT TIME ZONE 'Asia/Jakarta')::time;
+  v_exc     public.jadwal_pengecualian%ROWTYPE;
   v_selesai time;
 BEGIN
   IF public.layanan_sudah_tutup(p_waktu) THEN
     RETURN true;
   END IF;
+
+  -- Pengecualian menang atas pola mingguan (sama dengan is_layanan_buka_jadwal).
+  SELECT * INTO v_exc FROM public.jadwal_pengecualian AS e
+   WHERE e.layanan_id = p_layanan_id AND e.tanggal = v_tgl;
+  IF FOUND THEN
+    IF v_exc.jenis = 'libur' THEN
+      RETURN true;
+    END IF;
+    -- ganti_hari / jam_beda tanpa jam_mulai = tidak buka (is_layanan_buka_jadwal: "buka bila ada jam").
+    IF v_exc.jam_mulai IS NULL THEN
+      RETURN true;
+    END IF;
+    RETURN v_jam > COALESCE(v_exc.jam_selesai, time '15:30');
+  END IF;
+
+  -- Pola mingguan.
   SELECT s.jam_selesai INTO v_selesai
     FROM public.jadwal_standby AS s
    WHERE s.layanan_id = p_layanan_id
@@ -125,7 +146,7 @@ BEGIN
   IF NOT FOUND THEN
     RETURN true;
   END IF;
-  RETURN v_wib::time > v_selesai;
+  RETURN v_jam > v_selesai;
 END $$;
 
 REVOKE ALL ON FUNCTION public.layanan_sudah_tutup_untuk(uuid, timestamptz) FROM PUBLIC, anon, authenticated;
