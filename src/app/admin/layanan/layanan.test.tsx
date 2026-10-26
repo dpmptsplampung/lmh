@@ -158,6 +158,182 @@ describe('kelola layanan', () => {
     });
   });
 
+  describe('layanan dinamis (Admin)', () => {
+    const INSTANSI = [{ id: 'i1', nama: 'Dinas Penanaman Modal', singkatan: 'DPMPTSP' }];
+    let layananList: Record<string, unknown>[];
+    let instansiList: Array<{ id: string; nama: string; singkatan: string | null }>;
+    const resp = (status: number, b: unknown) =>
+      Promise.resolve({ ok: status < 400, status, json: () => Promise.resolve(b) });
+    const panggilan = (metode: string, bagian: string) =>
+      fetchMock.mock.calls.filter((c) => (c[1]?.method ?? 'GET') === metode && String(c[0]).includes(bagian));
+
+    beforeEach(() => {
+      layananList = [
+        lay({ slug: 'helpdesk-oss', instansi_id: 'i1', urutan: 10, deskripsi: null, konten_sumber_url: null, website_terkait: [], diarsipkan_at: null }),
+        lay({ id: 'l9', nama: 'Layanan Lama', aktif: false, slug: 'layanan-lama', diarsipkan_at: '2026-10-20T03:00:00Z', website_terkait: [] }),
+      ];
+      instansiList = [...INSTANSI];
+      fetchMock = vi.fn((url: string, init?: { method?: string; body?: string }) => {
+        const metode = init?.method ?? 'GET';
+        if (url === '/api/admin/layanan' && metode === 'GET') return resp(200, { layanan: layananList, instansi: instansiList, bisa_ubah: true });
+        if (url === '/api/admin/layanan' && metode === 'POST') return resp(201, { id: 'baru1', slug: 'x' });
+        if (url === '/api/admin/instansi' && metode === 'POST') {
+          const b = JSON.parse(init!.body!);
+          instansiList = [...instansiList, { id: 'i2', nama: b.nama, singkatan: b.singkatan ?? null }];
+          return resp(201, { id: 'i2' });
+        }
+        return resp(200, { ok: true });
+      });
+      vi.stubGlobal('fetch', fetchMock);
+    });
+
+    it('"Tambah layanan" membuka form kosong dan mengirim POST dengan form_pendataan eksplisit', async () => {
+      render(<KelolaLayananPage />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Tambah layanan' }));
+      expect((screen.getByLabelText('Nama layanan') as HTMLInputElement).value).toBe('');
+      fireEvent.change(screen.getByLabelText('Nama layanan'), { target: { value: 'Konsultasi Investasi' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+      await waitFor(() => expect(panggilan('POST', '/api/admin/layanan')).toHaveLength(1));
+      const body = JSON.parse(panggilan('POST', '/api/admin/layanan')[0][1].body);
+      expect(body.nama).toBe('Konsultasi Investasi');
+      expect(body).toHaveProperty('form_pendataan', null);
+      expect(panggilan('PUT', '/tautan')).toHaveLength(0);
+    });
+
+    it('form memuat Instansi, Deskripsi, Urutan, Sumber konten, dan opsi "Tanpa formulir tetap"', async () => {
+      render(<KelolaLayananPage />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Tambah layanan' }));
+      const instansi = screen.getByLabelText('Instansi') as HTMLSelectElement;
+      expect(instansi.tagName).toBe('SELECT');
+      expect(Array.from(instansi.options).map((o) => o.textContent)).toContain('Dinas Penanaman Modal (DPMPTSP)');
+      expect(screen.getByLabelText('Deskripsi')).toBeTruthy();
+      expect(screen.getByLabelText('Urutan tampil')).toBeTruthy();
+      expect(screen.getByLabelText('Sumber konten (alamat https://)')).toBeTruthy();
+      const form = screen.getByLabelText('Formulir Pendataan') as HTMLSelectElement;
+      expect(Array.from(form.options).map((o) => o.textContent)).toContain('Tanpa formulir tetap');
+    });
+
+    it('layanan baru + website terkait: POST lalu PUT /tautan ke id baru', async () => {
+      render(<KelolaLayananPage />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Tambah layanan' }));
+      fireEvent.change(screen.getByLabelText('Nama layanan'), { target: { value: 'Konsultasi Investasi' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Tambah website' }));
+      fireEvent.change(screen.getByLabelText('Nama website 1'), { target: { value: 'OSS RBA' } });
+      fireEvent.change(screen.getByLabelText('Alamat website 1'), { target: { value: 'https://oss.go.id' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+      await waitFor(() => expect(panggilan('PUT', '/api/admin/layanan/baru1/tautan')).toHaveLength(1));
+      expect(JSON.parse(panggilan('PUT', '/tautan')[0][1].body)).toEqual({ tautan: [{ label: 'OSS RBA', url: 'https://oss.go.id' }] });
+    });
+
+    it('website terkait: tambah/hapus baris; http:// diberi pesan galat dan tidak dikirim; simpan mengirim PUT', async () => {
+      render(<KelolaLayananPage />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Ubah Helpdesk OSS' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Tambah website' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Tambah website' }));
+      expect(screen.getByLabelText('Nama website 2')).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Hapus website 2' }));
+      expect(screen.queryByLabelText('Nama website 2')).toBeNull();
+
+      fireEvent.change(screen.getByLabelText('Nama website 1'), { target: { value: 'Portal lama' } });
+      const url = screen.getByLabelText('Alamat website 1');
+      fireEvent.change(url, { target: { value: 'http://contoh.go.id' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+      expect(await screen.findByRole('alert')).toHaveTextContent(/https:\/\//);
+      expect(url).toHaveAttribute('aria-invalid', 'true');
+      expect(url.getAttribute('aria-describedby')).toContain(screen.getByRole('alert').id);
+      expect(panggilan('PUT', '/tautan')).toHaveLength(0);
+      expect(patchCalls()).toHaveLength(0);
+
+      fireEvent.change(url, { target: { value: 'https://contoh.go.id' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+      await waitFor(() => expect(panggilan('PUT', '/api/admin/layanan/l1/tautan')).toHaveLength(1));
+      expect(JSON.parse(panggilan('PUT', '/tautan')[0][1].body)).toEqual({ tautan: [{ label: 'Portal lama', url: 'https://contoh.go.id' }] });
+      expect(patchCalls()).toHaveLength(0);
+    });
+
+    it('Arsipkan meminta konfirmasi lalu POST /arsip {arsip:true}; baris arsip ada di bagian "Diarsipkan" dengan "Aktifkan lagi"', async () => {
+      render(<KelolaLayananPage />);
+      expect(await screen.findByRole('heading', { name: 'Diarsipkan' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Aktifkan lagi Layanan Lama' })).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Arsipkan Helpdesk OSS' }));
+      expect(await screen.findByRole('dialog', { name: /Arsipkan Helpdesk OSS/ })).toBeTruthy();
+      expect(panggilan('POST', '/arsip')).toHaveLength(0);
+      fireEvent.click(screen.getByRole('button', { name: 'Ya, arsipkan' }));
+      await waitFor(() => expect(panggilan('POST', '/api/admin/layanan/l1/arsip')).toHaveLength(1));
+      expect(JSON.parse(panggilan('POST', '/arsip')[0][1].body)).toEqual({ arsip: true });
+    });
+
+    it('Aktifkan lagi mengirim POST /arsip {arsip:false} tanpa konfirmasi', async () => {
+      render(<KelolaLayananPage />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Aktifkan lagi Layanan Lama' }));
+      await waitFor(() => expect(panggilan('POST', '/api/admin/layanan/l9/arsip')).toHaveLength(1));
+      expect(JSON.parse(panggilan('POST', '/arsip')[0][1].body)).toEqual({ arsip: false });
+    });
+
+    it('Hapus permanen hanya untuk layanan arsip; 409 SUDAH_DIPAKAI menampilkan pesan ramah', async () => {
+      const dasar = fetchMock.getMockImplementation() as (u: string, i?: unknown) => Promise<unknown>;
+      fetchMock.mockImplementation((url: string, init?: { method?: string; body?: string }) => {
+        if (init?.method === 'DELETE') {
+          return resp(409, { error: 'Layanan sudah pernah dipakai (tiket, ...). Arsipkan saja.', kode: 'SUDAH_DIPAKAI' });
+        }
+        return dasar(url, init);
+      });
+      render(<KelolaLayananPage />);
+      await screen.findByText('Layanan Lama');
+      expect(screen.queryByRole('button', { name: 'Hapus permanen Helpdesk OSS' })).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Hapus permanen Layanan Lama' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Ya, hapus permanen' }));
+      expect(await screen.findByRole('alert')).toHaveTextContent('Layanan ini sudah pernah dipakai, jadi hanya bisa diarsipkan.');
+      expect(panggilan('DELETE', '/api/admin/layanan/l9')).toHaveLength(1);
+    });
+
+    it('Kelola Instansi: tambah instansi baru lalu muncul di pilihan form', async () => {
+      render(<KelolaLayananPage />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Kelola Instansi' }));
+      expect(await screen.findByRole('dialog', { name: 'Kelola Instansi' })).toBeTruthy();
+      fireEvent.change(screen.getByLabelText('Nama instansi'), { target: { value: 'Bank Lampung' } });
+      fireEvent.change(screen.getByLabelText('Singkatan (opsional)'), { target: { value: 'BL' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Tambah instansi' }));
+      await waitFor(() => expect(panggilan('POST', '/api/admin/instansi')).toHaveLength(1));
+      expect(JSON.parse(panggilan('POST', '/api/admin/instansi')[0][1].body)).toEqual({ nama: 'Bank Lampung', singkatan: 'BL' });
+      fireEvent.click(screen.getByRole('button', { name: 'Tutup' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Tambah layanan' }));
+      const instansi = screen.getByLabelText('Instansi') as HTMLSelectElement;
+      await waitFor(() => expect(Array.from(instansi.options).map((o) => o.textContent)).toContain('Bank Lampung (BL)'));
+    });
+
+    it('Kelola Instansi: ubah instansi mengirim PATCH, bentrok nama tampil sebagai galat', async () => {
+      const dasar = fetchMock.getMockImplementation() as (u: string, i?: unknown) => Promise<unknown>;
+      fetchMock.mockImplementation((url: string, init?: { method?: string; body?: string }) => {
+        if (init?.method === 'PATCH' && url === '/api/admin/instansi/i1') {
+          return resp(409, { error: 'Nama instansi sudah dipakai', kode: 'NAMA_BENTROK' });
+        }
+        return dasar(url, init);
+      });
+      render(<KelolaLayananPage />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Kelola Instansi' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Ubah instansi Dinas Penanaman Modal' }));
+      fireEvent.change(screen.getByLabelText('Nama instansi'), { target: { value: 'Dinas Lain' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Simpan perubahan' }));
+      expect(await screen.findByRole('alert')).toHaveTextContent('Nama instansi sudah dipakai');
+      expect(JSON.parse(patchCalls()[0][1].body)).toEqual({ nama: 'Dinas Lain', singkatan: 'DPMPTSP' });
+    });
+  });
+
+  it('Front Office tidak melihat tombol tambah, arsip, aktifkan, maupun hapus', async () => {
+    fetchMock = vi.fn((url: string) => {
+      const ok = (b: unknown) => Promise.resolve({ ok: true, json: () => Promise.resolve(b) });
+      if (url === '/api/admin/layanan') return ok({ layanan: [lay({}), lay({ id: 'l9', nama: 'Layanan Lama', aktif: false, diarsipkan_at: '2026-10-20T03:00:00Z' })], instansi: [], bisa_ubah: false });
+      return ok({});
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<KelolaLayananPage />);
+    expect(await screen.findByText('Layanan Lama')).toBeTruthy();
+    for (const nama of [/^Tambah layanan/, /^Kelola Instansi/, /^Arsipkan/, /^Aktifkan lagi/, /^Hapus permanen/]) {
+      expect(screen.queryByRole('button', { name: nama })).toBeNull();
+    }
+  });
+
   it('Front Office: mode baca saja, tanpa tombol ubah maupun toggle bot', async () => {
     setup(false);
     render(<KelolaLayananPage />);
