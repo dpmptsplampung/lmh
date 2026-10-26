@@ -339,7 +339,7 @@ describe('admin jadwal: jadwal_standby + hari libur nasional', () => {
     expect(await screen.findByText('Natal')).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText('Tanggal'), { target: { value: '2099-08-17' } });
-    fireEvent.change(screen.getByLabelText('Keterangan'), { target: { value: ' Hari Kemerdekaan ' } });
+    fireEvent.change(screen.getByLabelText(/^Keterangan/), { target: { value: ' Hari Kemerdekaan ' } });
     fireEvent.click(screen.getByRole('button', { name: /Tambah/ }));
     await waitFor(() => expect(h.writes).toHaveBeenCalledWith('insert', 'hari_libur', {
       tanggal: '2099-08-17', keterangan: 'Hari Kemerdekaan',
@@ -348,12 +348,33 @@ describe('admin jadwal: jadwal_standby + hari libur nasional', () => {
     await waitFor(() => expect(h.liburReads).toHaveBeenCalledTimes(2)); // muat ulang
   });
 
+  it('hari libur tanpa keterangan (kosong/spasi): pesan validasi, aria terhubung, tanpa insert', async () => {
+    h.state.role = 'admin';
+    render(<AdminJadwalPage />);
+    await screen.findByText('Natal');
+    const ket = screen.getByLabelText(/^Keterangan/) as HTMLInputElement;
+    expect(ket.required).toBe(true);
+    h.writes.mockClear();
+    fireEvent.change(screen.getByLabelText('Tanggal'), { target: { value: '2099-08-17' } });
+    fireEvent.change(ket, { target: { value: '   ' } });
+    fireEvent.click(screen.getByRole('button', { name: /Tambah/ }));
+    const pesan = await screen.findByText(/Keterangan wajib diisi/);
+    expect(pesan.getAttribute('role')).toBe('alert');
+    expect(ket.getAttribute('aria-invalid')).toBe('true');
+    expect(ket.getAttribute('aria-describedby')).toBe(pesan.id);
+    expect(h.writes).not.toHaveBeenCalledWith('insert', 'hari_libur', expect.anything());
+    // memperbaiki isian menghapus pesan
+    fireEvent.change(ket, { target: { value: 'Hari Kemerdekaan' } });
+    expect(screen.queryByText(/Keterangan wajib diisi/)).toBeNull();
+  });
+
   it('tambah hari libur duplikat (23505) -> pesan jelas, bukan sukses', async () => {
     h.state.role = 'admin';
     h.state.insertError = { code: '23505', message: 'duplicate key value violates unique constraint' };
     render(<AdminJadwalPage />);
     await screen.findByText('Natal');
     fireEvent.change(screen.getByLabelText('Tanggal'), { target: { value: '2099-12-25' } });
+    fireEvent.change(screen.getByLabelText(/^Keterangan/), { target: { value: 'Natal' } });
     fireEvent.click(screen.getByRole('button', { name: /Tambah/ }));
     await waitFor(() => expect(h.toast).toHaveBeenCalledWith(expect.stringContaining('sudah ada'), 'error'));
     expect(h.toast).not.toHaveBeenCalledWith(expect.anything(), 'success');

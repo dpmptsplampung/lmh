@@ -111,6 +111,7 @@ export default function AdminJadwalPage() {
 
   const [liburTanggal, setLiburTanggal] = useState('');
   const [liburKeterangan, setLiburKeterangan] = useState('');
+  const [galatLiburForm, setGalatLiburForm] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
 
   // Hanya muatan terakhir yang boleh mengisi layar (ganti layanan cepat-cepat).
@@ -239,14 +240,25 @@ export default function AdminJadwalPage() {
 
   const handleAddLibur = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!canEdit || !liburTanggal || adding) return;
+    if (!canEdit || adding) return;
+    // hari_libur.keterangan NOT NULL di DB: keterangan wajib (tanpa nilai kosong/null).
+    const keterangan = liburKeterangan.trim();
+    if (!liburTanggal) {
+      setGalatLiburForm('Pilih tanggal hari libur.');
+      return;
+    }
+    if (!keterangan) {
+      setGalatLiburForm('Keterangan wajib diisi, misalnya nama hari libur.');
+      return;
+    }
+    setGalatLiburForm(null);
     setAdding(true);
     try {
       const supabase = createClient();
       await mutasiInsert(
         supabase.from('hari_libur').insert({
           tanggal: liburTanggal,
-          keterangan: liburKeterangan.trim() || null,
+          keterangan,
         }),
       );
       setLiburTanggal('');
@@ -451,25 +463,36 @@ export default function AdminJadwalPage() {
           </p>
 
           {canEdit && (
-            <form onSubmit={handleAddLibur} style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 'var(--space-4)' }}>
+            <form onSubmit={handleAddLibur} noValidate style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 'var(--space-4)' }}>
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label" htmlFor="liburTanggal">Tanggal</label>
                 <input
                   id="liburTanggal" type="date" className="form-input" required min={todayWIB()}
-                  value={liburTanggal} onChange={(e) => setLiburTanggal(e.target.value)}
+                  value={liburTanggal} onChange={(e) => { setLiburTanggal(e.target.value); setGalatLiburForm(null); }}
                 />
               </div>
               <div className="form-group" style={{ marginBottom: 0, flex: 1, minWidth: '200px' }}>
-                <label className="form-label" htmlFor="liburKeterangan">Keterangan</label>
+                <label className="form-label" htmlFor="liburKeterangan">Keterangan (wajib)</label>
                 <input
-                  id="liburKeterangan" type="text" className="form-input" maxLength={120}
+                  id="liburKeterangan" type="text" className="form-input" maxLength={120} required
+                  aria-required="true"
+                  aria-invalid={galatLiburForm?.startsWith('Keterangan') ? true : undefined}
+                  aria-describedby={galatLiburForm ? 'galatLiburForm' : undefined}
                   placeholder="Contoh: Hari Raya Idul Fitri"
-                  value={liburKeterangan} onChange={(e) => setLiburKeterangan(e.target.value)}
+                  value={liburKeterangan} onChange={(e) => { setLiburKeterangan(e.target.value); setGalatLiburForm(null); }}
                 />
               </div>
               <button type="submit" className="btn btn--primary" disabled={adding}>
                 <Plus size={16} aria-hidden="true" /> Tambah
               </button>
+              {galatLiburForm && (
+                <p
+                  id="galatLiburForm" role="alert"
+                  style={{ flexBasis: '100%', margin: 0, color: 'var(--color-error-700, #991b1b)', fontSize: 'var(--text-sm)' }}
+                >
+                  {galatLiburForm}
+                </p>
+              )}
             </form>
           )}
 
