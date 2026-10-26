@@ -406,7 +406,8 @@ describe('survei_undangan: pencatatan (docs/ATURAN_MIGRASI.md #4)', () => {
     expect(entri).toMatch(/PGlite/);
     expect(entri).toContain(BERKAS_ROLLBACK);
     expect(entri).toContain('skenario-survei-undangan.mjs');
-    // Tidak ada entri lain sesudahnya (entri ini yang terakhir).
-    expect(entri.indexOf('\n### ', 5)).toBe(-1);
+    // Entri berikutnya (bila ada) hanya milik seri ini (0002-0004), bukan pekerjaan lain.
+    const nomorBerikut = [...entri.slice(5).matchAll(/\n### [^\n]*\(M-(\d{12})_/g)].map((m) => m[1]);
+    for (const nomor of nomorBerikut) expect(['202610270002', '202610270003', '202610270004']).toContain(nomor);
   });
 });

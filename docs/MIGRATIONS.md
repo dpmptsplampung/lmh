@@ -233,6 +233,7 @@ Spesifikasi: `docs/superpowers/specs/2026-10-26-survei-terpadu-design.md`; renca
 | Versi | Berkas | Prasyarat | Rollback | Status |
 |---|---|---|---|---|
 | 202610270001 | `202610270001_survei_undangan.sql` | kolom `kunjungan.selesai_at` (`202610140003_fo_model_data`), `kunjungan_layanan_skm(uuid)` (`202610140007_wp24_akhiri_dual_write`), `boleh_kunjungan(uuid)` (`202610140009_chat_online`) — penjaga `PRASYARAT` | `docs/rollback-survei-undangan-202610270001.sql` (PALING AKHIR dalam seri; MENGHAPUS semua data undangan; diawali penjaga `PRASYARAT ROLLBACK` yang menolak bila fungsi `public` lain masih menyebut `ensure_undangan`/`survei_undangan`, karena Postgres tidak mencatat ketergantungan dari badan plpgsql) | **DITULIS, BELUM DITERAPKAN.** Uji perilaku PGlite: 94 lolos, 0 gagal (termasuk penjaga rollback) |
+| 202610270002 | `202610270002_survei_jawaban.sql` | tabel `survei_undangan` (`202610270001_survei_undangan`), kolom `skm_respons.kunjungan_id` (`202610140007_wp24_akhiri_dual_write`), `hitung_ikm` (`202607140004_security_and_automation`), `v_skm_petugas` dan `peran_saya()` (`202610090001_rbac_tahap1`), `boleh_layanan(uuid)` (`202610080001_rbac_tahap0_keamanan`) — penjaga `PRASYARAT` | `docs/rollback-survei-jawaban-202610270002.sql` (SETELAH rollback 0004 dan 0003, SEBELUM rollback 0001; memulihkan `hitung_ikm` dan `v_skm_petugas` ke versi asli; MENGHAPUS `spak_respons` dan tujuh kolom baru `skm_respons` beserta isinya; diawali penjaga `PRASYARAT ROLLBACK` yang menolak bila fungsi `public` lain masih menyebut objek baru) | **DITULIS, BELUM DITERAPKAN.** Uji perilaku PGlite: 127 lolos, 0 gagal (termasuk rollback yang memulihkan objek persis seperti sebelum migrasi) |
 
 **0001 (undangan survei per kunjungan selesai):** tabel `survei_undangan` (`kunjungan_id` unik, `token` unik 64 heksadesimal, `unit` `layanan`/`fo`, `kedaluwarsa_pada`, `diisi_pada`, `saran_dikirim`, `pengaduan_dikirim`; RLS aktif TANPA policy, hak dicabut dari PUBLIC/anon/authenticated); `ensure_undangan(uuid)` idempoten (service_role; `ON CONFLICT (kunjungan_id) DO NOTHING`, batas `selesai_at` + 32 jam tidak pernah bergeser); trigger `trg_kunjungan_selesai_undangan` (`AFTER UPDATE OF status`, klausa `WHEN` hanya saat status BERUBAH menjadi `selesai`; kunjungan lama tidak di-backfill); `ambil_qr_survei(uuid)` (authenticated; penjaga `boleh_kunjungan`, `FORBIDDEN` SQLSTATE 42501; token hanya untuk `belum_diisi`); view `v_survei_status` (tanpa token, tanpa `security_invoker`, disaring `boleh_kunjungan`, ditambah `security_barrier`; GRANT SELECT authenticated). Tanpa DML, tanpa mengubah objek lama.
 
@@ -242,6 +243,15 @@ node scripts/apply-migration.mjs supabase/migrations/202610270001_survei_undanga
 ```
 
 Uji: kontrak statis `supabase/migrations/survei_undangan.test.ts`; perilaku `node scripts/lokal/skenario-survei-undangan.mjs` (PGlite; tidak masuk `npm test`). Migrasi 0002-0004 menambah baris pada tabel di atas.
+
+**0002 (jawaban survei):** `skm_respons` + `u10_transparansi`/`u11_integritas` (CHECK 1-4, boleh kosong), `versi`, `sumber` (`form_lama`/`wizard`/`impor`), `unit` (`layanan`/`fo`/`tidak_diketahui`), `jenis_kelamin`, `pendidikan`; constraint `skm_respons_wizard_kunjungan_versi_check` (jawaban wizard wajib `kunjungan_id` dan `versi = 2`; konsekuensinya menghapus kunjungan yang punya jawaban wizard ditolak 23514); satu UPDATE menandai baris lama ber-`layanan_id` sebagai `unit = layanan`; tabel `spak_respons` (5 butir, CHECK 1-6; hanya admin/front_office membaca, tanpa tulis dari klien); `hitung_ikm` diganti (rata-rata unsur terisi x 25; baris 9 unsur lama menghasilkan nilai yang sama persis; penyebut numerik `9.0`); `ringkasan_ikm`, `ringkasan_spak`, `ringkasan_response_rate` (periode tanggal WIB; Front Office dan "Tidak terklasifikasi" dipisah; hanya `ringkasan_ikm` boleh dipanggil petugas); `v_skm_petugas` + `u10`/`u11` di akhir. Tanpa DROP/DELETE pada objek lama; policy dan trigger `skm_respons` tidak diubah.
+
+```
+node scripts/apply-migration.mjs supabase/migrations/202610270002_survei_jawaban.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202610270002_survei_jawaban.sql --atomic
+```
+
+Uji: kontrak statis `supabase/migrations/survei_jawaban.test.ts`; perilaku `node scripts/lokal/skenario-survei-jawaban.mjs` (PGlite; tidak masuk `npm test`).
 
 ```markdown
 ## Data walk-in lengkap (0014)
