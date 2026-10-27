@@ -6,7 +6,7 @@ Ditulis 2026-10-27 untuk melanjutkan pekerjaan di sesi, akun, atau mesin lain. B
 
 Audit sistem (2026-10-26) menemukan pengunjung online kurang terlayani, beranda kurang data, dan layanan (Balmon, Helpdesk OSS, dll.) masih hard-coded. Setelah sesi tanya-jawab dengan pemilik (Q1–Q48) dirancang dan dibangun enam fase: layanan dinamis dengan Instansi dan website resmi, beranda etalase dengan popup, Koordinator dan akses data per orang, Pendataan Khusus, live chat per layanan, dan saran pengunjung lama di Front Office.
 
-Semuanya **sudah ditulis dan lolos test, tetapi belum di-push, belum di-merge, dan belum ada migrasi yang diterapkan ke database mana pun.** Aturan akses di SQL baru diuji lewat test statis (membaca teks SQL), belum pernah dijalankan di Postgres.
+Semuanya **sudah ditulis, lolos test, dan di-push sebagai branch ke GitHub (2026-10-27; `main` tidak disentuh, belum ada PR), tetapi belum di-merge dan belum ada migrasi yang diterapkan ke database mana pun.** Aturan akses di SQL baru diuji lewat test statis (membaca teks SQL), belum pernah dijalankan di Postgres.
 
 Peran LMH: **fasilitator**. Proses perizinan tetap di sistem resmi tiap instansi; LMH tidak menerima permohonan atau berkas.
 
@@ -14,15 +14,23 @@ Peran LMH: **fasilitator**. Proses perizinan tetap di sistem resmi tiap instansi
 
 | Branch | HEAD | Isi | Status |
 |---|---|---|---|
-| `feat/fase-1-fondasi-layanan` | `9937fdd` | Fase 1–6 (6 commit, satu per fase) + dokumen ini | Lokal. **Branch utama untuk dilanjutkan.** |
-| `feat/survei-terpadu-a` | `a986915` | Survei terpadu "Pesan Perilaku" (SPAK + SKM), Task 1–13 selesai, gate penuh lolos (3242 test, build) | Lokal. Sisa: satu review menyeluruh, **nomori ulang 4 migrasi** (bentrok nomor dengan Fase 1), lalu gabung. Rincian: `docs/SERAH-TERIMA-SURVEI.md` pada branch itu |
-| `claude/busy-poitras-cb912c` | `0a8f74c` | 6 perbaikan kecil: `?next=` setelah login, menu mobile FO, teks SKM, koreksi `CLAUDE.md`, RLS `standar_pelayanan` (migrasi `202610260001`), `/peta-potensi` tanpa login | Lokal, selesai |
-| `claude/amazing-borg-b06657` | `f7f0f8e` | Dependensi rentan dinaikkan (next 16.4.1, zod 4.6.6, undici 7.30.1, vite 8.3.5). Menutup kegagalan `audit:check` | Lokal, selesai |
+| `feat/fase-1-fondasi-layanan` | `a089830` (+ commit dokumen ini) | Fase 1–6 (satu commit per fase) + dokumen ini + commit dependensi | Di-push ke `origin`. **Branch utama untuk dilanjutkan.** |
+| `feat/survei-terpadu-a` | `a986915` | Survei terpadu "Pesan Perilaku" (SPAK + SKM), Task 1–13 selesai, gate penuh lolos (3242 test, build) | Di-push ke `origin` (HEAD `7739b50`). Sisa: satu review menyeluruh, **nomori ulang 4 migrasi** (bentrok nomor dengan Fase 1), lalu gabung. Rincian: `docs/SERAH-TERIMA-SURVEI.md` pada branch itu |
+| `claude/busy-poitras-cb912c` | `2333f03` | 6 perbaikan kecil: `?next=` setelah login, menu mobile FO, teks SKM, koreksi `CLAUDE.md`, RLS `standar_pelayanan` (migrasi `202610260001`), `/peta-potensi` tanpa login; + commit dependensi | Di-push ke `origin`, selesai |
+| `claude/amazing-borg-b06657` | `f7f0f8e` | Dependensi rentan dinaikkan (next 16.4.1, zod 4.6.6, undici 7.30.1, vite 8.3.5). Menutup kegagalan `audit:check` | Di-push ke `origin`, selesai |
 | `docs/rancangan-layanan-dinamis` | `f2a4061` | Spesifikasi, ADR, glosarium, rencana Fase 1 | Sudah termuat di `feat/fase-1-fondasi-layanan` |
 | `backup/*` (7 branch lokal) | — | Salinan sebelum commit sementara digabung per fase | Boleh dihapus; jangan di-push |
 
 Commit per fase di `feat/fase-1-fondasi-layanan` (di atas `565cb6f` = akhir Fase 1):
 `6d2b494` Fase 2 · `51d24c8` Fase 3 · `64c4277` Fase 4 · `4f3e432` Fase 5 · `9937fdd` Fase 6.
+
+### Catatan push (2026-10-27)
+
+- Hook `.githooks` menjalankan `npm run verify:baseline` (lint, typecheck, test, build, `audit:check`) pada **setiap push** dan membatalkannya bila gagal; jangan dilewati.
+- Advisory dependensi lama membuat `audit:check` gagal di semua branch kecuali `claude/amazing-borg-b06657`. Karena itu commit `chore(deps)` `f7f0f8e` di-cherry-pick ke `feat/fase-1-fondasi-layanan` (`a089830`), `feat/survei-terpadu-a`, dan `claude/busy-poitras-cb912c`. Saat menggabung ke `main`, commit yang sama muncul lagi: abaikan duplikatnya (isinya identik).
+- Zod 4.6.6 menolak kunci `__proto__` pada objek strict dengan 400 (sebelumnya diabaikan); test survei disesuaikan (`7739b50`).
+- Dua test kadang gagal pada run penuh bila mesin sedang sibuk: `WalkinPanel.test.tsx` (fokus) dan `src/test/visit-arsip.test.ts` (batas waktu 5 detik karena memindai seluruh `src`). Keduanya lolos bila dijalankan sendiri atau diulang; push yang gagal karenanya cukup diulang, tanpa proses berat lain yang berjalan.
+- Setelah `npm ci` di worktree survei, pasang ulang harness DB lokal: `npm i --no-save @electric-sql/pglite`.
 
 ## 3. Peta dokumen
 
@@ -103,7 +111,7 @@ npm run lint && npm run typecheck && npm test && npm run build
 node scripts/gen-migration-manifest.mjs --check
 ```
 
-Terakhir diverifikasi (2026-10-27, `9937fdd`): lint dan typecheck bersih, 265 file / 3308 test lolos, build sukses, manifest cocok (84 berkas). `npm run audit:check` gagal karena advisory dependensi lama; perbaikannya ada di `claude/amazing-borg-b06657`.
+Terakhir diverifikasi (2026-10-27, `a089830`, lewat hook pre-push): lint, typecheck, 265 file / 3308 test, build, `audit:check`, dan manifest (84 berkas) semuanya lolos.
 
 Aturan kerja (dari `AGENTS.md`): push dan operasi remote hanya atas perintah eksplisit pemilik; semua operasi GitHub lewat `gh` sebagai `dpmptsplampung`; jangan memakai kunci produksi; jangan menjalankan perintah yang mengubah atau menghapus database selain lokal; migrasi hanya diterapkan pemilik; baca `node_modules/next/dist/docs/` sebelum menulis kode Next.js (Next 16 berbeda dari pengetahuan umum).
 
