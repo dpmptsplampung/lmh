@@ -207,6 +207,38 @@ node scripts/apply-migration.mjs supabase/migrations/202610300002_selesai_dengan
 6. `audit_log` kini memuat nilai lama/baru identitas yang dikoreksi petugas saat chat selesai (`chat_pendataan_identitas`). `audit_log` hanya terbaca Admin dan **tidak** dianonimkan job retensi (lihat `docs/KEBIJAKAN_PDP.md`): tindak lanjut bila DPO menilai perlu.
 7. Rollback tidak disediakan: migrasi aditif; bila perlu menonaktifkan fitur, sembunyikan semua isian Khusus di Admin (alur selesai kembali seperti sebelumnya).
 
+## Fase 5 layanan dinamis: live chat per Layanan, bot di luar jam, email ke petugas (202610310001, 202610310002, 202610310003) — BELUM DITERAPKAN
+
+| Versi | Berkas | Isi | Status |
+|---|---|---|---|
+| 202610310001 | `202610310001_chat_lingkup_percakapan.sql` | `boleh_chat_sesi` (lingkup baca chat staf, memakai `staf_lingkup()` Fase 3); policy baca `chat_sesi_owner_select`, `chat_pesan_owner_select` diganti (pemilik ATAU `boleh_chat_sesi`) dan UPDATE `chat_sesi_petugas_update` menjadi pemilik-saja ( **menutup celah Fase 3: semua FO/petugas Layanan tak lagi membaca semua chat**); RPC `chat_percakapan_saya()` (daftar percakapan = satu baris per pengunjung+Layanan, diturunkan dari `chat_sesi`, tanpa tabel/kolom baru); indeks `(pengunjung_id, layanan_id, created_at)`. | **DITULIS, BELUM DITERAPKAN** |
+| 202610310002 | `202610310002_chat_luar_jam.sql` | `chat_layanan_status` (satu fungsi "petugas chat tersedia?" = `is_layanan_buka_jadwal` dan bukan `hari_tanpa_layanan`); `chat_minta_petugas` (eskalasi, pesan tunggu, antrean email berdedup per sesi per penerima); `chat_selesai` (salinan + anti-drift; kalimat survei Q24 dihapus); `tutup_chat_tertinggal` (salinan + anti-drift; sesi `eskalasi` tidak ditutup sebelum ada hari operasional penuh, batas 14 hari); helper `chat_ada_hari_kerja_sejak`. | **DITULIS, BELUM DITERAPKAN** |
+| 202610310003 | `202610310003_chat_perbaikan_review.sql` | Perbaikan review akhir: `chat_boleh_riwayat` (izin riwayat lintas sesi: admin, FO Koordinator, petugas Layanan jangkar yang Koordinator/penangan kini); `chat_sesi_jaga_rpc` (salinan 0009 + `pengunjung_id` tak dapat dipindah); gerbang "hari tanpa pelayanan" **per Layanan** (salinan 0012: `chat_sesi_eskalasi_kunjungan`, `chat_pesan_eskalasi_kunjungan`, `chat_ambil`, `chat_teruskan`); `kunjungan_operasional` (salinan Fase 3 + chat online dengan penanganan terbuka selalu operasional). | **DITULIS, BELUM DITERAPKAN** |
+
+**Urutan terap (hanya pemilik, atomik, dry-run dulu, ketiganya dalam satu jendela):** setelah `202610270001`, `202610270002`, `202610280001`, `202610290001`, `202610290002`, `202610300001`, `202610300002`: lalu `202610310001`, `202610310002`, `202610310003` (sebelum `202611010001`; 0001 menolak berjalan bila `staf_lingkup` belum ada; 0002 menolak bila `boleh_chat_sesi`/`is_layanan_buka_jadwal`/kolom email verifikasi petugas belum ada).
+
+```bash
+node scripts/apply-migration.mjs supabase/migrations/202610310001_chat_lingkup_percakapan.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202610310001_chat_lingkup_percakapan.sql --atomic
+node scripts/apply-migration.mjs supabase/migrations/202610310002_chat_luar_jam.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202610310002_chat_luar_jam.sql --atomic
+node scripts/apply-migration.mjs supabase/migrations/202610310003_chat_perbaikan_review.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202610310003_chat_perbaikan_review.sql --atomic
+```
+
+**Perilaku bila belum diterapkan (aplikasi tidak crash):** daftar percakapan disusun dari `select chat_sesi` (tanpa pratinjau pesan); status petugas memakai kalender global lama (Sabtu/Minggu/`hari_libur` + tutup 16:00 WIB) dan bot tetap memakai `muatKalender`; "Hubungkan ke Petugas" menjawab 409 `MIGRASI_BELUM_DITERAPKAN` lalu klien memakai jalur lama (pertanyaan ke AI); route chat staf memakai aturan TS lama (FO semua, petugas Layanannya) karena `boleh_chat_sesi` belum ada; pesan penutup lama tetap memuat kalimat survei tetapi disaring di tampilan. Riwayat lintas sesi (semua sesi pengunjung+Layanan sama) bekerja tanpa migrasi (route memakai service-role setelah otorisasi).
+
+**Daftar periksa pemilik:**
+1. **Email petugas:** email "permintaan chat" hanya terkirim ke petugas aktif Layanan itu yang `email_notifikasi`-nya **terverifikasi** (menu Profil). Bila tidak ada, dikirim ke FO aktif ber-email terverifikasi; bila tetap tidak ada, tidak ada email (pengunjung tetap melihat teks tunggu). Pastikan tiap Layanan punya minimal satu petugas ber-email terverifikasi dan `CRON_SECRET`/`RESEND_API_KEY` terpasang (pengiriman lewat `api/notif/send`).
+2. Uji luar jam: uji setelah jam tutup/akhir pekan (atau ubah jadwal Layanan uji di `/admin/settings/jadwal`): spanduk "Petugas ... sedang tidak tersedia", bot menjawab, tombol "Hubungkan ke Petugas" menampilkan "Mohon menunggu respon dari petugas; petugas akan menjawab pada jam kerja." dan satu email tiba (klik ulang tidak menggandakan). Layanan tanpa bot: pesan pertama otomatis jadi permintaan petugas.
+3. Uji lingkup: akun FO biasa **tidak** dapat membuka chat yang sudah selesai milik FO lain (`/admin/chat` > "Tampilkan selesai"); FO/Petugas Koordinator dapat. Chat terbuka (menunggu/aktif) tetap terlihat FO dan petugas Layanannya.
+4. Jadwal per Layanan = satu sumber kebenaran untuk chat (spec §4.4): Layanan yang buka Sabtu = buka; gerbang "hari tanpa pelayanan" 2026-10-14 (Sabtu/Minggu/libur global) tidak lagi dipakai chat (fungsi `hari_tanpa_layanan` dibiarkan). Periksa jadwal tiap Layanan di `/admin/settings/jadwal`.
+5. Chat `eskalasi` yang menunggu akhir pekan tidak ditutup otomatis sebelum ada hari operasional penuh; sesi `aktif` tetap ditutup setelah 24 jam tanpa aktivitas.
+6. RLS chat belum diuji perilaku (`npm run test:rls` belum mencakup): hanya kontrak statis (`supabase/migrations/chat_lingkup_percakapan.test.ts`, `chat_luar_jam.test.ts`).
+6b. Email permintaan petugas butuh login Google (JWT anonim ditolak di server), sesi dengan minimal satu pesan pengunjung, dan didedup per percakapan + hari buka berikutnya.
+7. Koordinator mengambil alih chat (K7 Fase 3) ditunda; Admin tetap dapat mengambil alih.
+8. Rollback tidak disediakan sebagai berkas (aditif): kembalikan policy lama dengan DDL di komentar kepala 0001 dan `chat_selesai`/`tutup_chat_tertinggal` dari `202610140009`/`202610140012`.
+
 ## Migrasi forward (status penerapan produksi)
 
 > **Status per 2026-10-14 malam:** semua migrasi di tabel ini sudah DITERAPKAN ke produksi (0002-0009, 0011, 0012, 0013 pada ±17:52-17:57 WIB, tanpa 0010 karena tidak ada berkasnya). Terapan atomik (`apply-migration --atomic`, dry-run lalu COMMIT) dan diverifikasi read-only. Ledger `supabase_migrations.schema_migrations` sudah diisi (12 baris, `scripts/fill-migration-ledger.mjs --apply --yes`; verifikasi `docs/analysis/LEDGER-VERIFIKASI-2026-10-14.md`). Perintah "Cara menerapkan" di bawah dipertahankan sebagai catatan prosedur, bukan langkah yang masih tertunda. Yang BELUM TERBUKTI: tampilan di browser, konkurensi sejati, kueri rekap FO pada PostgREST sungguhan, `session_id` JWT stabil setelah refresh; flag `sesi_tunggal_aktif` masih `false`.

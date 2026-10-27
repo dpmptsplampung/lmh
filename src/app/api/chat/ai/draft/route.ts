@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { createClient as createServerClient } from '@/lib/supabase/server';
 import { getGenerativeClient, getChatModel, getEmbeddingModel, buildRagContext, type FaqMatch } from '@/lib/gemini';
 import { redactPii } from '@/lib/pii';
+import { bolehAksesSesiStaf } from '@/lib/chat/akses';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -70,10 +71,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Sesi chat tidak ditemukan' }, { status: 404 });
   }
 
-  if (
-    petugasRow.role !== 'admin'
-    && (!petugasRow.layanan_id || petugasRow.layanan_id !== sesiRow.layanan_id)
-  ) {
+  // Lingkup DB (boleh_chat_sesi, Fase 5) dengan JWT pengguna; aturan layanan lama bila RPC belum ada.
+  const boleh = await bolehAksesSesiStaf(
+    serverClient,
+    sesi_id,
+    () => petugasRow.role === 'admin' || (!!petugasRow.layanan_id && petugasRow.layanan_id === sesiRow.layanan_id),
+  );
+  if (!boleh) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

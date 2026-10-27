@@ -236,3 +236,20 @@ Ambil alih pendataan: Koordinator Petugas -> tiket `dilayani` milik petugas lain
 | `pendataan_khusus_jawaban` | `boleh_baca_khusus` = `boleh_data_pelayanan` (admin; FO Koordinator semua; Petugas Koordinator tahap layanannya; penangan = dirinya; tanpa jendela operasional) | tidak ada hak tulis klien; hanya `layanan_selesai_khusus` / `chat_selesai_khusus` (definer, setelah pemeriksaan peran/kepemilikan `layanan_selesai`/`chat_selesai`) |
 | Identitas kunjungan chat | `boleh_kunjungan` (Fase 3) | hanya `chat_selesai_khusus` oleh pemilik tahap chat; `audit_log` mencatat nama field yang berubah |
 | Rekap Data Pelayanan kolom Khusus | jawaban dibaca klien pengguna lewat RLS di atas, hanya untuk pelayanan yang lolos `rekap_data_pelayanan` | - |
+
+## 9. PEMBARUAN 2026-10-31 — Lingkup chat (Fase 5; migrasi `202610310001`/`0002`, BELUM DITERAPKAN)
+
+Menutup celah Fase 3 "chat_sesi/chat_pesan (FO lintas Layanan)".
+
+| Objek / jalur | Sebelum | Sesudah |
+|---|---|---|
+| `chat_sesi` SELECT, `chat_pesan` SELECT | semua FO; semua petugas Layanan sesi; Admin | pemilik (pengunjung) ATAU `boleh_chat_sesi`: admin; FO Koordinator; Petugas Koordinator Layanannya; penangan sendiri (`ditangani_oleh`/`penanganan.penangan_id`); **jendela operasional** = sesi terbuka (`eskalasi`/`aktif`, `bot` ≤ 7 hari) bagi FO (semua Layanan) dan Petugas (Layanannya) |
+| `GET/POST /api/chat/messages`, `POST /api/chat/ai/draft` (service-role) | aturan TS: FO/Admin semua, petugas Layanannya | RPC `boleh_chat_sesi` dengan JWT pengguna (aturan TS lama hanya bila migrasi belum ada); galat lain = tolak |
+| `chat_sesi` UPDATE | staf Layanan/FO/Admin (kolom staf dijaga trigger) | pemilik saja; staf lewat RPC (`chat_ambil/teruskan/selesai`) atau route service-role; trigger menolak penggantian `pengunjung_id` di luar RPC |
+| Riwayat percakapan (`?riwayat=1`) | tidak ada | lintas sesi untuk admin, FO Koordinator, petugas Layanan jangkar (Koordinator/penangan kini) (`chat_boleh_riwayat`, service-role); staf lain hanya sesi yang boleh dibaca RLS (klien berJWT); pengunjung hanya miliknya |
+| `kunjungan_operasional` | tanggal >= kemarin | + kunjungan `online` yang masih punya penanganan terbuka (identitas chat yang menunggu akhir pekan tetap terbaca) |
+| `chat_percakapan_saya()` | - | hanya baris milik `auth.uid()` |
+| `chat_layanan_status` | - | publik (data jadwal, tanpa PII) |
+| `chat_minta_petugas` | - | hanya pemilik sesi, login Google (bukan anonim), sesi punya pesan pengunjung; email ke petugas tanpa PII, didedup per percakapan + hari buka berikutnya |
+
+Penangan lama tetap melihat sesinya sesudah selesai; FO/petugas biasa tidak melihat sesi selesai milik orang lain.

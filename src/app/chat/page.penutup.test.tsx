@@ -63,7 +63,7 @@ async function mulaiSesiChat() {
 const PENUTUP =
   'Sesi chat telah selesai. Terima kasih telah menghubungi DPMPTSP Provinsi Lampung. Tautan survei kepuasan layanan akan disediakan di sini.';
 
-describe('chat pengunjung: pesan penutup survei', () => {
+describe('chat pengunjung: pesan penutup sesi', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     Element.prototype.scrollIntoView = vi.fn();
@@ -90,16 +90,18 @@ describe('chat pengunjung: pesan penutup survei', () => {
     render(<PublicChatPage />);
     await mulaiSesiChat();
 
-    const penutup = await screen.findByTestId('penutup-survei');
+    const penutup = await screen.findByTestId('penutup-sesi');
     expect(penutup).toHaveAttribute('role', 'note');
-    expect(penutup).toHaveTextContent('Survei kepuasan layanan');
-    expect(penutup).toHaveTextContent(PENUTUP);
+    // Q24: kalimat tautan survei dihapus (pesan lama disaring di tampilan); tanpa judul survei.
+    expect(penutup).toHaveTextContent('Sesi selesai');
+    expect(penutup).toHaveTextContent('Terima kasih telah menghubungi DPMPTSP Provinsi Lampung.');
+    expect(penutup.textContent).not.toMatch(/survei|tautan/i);
     expect(penutup.querySelector('a')).toBeNull();
     expect(penutup.textContent).not.toMatch(/https?:\/\//);
     // Pesan petugas biasa tetap di bubble chatscope (bukan blok penutup).
     expect(screen.getByText('Silakan ajukan NIB lewat OSS.')).toBeInTheDocument();
-    expect(screen.getAllByTestId('penutup-survei')).toHaveLength(1);
-    expect(await screen.findByText(/Sesi chat telah selesai \/ ditutup/)).toBeInTheDocument();
+    expect(screen.getAllByTestId('penutup-sesi')).toHaveLength(1);
+    expect(await screen.findByText(/Sesi sebelumnya sudah selesai/)).toBeInTheDocument();
   });
 
   it('pesan bot lama tanpa jenis_jawaban tidak diberi gaya penutup (alur bot tidak berubah)', async () => {
@@ -115,6 +117,6 @@ describe('chat pengunjung: pesan penutup survei', () => {
     render(<PublicChatPage />);
     await mulaiSesiChat();
     expect(await screen.findByText('Halo, ada yang bisa dibantu?')).toBeInTheDocument();
-    expect(screen.queryByTestId('penutup-survei')).toBeNull();
+    expect(screen.queryByTestId('penutup-sesi')).toBeNull();
   });
 });

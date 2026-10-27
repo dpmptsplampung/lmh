@@ -30,8 +30,8 @@ function siapkanSupabase() {
     faq: (): PromiseLike<Hasil> => Promise.resolve({ data: [], error: null }),
     consent: (): PromiseLike<Hasil> => Promise.resolve({ data: null, error: null }),
     sesi: (): PromiseLike<Hasil> => Promise.resolve({ data: { id: 'sesi-1', status: 'bot' }, error: null }),
-    sesiPulih: (): PromiseLike<Hasil> =>
-      Promise.resolve({ data: { status: 'bot', kontak_pengunjung: 'Budi', layanan_id: LAYANAN_ID }, error: null }),
+    // Daftar sesi milik pengunjung (cadangan daftar percakapan bila RPC chat_percakapan_saya belum ada).
+    sesiList: (): PromiseLike<Hasil> => Promise.resolve({ data: [], error: null }),
     getUser: (): PromiseLike<unknown> =>
       Promise.resolve({ data: { user: { id: 'auth-user-1' } }, error: null }),
   };
@@ -47,7 +47,6 @@ function siapkanSupabase() {
     };
     b.single = () => {
       if (table === 'pengunjung') return Promise.resolve({ data: { id: 'peng-1', nama: 'Budi' }, error: null });
-      if (table === 'chat_sesi') return impl.sesiPulih();
       return Promise.resolve({ data: null, error: null });
     };
     b.insert = (payload: unknown) => {
@@ -64,7 +63,9 @@ function siapkanSupabase() {
           ? impl.layanan()
           : table === 'faq_knowledge_base'
             ? impl.faq()
-            : Promise.resolve({ data: [], error: null });
+            : table === 'chat_sesi'
+              ? impl.sesiList()
+              : Promise.resolve({ data: [], error: null });
       return Promise.resolve(hasil).then(resolve, reject);
     };
     return b;
@@ -284,30 +285,33 @@ describe('chat pengunjung: FAQ cepat (S14 + FAQ umum)', () => {
     expect(await screen.findByRole('button', { name: 'Di mana alamat kantor?' })).toBeInTheDocument();
   });
 
-  it('id layanan dari localStorage yang bukan UUID TIDAK masuk filter .or (cegah injeksi filter)', async () => {
+  it('id layanan percakapan yang bukan UUID TIDAK masuk filter .or (cegah injeksi filter)', async () => {
     const { impl, filterFaq } = siapkanSupabase();
-    // Sesi tak punya layanan_id -> jatuh ke nilai localStorage yang dirusak.
-    impl.sesiPulih = () =>
-      Promise.resolve({ data: { status: 'bot', kontak_pengunjung: 'Budi', layanan_id: null }, error: null });
-    localStorage.setItem('lmh_chat_sesi_id', 'sesi-1');
-    localStorage.setItem('lmh_chat_layanan_id', 'x),aktif.eq.false,(y');
+    impl.sesiList = () =>
+      Promise.resolve({
+        data: [{ id: 'sesi-1', layanan_id: 'x),aktif.eq.false,(y', status: 'bot', created_at: '2026-10-01T00:00:00Z' }],
+        error: null,
+      });
 
     render(<PublicChatPage />);
 
-    const alert = await screen.findByRole('alert');
-    expect(alert.textContent).toContain('FAQ belum dapat dimuat');
+    fireEvent.click(await screen.findByRole('button', { name: /buka percakapan/i }));
+    // Layanan tak dikenal -> percakapan hanya-baca; id bukan UUID tidak pernah dipakai di filter PostgREST.
+    expect(await screen.findByText(/tidak lagi melayani chat/i)).toBeInTheDocument();
     expect(filterFaq).toEqual([]);
   });
 
-  it('sesi dipulihkan: FAQ dimuat untuk layanan milik sesi (bukan nilai localStorage)', async () => {
+  it('percakapan dibuka dari daftar: FAQ dimuat untuk layanan milik percakapan', async () => {
     const { impl, filterFaq } = siapkanSupabase();
-    impl.sesiPulih = () =>
-      Promise.resolve({ data: { status: 'bot', kontak_pengunjung: 'Budi', layanan_id: LAYANAN_LAIN_ID }, error: null });
-    localStorage.setItem('lmh_chat_sesi_id', 'sesi-1');
-    localStorage.setItem('lmh_chat_layanan_id', LAYANAN_ID);
+    impl.sesiList = () =>
+      Promise.resolve({
+        data: [{ id: 'sesi-1', layanan_id: LAYANAN_LAIN_ID, status: 'bot', created_at: '2026-10-01T00:00:00Z' }],
+        error: null,
+      });
 
     render(<PublicChatPage />);
 
+    fireEvent.click(await screen.findByRole('button', { name: /buka percakapan/i }));
     await waitFor(() => expect(filterFaq.length).toBeGreaterThan(0));
     expect(filterFaq[0]).toBe(`layanan_id.eq.${LAYANAN_LAIN_ID},layanan_id.is.null`);
   });
@@ -339,7 +343,8 @@ describe('chat pengunjung: consent PDP memblokir (S1)', () => {
       disetujui: true,
       versi_kebijakan: '1.0',
     });
-    expect(localStorage.getItem('lmh_chat_sesi_id')).toBe('sesi-1');
+    // Percakapan diturunkan dari database, bukan localStorage.
+    expect(localStorage.getItem('lmh_chat_sesi_id')).toBeNull();
   });
 
   it('consent_log mengembalikan {error} -> sesi TIDAK dibuat, tampil pesan + Coba lagi', async () => {

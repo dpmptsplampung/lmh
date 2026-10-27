@@ -5,6 +5,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // @/lib/supabase/server. Its auth.getUser() drives the ownership check.
 const serverState = {
   callerId: 'auth-user-1' as string | null,
+  // RPC klien berJWT pengguna (chat_minta_petugas). Default: fungsi belum ada (migrasi belum diterapkan).
+  rpc: (async () => ({ data: null, error: { code: 'PGRST202', message: 'tidak ada' } })) as (
+    nama: string,
+    args: unknown,
+  ) => Promise<{ data: unknown; error: unknown }>,
 };
 
 vi.mock('@/lib/supabase/server', () => ({
@@ -15,6 +20,7 @@ vi.mock('@/lib/supabase/server', () => ({
         error: null,
       })),
     },
+    rpc: vi.fn((nama: string, args: unknown) => serverState.rpc(nama, args)),
   })),
 }));
 
@@ -111,6 +117,8 @@ const buildRequest = (body: unknown): NextRequest => {
 interface MockServiceOpts {
   rpcData?: unknown[] | null;
   rpcError?: { message: string } | null;
+  /** Hasil RPC chat_layanan_status (jadwal per Layanan, Fase 5). Tanpa nilai = RPC belum ada (kalender global lama). */
+  statusJadwal?: Record<string, unknown>;
   insertError?: unknown | null;
   // Ownership + sesi lookup
   pengunjungId?: string | null;
@@ -226,6 +234,11 @@ const mockServiceClient = async (opts: MockServiceOpts = {}) => {
 
   const mock = {
     rpc: vi.fn(async (name: string) => {
+      if (name === 'chat_layanan_status') {
+        return opts.statusJadwal
+          ? { data: opts.statusJadwal, error: null }
+          : { data: null, error: { code: 'PGRST202', message: 'tidak ada' } };
+      }
       if (name === 'match_dokumen_layanan') {
         return { data: opts.dokData ?? [], error: opts.dokError ?? null };
       }
@@ -1272,5 +1285,97 @@ describe('POST /api/chat/ai — mutasi tercek (audit T2d)', () => {
     expect((await res.json()).jawaban).toBe('Jawaban dari AI [1]');
     const log = entriLog(warnSpy).find((e) => e.operation === 'chat.ai.audit_log');
     expect(log).toMatchObject({ kode: 'ditolak', asalCode: '42501' });
+  });
+});
+
+// Fase 5: jadwal per Layanan (chat_layanan_status) menggantikan kalender global bila migrasi diterapkan; niat
+// "hubungkan ke petugas" ditangani DB (chat_minta_petugas) tanpa LLM.
+describe('POST /api/chat/ai - jadwal per Layanan dan permintaan petugas (Fase 5)', () => {
+  const TUTUP = {
+    ada: true, buka: false, tanggal: '2026-08-05', hari_tanpa_layanan: false, libur_keterangan: null,
+    buka_berikutnya_tanggal: '2026-08-06', buka_berikutnya_jam: '08:00',
+  };
+  const BUKA = { ...TUTUP, buka: true, buka_berikutnya_tanggal: null, buka_berikutnya_jam: null };
+  const faqCocok = [{ id: 'f-1', layanan_id: validBody.layanan_id, pertanyaan: 'Syarat NIB', jawaban: 'KTP + NPWP', similarity: 0.92 }];
+
+  beforeEach(() => {
+    vi.resetModules();
+    resetGeminiState();
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://supabase.local';
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-key';
+    process.env.GEMINI_API_KEY = 'test-key';
+    serverState.callerId = CALLER_AUTH_ID;
+    serverState.rpc = async () => ({ data: null, error: { code: 'PGRST202', message: 'tidak ada' } });
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-05T10:00:00+07:00'));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  const ask = async (opts: MockServiceOpts, pertanyaan = 'Berapa nomor HP kepala dinas?') => {
+    const mock = await mockServiceClient(opts);
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest({ ...validBody, pertanyaan }));
+    return { mock, json: await res.json(), status: res.status };
+  };
+
+  it('jadwal Layanan tutup (walau jam 10:00 menurut kalender lama): bot menjawab, tanpa eskalasi otomatis', async () => {
+    geminiState.generateText = 'Petugas membantu besok.';
+    const { json } = await ask({ rpcData: [], statusJadwal: TUTUP });
+    expect(json.eskalasi).toBe(false);
+    expect(json.jawaban).toBe('Petugas membantu besok.');
+    expect(json.status).toBe('bot');
+  });
+
+  it('jadwal Layanan buka: eskalasi otomatis seperti dulu bila bot tak punya jawaban', async () => {
+    const { json } = await ask({ rpcData: [], statusJadwal: BUKA });
+    expect(json.eskalasi).toBe(true);
+    expect(json.reason).toBe('no_match');
+  });
+
+  it('jalur gagal di luar jadwal: TANPA eskalasi, teks menyebut jam kerja (bukan "tidak diteruskan")', async () => {
+    geminiState.embeddingThrow = true;
+    const { json, mock } = await ask({ rpcData: [], statusJadwal: TUTUP });
+    expect(json.eskalasi).toBe(false);
+    expect(json.jawaban).toContain('Kamis, 6 Agustus 2026 pukul 08.00 WIB');
+    expect(json.jawaban).not.toContain('tidak diteruskan');
+    const sesiCalls = mock.from.mock.results.filter((_r: unknown, i: number) => mock.from.mock.calls[i][0] === 'chat_sesi');
+    for (const r of sesiCalls) expect((r.value as { update: ReturnType<typeof vi.fn> }).update).not.toHaveBeenCalled();
+  });
+
+  it('niat meminta petugas: RPC chat_minta_petugas dipanggil, FAQ/LLM dan penyimpanan pesan oleh route tidak', async () => {
+    const pesan = {
+      id: 'sys-1', pengirim: 'bot', created_at: '2026-08-05T03:00:00Z',
+      isi: 'Mohon menunggu respon dari petugas; petugas akan menjawab pada jam kerja.',
+    };
+    const rpcPetugas = vi.fn(async () => ({
+      data: { ok: true, noop: false, buka: false, status: 'eskalasi', penerima: 1, pesan },
+      error: null,
+    }));
+    serverState.rpc = rpcPetugas;
+    const { json, mock } = await ask({ rpcData: [], statusJadwal: TUTUP }, 'Saya ingin berbicara dengan petugas loket');
+    expect(rpcPetugas).toHaveBeenCalledWith('chat_minta_petugas', { p_sesi_id: validBody.sesi_id, p_eksplisit: true });
+    expect(json).toMatchObject({ eskalasi: true, reason: 'minta_petugas', status: 'eskalasi', pesan: { id: 'sys-1' } });
+    expect(json.jawaban).toBe(pesan.isi);
+    expect(mock.rpc.mock.calls.some((c: unknown[]) => c[0] === 'match_faq' || c[0] === 'match_faq_teks')).toBe(false);
+    expect(mock.from.mock.calls.some((c: unknown[]) => c[0] === 'chat_pesan')).toBe(false);
+  });
+
+  it('niat meminta petugas tetapi RPC belum ada (migrasi): alur bot biasa', async () => {
+    geminiState.generateText = 'Silakan datang ke loket.';
+    const { json } = await ask({ rpcData: faqCocok }, 'hubungkan ke petugas');
+    expect(json.reason).not.toBe('minta_petugas');
+    expect(json.pesan?.id).toBe('bot-msg-1');
+  });
+
+  it('kalimat yang hanya menyebut petugas tidak memicu RPC', async () => {
+    const rpcPetugas = vi.fn();
+    serverState.rpc = rpcPetugas;
+    await ask({ rpcData: [], statusJadwal: BUKA }, 'syarat menjadi petugas kebersihan');
+    expect(rpcPetugas).not.toHaveBeenCalled();
   });
 });

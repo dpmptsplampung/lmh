@@ -49,3 +49,9 @@ _Hindari_: pendataan eksplisit, form OSS, form perizinan
 **Topik**:
 Pilihan jenis persoalan per Layanan (dikelola admin) yang dipilih petugas saat menutup pelayanan; bagian dari Pendataan Umum.
 _Hindari_: kategori penanganan
+
+### Live chat
+
+**Percakapan**:
+Satu rangkaian pesan tetap antara seorang pengunjung dan satu Layanan, seperti satu kontak di WhatsApp; berisi seluruh riwayat dari semua sesi. Sesi per kunjungan dicatat di belakang layar untuk rekap.
+_Hindari_: sesi chat (untuk pengertian ini), thread

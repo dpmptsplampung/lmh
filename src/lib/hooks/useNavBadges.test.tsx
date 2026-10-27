@@ -16,8 +16,9 @@ vi.mock('@/lib/supabase/client', async () => {
     },
   };
 });
-vi.mock('@/lib/chat/hari-tanpa-layanan', () => ({
-  muatInfoHariLayanan: async () => ({ alasan: infoHari.alasan }),
+// Jadwal PER LAYANAN (Fase 5): hanya petugas Layanan yang dinilai; `alasan` terisi = Layanan tidak beroperasi hari ini.
+vi.mock('@/lib/chat/status-layanan', () => ({
+  muatStatusLayananChat: vi.fn(async () => ({ hariTanpaLayanan: !!infoHari.alasan })),
 }));
 
 import { hitungBadge, totalBadge, useJudulTabBadge, useNavBadges } from './useNavBadges';
@@ -206,13 +207,24 @@ describe('useNavBadges', () => {
     expect(h.log.length).toBeGreaterThan(sesudahKembali); // polling jalan lagi saat terlihat
   });
 
-  it('hari tanpa layanan: tidak ada badge chat dan tidak ada kueri chat', async () => {
+  it('petugas: Layanannya tidak beroperasi hari ini -> tidak ada badge chat dan tidak ada kueri chat', async () => {
+    pasangJawaban();
+    infoHari.alasan = 'akhir_pekan';
+    const { result } = renderHook(() => useNavBadges(PETUGAS));
+    await waitFor(() => expect(result.current.antrian?.count).toBeDefined());
+    expect(result.current.liveChat?.count).toBe(0);
+    expect(h.log.some((l) => l.tabel === 'chat_sesi')).toBe(false);
+  });
+
+  it('Admin/FO melihat banyak Layanan: satu hari tanpa pelayanan tidak menolkan badge chat; status per Layanan tidak dinilai', async () => {
+    const { muatStatusLayananChat } = await import('@/lib/chat/status-layanan');
+    (muatStatusLayananChat as ReturnType<typeof vi.fn>).mockClear();
     pasangJawaban();
     infoHari.alasan = 'akhir_pekan';
     const { result } = renderHook(() => useNavBadges(ADMIN));
     await waitFor(() => expect(result.current.antrian?.count).toBe(5));
-    expect(result.current.liveChat?.count).toBe(0);
-    expect(h.log.some((l) => l.tabel === 'chat_sesi')).toBe(false);
+    await waitFor(() => expect(h.log.some((l) => l.tabel === 'chat_sesi')).toBe(true));
+    expect(muatStatusLayananChat).not.toHaveBeenCalled();
   });
 
   it('cleanup saat unmount: channel dilepas dan tidak ada kueri susulan', async () => {

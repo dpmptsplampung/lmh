@@ -55,3 +55,18 @@ export function addDaysWIB(days: number, from: Date = new Date()): string {
 export function nowServer(): Date {
   return new Date();
 }
+
+// Menit sejak tengah malam WIB (0–1439) untuk sebuah instan. Dipakai keputusan jam buka/tutup di klien/server.
+const jamFormatter = new Intl.DateTimeFormat('en-GB', {
+  timeZone: TIMEZONE,
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+});
+
+export function menitWIB(date: Date = new Date()): number {
+  const bagian = jamFormatter.formatToParts(date);
+  const jam = Number(bagian.find((p) => p.type === 'hour')?.value ?? 0);
+  const menit = Number(bagian.find((p) => p.type === 'minute')?.value ?? 0);
+  return jam * 60 + menit;
+}
