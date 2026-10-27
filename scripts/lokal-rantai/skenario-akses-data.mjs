@@ -62,12 +62,13 @@ for (const [who, ids] of Object.entries(harap)) {
   cek(`kunjungan terlihat oleh ${who}: [${ids.join(',')}]`, sama(s, ids.map(K)), 'dapat: ' + ur(s));
 }
 
-console.log('penanganan (tahap FO milik rekan yang sudah tutup tidak terlihat oleh petugas layanan; Koordinator layanan hanya tahap layanannya):');
+console.log('penanganan (tahap FO rekan tidak terlihat oleh petugas layanan; Koordinator layanan hanya tahap layanannya; FO pencatat membaca semua tahap kunjungannya):');
 const P = async (who) => { const s = await lihat(who, 'penanganan', 'id'); return s; };
 const pid = (n) => `50000000-0000-0000-0000-00000000000${n}`;
+// FO pencatat membaca seluruh tahap kunjungan yang ia daftarkan (202611010003).
 const hp = {
   admin: [1, 2, 3, 4, 5, 6], fok: [1, 2, 3, 4, 5, 6],
-  fo1: [1, 5, 6], fo2: [3, 5, 6], p1: [2, 5, 6], p2: [4], pk1: [2, 5, 6], p3: [5, 6], anon: [],
+  fo1: [1, 2, 5, 6], fo2: [3, 4, 5, 6], p1: [2, 5, 6], p2: [4], pk1: [2, 5, 6], p3: [5, 6], anon: [],
 };
 for (const [who, ids] of Object.entries(hp)) {
   const s = await P(who);
@@ -237,7 +238,8 @@ const seedPK = await pg(`
     ('50000000-0000-0000-0000-000000000002','80000000-0000-0000-0000-000000000001','"IZ-1"','Nomor izin','teks_singkat'),
     ('50000000-0000-0000-0000-000000000004','80000000-0000-0000-0000-000000000002','"IZ-2"','Nomor izin','teks_singkat');`);
 if (!seedPK.ok) { console.error('SEED PK GAGAL:', seedPK.pesan); process.exit(2); }
-const pkExp = { admin: 2, fok: 2, fo1: 0, fo2: 0, p1: 1, p2: 1, pk1: 1, p3: 0, v1: 0, anon: 0 };
+// fo1/fo2: FO pencatat membaca jawaban tahap layanan kunjungannya (202611010003).
+const pkExp = { admin: 2, fok: 2, fo1: 1, fo2: 1, p1: 1, p2: 1, pk1: 1, p3: 0, v1: 0, anon: 0 };
 for (const [who, n] of Object.entries(pkExp)) {
   const x = await lihat(who, 'pendataan_khusus_jawaban');
   cek(`jawaban Pendataan Khusus terlihat oleh ${who}: ${n}`, x.size === n, 'dapat: ' + x.size);
