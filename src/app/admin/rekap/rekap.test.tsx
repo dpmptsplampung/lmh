@@ -100,6 +100,116 @@ describe('/admin/rekap (terpadu)', () => {
     expect(screen.getByRole('cell', { name: 'Ya' })).toBeInTheDocument();
   });
 
+  describe('tab Helpdesk OSS dan Non OSS (terpisah dari Layanan lain)', () => {
+    const LINGKUP_ADMIN = {
+      label: 'Semua data.',
+      unit_opsi: ['fo', 'layanan'],
+      opsi_layanan: [
+        { id: 'L-OSS', nama: 'Helpdesk OSS', form_pendataan: 'oss' },
+        { id: 'L-NON', nama: 'Non OSS (SiCantik)', form_pendataan: 'perizinan' },
+        { id: 'L-BAL', nama: 'Balmon', form_pendataan: null },
+      ],
+    };
+    const BARIS_OSS = {
+      total: 1, form_type: 'oss', kolom_khusus: [],
+      rows: [{ pelayanan_id: 'x1', sumber: 'penanganan', tanggal: '2026-10-20', unit: 'layanan', kanal: 'tatap_muka', pengunjung_nama: 'Budi', hasil: 'selesai', form_type: 'oss', pendataan: { email: 'budi@majujaya.id' } }],
+    };
+    const urlData = () => mockFetch.mock.calls.map((c) => String(c[0])).filter((u) => u.includes('bagian=data'));
+
+    it('Admin: tab Helpdesk OSS dan Non OSS berdiri sendiri di antara Rekap Harian dan Data Pelayanan', async () => {
+      rute({ lingkup: LINGKUP_ADMIN, harian: { rows: [], ringkasan: { jumlah: 0, tatap_muka: 0, live_chat: 0, per_unit: [] } } });
+      render(<AdminRekapPage />);
+      await waitFor(() => expect(screen.getAllByRole('tab')).toHaveLength(5));
+      expect(screen.getAllByRole('tab').map((t) => t.textContent?.trim())).toEqual(
+        ['Rekap Harian', 'Helpdesk OSS', 'Non OSS', 'Data Pelayanan', 'Kinerja Petugas'],
+      );
+    });
+
+    it('tab Helpdesk OSS terkunci ke Layanan berformulir OSS: kolom formulir langsung tampil, tanpa pilihan Unit/Layanan umum', async () => {
+      rute({ lingkup: LINGKUP_ADMIN, harian: { rows: [], ringkasan: { jumlah: 0, tatap_muka: 0, live_chat: 0, per_unit: [] } }, data: BARIS_OSS });
+      render(<AdminRekapPage />);
+      fireEvent.click(await screen.findByRole('tab', { name: /Helpdesk OSS/ }));
+      expect(await screen.findByText('Budi')).toBeInTheDocument();
+      const u = new URL(urlData()[0], 'http://x').searchParams;
+      expect(u.get('unit')).toBe('layanan');
+      expect(u.get('layanan_id')).toBe('L-OSS');
+      expect(screen.getByRole('columnheader', { name: '[OSS] Email' })).toBeInTheDocument();
+      expect(screen.getByRole('cell', { name: 'budi@majujaya.id' })).toBeInTheDocument();
+      expect(screen.queryByLabelText('Unit')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Layanan')).not.toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: /Helpdesk OSS/ })).toHaveAttribute('aria-selected', 'true');
+      expect(screen.getByRole('button', { name: /Unduh Excel/ })).toBeInTheDocument();
+    });
+
+    it('tab Non OSS memuat Layanan berformulir perizinan, bukan Layanan OSS', async () => {
+      rute({
+        lingkup: LINGKUP_ADMIN,
+        harian: { rows: [], ringkasan: { jumlah: 0, tatap_muka: 0, live_chat: 0, per_unit: [] } },
+        data: { ...BARIS_OSS, form_type: 'perizinan', rows: [{ ...BARIS_OSS.rows[0], form_type: 'perizinan', pendataan: { email: 'per@contoh.id' } }] },
+      });
+      render(<AdminRekapPage />);
+      fireEvent.click(await screen.findByRole('tab', { name: /Non OSS/ }));
+      expect(await screen.findByRole('columnheader', { name: '[Non OSS] Email' })).toBeInTheDocument();
+      expect(new URL(urlData()[0], 'http://x').searchParams.get('layanan_id')).toBe('L-NON');
+    });
+
+    it('kembali ke Data Pelayanan memakai filter umum lagi (Layanan lain tidak terkunci)', async () => {
+      rute({ lingkup: LINGKUP_ADMIN, harian: { rows: [], ringkasan: { jumlah: 0, tatap_muka: 0, live_chat: 0, per_unit: [] } }, data: BARIS_OSS });
+      render(<AdminRekapPage />);
+      fireEvent.click(await screen.findByRole('tab', { name: /Helpdesk OSS/ }));
+      await screen.findByText('Budi');
+      fireEvent.click(screen.getByRole('tab', { name: /Data Pelayanan/ }));
+      await waitFor(() => expect(urlData().length).toBeGreaterThan(1));
+      const terakhir = new URL(urlData().at(-1)!, 'http://x').searchParams;
+      expect(terakhir.get('layanan_id')).toBeNull();
+      expect(terakhir.get('unit')).toBeNull();
+      expect((await screen.findByLabelText('Layanan') as HTMLSelectElement).value).toBe('');
+    });
+
+    it('?bagian=oss tanpa Layanan OSS dalam lingkup (Petugas Layanan lain / FO) jatuh ke Data Pelayanan, tanpa tab OSS', async () => {
+      params.nilai = new URLSearchParams('bagian=oss');
+      rute({
+        lingkup: { label: 'Layanan Anda.', unit_opsi: ['layanan'], opsi_layanan: [{ id: 'L-BAL', nama: 'Balmon', form_pendataan: null }] },
+        data: { total: 0, form_type: null, rows: [] },
+      });
+      render(<AdminRekapPage />);
+      await waitFor(() => expect(screen.getByRole('tab', { name: /Data Pelayanan/ })).toHaveAttribute('aria-selected', 'true'));
+      expect(screen.queryByRole('tab', { name: /Helpdesk OSS/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole('tab', { name: /Non OSS/ })).not.toBeInTheDocument();
+    });
+
+    it('Petugas Helpdesk OSS: hanya tab OSS yang muncul, langsung terkunci ke Layanannya', async () => {
+      params.nilai = new URLSearchParams('bagian=oss');
+      rute({
+        lingkup: { label: 'Layanan Anda.', unit_opsi: ['layanan'], opsi_layanan: [{ id: 'L-OSS', nama: 'Helpdesk OSS', form_pendataan: 'oss' }] },
+        data: BARIS_OSS,
+      });
+      render(<AdminRekapPage />);
+      expect(await screen.findByText('Budi')).toBeInTheDocument();
+      expect(screen.queryByRole('tab', { name: /Non OSS/ })).not.toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: /Helpdesk OSS/ })).toHaveAttribute('aria-selected', 'true');
+      expect(new URL(urlData()[0], 'http://x').searchParams.get('layanan_id')).toBe('L-OSS');
+    });
+
+    it('lebih dari satu Layanan berformulir OSS: pilihan Layanan khusus tab itu (tanpa "Semua"), ganti pilihan memuat ulang', async () => {
+      rute({
+        lingkup: { ...LINGKUP_ADMIN, opsi_layanan: [
+          { id: 'L-OSS', nama: 'Helpdesk OSS', form_pendataan: 'oss' },
+          { id: 'L-OSS2', nama: 'Helpdesk OSS Cabang', form_pendataan: 'oss' },
+          { id: 'L-BAL', nama: 'Balmon', form_pendataan: null },
+        ] },
+        harian: { rows: [], ringkasan: { jumlah: 0, tatap_muka: 0, live_chat: 0, per_unit: [] } },
+        data: BARIS_OSS,
+      });
+      render(<AdminRekapPage />);
+      fireEvent.click(await screen.findByRole('tab', { name: /Helpdesk OSS/ }));
+      const pilih = (await screen.findByLabelText('Layanan')) as HTMLSelectElement;
+      expect(Array.from(pilih.options).map((o) => o.text)).toEqual(['Helpdesk OSS', 'Helpdesk OSS Cabang']);
+      fireEvent.change(pilih, { target: { value: 'L-OSS2' } });
+      await waitFor(() => expect(new URL(urlData().at(-1)!, 'http://x').searchParams.get('layanan_id')).toBe('L-OSS2'));
+    });
+  });
+
   it('migrasi belum diterapkan: pemberitahuan jelas, tanpa crash', async () => {
     rute({
       lingkup: new Response(JSON.stringify({ error: 'Rekap terpadu belum tersedia: migrasi 202610290001 dan 202610290002 belum diterapkan.', kode: 'MIGRASI_BELUM_DITERAPKAN' }), { status: 409 }),
