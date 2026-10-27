@@ -40,6 +40,7 @@ describe('buildDataPelayananWorkbook', () => {
     expect(sel('No HP').numFmt).toBe('@');
     expect(sel('Kanal').value).toBe('Live Chat');
     expect(sel('[OSS] Nama Usaha').value).toBe('Toko A');
+    expect(ws.getRow(1).values as unknown[]).toContain('[OSS] Email');
     const info = wb.getWorksheet('Keterangan')!;
     const isi = info.getSheetValues().flat().map(String).join('|');
     expect(isi).toContain(DEFINISI_DILAYANI);

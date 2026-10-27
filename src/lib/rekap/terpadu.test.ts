@@ -74,6 +74,30 @@ describe('namaUnit / ringkasHarian', () => {
   });
 });
 
+describe('kolom Email formulir pendataan (Helpdesk OSS dan Non OSS)', () => {
+  const oss = { ...mentah, pendataan: { nama_usaha: 'Toko A', email: 'pemohon@oss.id' } };
+  const perizinan = {
+    ...mentah, form_type: 'perizinan', layanan_nama: 'Layanan Non OSS',
+    pendataan: { nama_perusahaan: 'PT B', email: 'pemohon@nonoss.id' },
+  };
+  const nilaiDari = (formType: 'oss' | 'perizinan', mentahan: Record<string, unknown>) =>
+    Object.fromEntries(kolomDataPelayanan(formType).map((k) => [k.judul, k.ambil(petaBarisPelayanan(mentahan))]));
+
+  it('OSS: kolom "[OSS] Email" terisi dari email formulir, terpisah dari "Email" identitas kunjungan', () => {
+    expect(KOLOM_OSS.map((k) => k.judul)).toContain('[OSS] Email');
+    const n = nilaiDari('oss', oss);
+    expect(n['[OSS] Email']).toBe('pemohon@oss.id');
+    expect(n['Email']).toBe('a@b.id');
+  });
+  it('Non OSS: kolom "[Non OSS] Email" terisi dari email formulir', () => {
+    expect(KOLOM_PERIZINAN.map((k) => k.judul)).toContain('[Non OSS] Email');
+    expect(nilaiDari('perizinan', perizinan)['[Non OSS] Email']).toBe('pemohon@nonoss.id');
+  });
+  it('email formulir kosong -> sel kosong (null), bukan "undefined"', () => {
+    expect(nilaiDari('oss', { ...oss, pendataan: { nama_usaha: 'Toko A' } })['[OSS] Email']).toBeNull();
+  });
+});
+
 describe('kolomDataPelayanan', () => {
   it('Pendataan Umum selalu; formulir hanya bila layanan ber-formulir dipilih; tambahan Fase 4 di akhir', () => {
     expect(kolomDataPelayanan(null)).toEqual(KOLOM_PENDATAAN_UMUM);

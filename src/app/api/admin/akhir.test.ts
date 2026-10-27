@@ -254,6 +254,26 @@ describe('buku tamu', () => {
     expect(callOf(s.calls, 'buku_tamu', 'gte')).toEqual(['waktu_masuk', '2026-10-01T00:00:00+07:00']);
     expect(callOf(s.calls, 'buku_tamu', 'range')).toEqual([10, 19]);
   });
+
+  it('GET menandai pencatat (nama) tanpa membatasi per pencatat', async () => {
+    const baris = (id: string, oleh: string, nama: string | null) => ({
+      id, nama: 'Tamu ' + id, asal: null, no_hp: null, menemui_siapa: 'Kabid', keperluan: null, waktu_masuk: 'x',
+      dicatat_oleh: oleh, pencatat: nama === null ? null : { nama },
+    });
+    const s = await setup({
+      role: 'front_office',
+      tables: { buku_tamu: { data: [baris('1', 'p-actor', 'FO Satu'), baris('2', 'p-lain', 'FO Dua'), baris('3', 'p-hapus', null)], count: 3 } },
+    });
+    const { GET } = await import('./buku-tamu/route');
+    const res = await GET(req('GET', undefined, 'http://localhost/api/admin/buku-tamu'));
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.items.map((i: { dicatat_nama: string | null }) => i.dicatat_nama)).toEqual(['FO Satu', 'FO Dua', null]);
+    expect(json.total).toBe(3);
+    // Sengaja tanpa .eq('dicatat_oleh', ...): FO membaca buku tamu semua pencatat.
+    expect(s.calls['buku_tamu']?.some(([k]) => k === 'eq')).toBeFalsy();
+    expect(String(callOf(s.calls, 'buku_tamu', 'select')?.[0])).toContain('pencatat:petugas!dicatat_oleh(nama)');
+  });
 });
 
 describe('riwayat', () => {

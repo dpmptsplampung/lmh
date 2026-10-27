@@ -88,7 +88,7 @@ Aturan: `node scripts/apply-migration.mjs --atomic --dry-run supabase/migrations
 
 ### C. Celah keamanan yang diketahui dan belum ditutup
 - ~~`tiket_antrean` `tiket_staff_select` (tanpa `TO`): tiket rekan terbaca.~~ **Ditutup** oleh migrasi `202611010002` (belum diterapkan; terbukti di PGlite pada skema asli, `scripts/lokal-rantai`). Dampak: tiket hari-hari lampau milik rekan tidak terbaca FO/petugas biasa; hari ini utuh.
-- `buku_tamu`: semua FO membaca semua tanggal.
+- ~~`buku_tamu`: semua FO membaca semua tanggal.~~ **Diputuskan pemilik (2026-10-27): tidak dibatasi** (meja FO bersama); halaman Buku Tamu kini menampilkan kolom "Dicatat oleh" (nama pencatat) sebagai tanda saja.
 - Lihat juga B (pencarian pengunjung, PII di teks bebas).
 
 ### D. Fitur yang sengaja ditunda

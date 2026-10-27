@@ -242,6 +242,7 @@ export const KOLOM_PENDATAAN_UMUM: KolomData[] = [
 
 export const KOLOM_OSS: KolomData[] = [
   { kunci: 'oss_nama_usaha', judul: '[OSS] Nama Usaha', ambil: (r) => isian(r, 'nama_usaha') },
+  { kunci: 'oss_email', judul: '[OSS] Email', ambil: (r) => isian(r, 'email') },
   { kunci: 'oss_tipe', judul: '[OSS] Tipe Pelaku Usaha', ambil: (r) => isian(r, 'tipe_pelaku_usaha') },
   { kunci: 'oss_pm', judul: '[OSS] Status Penanaman Modal', ambil: (r) => isian(r, 'status_penanaman_modal') },
   { kunci: 'oss_lokasi', judul: '[OSS] Lokasi Usaha', ambil: (r) => isian(r, 'lokasi_usaha') },
@@ -254,6 +255,7 @@ export const KOLOM_OSS: KolomData[] = [
 
 export const KOLOM_PERIZINAN: KolomData[] = [
   { kunci: 'per_perusahaan', judul: '[Non OSS] Nama Perusahaan', ambil: (r) => isian(r, 'nama_perusahaan') },
+  { kunci: 'per_email', judul: '[Non OSS] Email', ambil: (r) => isian(r, 'email') },
   { kunci: 'per_lokasi', judul: '[Non OSS] Lokasi Usaha', ambil: (r) => isian(r, 'lokasi_usaha') },
   { kunci: 'per_opd', judul: '[Non OSS] OPD Teknis', ambil: (r) => isian(r, 'opd_teknis') },
   { kunci: 'per_uraian', judul: '[Non OSS] Uraian Permohonan', ambil: (r) => isian(r, 'uraian_permohonan') },

@@ -1152,7 +1152,7 @@ node scripts/apply-migration.mjs supabase/migrations/202611010001_fo_cari_pengun
 5. Pastikan pengunjung yang sudah dianonimkan (nama `[anonim]`) tidak muncul.
 6. `select aksi, count(*) from audit_log where aksi = 'fo_ambil_pengunjung' group by 1` bertambah setiap kali saran dipilih (detail hanya id kunjungan, tanpa PII).
 7. `EXPLAIN` pada `fo_cari_pengunjung` dengan tabel `kunjungan` besar memakai indeks trigram (pantau; bila lambat, laporkan).
-8. Celah tersisa (tidak disentuh Fase 6): `buku_tamu` masih terbaca semua FO untuk semua tanggal.
+8. `buku_tamu` terbaca semua FO untuk semua tanggal: SENGAJA (keputusan pemilik 2026-10-27); hanya ditandai nama pencatat di halaman Buku Tamu.
 9. Rollback: `docs/rollback-fo-cari-pengunjung-202611010001.sql` (hanya menghapus objek baru; baris `audit_log` dibiarkan).
 
 ## Penutupan celah `tiket_antrean` (202611010002) — BELUM DITERAPKAN
@@ -1172,4 +1172,4 @@ node scripts/apply-migration.mjs supabase/migrations/202611010002_tiket_antrean_
 
 **Daftar periksa pemilik:** (1) dry-run lalu terapkan; (2) sebagai FO/petugas biasa buka Antrian hari ini: daftar, hitungan selesai, dan rata-rata durasi sama seperti sebelumnya; (3) buka tanggal lampau: tiket rekan tidak muncul, tiket sendiri tetap; (4) `EXPLAIN` pada `select count(*) from tiket_antrean where tanggal = current_date` (policy memanggil fungsi per baris; pantau pada data besar); (5) rollback: `docs/rollback-tiket-antrean-lingkup-202611010002.sql`.
 
-**Terbukti dengan:** `node scripts/lokal-rantai/skenario-akses-data.mjs` (PGlite, seluruh rantai migrasi pada skema asli; sebelum migrasi ini 3 cek tiket gagal, sesudahnya 115/115 lolos). `buku_tamu` sengaja TIDAK diubah: meja FO bersama, menunggu keputusan pemilik.
+**Terbukti dengan:** `node scripts/lokal-rantai/skenario-akses-data.mjs` (PGlite, seluruh rantai migrasi pada skema asli; sebelum migrasi ini 3 cek tiket gagal, sesudahnya 115/115 lolos). `buku_tamu` sengaja TIDAK dibatasi (keputusan pemilik): meja FO bersama, hanya ditandai nama pencatat di UI.

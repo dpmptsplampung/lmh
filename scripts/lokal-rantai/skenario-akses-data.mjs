@@ -83,7 +83,7 @@ for (const [who, ids] of Object.entries(ht)) {
 }
 
 // ---- buku_tamu: FO biasa hanya buku tamu yang ia catat atau yang terbuka; Koordinator/admin semua
-console.log('buku_tamu (perilaku SAAT INI; keputusan pemilik terbuka, lihat docs/SERAH-TERIMA-LAYANAN-DINAMIS.md bagian C):');
+console.log('buku_tamu (SENGAJA tidak dibatasi antar-FO, keputusan pemilik; pencatat ditandai di UI):');
 const bt = await pg("INSERT INTO buku_tamu(nama, menemui_siapa) VALUES ('Tamu Satu', 'Kabid') RETURNING id");
 cek('seed buku_tamu', bt.ok, JSON.stringify(bt));
 cek('FO membaca buku tamu bersama (perilaku buku tamu = meja FO bersama)', (await lihat('fo1', 'buku_tamu')).size === 1);
