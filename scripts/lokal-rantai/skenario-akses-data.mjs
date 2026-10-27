@@ -155,5 +155,102 @@ for (const who of ['p1', 'p3', 'fo1']) {
   cek(`${who} (bukan Koordinator layanan) tidak boleh mengambil alih`, !r.ok, JSON.stringify(r));
 }
 
+// ---- Ambil alih Koordinator: jalur berhasil + siapa yang melihat catatan ambil alih
+console.log('koordinator_ambil_alih_tiket (jalur berhasil):');
+const seedAA = await pg(`
+  INSERT INTO kunjungan(id, nama, asal, tanggal, status, dibuat_oleh) VALUES
+    ('30000000-0000-0000-0000-000000000004','Warga Empat','walk_in', current_date,'dilayani','20000000-0000-0000-0000-000000000003');
+  INSERT INTO tiket_antrean(id, kunjungan_id, layanan_id, tanggal, nomor, nomor_display, status, dilayani_oleh, waktu_mulai_layan) VALUES
+    ('40000000-0000-0000-0000-000000000004','30000000-0000-0000-0000-000000000004','10000000-0000-0000-0000-000000000001', current_date,3,'AA-003','dilayani','20000000-0000-0000-0000-000000000008', now());
+  INSERT INTO penanganan(id, kunjungan_id, tahap_ke, peran_tahap, layanan_id, tiket_id, saluran, status, penangan_id, mulai_at) VALUES
+    ('50000000-0000-0000-0000-000000000007','30000000-0000-0000-0000-000000000004',1,'layanan','10000000-0000-0000-0000-000000000001','40000000-0000-0000-0000-000000000004','walk_in','berjalan','20000000-0000-0000-0000-000000000008', now());`);
+if (!seedAA.ok) { console.error('SEED AMBIL ALIH GAGAL:', seedAA.pesan); process.exit(2); }
+for (const who of ['p1', 'p3', 'p2']) {
+  const r = await sebagai(db, 'authenticated', U[who], 'SELECT public.koordinator_ambil_alih_tiket($1, $2)', [tid(4), 'uji ambil alih harness']);
+  cek(`${who} (bukan Koordinator layanan itu) ditolak`, !r.ok, JSON.stringify(r));
+}
+const aa = await sebagai(db, 'authenticated', U.pk1, 'SELECT public.koordinator_ambil_alih_tiket($1, $2) AS j', [tid(4), 'uji ambil alih harness']);
+cek('Petugas Koordinator layanan itu berhasil mengambil alih', aa.ok && aa.rows[0].j.ok === true && aa.rows[0].j.sudah_milik_anda === false, JSON.stringify(aa));
+const pemilik = await pg("SELECT dilayani_oleh::text AS o, status FROM tiket_antrean WHERE id = '40000000-0000-0000-0000-000000000004'");
+cek('pemilik tiket pindah ke PK1, status tetap dilayani', pemilik.ok && pemilik.rows[0].o.endsWith('7') && pemilik.rows[0].status === 'dilayani', JSON.stringify(pemilik));
+const tahap = await pg("SELECT status, batal_karena FROM penanganan WHERE id = '50000000-0000-0000-0000-000000000007'");
+cek('tahap lama P3 dibatalkan (diambil_alih)', tahap.ok && tahap.rows[0].status === 'batal' && tahap.rows[0].batal_karena === 'diambil_alih', JSON.stringify(tahap));
+const jejakAA = await pg("SELECT count(*)::int AS n FROM audit_log WHERE aksi = 'koordinator_ambil_alih'");
+cek('audit_log mencatat satu ambil alih', jejakAA.ok && jejakAA.rows[0].n === 1, JSON.stringify(jejakAA));
+const aaIds = { admin: 1, pk1: 1, p3: 1, p1: 0, p2: 0, fo1: 0, anon: 0 };
+for (const [who, n] of Object.entries(aaIds)) {
+  const x = await lihat(who, 'ambil_alih_pendataan');
+  cek(`ambil_alih_pendataan terlihat oleh ${who}: ${n}`, x.size === n, 'dapat: ' + x.size);
+}
+
+// ---- Chat luar jam: email ke petugas berdedup per percakapan + hari buka berikutnya
+console.log('chat_minta_petugas (luar jam; layanan tanpa jadwal = tutup):');
+const seedMinta = await pg(`
+  UPDATE layanan SET punya_chat = true WHERE id IN ('10000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000002');
+  UPDATE petugas SET email_notifikasi = 'p1@x.id', email_notifikasi_verified_at = now() WHERE id = '20000000-0000-0000-0000-000000000005';
+  UPDATE petugas SET email_notifikasi = 'p3@x.id', email_notifikasi_verified_at = now() WHERE id = '20000000-0000-0000-0000-000000000008';
+  UPDATE petugas SET email_notifikasi = 'pk1@x.id' WHERE id = '20000000-0000-0000-0000-000000000007'; -- tidak terverifikasi
+  UPDATE petugas SET email_notifikasi = 'fo1@x.id', email_notifikasi_verified_at = now() WHERE id = '20000000-0000-0000-0000-000000000002';
+  SET session_replication_role = replica;
+  INSERT INTO chat_sesi(id, pengunjung_id, layanan_id, status) VALUES
+    ('70000000-0000-0000-0000-000000000005','60000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000001','bot'),
+    ('70000000-0000-0000-0000-000000000006','60000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000001','bot'),
+    ('70000000-0000-0000-0000-000000000007','60000000-0000-0000-0000-000000000002','10000000-0000-0000-0000-000000000002','bot'),
+    ('70000000-0000-0000-0000-000000000008','60000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000001','bot');
+  INSERT INTO chat_pesan(sesi_id, pengirim, isi) SELECT id, 'pengunjung', 'tolong petugas' FROM chat_sesi WHERE id::text > '70000000-0000-0000-0000-000000000004' AND id::text <> '70000000-0000-0000-0000-000000000008';
+  SET session_replication_role = origin;`);
+if (!seedMinta.ok) { console.error('SEED MINTA GAGAL:', seedMinta.pesan); process.exit(2); }
+const stat = await sebagai(db, 'authenticated', U.v1, "SELECT public.chat_layanan_status('10000000-0000-0000-0000-000000000001') AS j");
+cek('layanan tanpa jadwal terbaca TUTUP', stat.ok && stat.rows[0].j.buka === false, JSON.stringify(stat));
+const minta = (who, sesi, eks = true, jwt) => sebagai(db, 'authenticated', U[who], 'SELECT public.chat_minta_petugas($1, $2) AS j', [sid(sesi), eks], jwt);
+const m1 = await minta('v1', 5);
+cek('permintaan pertama: eskalasi + 2 penerima (petugas L1 ber-email terverifikasi; PK1 tak terverifikasi dan FO dilewati)',
+  m1.ok && m1.rows[0].j.status === 'eskalasi' && m1.rows[0].j.penerima === 2, JSON.stringify(m1));
+const email1 = await pg("SELECT tujuan_email FROM notifikasi WHERE payload->>'type' = 'chat_minta_petugas' ORDER BY tujuan_email");
+cek('email hanya ke p1 dan p3', email1.ok && email1.rows.map((r) => r.tujuan_email).join() === 'p1@x.id,p3@x.id', JSON.stringify(email1));
+const m1b = await minta('v1', 5);
+cek('permintaan ulang pada sesi sama: noop, tanpa email baru', m1b.ok && m1b.rows[0].j.noop === true && m1b.rows[0].j.penerima === 0, JSON.stringify(m1b));
+const m2 = await minta('v1', 6);
+cek('sesi baru pada percakapan yang sama (pengunjung+layanan, hari buka sama): tidak ada email ganda', m2.ok && m2.rows[0].j.penerima === 0, JSON.stringify(m2));
+const n1 = await pg("SELECT count(*)::int AS n FROM notifikasi WHERE payload->>'type' = 'chat_minta_petugas'");
+cek('total email chat tetap 2', n1.ok && n1.rows[0].n === 2, JSON.stringify(n1));
+const m3 = await minta('v2', 7);
+cek('layanan tanpa petugas ber-email terverifikasi: cadangan ke FO ber-email terverifikasi (1 penerima)', m3.ok && m3.rows[0].j.penerima === 1, JSON.stringify(m3));
+const em3 = await pg("SELECT tujuan_email FROM notifikasi WHERE payload->>'layanan_id' = '10000000-0000-0000-0000-000000000002'");
+cek('email cadangan ke fo1', em3.ok && em3.rows.length === 1 && em3.rows[0].tujuan_email === 'fo1@x.id', JSON.stringify(em3));
+const mAnon = await minta('v1', 8, true, { is_anonymous: true });
+cek('JWT anonim ditolak (tidak memicu email)', !mAnon.ok && mAnon.kode === '42501', JSON.stringify(mAnon));
+const mLain = await minta('v2', 5);
+cek('pengunjung lain tidak bisa meminta atas sesi orang lain', !mLain.ok && mLain.kode === '42501', JSON.stringify(mLain));
+const mKosong = await minta('v1', 8);
+cek('sesi tanpa pesan pengunjung: PESAN_WAJIB (anti-banjir)', !mKosong.ok && /PESAN_WAJIB/.test(mKosong.pesan), JSON.stringify(mKosong));
+const mStaf = await sebagai(db, 'authenticated', U.p1, 'SELECT public.chat_minta_petugas($1, true)', [sid(5)]);
+cek('staf (bukan pemilik sesi) ditolak', !mStaf.ok && mStaf.kode === '42501', JSON.stringify(mStaf));
+
+// ---- Pendataan Khusus (Fase 4): jawaban per tahap, RLS = lingkup data ketat
+console.log('pendataan_khusus_jawaban / pendataan_khusus_field:');
+const seedPK = await pg(`
+  INSERT INTO pendataan_khusus_field(id, layanan_id, label, jenis) VALUES
+    ('80000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000001','Nomor izin','teks_singkat'),
+    ('80000000-0000-0000-0000-000000000002','10000000-0000-0000-0000-000000000002','Nomor izin','teks_singkat');
+  INSERT INTO pendataan_khusus_jawaban(penanganan_id, field_id, nilai, label_snapshot, jenis_snapshot) VALUES
+    ('50000000-0000-0000-0000-000000000002','80000000-0000-0000-0000-000000000001','"IZ-1"','Nomor izin','teks_singkat'),
+    ('50000000-0000-0000-0000-000000000004','80000000-0000-0000-0000-000000000002','"IZ-2"','Nomor izin','teks_singkat');`);
+if (!seedPK.ok) { console.error('SEED PK GAGAL:', seedPK.pesan); process.exit(2); }
+const pkExp = { admin: 2, fok: 2, fo1: 0, fo2: 0, p1: 1, p2: 1, pk1: 1, p3: 0, v1: 0, anon: 0 };
+for (const [who, n] of Object.entries(pkExp)) {
+  const x = await lihat(who, 'pendataan_khusus_jawaban');
+  cek(`jawaban Pendataan Khusus terlihat oleh ${who}: ${n}`, x.size === n, 'dapat: ' + x.size);
+}
+// FO Koordinator: lingkup data FO-Koordinator = semua tahap (boleh_data_pelayanan), jadi 2.
+const fokPK = await lihat('fok', 'pendataan_khusus_jawaban');
+cek('FO Koordinator melihat semua jawaban (lingkup Koordinator FO)', fokPK.size === 2, 'dapat: ' + fokPK.size);
+const tulisPK = await sebagai(db, 'authenticated', U.p1, "INSERT INTO pendataan_khusus_jawaban(penanganan_id, field_id, nilai, label_snapshot, jenis_snapshot) VALUES ('50000000-0000-0000-0000-000000000006','80000000-0000-0000-0000-000000000001','\"x\"','x','teks_singkat')");
+cek('petugas tidak bisa menulis jawaban langsung (hanya fungsi definer)', !tulisPK.ok, JSON.stringify(tulisPK));
+const tulisField = await sebagai(db, 'authenticated', U.pk1, "INSERT INTO pendataan_khusus_field(layanan_id, label, jenis) VALUES ('10000000-0000-0000-0000-000000000001','Bocor','teks_singkat')");
+cek('Petugas Koordinator tidak bisa menambah isian (hanya admin)', !tulisField.ok || tulisField.rows.length === 0, JSON.stringify(tulisField));
+const tulisFieldAdmin = await sebagai(db, 'authenticated', U.admin, "INSERT INTO pendataan_khusus_field(layanan_id, label, jenis) VALUES ('10000000-0000-0000-0000-000000000001','Baru','teks_singkat')");
+cek('admin bisa menambah isian', tulisFieldAdmin.ok, JSON.stringify(tulisFieldAdmin));
+
 ringkas();
 await db.close();

@@ -1172,4 +1172,4 @@ node scripts/apply-migration.mjs supabase/migrations/202611010002_tiket_antrean_
 
 **Daftar periksa pemilik:** (1) dry-run lalu terapkan; (2) sebagai FO/petugas biasa buka Antrian hari ini: daftar, hitungan selesai, dan rata-rata durasi sama seperti sebelumnya; (3) buka tanggal lampau: tiket rekan tidak muncul, tiket sendiri tetap; (4) `EXPLAIN` pada `select count(*) from tiket_antrean where tanggal = current_date` (policy memanggil fungsi per baris; pantau pada data besar); (5) rollback: `docs/rollback-tiket-antrean-lingkup-202611010002.sql`.
 
-**Terbukti dengan:** `node scripts/lokal-rantai/skenario-akses-data.mjs` (PGlite, seluruh rantai migrasi pada skema asli; sebelum migrasi ini 3 cek tiket gagal, sesudahnya 75/75 lolos). `buku_tamu` sengaja TIDAK diubah: meja FO bersama, menunggu keputusan pemilik.
+**Terbukti dengan:** `node scripts/lokal-rantai/skenario-akses-data.mjs` (PGlite, seluruh rantai migrasi pada skema asli; sebelum migrasi ini 3 cek tiket gagal, sesudahnya 115/115 lolos). `buku_tamu` sengaja TIDAK diubah: meja FO bersama, menunggu keputusan pemilik.

@@ -9,7 +9,7 @@ npm i --no-save @electric-sql/pglite      # tidak masuk package.json; ulangi set
 node scripts/lokal-rantai/skenario-akses-data.mjs   # ~15 detik, exit 1 bila ada cek gagal
 ```
 
-Skenario `skenario-akses-data.mjs`: kunjungan, penanganan, tiket_antrean, buku_tamu, chat_sesi/chat_pesan, rekap terpadu,
+Skenario `skenario-akses-data.mjs` (115 cek): kunjungan, penanganan, tiket_antrean, buku_tamu, chat_sesi/chat_pesan, email chat luar jam, Pendataan Khusus, rekap terpadu,
 pencarian pengunjung (Fase 6), dan wewenang ambil alih, untuk admin, FO, FO Koordinator, petugas, Petugas Koordinator,
 pengunjung, dan anon. Fungsi di `harness.mjs`: `bukaDbPenuh({ sampai })`, `sebagai(db, role, uid, sql, params?, jwt?)`,
 `cek`, `ringkas`. `sampai: '202610290002'` menerapkan rantai hanya sampai nomor itu (mis. untuk uji sebelum/sesudah).
