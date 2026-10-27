@@ -90,6 +90,7 @@ export const FORWARD_MIGRATION_FILES = [
   '202610310001_chat_lingkup_percakapan.sql',
   '202610310002_chat_luar_jam.sql',
   '202610310003_chat_perbaikan_review.sql',
+  '202611010001_fo_cari_pengunjung.sql',
 ] as const;
 
 export function listMigrationFiles(): string[] {

@@ -253,3 +253,15 @@ Menutup celah Fase 3 "chat_sesi/chat_pesan (FO lintas Layanan)".
 | `chat_minta_petugas` | - | hanya pemilik sesi, login Google (bukan anonim), sesi punya pesan pengunjung; email ke petugas tanpa PII, didedup per percakapan + hari buka berikutnya |
 
 Penangan lama tetap melihat sesinya sesudah selesai; FO/petugas biasa tidak melihat sesi selesai milik orang lain.
+
+## 10. PEMBARUAN 2026-11-01 — Saran pengunjung lama (Fase 6; migrasi `202611010001`, BELUM DITERAPKAN)
+
+Mengganti baca langsung `kunjungan` oleh klien untuk autofill (yang menyusut sejak Fase 3, K14) dengan RPC terkendali. RLS `kunjungan` TIDAK dilonggarkan.
+
+| Objek / jalur | Siapa | Batas |
+|---|---|---|
+| `fo_cari_pengunjung(p_q)` (definer; `sesi_valid()`) | Hanya `front_office` dan `admin` AKTIF (`staf_lingkup()`); petugas, pengunjung, anon: `FORBIDDEN`/tanpa EXECUTE (anon dicabut) | min 3 karakter/digit di server; maks 5 orang; HP disamarkan; tanpa email/HP penuh; tanpa `[anonim]`, tanpa `asal_instansi` kosong, tanpa kunjungan > 730 hari |
+| `fo_ambil_pengunjung(p_id)` (definer) | idem | identitas penuh SATU kunjungan terpilih; `audit_log` (aksi `fo_ambil_pengunjung`, detail hanya id); 60 per 10 menit per akun (`RATE_LIMIT`); filter anonim/730 hari sama |
+| `hp_normal(text)` | authenticated, service_role (anon dicabut) | fungsi murni, tanpa akses data |
+
+Celah yang TIDAK ditutup Fase 6: `buku_tamu` terbaca semua FO untuk semua tanggal (tidak dipakai fitur ini).

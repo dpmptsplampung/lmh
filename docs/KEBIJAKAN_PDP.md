@@ -41,6 +41,7 @@ Data **tidak** digunakan untuk pemasaran komersial, profiling otomatis, atau dib
   - `email` → `NULL`
   - `foto_url` → `NULL`
 - **Cakupan baru (migrasi `202610140008`, DITERAPKAN ke produksi 2026-10-14 malam):** anonimisasi 730 hari juga mengosongkan PII `kunjungan` (nama → `[anonim]`; HP, email, instansi, nama yang ditemui, keperluan → NULL), `penanganan.catatan` → `[anonim]`, dan arsip `visit` (tabel `visit` menjadi arsip baca saja setelah migrasi `202610140007`). Belum mencakup `pelayanan_oss`/`pelayanan_perizinan`, `buku_tamu`, dan isi chat (pertanyaan terbuka).
+- **Pencarian pengunjung lama FO (Fase 6, migrasi `202611010001`):** hanya akun FO/Admin aktif; saran memuat HP tersamar; identitas penuh hanya diambil untuk satu pengunjung terpilih, dicatat di `audit_log` (tanpa PII) dan dibatasi 60/10 menit; data teranonimkan dan kunjungan > 730 hari tidak pernah dikembalikan.
 - **Pengecualian:** dokumen Investment Gallery dan listing UMKM bersifat publik (bukan data pribadi per individu) sehingga tidak dianonimisasi otomatis.
 - **Manual trigger:** jika pg_cron belum di-enable, admin dapat menjalankan:
   ```sql

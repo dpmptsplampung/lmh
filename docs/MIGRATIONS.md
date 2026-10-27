@@ -1128,3 +1128,29 @@ node scripts/fill-migration-ledger.mjs                    # dry-run pengisi ledg
 ```
 
 Keduanya membaca `DIRECT_URL` dari `.env.local` (nilainya tidak pernah dicetak), memakai `BEGIN READ ONLY` + SELECT saja, dan berakhir dengan ROLLBACK. Parser penanda ada di `scripts/lib/migration-markers.mjs`; ujinya `src/test/migration-markers.test.ts`. Ujinya ikut `npm test` (ditempatkan di `src/test/` karena `vitest.config.ts` hanya meng-include `src/**` dan `supabase/migrations/**`).
+
+## Fase 6 layanan dinamis: saran pengunjung lama pada isian Nama/HP Front Office (202611010001) — BELUM DITERAPKAN
+
+| Versi | Berkas | Isi | Status |
+|---|---|---|---|
+| 202611010001 | `202611010001_fo_cari_pengunjung.sql` | `hp_normal(text)` (IMMUTABLE); indeks trigram `idx_kunjungan_nama_trgm`, `idx_kunjungan_hp_trgm`; RPC `fo_cari_pengunjung(p_q)` (FO/admin aktif; min 3 karakter/digit di server; maks 5 orang; HP disamarkan; tanpa data teranonimkan dan > 730 hari); RPC `fo_ambil_pengunjung(p_id)` (identitas penuh satu kunjungan terpilih; diaudit di `audit_log`; 60 per 10 menit per akun). Aditif: tanpa DELETE/DROP/UPDATE nilai lama, tanpa ekstensi baru. | **DITULIS, BELUM DITERAPKAN** |
+
+**Urutan terap (hanya pemilik, atomik, dry-run dulu):** SESUDAH `202610310002` (dan seluruh rantai Fase 1-5 sebelumnya). Migrasi menolak berjalan bila `staf_lingkup` (202610290001), `sesi_valid` atau ekstensi `pg_trgm` belum ada.
+
+```bash
+node scripts/apply-migration.mjs supabase/migrations/202611010001_fo_cari_pengunjung.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202611010001_fo_cari_pengunjung.sql --atomic
+```
+
+**Perilaku bila belum diterapkan (aplikasi tidak crash):** formulir walk-in mem-probe RPC sekali; bila tidak ada, isian Nama/Nomor HP tetap input biasa (tanpa saran). Banner "Pernah berkunjung" lama sudah dihapus (sejak Fase 3 hanya menemukan kunjungan milik sendiri); datalist asal/instansi tidak berubah.
+
+**Daftar periksa pemilik:**
+1. Dry-run, lalu terapkan atomik setelah `202610310002`.
+2. Sebagai akun FO: buka Registrasi > Walk-in, ketik 3 huruf nama pengunjung yang pernah datang: dropdown muncul di bawah isian Nama (<= 5 saran, HP tersamar `0812****789`). Pilih satu: nama/HP/email/asal/kategori terisi; "Kosongkan isian" membatalkan.
+3. Ketik 3 angka di Nomor HP: saran muncul juga. Ketik nama baru yang belum pernah ada: tidak ada saran, formulir terkirim seperti biasa.
+4. Sebagai akun Petugas Layanan atau pengunjung: `select fo_cari_pengunjung('budi')` ditolak `FORBIDDEN` (42501); isian Nama tidak menampilkan saran.
+5. Pastikan pengunjung yang sudah dianonimkan (nama `[anonim]`) tidak muncul.
+6. `select aksi, count(*) from audit_log where aksi = 'fo_ambil_pengunjung' group by 1` bertambah setiap kali saran dipilih (detail hanya id kunjungan, tanpa PII).
+7. `EXPLAIN` pada `fo_cari_pengunjung` dengan tabel `kunjungan` besar memakai indeks trigram (pantau; bila lambat, laporkan).
+8. Celah tersisa (tidak disentuh Fase 6): `buku_tamu` masih terbaca semua FO untuk semua tanggal.
+9. Rollback: `docs/rollback-fo-cari-pengunjung-202611010001.sql` (hanya menghapus objek baru; baris `audit_log` dibiarkan).
