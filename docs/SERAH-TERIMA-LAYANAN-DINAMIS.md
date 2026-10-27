@@ -58,7 +58,7 @@ Aturan: `node scripts/apply-migration.mjs --atomic --dry-run supabase/migrations
 
 ```
 202610270001 → 202610270002 → 202610280001 → 202610290001 → 202610290002
-→ 202610300001 → 202610300002 → 202610310001 → 202610310002 → 202610310003 → 202611010001
+→ 202610300001 → 202610300002 → 202610310001 → 202610310002 → 202610310003 → 202611010001 → 202611010002
 ```
 
 - Terapkan **dalam satu jendela dengan deploy**. Tanpa migrasi: halaman Rekap kosong (409), Kelola Layanan dan API Instansi error. Beranda, chat, dan form FO mundur ke perilaku lama tanpa crash.
@@ -75,7 +75,7 @@ Aturan: `node scripts/apply-migration.mjs --atomic --dry-run supabase/migrations
 4. Pastikan petugas punya `email_notifikasi` terverifikasi (email chat di luar jam hanya ke alamat terverifikasi); uji sekali di luar jam.
 5. Beri tahu petugas FO: eskalasi berhenti pada jam tutup layanan (umumnya 15:30), walk-in tetap sampai 16:00; FO dan petugas biasa tidak lagi melihat data rekan; halaman Rekap berubah.
 6. Skrip uji DB `scripts/test-fo-eskalasi.mjs` dan `scripts/test-perbaikan-review.mjs` rusak oleh jadwal default; sesuaikan sebelum dipakai (rincian di `docs/MIGRATIONS.md`).
-7. **Verifikasi perilaku di database (belum pernah dilakukan)**: FO/petugas biasa tidak melihat kunjungan, tahap, pendataan, atau chat tutup milik rekan; Koordinator dan admin melihat sesuai lingkup; pencarian pengunjung hanya untuk FO/admin; email chat tidak terkirim dua kali. Periksa juga `EXPLAIN` untuk `rekap_data_pelayanan` pada data besar dan lama kunci saat membuat indeks trigram (`kunjungan` terkunci tulis beberapa detik).
+7. **Verifikasi perilaku di database.** Sebagian sudah dibuktikan di PGlite pada skema asli (`node scripts/lokal-rantai/skenario-akses-data.mjs`, 75 cek: kunjungan, penanganan, tiket, chat, rekap, pencarian pengunjung, ambil alih; tanpa pgvector/pg_cron). Tetap perlu di DB nyata: FO/petugas biasa tidak melihat kunjungan, tahap, pendataan, atau chat tutup milik rekan; Koordinator dan admin melihat sesuai lingkup; pencarian pengunjung hanya untuk FO/admin; email chat tidak terkirim dua kali. Periksa juga `EXPLAIN` untuk `rekap_data_pelayanan` pada data besar dan lama kunci saat membuat indeks trigram (`kunjungan` terkunci tulis beberapa detik).
 8. Cek di browser: seluruh UI baru hanya diuji lewat jsdom.
 
 ### B. Keputusan pemilik yang masih terbuka
@@ -87,7 +87,7 @@ Aturan: `node scripts/apply-migration.mjs --atomic --dry-run supabase/migrations
 - **Chat:** penanda "belum dibaca" per perangkat; persetujuan PDP hanya dicatat pada percakapan pertama per layanan; pengunjung yang dianonimkan atau berganti akun Google memulai percakapan baru.
 
 ### C. Celah keamanan yang diketahui dan belum ditutup
-- `tiket_antrean` `tiket_staff_select` (tanpa `TO`): hitungan dan durasi tiket rekan terbaca.
+- ~~`tiket_antrean` `tiket_staff_select` (tanpa `TO`): tiket rekan terbaca.~~ **Ditutup** oleh migrasi `202611010002` (belum diterapkan; terbukti di PGlite pada skema asli, `scripts/lokal-rantai`). Dampak: tiket hari-hari lampau milik rekan tidak terbaca FO/petugas biasa; hari ini utuh.
 - `buku_tamu`: semua FO membaca semua tanggal.
 - Lihat juga B (pencarian pengunjung, PII di teks bebas).
 

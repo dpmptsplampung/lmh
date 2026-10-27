@@ -22,7 +22,6 @@ describe('202611010001_fo_cari_pengunjung migration', () => {
   it('terdaftar tepat sesudah 202610310003 dan menjaga prasyarat', () => {
     const daftar = FORWARD_MIGRATION_FILES as readonly string[];
     expect(daftar.indexOf(NAMA_FILE)).toBe(daftar.indexOf('202610310003_chat_perbaikan_review.sql') + 1);
-    expect(daftar.indexOf(NAMA_FILE)).toBe(daftar.length - 1);
     for (const p of ['public.staf_lingkup()', 'public.sesi_valid()']) expect(bare).toContain(`to_regprocedure('${p}')`);
     expect(bare).toMatch(/extname = 'pg_trgm'/);
   });

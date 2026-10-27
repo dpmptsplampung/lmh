@@ -1154,3 +1154,22 @@ node scripts/apply-migration.mjs supabase/migrations/202611010001_fo_cari_pengun
 7. `EXPLAIN` pada `fo_cari_pengunjung` dengan tabel `kunjungan` besar memakai indeks trigram (pantau; bila lambat, laporkan).
 8. Celah tersisa (tidak disentuh Fase 6): `buku_tamu` masih terbaca semua FO untuk semua tanggal.
 9. Rollback: `docs/rollback-fo-cari-pengunjung-202611010001.sql` (hanya menghapus objek baru; baris `audit_log` dibiarkan).
+
+## Penutupan celah `tiket_antrean` (202611010002) — BELUM DITERAPKAN
+
+| Versi | Berkas | Isi | Status |
+|---|---|---|---|
+| 202611010002 | `202611010002_tiket_antrean_lingkup.sql` | `boleh_tiket_baca(kunjungan, layanan, tanggal)` (SECURITY DEFINER) dan policy `tiket_staff_select` diganti: `TO authenticated`, admin / FO Koordinator semua; selain itu `boleh_kunjungan()` atau, HARI INI (WIB), FO semua tiket dan petugas tiket layanannya | DITULIS, BELUM DITERAPKAN |
+
+**Urutan terap (hanya pemilik, atomik, dry-run dulu):** SESUDAH `202611010001` (menolak berjalan bila `staf_lingkup`/`boleh_kunjungan` belum ada).
+
+```bash
+node scripts/apply-migration.mjs supabase/migrations/202611010002_tiket_antrean_lingkup.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202611010002_tiket_antrean_lingkup.sql --atomic
+```
+
+**Dampak yang terlihat pengguna:** FO dan petugas biasa tidak lagi membaca tiket HARI-HARI SEBELUMNYA milik rekan (mis. halaman Antrian dengan tanggal lampau, hitungan dasbor tanggal lampau). Hari ini tetap utuh (antrean, hitungan "selesai", rata-rata durasi). Koordinator dan admin sesuai lingkup. Riwayat lintas orang tersedia lewat halaman Rekap.
+
+**Daftar periksa pemilik:** (1) dry-run lalu terapkan; (2) sebagai FO/petugas biasa buka Antrian hari ini: daftar, hitungan selesai, dan rata-rata durasi sama seperti sebelumnya; (3) buka tanggal lampau: tiket rekan tidak muncul, tiket sendiri tetap; (4) `EXPLAIN` pada `select count(*) from tiket_antrean where tanggal = current_date` (policy memanggil fungsi per baris; pantau pada data besar); (5) rollback: `docs/rollback-tiket-antrean-lingkup-202611010002.sql`.
+
+**Terbukti dengan:** `node scripts/lokal-rantai/skenario-akses-data.mjs` (PGlite, seluruh rantai migrasi pada skema asli; sebelum migrasi ini 3 cek tiket gagal, sesudahnya 75/75 lolos). `buku_tamu` sengaja TIDAK diubah: meja FO bersama, menunggu keputusan pemilik.
