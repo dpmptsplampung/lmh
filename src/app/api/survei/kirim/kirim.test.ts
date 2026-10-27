@@ -148,18 +148,15 @@ describe('POST /api/survei/kirim', () => {
       expect(rpc).not.toHaveBeenCalled();
     });
 
-    // zod 4 mengabaikan kunci `__proto__` milik sendiri (perlindungan prototype pollution) alih-alih menolaknya. Yang
-    // penting: RPC hanya menerima objek bersih hasil parse, jadi kunci itu tidak pernah sampai ke basis data.
-    it('kunci "__proto__" pada skm tidak diteruskan ke RPC (objek yang dikirim hanya memuat 11 kunci sah)', async () => {
+    // Sejak zod 4.6.6 kunci `__proto__` milik sendiri pada objek strict ditolak (sebelumnya diabaikan diam-diam).
+    // Yang dijaga: kunci itu tidak pernah sampai ke RPC/basis data.
+    it('kunci "__proto__" pada skm ditolak 400 dan RPC TIDAK dipanggil', async () => {
       const rpc = mockRpc('submitted');
       const { POST } = await import('./route');
       const mentah = `{"token":"${TOKEN}","spak":${JSON.stringify(SPAK_OK)},"skm":${JSON.stringify(SKM_OK).slice(0, -1)},"__proto__":{"x":1}}}`;
       const res = await POST(request(mentah));
-      expect(res.status).toBe(201);
-      const [, args] = rpc.mock.calls[0];
-      expect(Object.keys(args.p_skm)).toEqual(UNSUR_SKM.map((u) => u.kunci));
-      expect(Object.hasOwn(args.p_skm, '__proto__')).toBe(false);
-      expect(args.p_skm).toEqual(SKM_OK);
+      expect(res.status).toBe(400);
+      expect(rpc).not.toHaveBeenCalled();
     });
 
     it('respons 400 tidak memantulkan nilai kiriman', async () => {
