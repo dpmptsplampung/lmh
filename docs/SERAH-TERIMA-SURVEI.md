@@ -20,18 +20,19 @@ Pemilik menamai seluruh fitur (survei + saran + pengaduan) **"Pesan Perilaku"** 
 | 9 | `19134d7` | Wizard publik `/survei/<token>` |
 | 10 | `b490257` | QR staf, lencana status, integrasi antrean FO dan layanan |
 | 11 | `3800e89` | Unduhan XLSX untuk Admin dan FO |
-| 12 | — | `/admin/skm`: ringkasan IKM baru, tab SPAK, tombol unduh (lihat "Sisa") |
-| 13 | — | Dokumentasi dan gate akhir (lihat "Sisa") |
+| 12 | `ba873d9` | `/admin/skm`: satu panggilan `ringkasan_ikm`, tab IKM dan SPAK, tombol Unduh (Admin dan FO) |
+| 13 | commit `docs(survei): peta kode...` | `CLAUDE.md`, matriks RBAC, `STATUS.md`; gate penuh lolos (lint, typecheck, 249 file / 3242 test, build, manifest 77 berkas) |
 
 Per-task review dilewati untuk Task 5–13 atas permintaan pemilik (R15); yang tersisa **satu review menyeluruh dan satu gate penuh di akhir**.
 
 ## Sisa pekerjaan
 
-1. **Task 12** (rincian di rencana, Task 12): buat `src/components/admin/SpakPanel.tsx`, ubah `src/app/admin/skm/page.tsx` (satu panggilan `ringkasan_ikm` menggantikan loop `hitung_ikm`; tab IKM dan SPAK; tab SPAK dan tombol Unduh hanya untuk Admin/FO) dan `skm.test.tsx`. Test `SpakPanel.test.tsx` sudah ditulis tetapi belum di-commit.
-2. **Task 13**: `CLAUDE.md`, `docs/analysis/04-RBAC-MATRIX.md`, `docs/STATUS.md`; jalankan lint, typecheck, test, build.
-3. **Satu review menyeluruh** atas seluruh branch (fokus: RPC publik tanpa login, token undangan, pembatasan laju, RLS jawaban).
-4. **Nomori ulang migrasi** sebelum digabung. Migrasi survei bernomor `202610270001–0004` bentrok dengan Fase 1 (`202610270001`, `0002`), padahal ledger produksi memakai nomor depan sebagai `version`. Ganti ke nomor setelah `202611010001` (mis. `202611020001–0004`), termasuk nama berkas test, `MANIFEST.json`, `FORWARD_MIGRATION_FILES`, dan rujukan di test (`survei_*.test.ts`, `scripts/lokal`).
-5. Gabungkan dengan `feat/fase-1-fondasi-layanan`: branch ini berpangkal pada `main` lama (`49409c4`) dan tidak memuat Fase 1–6.
+Task 1–13 selesai dan gate penuh lolos (2026-10-27). Yang tersisa:
+
+1. **Satu review menyeluruh** atas seluruh branch (fokus: RPC publik tanpa login, token undangan, pembatasan laju, RLS jawaban, `get_survei_context` dan `kirim_survei`). Per-task review dilewati untuk Task 5–13 atas permintaan pemilik (R15).
+2. **Nomori ulang migrasi** sebelum digabung. Migrasi survei bernomor `202610270001–0004` bentrok dengan Fase 1 (`202610270001`, `0002`), padahal ledger produksi memakai nomor depan sebagai `version`. Ganti ke nomor setelah `202611010001` (mis. `202611020001–0004`), termasuk nama berkas test, `MANIFEST.json`, `FORWARD_MIGRATION_FILES`, dan rujukan di test (`survei_*.test.ts`, `scripts/lokal`).
+3. **Gabungkan** dengan `feat/fase-1-fondasi-layanan`: branch ini berpangkal pada `main` lama (`49409c4`) dan tidak memuat Fase 1–6. Akan ada bentrok di `MANIFEST.json`, `migration-test-utils.ts`, `CLAUDE.md`, `docs/STATUS.md`, dan `docs/analysis/04-RBAC-MATRIX.md`.
+4. Verifikasi perilaku di Postgres sungguhan dan tampilan di browser (wizard `/survei/<token>`, QR staf, tab SPAK): belum pernah dilakukan.
 
 ## Migrasi survei (ditulis, belum diterapkan; setelah dinomori ulang)
 
