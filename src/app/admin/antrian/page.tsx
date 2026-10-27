@@ -35,6 +35,7 @@ import {
   Undo2,
   ArrowRightLeft,
   MessageSquare,
+  QrCode,
 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import CalendarBanner from '@/components/admin/CalendarBanner';
@@ -47,6 +48,9 @@ import AmbilAlihTiketModal, { type TiketAmbilAlih } from '@/components/admin/Amb
 import AlihkanTiketModal, { type TiketAlihkan } from '@/components/admin/AlihkanTiketModal';
 import KembalikanKeFoModal, { type TiketKembalikan } from '@/components/admin/KembalikanKeFoModal';
 import SelesaiEskalasiModal, { type TiketSelesaiEskalasi } from '@/components/admin/SelesaiEskalasiModal';
+import SurveiQrDialog from '@/components/admin/SurveiQrDialog';
+import SurveiStatusBadge from '@/components/admin/SurveiStatusBadge';
+import { ambilStatusSurvei, type StatusSurvei } from '@/lib/survei/staf';
 import {
   formPendataanLayanan,
   bolehMulaiTiket,
@@ -104,6 +108,7 @@ interface LayananEmbed {
 
 interface AntrianRow {
   id: string;             // tiket_antrean.id
+  kunjungan_id: string;   // kunci status/QR Pesan Perilaku (survei terpadu)
   legacy_visit_id: string;
   layanan_id: string;
   dilayani_oleh: string | null; // petugas.id yang memulai layanan (pemilik tiket)
@@ -156,6 +161,9 @@ export default function AntrianPage() {
   const [alihkanTiket, setAlihkanTiket] = useState<TiketAlihkan | null>(null);
   const [kembalikanTiket, setKembalikanTiket] = useState<TiketKembalikan | null>(null);
   const [selesaiEskalasiTiket, setSelesaiEskalasiTiket] = useState<TiketSelesaiEskalasi | null>(null);
+  // Pesan Perilaku (survei terpadu): kunjungan yang QR-nya sedang ditampilkan + status per kunjungan (tiket selesai).
+  const [qrKunjunganId, setQrKunjunganId] = useState<string | null>(null);
+  const [statusSurvei, setStatusSurvei] = useState<ReadonlyMap<string, StatusSurvei>>(new Map());
   // penanganan_asal_id -> catatan eskalasi FO (dimuat bersama daftar; kosong bila tak terbaca).
   const [catatanEskalasi, setCatatanEskalasi] = useState<Record<string, CatatanEskalasi>>({});
   // Tiket yang sedang diproses: tombolnya dikunci sampai RPC selesai (ref = penjaga klik ganda sebelum render ulang).
@@ -217,7 +225,7 @@ export default function AntrianPage() {
       let query = supabase
         .from('tiket_antrean')
         .select(`
-          id, legacy_visit_id, layanan_id, dilayani_oleh, penanganan_asal_id, nomor, nomor_display, status,
+          id, kunjungan_id, legacy_visit_id, layanan_id, dilayani_oleh, penanganan_asal_id, nomor, nomor_display, status,
           waktu_terbit, waktu_mulai_layan, waktu_selesai,
           layanan:layanan_id(nama, form_pendataan),
           pelayan:dilayani_oleh(nama),
@@ -234,7 +242,7 @@ export default function AntrianPage() {
       const barisAntrian = (data || []) as unknown as AntrianRow[];
       setAntrian(barisAntrian);
       setTotalCount(count ?? (data?.length ?? 0));
-      await muatCatatanEskalasi(supabase, barisAntrian);
+      await Promise.all([muatCatatanEskalasi(supabase, barisAntrian), muatStatusSurvei(supabase, barisAntrian)]);
 
       // T-5: Stats dari server, bukan dari halaman aktif saja
       let statsQuery = supabase
@@ -292,6 +300,29 @@ export default function AntrianPage() {
       setCatatanEskalasi({});
     }
   }
+
+  // Status Pesan Perilaku tiket selesai (view v_survei_status), sekali per muat data. Pelengkap: kegagalan memuatnya tidak
+  // boleh menggagalkan daftar antrean (lencana tidak ditampilkan alih-alih menampilkan status keliru).
+  async function muatStatusSurvei(supabase: ReturnType<typeof createClient>, baris: AntrianRow[]) {
+    const ids = baris.filter((b) => b.status === 'selesai' && b.kunjungan_id).map((b) => b.kunjungan_id);
+    if (ids.length === 0) {
+      setStatusSurvei(new Map());
+      return;
+    }
+    try {
+      setStatusSurvei(await ambilStatusSurvei(supabase, ids));
+    } catch (e) {
+      console.error('Gagal memuat status Pesan Perilaku:', e);
+      setStatusSurvei(new Map());
+    }
+  }
+
+  // Setelah tiket diselesaikan: buka dialog QR secara spekulatif; dialog menutup dirinya bila kunjungan belum selesai
+  // (mis. masih ada tahap lain) sehingga tidak ada QR yang salah tampil.
+  const bukaQrTiket = (tiketId: string | null) => {
+    const kunjunganId = antrian.find((a) => a.id === tiketId)?.kunjungan_id;
+    if (kunjunganId) setQrKunjunganId(kunjunganId);
+  };
 
   // WP-23 QUE-17: emit nomor_dipanggil event via panggil_tiket RPC.
   const handlePanggil = async (tiketId: string, nomorDisplay: string) => {
@@ -379,6 +410,7 @@ export default function AntrianPage() {
         const supabase = createClient();
         await mutasiWajibBaris(supabase.rpc('layanan_selesai', { p_tiket_id: a.id }));
         toast('Kunjungan berhasil diselesaikan', 'success');
+        bukaQrTiket(a.id);
         await fetchData();
       } catch (e) {
         console.error('Gagal menyelesaikan antrian:', e);
@@ -921,6 +953,23 @@ export default function AntrianPage() {
                                     Lihat Data
                                   </button>
                                 )}
+                                {a.status === 'selesai' && statusSurvei.get(a.kunjungan_id) && (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                                    <small style={{ color: 'var(--text-tertiary)' }}>Pesan Perilaku</small>
+                                    <SurveiStatusBadge status={statusSurvei.get(a.kunjungan_id) as StatusSurvei} />
+                                    {statusSurvei.get(a.kunjungan_id) === 'belum_diisi' && (
+                                      <button
+                                        className="btn btn--secondary btn--xs"
+                                        onClick={() => setQrKunjunganId(a.kunjungan_id)}
+                                        aria-label={`Tampilkan QR Pesan Perilaku tiket ${a.nomor_display}`}
+                                        style={{ fontSize: '11px', padding: '2px 6px', width: 'fit-content' }}
+                                      >
+                                        <QrCode size={12} style={{ marginRight: '3px' }} aria-hidden="true" />
+                                        Tampilkan QR
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
                                 {a.status === 'selesai' && punyaPendataan(a) && (
                                   isAdminLike ? (
                                     <button
@@ -1000,7 +1049,11 @@ export default function AntrianPage() {
           key={selesaiEskalasiTiket.id}
           tiket={selesaiEskalasiTiket}
           onClose={() => setSelesaiEskalasiTiket(null)}
-          onSuccess={fetchData}
+          onSuccess={async () => {
+            // Dipanggil juga setelah galat "tampilan basi"; dialog QR menutup sendiri bila tidak ada token.
+            bukaQrTiket(selesaiEskalasiTiket.id);
+            await fetchData();
+          }}
         />
       )}
 
@@ -1016,10 +1069,15 @@ export default function AntrianPage() {
         tiketId={activeWizardTiketId}
         onClose={() => setActiveWizardTiketId(null)}
         onSuccess={async () => {
+          bukaQrTiket(activeWizardTiketId);
           await fetchData();
         }}
         onDataBasi={fetchData}
       />
+
+      {qrKunjunganId && (
+        <SurveiQrDialog key={qrKunjunganId} kunjunganId={qrKunjunganId} onTutup={() => setQrKunjunganId(null)} />
+      )}
     </>
   );
 }

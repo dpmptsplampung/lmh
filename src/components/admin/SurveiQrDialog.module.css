@@ -1,0 +1,39 @@
+/* Isi dialog QR Pesan Perilaku (kerangka dialog: FoDialog.module.css). */
+.qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  text-align: center;
+}
+
+.kanvas {
+  padding: var(--space-2);
+  background: #ffffff;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  line-height: 0;
+}
+
+.petunjuk {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.layanan {
+  margin: 0;
+  font-weight: 600;
+}
+
+.batas {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.galat {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-danger-700);
+}
