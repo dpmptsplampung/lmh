@@ -110,7 +110,7 @@ export default function AmbilAlihTiketModal({ tiket, mode = 'admin', onClose, on
       <form
         onSubmit={kirim}
         style={{
-          background: 'var(--surface-elevated, #ffffff)', borderRadius: 'var(--radius-2xl, 16px)', width: '100%',
+          background: '#ffffff', borderRadius: 'var(--radius-2xl, 16px)', width: '100%',
           maxWidth: '480px', border: '1px solid var(--border-default, #e2e8f0)', overflow: 'hidden',
         }}
       >

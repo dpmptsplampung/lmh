@@ -14,8 +14,8 @@ Peran LMH: **fasilitator**. Proses perizinan tetap di sistem resmi tiap instansi
 
 | Branch | HEAD | Isi | Status |
 |---|---|---|---|
-| `feat/fase-1-fondasi-layanan` | `a089830` (+ commit dokumen ini) | Fase 1–6 (satu commit per fase) + dokumen ini + commit dependensi | Di-push ke `origin`. **Branch utama untuk dilanjutkan.** |
-| `feat/survei-terpadu-a` | `a986915` | Survei terpadu "Pesan Perilaku" (SPAK + SKM), Task 1–13 selesai, gate penuh lolos (3242 test, build) | Di-push ke `origin` (HEAD `7739b50`). Sisa: satu review menyeluruh, **nomori ulang 4 migrasi** (bentrok nomor dengan Fase 1), lalu gabung. Rincian: `docs/SERAH-TERIMA-SURVEI.md` pada branch itu |
+| `feat/fase-1-fondasi-layanan` | `4092231` (+ perbaikan tampilan dialog/popup, lihat "Pembaruan 2026-10-28") | Fase 1–6 + dokumen ini + commit dependensi + harness rantai penuh PGlite + `202611010002` (celah `tiket_antrean`) + `202611010003`/`0004` (identitas satu kesatuan, backfill) + email di rekap OSS/Non OSS + penanda pencatat Buku Tamu | Di-push ke `origin` (2026-10-27). **Branch utama untuk dilanjutkan.** |
+| `feat/survei-terpadu-a` | `c9e4528` | Survei terpadu "Pesan Perilaku" (SPAK + SKM), Task 1–13 selesai, gate penuh lolos (3242 test, build) | Di-push ke `origin` (HEAD `c9e4528`). 4 migrasi **sudah dinomori ulang** ke `202611020001–0004` (tidak lagi bentrok dengan Fase 1; gate penuh lolos). Sisa: satu review menyeluruh, lalu gabung. Rincian: `docs/SERAH-TERIMA-SURVEI.md` pada branch itu |
 | `claude/busy-poitras-cb912c` | `2333f03` | 6 perbaikan kecil: `?next=` setelah login, menu mobile FO, teks SKM, koreksi `CLAUDE.md`, RLS `standar_pelayanan` (migrasi `202610260001`), `/peta-potensi` tanpa login; + commit dependensi | Di-push ke `origin`, selesai |
 | `claude/amazing-borg-b06657` | `f7f0f8e` | Dependensi rentan dinaikkan (next 16.4.1, zod 4.6.6, undici 7.30.1, vite 8.3.5). Menutup kegagalan `audit:check` | Di-push ke `origin`, selesai |
 | `docs/rancangan-layanan-dinamis` | `f2a4061` | Spesifikasi, ADR, glosarium, rencana Fase 1 | Sudah termuat di `feat/fase-1-fondasi-layanan` |
@@ -23,6 +23,12 @@ Peran LMH: **fasilitator**. Proses perizinan tetap di sistem resmi tiap instansi
 
 Commit per fase di `feat/fase-1-fondasi-layanan` (di atas `565cb6f` = akhir Fase 1):
 `6d2b494` Fase 2 · `51d24c8` Fase 3 · `64c4277` Fase 4 · `4f3e432` Fase 5 · `9937fdd` Fase 6.
+
+### Pembaruan 2026-10-28
+
+- Push 2026-10-27 kedua branch (Fase 1 `4092231`, survei `c9e4528`) berhasil, tetapi **hook `.githooks/pre-push` TIDAK jalan** di mesin yang dipakai (berkas tidak executable, hanya muncul `hint: ... ignored`). Gate dijalankan manual sebelum push: lint, typecheck, test, `npm run build`, `audit:check`, `deps:check` (semua lolos). Perbaiki dengan `chmod +x .githooks/pre-push` atau `git config core.hooksPath .githooks` bila hook diinginkan di mesin lain.
+- Cek browser pertama (Chromium + mock Supabase, sesi admin palsu): beranda, popup layanan (klik, tautan langsung, slug tak ada), Buku Tamu (kolom Dicatat oleh), Rekap > Data Pelayanan (`EMAIL` + `[OSS] EMAIL` berdampingan, perlu memilih satu Layanan), dialog Selesaikan (isian email + pesan galat), riwayat FO (email). **Dua bug tampilan ditemukan dan diperbaiki:** popup layanan beranda dan `FormDialog`/`AmbilAlihTiketModal` memakai `--surface-elevated` (kaca putih 62% tanpa blur) sebagai latar dialog, sehingga isi halaman di belakangnya tembus dan sulit dibaca; latar kini opak. Belum diuji: layar sentuh, `AmbilAlihTiketModal` di browser, dan seluruh layar admin lain.
+- Prasyarat cek browser di mesin ini: paket Debian `libnspr4 libnss3 libatk1.0-0t64 libatk-bridge2.0-0t64 libasound2t64 libcairo2 libpango-1.0-0 libxdamage1 libatspi2.0-0t64` (sudah dipasang) dan CSP proyek hanya mengizinkan origin Supabase `https:` (mock harus berhost https).
 
 ### Catatan push (2026-10-27)
 

@@ -59,7 +59,8 @@ export default function FormDialog({
         onSubmit={kirim}
         noValidate
         style={{
-          background: 'var(--surface-elevated, #ffffff)', borderRadius: 'var(--radius-2xl, 16px)', width: '100%',
+          // Opak: --surface-elevated adalah kaca 62% tanpa blur, sehingga isi halaman di belakang dialog tembus dan sulit dibaca.
+          background: '#ffffff', borderRadius: 'var(--radius-2xl, 16px)', width: '100%',
           maxWidth, maxHeight: 'calc(100dvh - 2rem)', display: 'flex', flexDirection: 'column',
           border: '1px solid var(--border-default, #e2e8f0)', overflow: 'hidden',
         }}
