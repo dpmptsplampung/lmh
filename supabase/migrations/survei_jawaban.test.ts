@@ -3,10 +3,11 @@
 // versi/sumber/unit), tabel spak_respons, hitung_ikm 9/10/11 unsur, ringkasan_ikm/ringkasan_spak/ringkasan_response_rate,
 // dan v_skm_petugas dengan u10/u11. Tidak mengeksekusi SQL dan tidak menyentuh database. Uji PERILAKU:
 // scripts/lokal/skenario-survei-jawaban.mjs (PGlite lokal). Rollback: docs/rollback-survei-jawaban-202610270002.sql.
-// Kecocokan rentang CHECK dengan src/lib/survei/pertanyaan.ts ditambahkan di Task 6 (ruling R2: tanpa it.todo di sini).
+// Kecocokan rentang CHECK dan kunci dengan src/lib/survei/pertanyaan.ts diperiksa di blok "kecocokan" di bawah (Task 6).
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { PERTANYAAN_SPAK, RENTANG, UNSUR_SKM } from '../../src/lib/survei/pertanyaan';
 import { FORWARD_MIGRATION_FILES, MIGRATIONS_DIR, listMigrationFiles, stripSqlComments } from './migration-test-utils';
 import { mengandungKontrolTransaksi, mengubahPolicyAtauFungsi } from '../../scripts/lib/sql-txn.mjs';
 import { pecahPernyataan } from '../../scripts/lib/migration-markers.mjs';
@@ -516,6 +517,64 @@ describe('survei_jawaban: rollback', () => {
     expect(rollbackRaw).toMatch(/spak_respons/);
     expect(rollbackRaw).toMatch(/u10_transparansi/);
     expect(rollbackRaw).toMatch(/SEBELUM rollback 202610270001|SEBELUM rollback 0001|rollback 202610270003/);
+  });
+});
+
+// Kecocokan dengan src/lib/survei/pertanyaan.ts (Task 6, ruling R2/R3): rentang CHECK di basis data, himpunan kunci, dan
+// konstanta validasi RPC harus sama dengan konfigurasi yang dipakai wizard dan zod. Bila salah satu berubah sepihak,
+// wizard bisa menerima nilai yang ditolak basis data (atau sebaliknya) tanpa ketahuan sampai ada pengunjung yang gagal kirim.
+describe('survei_jawaban: kecocokan dengan src/lib/survei/pertanyaan.ts', () => {
+  type Rentang = { min: number; max: number };
+
+  /** Semua `<prefix><n>_nama smallint [NOT NULL] CHECK (<kolom> BETWEEN a AND b)` pada teks SQL, per kunci (p1..p5 / u1..u11). */
+  function rentangPerKunci(teks: string, awalan: 'p' | 'u'): Record<string, Rentang[]> {
+    const hasil: Record<string, Rentang[]> = {};
+    const pola = new RegExp(String.raw`\b(${awalan}\d+)_(\w+) smallint(?: NOT NULL)? CHECK \((${awalan}\d+_\w+) BETWEEN (\d+) AND (\d+)\)`, 'gi');
+    for (const m of teks.matchAll(pola)) {
+      // Nama kolom di CHECK harus kolom yang sama dengan yang dideklarasikan (bukan CHECK kolom lain yang menumpang).
+      expect(m[3]).toBe(`${m[1]}_${m[2]}`);
+      (hasil[m[1]] ??= []).push({ min: Number(m[4]), max: Number(m[5]) });
+    }
+    return hasil;
+  }
+
+  const tabelSpak = pernyataan.find((p) => /^CREATE TABLE (?:IF NOT EXISTS )?public\.spak_respons\b/i.test(p))!;
+  const tambahSkm = pernyataan.find((p) => /^ALTER TABLE public\.skm_respons ADD COLUMN IF NOT EXISTS u10_transparansi\b/i.test(p))!;
+  // u1..u9 berasal dari baseline (tidak boleh diubah); u10 dan u11 dari migrasi ini.
+  const tabelSkmAsli = rapikan(stripSqlComments(baca('202607140003_feature_schema.sql'))).match(/CREATE TABLE public\.skm_respons \([\s\S]*?\); CREATE INDEX/)![0];
+  const skm = { ...rentangPerKunci(tabelSkmAsli, 'u'), ...rentangPerKunci(tambahSkm, 'u') };
+  const spak = rentangPerKunci(tabelSpak, 'p');
+
+  it('SPAK: kolom CHECK ada untuk p1..p5 saja (tepat satu CHECK per kunci) dan rentangnya = RENTANG.spak', () => {
+    expect(Object.keys(spak).sort()).toEqual(PERTANYAAN_SPAK.map((p) => p.kunci).sort());
+    for (const [kunci, daftar] of Object.entries(spak)) {
+      expect(daftar, kunci).toEqual([RENTANG.spak]);
+    }
+  });
+
+  it('SKM: kolom CHECK ada untuk u1..u11 saja (u1..u9 dari baseline, u10/u11 dari migrasi) dan rentangnya = RENTANG.skm', () => {
+    expect(Object.keys(skm).sort()).toEqual(UNSUR_SKM.map((u) => u.kunci).sort());
+    for (const [kunci, daftar] of Object.entries(skm)) {
+      expect(daftar, kunci).toEqual([RENTANG.skm]);
+    }
+    // u10/u11 memang berasal dari migrasi ini, bukan dari baseline.
+    expect(Object.keys(rentangPerKunci(tambahSkm, 'u')).sort()).toEqual(['u10', 'u11']);
+  });
+
+  it('kirim_survei (202610270003): kunci yang diharapkan dan batas rentang = pertanyaan.ts', () => {
+    const rpc = rapikan(stripSqlComments(baca('202610270003_survei_rpc.sql')));
+    const deklarasi = (nama: string) => {
+      const m = rpc.match(new RegExp(`${nama} CONSTANT (?:text\\[\\]|numeric) := ([^;]+);`, 'i'));
+      if (!m) throw new Error(`konstanta ${nama} tidak ditemukan di kirim_survei`);
+      return m[1];
+    };
+    const daftarKunci = (nama: string) => [...deklarasi(nama).matchAll(/'(\w+)'/g)].map((m) => m[1]);
+    expect(daftarKunci('c_kunci_spak')).toEqual(PERTANYAAN_SPAK.map((p) => p.kunci));
+    expect(daftarKunci('c_kunci_skm')).toEqual(UNSUR_SKM.map((u) => u.kunci));
+    expect(Number(deklarasi('c_spak_min'))).toBe(RENTANG.spak.min);
+    expect(Number(deklarasi('c_spak_maks'))).toBe(RENTANG.spak.max);
+    expect(Number(deklarasi('c_skm_min'))).toBe(RENTANG.skm.min);
+    expect(Number(deklarasi('c_skm_maks'))).toBe(RENTANG.skm.max);
   });
 });
 
