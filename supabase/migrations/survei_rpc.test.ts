@@ -507,12 +507,13 @@ describe('survei_rpc: pencatatan (docs/ATURAN_MIGRASI.md #4) dan skenario', () =
     expect(baris.indexOf(b3)).toBeGreaterThan(baris.findIndex((l) => l.startsWith('| 202610270002 |')));
   });
 
-  it('docs/analysis/DB-CHANGES.md: entri 0003 adalah entri TERAKHIR, status DITULIS, BELUM DITERAPKAN, memuat hasil PGlite, rollback, dan skenario', () => {
+  it('docs/analysis/DB-CHANGES.md: entri 0003 SESUDAH entri 0002 (entri 0004 menyusul), status DITULIS, BELUM DITERAPKAN, memuat hasil PGlite, rollback, dan skenario', () => {
     const md = bacaDocs('analysis', 'DB-CHANGES.md');
     const i = md.lastIndexOf('202610270003_survei_rpc');
     expect(i).toBeGreaterThan(md.lastIndexOf('202610270002_survei_jawaban'));
-    const entri = md.slice(md.lastIndexOf('\n### ', i));
-    expect(md.lastIndexOf('\n### ')).toBe(md.lastIndexOf('\n### ', i)); // tidak ada entri lain sesudahnya
+    const mulai = md.lastIndexOf('\n### ', i);
+    const berikut = md.indexOf('\n### ', i);
+    const entri = md.slice(mulai, berikut < 0 ? undefined : berikut); // hanya entri 0003 sendiri
     expect(entri).toContain('Status       : DITULIS, BELUM DITERAPKAN');
     expect(entri).toMatch(/PGlite/);
     expect(entri).toContain(BERKAS_ROLLBACK);
