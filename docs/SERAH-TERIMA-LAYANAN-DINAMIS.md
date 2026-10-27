@@ -15,7 +15,7 @@ Peran LMH: **fasilitator**. Proses perizinan tetap di sistem resmi tiap instansi
 | Branch | HEAD | Isi | Status |
 |---|---|---|---|
 | `feat/fase-1-fondasi-layanan` | `9937fdd` | Fase 1–6 (6 commit, satu per fase) + dokumen ini | Lokal. **Branch utama untuk dilanjutkan.** |
-| `feat/survei-terpadu-a` | lihat `docs/SERAH-TERIMA-SURVEI.md` pada branch itu | Survei terpadu "Pesan Perilaku" (SPAK + SKM) | Lokal, Task 1–11 selesai, sisa Task 12–13 dan review akhir |
+| `feat/survei-terpadu-a` | `a986915` | Survei terpadu "Pesan Perilaku" (SPAK + SKM), Task 1–13 selesai, gate penuh lolos (3242 test, build) | Lokal. Sisa: satu review menyeluruh, **nomori ulang 4 migrasi** (bentrok nomor dengan Fase 1), lalu gabung. Rincian: `docs/SERAH-TERIMA-SURVEI.md` pada branch itu |
 | `claude/busy-poitras-cb912c` | `0a8f74c` | 6 perbaikan kecil: `?next=` setelah login, menu mobile FO, teks SKM, koreksi `CLAUDE.md`, RLS `standar_pelayanan` (migrasi `202610260001`), `/peta-potensi` tanpa login | Lokal, selesai |
 | `claude/amazing-borg-b06657` | `f7f0f8e` | Dependensi rentan dinaikkan (next 16.4.1, zod 4.6.6, undici 7.30.1, vite 8.3.5). Menutup kegagalan `audit:check` | Lokal, selesai |
 | `docs/rancangan-layanan-dinamis` | `f2a4061` | Spesifikasi, ADR, glosarium, rencana Fase 1 | Sudah termuat di `feat/fase-1-fondasi-layanan` |
