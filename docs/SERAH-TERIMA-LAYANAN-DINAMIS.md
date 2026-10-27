@@ -1,0 +1,118 @@
+# Serah terima: Layanan Dinamis (Fase 1–6)
+
+Ditulis 2026-10-27 untuk melanjutkan pekerjaan di sesi, akun, atau mesin lain. Baca bagian 1–3 dulu; sisanya rujukan.
+
+## 1. Ringkasan
+
+Audit sistem (2026-10-26) menemukan pengunjung online kurang terlayani, beranda kurang data, dan layanan (Balmon, Helpdesk OSS, dll.) masih hard-coded. Setelah sesi tanya-jawab dengan pemilik (Q1–Q48) dirancang dan dibangun enam fase: layanan dinamis dengan Instansi dan website resmi, beranda etalase dengan popup, Koordinator dan akses data per orang, Pendataan Khusus, live chat per layanan, dan saran pengunjung lama di Front Office.
+
+Semuanya **sudah ditulis dan lolos test, tetapi belum di-push, belum di-merge, dan belum ada migrasi yang diterapkan ke database mana pun.** Aturan akses di SQL baru diuji lewat test statis (membaca teks SQL), belum pernah dijalankan di Postgres.
+
+Peran LMH: **fasilitator**. Proses perizinan tetap di sistem resmi tiap instansi; LMH tidak menerima permohonan atau berkas.
+
+## 2. Posisi branch
+
+| Branch | HEAD | Isi | Status |
+|---|---|---|---|
+| `feat/fase-1-fondasi-layanan` | `9937fdd` | Fase 1–6 (6 commit, satu per fase) + dokumen ini | Lokal. **Branch utama untuk dilanjutkan.** |
+| `feat/survei-terpadu-a` | lihat `docs/SERAH-TERIMA-SURVEI.md` pada branch itu | Survei terpadu "Pesan Perilaku" (SPAK + SKM) | Lokal, Task 1–11 selesai, sisa Task 12–13 dan review akhir |
+| `claude/busy-poitras-cb912c` | `0a8f74c` | 6 perbaikan kecil: `?next=` setelah login, menu mobile FO, teks SKM, koreksi `CLAUDE.md`, RLS `standar_pelayanan` (migrasi `202610260001`), `/peta-potensi` tanpa login | Lokal, selesai |
+| `claude/amazing-borg-b06657` | `f7f0f8e` | Dependensi rentan dinaikkan (next 16.4.1, zod 4.6.6, undici 7.30.1, vite 8.3.5). Menutup kegagalan `audit:check` | Lokal, selesai |
+| `docs/rancangan-layanan-dinamis` | `f2a4061` | Spesifikasi, ADR, glosarium, rencana Fase 1 | Sudah termuat di `feat/fase-1-fondasi-layanan` |
+| `backup/*` (7 branch lokal) | — | Salinan sebelum commit sementara digabung per fase | Boleh dihapus; jangan di-push |
+
+Commit per fase di `feat/fase-1-fondasi-layanan` (di atas `565cb6f` = akhir Fase 1):
+`6d2b494` Fase 2 · `51d24c8` Fase 3 · `64c4277` Fase 4 · `4f3e432` Fase 5 · `9937fdd` Fase 6.
+
+## 3. Peta dokumen
+
+- Rancangan: [`docs/superpowers/specs/2026-10-26-layanan-dinamis-design.md`](superpowers/specs/2026-10-26-layanan-dinamis-design.md) (batasan B1–B5 mengikat semua fase; keputusan Q1–Q48).
+- Keputusan arsitektur: `docs/adr/0001` (Instansi terpisah dari Layanan), `0002` (formulir OSS/Non OSS tetap), `0003` (Koordinator = penanda, bukan role).
+- Istilah: `GLOSSARY.md`.
+- Rencana per fase, memuat **inventaris jalur baca data** dan **"Keputusan pelaksana" beserta biayanya bila keliru**: `docs/superpowers/plans/2026-10-26-fase-1-…`, `2026-10-28-fase-2-…`, `2026-10-29-fase-3-…`, `2026-10-30-fase-4-…`, `2026-10-31-fase-5-…`, `2026-11-01-fase-6-…`.
+- Penerapan: `docs/MIGRATIONS.md` (urutan terap, daftar periksa pemilik, rollback), `docs/STATUS.md`, `docs/analysis/04-RBAC-MATRIX.md` §7–§10, `CLAUDE.md` (peta kode terbaru).
+- Skrip rollback: `docs/rollback-koordinator-akses-data-202610290001.sql`, `docs/rollback-rekap-terpadu-202610290002.sql`, `docs/rollback-fo-cari-pengunjung-202611010001.sql`.
+
+## 4. Yang sudah dibangun per fase
+
+| Fase | Migrasi (belum diterapkan) | Inti |
+|---|---|---|
+| 1 Fondasi layanan | `202610270001`, `202610270002` | Tabel `instansi`; layanan punya slug, deskripsi, urutan, website terkait; admin tambah/ubah/arsip/hapus di `/admin/layanan`; satu jadwal per layanan (`jadwal_standby` + `hari_libur`, fungsi `is_layanan_buka_jadwal`); jadwal default Senin–Jumat 08:00–15:30; bot memakai profil layanan |
+| 2 Beranda | `202610280001` | 7 blok tetap yang diatur admin (`homepage_blok`); kartu layanan otomatis; popup `/?layanan=<slug>`; status buka/tutup dan antrean |
+| 3 Koordinator dan rekap | `202610290001`, `202610290002` | Penanda `petugas.koordinator`; akses data per orang (membalik `202610140013`); ambil alih pendataan; Rekap terpadu (Harian, Data Pelayanan + Excel, Kinerja) dengan satu definisi "dilayani" |
+| 4 Pendataan | `202610300001`, `202610300002` | Pendataan Khusus dinamis per layanan non-OSS; topik di langkah selesai OSS/Non OSS; pendataan saat menutup live chat; kolom `[Khusus]` di rekap dan Excel |
+| 5 Live chat | `202610310001`, `0002`, `0003` | Satu percakapan per layanan dengan riwayat lintas sesi; bot di luar jam; email ke petugas bila pengunjung meminta; lingkup baca chat menutup celah FO membaca semua chat |
+| 6 Saran pengunjung | `202611010001` | Autocomplete di kolom Nama dan Nomor HP walk-in FO; RPC pencarian bertopeng + pengambilan identitas (diaudit, dibatasi 60/10 menit) |
+
+## 5. Urutan terap migrasi (hanya pemilik; menyentuh produksi)
+
+Aturan: `node scripts/apply-migration.mjs --atomic --dry-run supabase/migrations/<file>.sql` dulu, baru terapkan. Agen **tidak boleh** menerapkan; jangan jalankan `npm run test:rls` (menyambung ke produksi).
+
+```
+202610270001 → 202610270002 → 202610280001 → 202610290001 → 202610290002
+→ 202610300001 → 202610300002 → 202610310001 → 202610310002 → 202610310003 → 202611010001
+```
+
+- Terapkan **dalam satu jendela dengan deploy**. Tanpa migrasi: halaman Rekap kosong (409), Kelola Layanan dan API Instansi error. Beranda, chat, dan form FO mundur ke perilaku lama tanpa crash.
+- Branch lain membawa migrasi sendiri: `202610260001` (`claude/busy-poitras-cb912c`, terapkan lebih dulu atau kapan saja) dan 4 migrasi survei (`feat/survei-terpadu-a`).
+- **Bentrok nomor:** migrasi survei bernomor `202610270001–0004`, sama dengan Fase 1 (`202610270001`, `0002`). Ledger produksi memakai nomor depan sebagai `version`, jadi **migrasi survei wajib dinomori ulang** (mis. `202611020001–0004`, beserta nama berkas test, `MANIFEST.json`, `FORWARD_MIGRATION_FILES`) sebelum digabung. Perbarui juga rujukan di test survei.
+- `MANIFEST.json` dan `migration-test-utils.ts` akan bentrok saat menggabung branch mana pun; selesaikan dengan menyatukan entri lalu `node scripts/gen-migration-manifest.mjs --check`.
+
+## 6. Yang belum dikerjakan atau perlu tindakan
+
+### A. Saat penerapan (pemilik)
+1. Sebelum migrasi, hitung baca-saja: jumlah `layanan.aktif = false` (akan tampil "Diarsipkan") dan baris `jadwal_pengecualian` bertanggal mendatang (masih menutup hari tertentu tanpa terlihat di admin).
+2. Setelah terap: isi **Deskripsi** tiap layanan, Instansi, website terkait, jadwal 7 hari, dan hari libur di `/admin/layanan` dan `/admin/settings/jadwal`. Deskripsi di beranda lama tidak disalin otomatis (data lama tidak boleh diubah); `docs/MIGRATIONS.md` memuat SQL baca-saja untuk melihat teks lamanya.
+3. Tandai akun **Koordinator** di `/admin/petugas`.
+4. Pastikan petugas punya `email_notifikasi` terverifikasi (email chat di luar jam hanya ke alamat terverifikasi); uji sekali di luar jam.
+5. Beri tahu petugas FO: eskalasi berhenti pada jam tutup layanan (umumnya 15:30), walk-in tetap sampai 16:00; FO dan petugas biasa tidak lagi melihat data rekan; halaman Rekap berubah.
+6. Skrip uji DB `scripts/test-fo-eskalasi.mjs` dan `scripts/test-perbaikan-review.mjs` rusak oleh jadwal default; sesuaikan sebelum dipakai (rincian di `docs/MIGRATIONS.md`).
+7. **Verifikasi perilaku di database (belum pernah dilakukan)**: FO/petugas biasa tidak melihat kunjungan, tahap, pendataan, atau chat tutup milik rekan; Koordinator dan admin melihat sesuai lingkup; pencarian pengunjung hanya untuk FO/admin; email chat tidak terkirim dua kali. Periksa juga `EXPLAIN` untuk `rekap_data_pelayanan` pada data besar dan lama kunci saat membuat indeks trigram (`kunjungan` terkunci tulis beberapa detik).
+8. Cek di browser: seluruh UI baru hanya diuji lewat jsdom.
+
+### B. Keputusan pemilik yang masih terbuka
+- **Koreksi Pendataan Khusus** setelah tersimpan: saat ini tidak ada. Perlu jalur koreksi Admin dengan `audit_log`?
+- **PDP:** jawaban teks bebas Pendataan Khusus dan nilai identitas lama/baru di `audit_log` belum masuk job anonimisasi.
+- **Pencarian pengunjung:** pencarian bertopeng tidak diaudit atau dibatasi; hanya pengambilan identitas penuh yang dibatasi. Jendela data 730 hari.
+- **Ambil alih tahap FO:** petugas FO semula tidak bisa menyunting lagi (tahap FO tidak punya draf).
+- **Hitungan rekap:** satu kunjungan yang dilayani FO lalu layanan terhitung di dua unit, sehingga total tidak sama dengan jumlah kunjungan. Tahap layanan berhasil *dikembalikan* tidak dihitung.
+- **Chat:** penanda "belum dibaca" per perangkat; persetujuan PDP hanya dicatat pada percakapan pertama per layanan; pengunjung yang dianonimkan atau berganti akun Google memulai percakapan baru.
+
+### C. Celah keamanan yang diketahui dan belum ditutup
+- `tiket_antrean` `tiket_staff_select` (tanpa `TO`): hitungan dan durasi tiket rekan terbaca.
+- `buku_tamu`: semua FO membaca semua tanggal.
+- Lihat juga B (pencarian pengunjung, PII di teks bebas).
+
+### D. Fitur yang sengaja ditunda
+Koordinator mengambil alih **chat**; lampiran foto/dokumen di chat; papan kinerja publik; gerbang layanan berdasarkan absensi petugas (Q29); draf dan koreksi Pendataan Khusus, serta Khusus untuk tiket lama tanpa tahap; survei dan pengaduan terhubung (sedang di `feat/survei-terpadu-a`).
+
+### E. Catatan kecil hasil review (tidak menghalangi)
+- Fase 1: hapus-layanan dan simpan-tautan dibuat atomik lewat satu RPC dan tambah test yang gagal bila tabel baru merujuk `layanan`; konfirmasi arsip memperingatkan tiket menunggu; dialog form layanan perlu focus trap dan label terlihat; `seed.sql` mengisi jenis formulir pendataan eksplisit untuk database baru; sanitasi penanda bersarang di teks bot; eskalasi akhir pekan terblokir bila layanan tak punya baris jadwal; baris `jadwal_pengecualian` lama masih menutup hari tanpa terlihat.
+- Fase 2: tautan layanan di jawaban bot berupa teks relatif (tidak otomatis bisa diklik; aplikasi belum punya env URL publik); antrean di popup diambil sekali saat dibuka; ikon kartu dipilih otomatis dari slug; mematikan blok footer menyembunyikan teks footer (tautan Kebijakan Privasi tetap tampil).
+- Fase 4: opsi pilihan disimpan sebagai teks (mengganti nama opsi tidak memetakan ulang jawaban lama); urutan isian lewat tombol naik/turun, tanpa seret-lepas; tanpa draf.
+- Fase 5: daftar chat staf dipoll tiap 60 detik karena Realtime tidak mengirim baris yang keluar dari lingkup.
+- Pengujian: `WalkinPanel.test.tsx:473` kadang gagal hanya pada run penuh (lolos bila dijalankan sendiri). `.playwright-mcp/` belum ada di `.gitignore`; jangan di-commit.
+
+## 7. Melanjutkan di mesin lain
+
+```bash
+git fetch origin
+git switch feat/fase-1-fondasi-layanan     # setelah di-push
+npm ci
+npm run lint && npm run typecheck && npm test && npm run build
+node scripts/gen-migration-manifest.mjs --check
+```
+
+Terakhir diverifikasi (2026-10-27, `9937fdd`): lint dan typecheck bersih, 265 file / 3308 test lolos, build sukses, manifest cocok (84 berkas). `npm run audit:check` gagal karena advisory dependensi lama; perbaikannya ada di `claude/amazing-borg-b06657`.
+
+Aturan kerja (dari `AGENTS.md`): push dan operasi remote hanya atas perintah eksplisit pemilik; semua operasi GitHub lewat `gh` sebagai `dpmptsplampung`; jangan memakai kunci produksi; jangan menjalankan perintah yang mengubah atau menghapus database selain lokal; migrasi hanya diterapkan pemilik; baca `node_modules/next/dist/docs/` sebelum menulis kode Next.js (Next 16 berbeda dari pengetahuan umum).
+
+Pola kerja yang dipakai: satu fase = rencana (`writing-plans`) → implementasi TDD → review independen (reviewer keamanan untuk fase yang menyentuh akses data) → perbaikan → satu commit per fase.
+
+## 8. Batasan global yang harus dijaga (B1–B5)
+
+- **B1** Data yang sudah ada di database tidak diubah atau dihapus: boleh tabel/kolom/baris baru; tidak boleh `DELETE`, `DROP TABLE/COLUMN`, `UPDATE` nilai lama. Objek lama yang tak terpakai dibiarkan.
+- **B2** Migrasi = berkas forward baru `YYYYMMDDNNNN_nama.sql` + test kontrak statis + entri `MANIFEST.json` + `FORWARD_MIGRATION_FILES`. Kebijakan tulis admin wajib `TO authenticated`; jangan `FOR ALL` tanpa `TO` yang memanggil `get_my_role()`.
+- **B3** Role tetap tiga: `admin`, `front_office`, `petugas`. Koordinator hanya penanda.
+- **B4** Semua batas hari memakai WIB (`src/lib/time.ts`).
+- **B5** Live chat wajib login Google; tanpa magic-link untuk pengunjung.
