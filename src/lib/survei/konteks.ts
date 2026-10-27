@@ -1,5 +1,5 @@
 // Konteks undangan survei untuk halaman publik /survei/<token>: membungkus RPC anon `get_survei_context`
-// (migrasi 202610270003, hanya MEMBACA, tanpa identitas). Modul murni: tidak menyentuh DOM atau env.
+// (migrasi 202611020003, hanya MEMBACA, tanpa identitas). Modul murni: tidak menyentuh DOM atau env.
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export type StatusKonteks = 'ok' | 'kedaluwarsa' | 'sudah_diisi' | 'tidak_valid';

@@ -1,4 +1,4 @@
-// Skenario PGlite untuk migrasi 202610270003_survei_rpc.sql (survei terpadu Fase A, Task 4).
+// Skenario PGlite untuk migrasi 202611020003_survei_rpc.sql (survei terpadu Fase A, Task 4).
 // Membuktikan PERILAKU RPC publik (bisa dipanggil anon dengan sekadar memegang token) di atas stub skema; bukan pengganti
 // dry-run/test:rls pemilik di DB nyata:
 //   (a) kiriman sah -> submitted, tepat satu baris di spak_respons dan skm_respons, kolom terpetakan benar, diisi_pada terisi,
@@ -10,7 +10,7 @@
 //   (g) hak: anon/authenticated memanggil kedua RPC tetapi tidak membaca/menulis tabel; tanpa EXECUTE untuk PUBLIC;
 //   (h) integrasi dengan ringkasan IKM/SPAK/response rate (Task 3) dan trigger response rate lama; (i) rollback beserta urutannya.
 // Objek ASLI yang tidak ada di stub (hitung_ikm, v_skm_petugas, skm_response_rate + trigger) diekstrak apa adanya dari berkas
-// migrasi lama; lalu migrasi 202610270001 dan 202610270002 (prasyarat), lalu migrasi yang diuji.
+// migrasi lama; lalu migrasi 202611020001 dan 202611020002 (prasyarat), lalu migrasi yang diuji.
 // BATAS PGlite: satu sesi, tidak ada dua koneksi yang saling menunggu kunci baris. Kiriman "bersamaan" di sini = berurutan (dua
 // peran/sesi berbeda, satu pernyataan, satu transaksi, dan simulasi TOCTOU lewat diisi_pada dikosongkan). Penyerialan oleh
 // SELECT ... FOR UPDATE dijaga test statis (urutan FOR UPDATE terhadap pemeriksaan diisi_pada dan INSERT), bukan di sini.
@@ -22,12 +22,12 @@ import { fileURLToPath } from 'node:url';
 import { bukaDb, sebagai, terapkanBerkas, cek } from './pglite-harness.mjs';
 
 const dariRepo = (rel) => fileURLToPath(new URL(`../../${rel}`, import.meta.url));
-const MIGRASI_UNDANGAN = dariRepo('supabase/migrations/202610270001_survei_undangan.sql');
-const MIGRASI_JAWABAN = dariRepo('supabase/migrations/202610270002_survei_jawaban.sql');
-const MIGRASI = dariRepo('supabase/migrations/202610270003_survei_rpc.sql');
-const ROLLBACK = dariRepo('docs/rollback-survei-rpc-202610270003.sql');
-const ROLLBACK_JAWABAN = dariRepo('docs/rollback-survei-jawaban-202610270002.sql');
-const ROLLBACK_UNDANGAN = dariRepo('docs/rollback-survei-undangan-202610270001.sql');
+const MIGRASI_UNDANGAN = dariRepo('supabase/migrations/202611020001_survei_undangan.sql');
+const MIGRASI_JAWABAN = dariRepo('supabase/migrations/202611020002_survei_jawaban.sql');
+const MIGRASI = dariRepo('supabase/migrations/202611020003_survei_rpc.sql');
+const ROLLBACK = dariRepo('docs/rollback-survei-rpc-202611020003.sql');
+const ROLLBACK_JAWABAN = dariRepo('docs/rollback-survei-jawaban-202611020002.sql');
+const ROLLBACK_UNDANGAN = dariRepo('docs/rollback-survei-undangan-202611020001.sql');
 const ASAL_HITUNG_IKM = dariRepo('supabase/migrations/202607140004_security_and_automation.sql');
 const ASAL_V_SKM_PETUGAS = dariRepo('supabase/migrations/202610090001_rbac_tahap1.sql');
 const ASAL_RR = dariRepo('supabase/migrations/202607290006_skm_response_rate.sql');
@@ -82,7 +82,7 @@ function blok(berkas, awal, akhir) {
 }
 
 // --- Prasyarat: objek ASLI yang tidak ada di stub, lalu migrasi 0001 dan 0002 ----------------------------------
-console.log('memuat hitung_ikm, v_skm_petugas, skm_response_rate (+trigger) ASLI, lalu migrasi 202610270001 dan 202610270002');
+console.log('memuat hitung_ikm, v_skm_petugas, skm_response_rate (+trigger) ASLI, lalu migrasi 202611020001 dan 202611020002');
 await pg(blok(ASAL_HITUNG_IKM, 'CREATE FUNCTION public.hitung_ikm(', 'GRANT EXECUTE ON FUNCTION public.hitung_ikm(uuid, date, date) TO anon, authenticated;'));
 await pg(blok(ASAL_V_SKM_PETUGAS, 'CREATE OR REPLACE VIEW public.v_skm_petugas AS', 'GRANT SELECT ON public.v_skm_petugas TO authenticated;'));
 await pg(blok(ASAL_RR, 'CREATE TABLE IF NOT EXISTS public.skm_response_rate (', 'PRIMARY KEY (layanan_id, tanggal)\n);'));
@@ -195,7 +195,7 @@ const kirimDiTx = (token) => async (tx) =>
 const konteksDiTx = (token) => async (tx) => (await tx.query('SELECT public.get_survei_context($1) AS j', [token])).rows[0].j;
 
 // --- Terapkan migrasi (GAGAL bila berkas belum ada: fase RED) ------------------------------------------------------------
-console.log('menerapkan migrasi 202610270003');
+console.log('menerapkan migrasi 202611020003');
 await terapkanBerkas(db, MIGRASI);
 
 // --- (g1) Hak EXECUTE dan sifat fungsi ---------------------------------------------------------------------------

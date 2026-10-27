@@ -65,7 +65,7 @@ Mengikuti `docs/ATURAN_MIGRASI.md`; tiap task migrasi menghasilkan satu commit b
 ### Task 2: Migrasi `survei_undangan`, trigger, QR staf, view status
 
 **Files:**
-- Create: `supabase/migrations/202610270001_survei_undangan.sql`, `supabase/migrations/survei_undangan.test.ts`, `docs/rollback-survei-undangan-202610270001.sql`, `scripts/lokal/skenario-survei-undangan.mjs`
+- Create: `supabase/migrations/202611020001_survei_undangan.sql`, `supabase/migrations/survei_undangan.test.ts`, `docs/rollback-survei-undangan-202611020001.sql`, `scripts/lokal/skenario-survei-undangan.mjs`
 - Modify: `supabase/migrations/migration-test-utils.ts`, `supabase/migrations/MANIFEST.json`, `docs/analysis/DB-CHANGES.md`, `docs/MIGRATIONS.md`
 
 **Interfaces:**
@@ -88,7 +88,7 @@ Mengikuti `docs/ATURAN_MIGRASI.md`; tiap task migrasi menghasilkan satu commit b
 ### Task 3: Migrasi jawaban: `skm_respons` diperluas, `spak_respons`, ringkasan
 
 **Files:**
-- Create: `supabase/migrations/202610270002_survei_jawaban.sql`, `supabase/migrations/survei_jawaban.test.ts`, `docs/rollback-survei-jawaban-202610270002.sql`, `scripts/lokal/skenario-survei-jawaban.mjs`
+- Create: `supabase/migrations/202611020002_survei_jawaban.sql`, `supabase/migrations/survei_jawaban.test.ts`, `docs/rollback-survei-jawaban-202611020002.sql`, `scripts/lokal/skenario-survei-jawaban.mjs`
 - Modify: daftar/manifest/docs seperti prosedur migrasi
 
 **Interfaces:**
@@ -113,7 +113,7 @@ Mengikuti `docs/ATURAN_MIGRASI.md`; tiap task migrasi menghasilkan satu commit b
 ### Task 4: Migrasi RPC publik: `get_survei_context` dan `kirim_survei`
 
 **Files:**
-- Create: `supabase/migrations/202610270003_survei_rpc.sql`, `supabase/migrations/survei_rpc.test.ts`, `docs/rollback-survei-rpc-202610270003.sql`, `scripts/lokal/skenario-survei-rpc.mjs`
+- Create: `supabase/migrations/202611020003_survei_rpc.sql`, `supabase/migrations/survei_rpc.test.ts`, `docs/rollback-survei-rpc-202611020003.sql`, `scripts/lokal/skenario-survei-rpc.mjs`
 - Modify: daftar/manifest/docs seperti prosedur migrasi
 
 **Interfaces:**
@@ -132,7 +132,7 @@ Mengikuti `docs/ATURAN_MIGRASI.md`; tiap task migrasi menghasilkan satu commit b
 ### Task 5: Migrasi notifikasi: tautan survei memakai undangan
 
 **Files:**
-- Create: `supabase/migrations/202610270004_survei_notifikasi.sql`, `supabase/migrations/survei_notifikasi.test.ts`, `docs/rollback-survei-notifikasi-202610270004.sql`
+- Create: `supabase/migrations/202611020004_survei_notifikasi.sql`, `supabase/migrations/survei_notifikasi.test.ts`, `docs/rollback-survei-notifikasi-202611020004.sql`
 - Modify: daftar/manifest/docs seperti prosedur migrasi
 
 **Interfaces:**

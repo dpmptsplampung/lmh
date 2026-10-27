@@ -1,8 +1,8 @@
 // @vitest-environment node
-// Kontrak statis migrasi 202610270001_survei_undangan (survei terpadu Fase A, Task 2): tabel undangan, fungsi
+// Kontrak statis migrasi 202611020001_survei_undangan (survei terpadu Fase A, Task 2): tabel undangan, fungsi
 // idempoten ensure_undangan, trigger saat kunjungan selesai, QR staf (ambil_qr_survei), dan view status.
 // Tidak mengeksekusi SQL dan tidak menyentuh database. Uji PERILAKU: scripts/lokal/skenario-survei-undangan.mjs
-// (PGlite lokal). Rollback: docs/rollback-survei-undangan-202610270001.sql.
+// (PGlite lokal). Rollback: docs/rollback-survei-undangan-202611020001.sql.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -10,8 +10,8 @@ import { FORWARD_MIGRATION_FILES, MIGRATIONS_DIR, listMigrationFiles, stripSqlCo
 import { mengandungKontrolTransaksi, mengubahPolicyAtauFungsi } from '../../scripts/lib/sql-txn.mjs';
 import { pecahPernyataan } from '../../scripts/lib/migration-markers.mjs';
 
-const BERKAS = '202610270001_survei_undangan.sql';
-const BERKAS_ROLLBACK = 'rollback-survei-undangan-202610270001.sql';
+const BERKAS = '202611020001_survei_undangan.sql';
+const BERKAS_ROLLBACK = 'rollback-survei-undangan-202611020001.sql';
 
 const baca = (nama: string) => readFileSync(join(MIGRATIONS_DIR, nama), 'utf8').replace(/\r\n/g, '\n');
 const bacaDocs = (...bagian: string[]) => readFileSync(join(MIGRATIONS_DIR, '..', '..', 'docs', ...bagian), 'utf8').replace(/\r\n/g, '\n');
@@ -43,10 +43,10 @@ describe('survei_undangan: berkas, urutan, atomik', () => {
     expect(FORWARD_MIGRATION_FILES).toContain(BERKAS);
     expect(listMigrationFiles()).toContain(BERKAS);
     // Urutan daftar = urutan nomor, dan berkas ini mengungguli semua migrasi di luar seri survei terpadu
-    // (202610270001-202610270004; Task 3-5 menambah yang lain sesudahnya).
+    // (202611020001-202611020004; Task 3-5 menambah yang lain sesudahnya).
     const daftar = [...FORWARD_MIGRATION_FILES];
     expect(daftar).toEqual([...daftar].sort());
-    const luarSeri = listMigrationFiles().filter((nama) => nama !== BERKAS && !/^2026102700\d\d_/.test(nama));
+    const luarSeri = listMigrationFiles().filter((nama) => nama !== BERKAS && !/^2026110200\d\d_/.test(nama));
     for (const nama of luarSeri) expect(nama < BERKAS).toBe(true);
     // Nomor di atas paket audit (202610260001) agar urutan tetap sah bila kedua cabang digabung.
     expect(BERKAS > '202610260001').toBe(true);
@@ -56,9 +56,9 @@ describe('survei_undangan: berkas, urutan, atomik', () => {
     expect(mengandungKontrolTransaksi(raw)).toBe(false);
     expect(mengandungKontrolTransaksi(rollbackRaw)).toBe(false);
     expect(mengubahPolicyAtauFungsi(raw)).toBe(true);
-    expect(raw).toMatch(/apply-migration\.mjs supabase\/migrations\/202610270001_survei_undangan\.sql --atomic --dry-run/);
-    expect(raw).toMatch(/apply-migration\.mjs supabase\/migrations\/202610270001_survei_undangan\.sql --atomic\s*$/m);
-    expect(raw).toContain('docs/rollback-survei-undangan-202610270001.sql');
+    expect(raw).toMatch(/apply-migration\.mjs supabase\/migrations\/202611020001_survei_undangan\.sql --atomic --dry-run/);
+    expect(raw).toMatch(/apply-migration\.mjs supabase\/migrations\/202611020001_survei_undangan\.sql --atomic\s*$/m);
+    expect(raw).toContain('docs/rollback-survei-undangan-202611020001.sql');
   });
 
   it('tidak memuat DML data, tidak mengubah tabel/kolom lain, dan tidak memakai CASCADE', () => {
@@ -360,7 +360,7 @@ describe('survei_undangan: rollback', () => {
   it('tanpa CASCADE (ketergantungan yang DICATAT Postgres, mis. view/FK, menggagalkan DROP, bukan menghapus objek lain diam-diam); memperingatkan data hilang', () => {
     expect(rollback).not.toMatch(/\bCASCADE\b/i);
     expect(rollbackRaw).toMatch(/menghapus (?:SEMUA )?data undangan/i);
-    expect(rollbackRaw).toMatch(/apply-migration\.mjs docs\/rollback-survei-undangan-202610270001\.sql --atomic --dry-run/);
+    expect(rollbackRaw).toMatch(/apply-migration\.mjs docs\/rollback-survei-undangan-202611020001\.sql --atomic --dry-run/);
   });
 
   it('setiap objek yang dibuat migrasi punya pasangan DROP di rollback', () => {
@@ -388,7 +388,7 @@ describe('survei_undangan: pencatatan (docs/ATURAN_MIGRASI.md #4)', () => {
 
   it('docs/MIGRATIONS.md: bagian "Survei terpadu Fase A" memuat berkas dan rollback, sebelum bagian 0014', () => {
     const md = bacaDocs('MIGRATIONS.md');
-    const judul = '## Survei terpadu Fase A (202610270001-202610270004)';
+    const judul = '## Survei terpadu Fase A (202611020001-202611020004)';
     expect(md).toContain(judul);
     const bagian = md.slice(md.indexOf(judul), md.indexOf('## Data walk-in lengkap (0014)'));
     expect(md.indexOf(judul)).toBeLessThan(md.indexOf('## Data walk-in lengkap (0014)'));
@@ -399,7 +399,7 @@ describe('survei_undangan: pencatatan (docs/ATURAN_MIGRASI.md #4)', () => {
 
   it('docs/analysis/DB-CHANGES.md: entri baru di AKHIR berkas dengan status DITULIS, BELUM DITERAPKAN dan hasil PGlite', () => {
     const md = bacaDocs('analysis', 'DB-CHANGES.md');
-    const i = md.lastIndexOf('202610270001_survei_undangan');
+    const i = md.lastIndexOf('202611020001_survei_undangan');
     expect(i).toBeGreaterThan(0);
     const entri = md.slice(md.lastIndexOf('\n### ', i));
     expect(entri).toContain('Status       : DITULIS, BELUM DITERAPKAN');
@@ -408,6 +408,6 @@ describe('survei_undangan: pencatatan (docs/ATURAN_MIGRASI.md #4)', () => {
     expect(entri).toContain('skenario-survei-undangan.mjs');
     // Entri berikutnya (bila ada) hanya milik seri ini (0002-0004), bukan pekerjaan lain.
     const nomorBerikut = [...entri.slice(5).matchAll(/\n### [^\n]*\(M-(\d{12})_/g)].map((m) => m[1]);
-    for (const nomor of nomorBerikut) expect(['202610270002', '202610270003', '202610270004']).toContain(nomor);
+    for (const nomor of nomorBerikut) expect(['202611020002', '202611020003', '202611020004']).toContain(nomor);
   });
 });

@@ -1,14 +1,14 @@
--- docs/rollback-survei-undangan-202610270001.sql
--- Rollback manual migrasi 202610270001_survei_undangan.sql. BUKAN migrasi: dijalankan manual HANYA atas keputusan
+-- docs/rollback-survei-undangan-202611020001.sql
+-- Rollback manual migrasi 202611020001_survei_undangan.sql. BUKAN migrasi: dijalankan manual HANYA atas keputusan
 -- CEO, ATOMIK (dry-run dulu):
---   node scripts/apply-migration.mjs docs/rollback-survei-undangan-202610270001.sql --atomic --dry-run
---   node scripts/apply-migration.mjs docs/rollback-survei-undangan-202610270001.sql --atomic
+--   node scripts/apply-migration.mjs docs/rollback-survei-undangan-202611020001.sql --atomic --dry-run
+--   node scripts/apply-migration.mjs docs/rollback-survei-undangan-202611020001.sql --atomic
 -- PERINGATAN: rollback ini menghapus SEMUA data undangan (tabel survei_undangan: token, batas kedaluwarsa, penanda sudah
 --   diisi). Undangan tidak bisa dipulihkan dari migrasi; kunjungan yang sudah selesai TIDAK otomatis mendapat undangan lagi
 --   setelah migrasi diterapkan ulang (trigger hanya untuk perubahan status berikutnya, tanpa backfill). QR yang sudah
 --   ditampilkan/dipindai berhenti berlaku.
--- URUTAN: jalankan PALING AKHIR dalam seri survei terpadu Fase A, yaitu SETELAH rollback 202610270004, 202610270003, dan
---   202610270002 (objek di migrasi itu memakai survei_undangan dan ensure_undangan).
+-- URUTAN: jalankan PALING AKHIR dalam seri survei terpadu Fase A, yaitu SETELAH rollback 202611020004, 202611020003, dan
+--   202611020002 (objek di migrasi itu memakai survei_undangan dan ensure_undangan).
 -- PENJAGA (blok DO di awal; JANGAN dihapus): Postgres menolak DROP tanpa CASCADE hanya untuk ketergantungan yang ia
 --   CATAT (view, FK, trigger, policy, constraint, ...). Badan fungsi PL/pgSQL (dan fungsi SQL biasa) terikat lambat:
 --   TIDAK ada ketergantungan tercatat ke fungsi/tabel yang dipanggilnya, jadi DROP FUNCTION/TABLE di bawah akan berhasil
@@ -33,7 +33,7 @@ BEGIN
     AND p.proname NOT IN ('ambil_qr_survei', 'kunjungan_selesai_undangan', 'ensure_undangan')
     AND p.prosrc ~* '(ensure_undangan|survei_undangan)';
   IF v_fungsi IS NOT NULL THEN
-    RAISE EXCEPTION 'PRASYARAT ROLLBACK: fungsi lain masih memakai ensure_undangan/survei_undangan (rollback migrasi yang memakainya dulu: 202610270004, 202610270003, 202610270002): %', v_fungsi;
+    RAISE EXCEPTION 'PRASYARAT ROLLBACK: fungsi lain masih memakai ensure_undangan/survei_undangan (rollback migrasi yang memakainya dulu: 202611020004, 202611020003, 202611020002): %', v_fungsi;
   END IF;
 END $$;
 

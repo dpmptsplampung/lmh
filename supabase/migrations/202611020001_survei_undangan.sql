@@ -1,9 +1,9 @@
--- 202610270001_survei_undangan.sql
+-- 202611020001_survei_undangan.sql
 -- SURVEI TERPADU FASE A, langkah 1 (spec: docs/superpowers/specs/2026-10-26-survei-terpadu-design.md §4.1, §5, §6):
 -- undangan survei per kunjungan yang SELESAI. Satu kunjungan selesai = satu undangan berisi token acak terpisah dari
 -- kunjungan.qr_token, berlaku 32 jam sejak kunjungan.selesai_at, ditampilkan staf HANYA sebagai QR (tidak pernah
 -- sebagai teks tautan). Migrasi ini hanya menyiapkan undangan; tabel jawaban, RPC publik (konteks/kirim), dan perubahan
--- notify_kunjungan_status menyusul di 202610270002-202610270004.
+-- notify_kunjungan_status menyusul di 202611020002-202611020004.
 --
 -- ISI (semua ADITIF; tanpa DML; tanpa mengubah tabel/kolom/policy yang sudah ada):
 --   1. Tabel survei_undangan: kunjungan_id UNIK (FK kunjungan, ON DELETE CASCADE), token UNIK (CHECK 64 heksadesimal huruf
@@ -42,10 +42,10 @@
 --   boleh_kunjungan(uuid) (202610140009); dijaga blok PRASYARAT di bawah. TIDAK ada migrasi lain yang bergantung padanya
 --   selain 0002-0004 seri ini.
 -- PENERAPAN (WAJIB atomik; dry-run dulu; hanya setelah konfirmasi CEO; migrasi ini DITULIS tetapi BELUM DITERAPKAN):
---   node scripts/apply-migration.mjs supabase/migrations/202610270001_survei_undangan.sql --atomic --dry-run
---   node scripts/apply-migration.mjs supabase/migrations/202610270001_survei_undangan.sql --atomic
+--   node scripts/apply-migration.mjs supabase/migrations/202611020001_survei_undangan.sql --atomic --dry-run
+--   node scripts/apply-migration.mjs supabase/migrations/202611020001_survei_undangan.sql --atomic
 -- Idempoten (IF NOT EXISTS, CREATE OR REPLACE, DROP TRIGGER IF EXISTS): menerapkan ulang tidak mengubah undangan yang ada.
--- ROLLBACK: docs/rollback-survei-undangan-202610270001.sql (MENGHAPUS semua data undangan; jalankan PALING AKHIR dalam
+-- ROLLBACK: docs/rollback-survei-undangan-202611020001.sql (MENGHAPUS semua data undangan; jalankan PALING AKHIR dalam
 --   seri, setelah rollback 0004, 0003, 0002).
 -- UJI PERILAKU: scripts/lokal/skenario-survei-undangan.mjs (PGlite lokal, tanpa DB nyata). Kontrak statis:
 --   supabase/migrations/survei_undangan.test.ts.
@@ -243,7 +243,7 @@ GRANT SELECT ON public.v_survei_status TO authenticated;
 -- 6. Komentar (penanda untuk migrasi dan penjaga rollback berikutnya)
 -- ============================================================
 COMMENT ON TABLE public.survei_undangan IS
-  'Undangan survei terpadu (migrasi 202610270001): satu per kunjungan selesai, token acak berlaku 32 jam sejak selesai_at. Tanpa akses langsung klien; lewat RPC dan view.';
+  'Undangan survei terpadu (migrasi 202611020001): satu per kunjungan selesai, token acak berlaku 32 jam sejak selesai_at. Tanpa akses langsung klien; lewat RPC dan view.';
 COMMENT ON FUNCTION public.ensure_undangan(uuid) IS
   'Membuat undangan survei untuk kunjungan selesai (idempoten, tidak menggeser kedaluwarsa_pada). Hanya service_role dan trigger.';
 COMMENT ON FUNCTION public.ambil_qr_survei(uuid) IS

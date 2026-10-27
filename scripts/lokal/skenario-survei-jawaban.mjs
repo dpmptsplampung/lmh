@@ -1,4 +1,4 @@
-// Skenario PGlite untuk migrasi 202610270002_survei_jawaban.sql (survei terpadu Fase A, Task 3).
+// Skenario PGlite untuk migrasi 202611020002_survei_jawaban.sql (survei terpadu Fase A, Task 3).
 // Membuktikan PERILAKU di atas stub skema (bukan pengganti dry-run/test:rls pemilik di DB nyata):
 //   (a) baris lama 9 unsur tetap dihitung hitung_ikm persis seperti rumus lama; baris 11 unsur dan campuran dirata-ratakan per
 //       baris; kolom u10/u11 kosong tidak merusak apa pun (Review Focus 5);
@@ -8,7 +8,7 @@
 //   (e) ringkasan_spak dan ringkasan_response_rate kosong untuk petugas; response rate per unit termasuk FO (dari survei_undangan);
 //   (f) v_skm_petugas: kolom lama + u10/u11 di AKHIR, tanpa identitas; (g) penerapan ulang (idempoten); (h) rollback.
 // Objek ASLI yang tidak ada di stub (hitung_ikm dari 202607140004, v_skm_petugas dari 202610090001) dimuat dulu dari berkas
-// migrasi aslinya (diekstrak apa adanya, bukan disalin ke sini), lalu migrasi 202610270001 (survei_undangan, Task 2), lalu migrasi
+// migrasi aslinya (diekstrak apa adanya, bukan disalin ke sini), lalu migrasi 202611020001 (survei_undangan, Task 2), lalu migrasi
 // yang diuji. skm_response_rate dan triggernya sengaja TIDAK dimuat (migrasi ini tidak menyentuhnya; skm_rr_tambah mengabaikan
 // layanan NULL).
 // Jalankan: node scripts/lokal/skenario-survei-jawaban.mjs  (butuh `npm i --no-save @electric-sql/pglite`).
@@ -19,9 +19,9 @@ import { fileURLToPath } from 'node:url';
 import { bukaDb, sebagai, terapkanBerkas, cek } from './pglite-harness.mjs';
 
 const dariRepo = (rel) => fileURLToPath(new URL(`../../${rel}`, import.meta.url));
-const MIGRASI_UNDANGAN = dariRepo('supabase/migrations/202610270001_survei_undangan.sql');
-const MIGRASI = dariRepo('supabase/migrations/202610270002_survei_jawaban.sql');
-const ROLLBACK = dariRepo('docs/rollback-survei-jawaban-202610270002.sql');
+const MIGRASI_UNDANGAN = dariRepo('supabase/migrations/202611020001_survei_undangan.sql');
+const MIGRASI = dariRepo('supabase/migrations/202611020002_survei_jawaban.sql');
+const ROLLBACK = dariRepo('docs/rollback-survei-jawaban-202611020002.sql');
 const ASAL_HITUNG_IKM = dariRepo('supabase/migrations/202607140004_security_and_automation.sql');
 const ASAL_V_SKM_PETUGAS = dariRepo('supabase/migrations/202610090001_rbac_tahap1.sql');
 
@@ -71,7 +71,7 @@ function blok(berkas, awal, akhir) {
 }
 
 // --- Muat objek ASLI yang tidak ada di stub, lalu migrasi 0001 (prasyarat 0002) ---------------------
-console.log('memuat hitung_ikm dan v_skm_petugas ASLI, lalu migrasi 202610270001');
+console.log('memuat hitung_ikm dan v_skm_petugas ASLI, lalu migrasi 202611020001');
 await pg(blok(ASAL_HITUNG_IKM, 'CREATE FUNCTION public.hitung_ikm(', 'GRANT EXECUTE ON FUNCTION public.hitung_ikm(uuid, date, date) TO anon, authenticated;'));
 await pg(blok(ASAL_V_SKM_PETUGAS, 'CREATE OR REPLACE VIEW public.v_skm_petugas AS', 'GRANT SELECT ON public.v_skm_petugas TO authenticated;'));
 await terapkanBerkas(db, MIGRASI_UNDANGAN);
@@ -128,7 +128,7 @@ cek('prasyarat: hitung_ikm ASLI menghitung L1 = rata(4, 28/9) x 25, responden 3 
 cek('prasyarat: hitung_ikm ASLI menghitung L2 = 50, responden 1', hampir(LAMA_L2?.ikm, 50) && LAMA_L2?.responden === 1, JSON.stringify(LAMA_L2));
 
 // --- Terapkan migrasi (GAGAL bila berkas belum ada: fase RED) -----------------------------------------
-console.log('menerapkan migrasi 202610270002');
+console.log('menerapkan migrasi 202611020002');
 await terapkanBerkas(db, MIGRASI);
 const SIDIK_SESUDAH = await sidikJari();
 cek('prasyarat bukti rollback: migrasi benar-benar mengubah sidik jari objek (bukan no-op)', SIDIK_SESUDAH !== SIDIK_SEBELUM);
@@ -470,7 +470,7 @@ cek('hitung_ikm berfungsi sesudah penerapan ulang (L1 kini 6 responden: baris im
 await pg(`DELETE FROM public.skm_respons WHERE sumber = 'impor' AND layanan_id IS NOT NULL`);
 
 // --- (h) Rollback ------------------------------------------------------------------------------------------------------------------
-console.log('(h) rollback (docs/rollback-survei-jawaban-202610270002.sql)');
+console.log('(h) rollback (docs/rollback-survei-jawaban-202611020002.sql)');
 async function jalankanRollback() {
   try {
     await terapkanBerkas(db, ROLLBACK);

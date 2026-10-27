@@ -1,4 +1,4 @@
--- 202610270003_survei_rpc.sql
+-- 202611020003_survei_rpc.sql
 -- SURVEI TERPADU FASE A, langkah 3 (spec: docs/superpowers/specs/2026-10-26-survei-terpadu-design.md §5, §6, §12):
 -- dua RPC PUBLIK yang boleh dipanggil anon dengan sekadar memegang token undangan (QR). Inilah SATU-SATUNYA jalur tulis jawaban
 -- survei terpadu (tidak ada tulis langsung dari klien ke skm_respons/spak_respons/survei_undangan; tabelnya tertutup untuk klien).
@@ -53,14 +53,14 @@
 --   Batasan laju untuk anon: tidak ada di Fase A; mengandalkan token yang tidak tertebak (244 bit) dan satu kiriman per undangan
 --   (spec §5). Fase B menambahkan pembatasan laju berbasis IP di route.
 --
--- SYARAT: survei_undangan (202610270001), spak_respons dan kolom 11 unsur/versi/sumber/unit skm_respons beserta constraint wizard
---   (202610270002), layanan dan kunjungan; dijaga blok PRASYARAT di bawah.
+-- SYARAT: survei_undangan (202611020001), spak_respons dan kolom 11 unsur/versi/sumber/unit skm_respons beserta constraint wizard
+--   (202611020002), layanan dan kunjungan; dijaga blok PRASYARAT di bawah.
 -- PENERAPAN (WAJIB atomik; dry-run dulu; hanya setelah konfirmasi CEO; migrasi ini DITULIS tetapi BELUM DITERAPKAN):
---   node scripts/apply-migration.mjs supabase/migrations/202610270003_survei_rpc.sql --atomic --dry-run
---   node scripts/apply-migration.mjs supabase/migrations/202610270003_survei_rpc.sql --atomic
+--   node scripts/apply-migration.mjs supabase/migrations/202611020003_survei_rpc.sql --atomic --dry-run
+--   node scripts/apply-migration.mjs supabase/migrations/202611020003_survei_rpc.sql --atomic
 -- Idempoten (CREATE OR REPLACE; REVOKE/GRANT ulang): menerapkan ulang tidak mengubah data.
--- ROLLBACK: docs/rollback-survei-rpc-202610270003.sql (hanya menghapus kedua fungsi; jawaban yang sudah tersimpan TIDAK dihapus;
---   SETELAH rollback 202610270004, SEBELUM rollback 202610270002 dan 202610270001).
+-- ROLLBACK: docs/rollback-survei-rpc-202611020003.sql (hanya menghapus kedua fungsi; jawaban yang sudah tersimpan TIDAK dihapus;
+--   SETELAH rollback 202611020004, SEBELUM rollback 202611020002 dan 202611020001).
 -- UJI PERILAKU: scripts/lokal/skenario-survei-rpc.mjs (PGlite lokal, tanpa DB nyata). Kontrak statis:
 --   supabase/migrations/survei_rpc.test.ts.
 
@@ -75,16 +75,16 @@ BEGIN
     RAISE EXCEPTION 'PRASYARAT: tabel kunjungan/layanan belum ada (202607290013_kunjungan_tiket)';
   END IF;
   IF pg_catalog.to_regclass('public.survei_undangan') IS NULL THEN
-    RAISE EXCEPTION 'PRASYARAT: tabel survei_undangan belum ada (202610270001_survei_undangan)';
+    RAISE EXCEPTION 'PRASYARAT: tabel survei_undangan belum ada (202611020001_survei_undangan)';
   END IF;
   IF pg_catalog.to_regclass('public.spak_respons') IS NULL THEN
-    RAISE EXCEPTION 'PRASYARAT: tabel spak_respons belum ada (202610270002_survei_jawaban)';
+    RAISE EXCEPTION 'PRASYARAT: tabel spak_respons belum ada (202611020002_survei_jawaban)';
   END IF;
   IF pg_catalog.to_regclass('public.skm_respons') IS NULL THEN
     RAISE EXCEPTION 'PRASYARAT: tabel skm_respons belum ada (202607140003_domain_schema)';
   END IF;
 
-  -- Kolom yang ditulis kirim_survei (semua dari 202610270002 kecuali yang baseline).
+  -- Kolom yang ditulis kirim_survei (semua dari 202611020002 kecuali yang baseline).
   SELECT pg_catalog.string_agg(c.tabel || '.' || c.kolom, ', ') INTO v_kurang
   FROM (VALUES
     ('skm_respons', 'kunjungan_id'), ('skm_respons', 'layanan_id'), ('skm_respons', 'unit'), ('skm_respons', 'sumber'),
@@ -100,14 +100,14 @@ BEGIN
     WHERE a.attrelid = pg_catalog.to_regclass('public.' || c.tabel) AND a.attname = c.kolom AND NOT a.attisdropped
   );
   IF v_kurang IS NOT NULL THEN
-    RAISE EXCEPTION 'PRASYARAT: kolom belum ada (202610270001_survei_undangan / 202610270002_survei_jawaban): %', v_kurang;
+    RAISE EXCEPTION 'PRASYARAT: kolom belum ada (202611020001_survei_undangan / 202611020002_survei_jawaban): %', v_kurang;
   END IF;
 
   IF NOT EXISTS (
     SELECT 1 FROM pg_catalog.pg_constraint AS k
     WHERE k.conrelid = pg_catalog.to_regclass('public.skm_respons') AND k.conname = 'skm_respons_wizard_kunjungan_versi_check'
   ) THEN
-    RAISE EXCEPTION 'PRASYARAT: constraint skm_respons_wizard_kunjungan_versi_check belum ada (202610270002_survei_jawaban)';
+    RAISE EXCEPTION 'PRASYARAT: constraint skm_respons_wizard_kunjungan_versi_check belum ada (202611020002_survei_jawaban)';
   END IF;
 END $$;
 
@@ -274,6 +274,6 @@ GRANT EXECUTE ON FUNCTION public.kirim_survei(text, jsonb, jsonb) TO anon, authe
 -- 3. Komentar (penanda untuk migrasi dan penjaga rollback berikutnya)
 -- ============================================================
 COMMENT ON FUNCTION public.get_survei_context(text) IS
-  'Status undangan survei untuk wizard anonim (tidak_valid/sudah_diisi/kedaluwarsa/ok) beserta unit, nama layanan, dan batas waktu; tanpa identitas. Migrasi 202610270003.';
+  'Status undangan survei untuk wizard anonim (tidak_valid/sudah_diisi/kedaluwarsa/ok) beserta unit, nama layanan, dan batas waktu; tanpa identitas. Migrasi 202611020003.';
 COMMENT ON FUNCTION public.kirim_survei(text, jsonb, jsonb) IS
-  'Satu-satunya jalur tulis jawaban survei terpadu (SPAK+SKM), atomik; hasil submitted/invalid/expired/duplicate/not_found, jam dari database. Migrasi 202610270003.';
+  'Satu-satunya jalur tulis jawaban survei terpadu (SPAK+SKM), atomik; hasil submitted/invalid/expired/duplicate/not_found, jam dari database. Migrasi 202611020003.';

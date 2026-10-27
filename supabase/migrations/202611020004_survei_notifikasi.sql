@@ -1,4 +1,4 @@
--- 202610270004_survei_notifikasi.sql
+-- 202611020004_survei_notifikasi.sql
 -- SURVEI TERPADU FASE A, langkah 4 dari 4 (spec: docs/superpowers/specs/2026-10-26-survei-terpadu-design.md §8, §13): email dan
 -- web push survei yang diantrekan saat kunjungan SELESAI memakai tautan UNDANGAN (/survei/<token>, token dari survei_undangan,
 -- migrasi 0001), bukan lagi tautan berbasis kunjungan.qr_token ke halaman SKM lama.
@@ -36,12 +36,12 @@
 --   (d) Fungsi ini TIDAK bisa dijalankan di stub PGlite (scripts/lokal): perilakunya diverifikasi statis lewat test kontrak
 --       (perbandingan teks dengan 0007) dan dry-run oleh pemilik di DB nyata. Tidak ada skenario PGlite untuk migrasi ini.
 --
--- SYARAT: notify_kunjungan_status() (202610140007) dan ensure_undangan(uuid) (202610270001); dijaga blok PRASYARAT di bawah.
+-- SYARAT: notify_kunjungan_status() (202610140007) dan ensure_undangan(uuid) (202611020001); dijaga blok PRASYARAT di bawah.
 -- PENERAPAN (WAJIB atomik; dry-run dulu; hanya setelah konfirmasi CEO; migrasi ini DITULIS tetapi BELUM DITERAPKAN):
---   node scripts/apply-migration.mjs supabase/migrations/202610270004_survei_notifikasi.sql --atomic --dry-run
---   node scripts/apply-migration.mjs supabase/migrations/202610270004_survei_notifikasi.sql --atomic
+--   node scripts/apply-migration.mjs supabase/migrations/202611020004_survei_notifikasi.sql --atomic --dry-run
+--   node scripts/apply-migration.mjs supabase/migrations/202611020004_survei_notifikasi.sql --atomic
 -- Idempoten (CREATE OR REPLACE dan REVOKE ulang): menerapkan ulang tidak mengubah data.
--- ROLLBACK: docs/rollback-survei-notifikasi-202610270004.sql (memulihkan fungsi 0007 PERSIS; jalankan PERTAMA dalam seri
+-- ROLLBACK: docs/rollback-survei-notifikasi-202611020004.sql (memulihkan fungsi 0007 PERSIS; jalankan PERTAMA dalam seri
 --   rollback, sebelum rollback 0003, 0002, dan 0001; rollback 0001 menolak selama fungsi ini masih memanggil ensure_undangan).
 -- UJI: kontrak statis supabase/migrations/survei_notifikasi.test.ts (tanpa skenario PGlite, lihat (d)).
 
@@ -54,7 +54,7 @@ BEGIN
     RAISE EXCEPTION 'PRASYARAT: public.notify_kunjungan_status() belum ada (202610140007_wp24_akhiri_dual_write)';
   END IF;
   IF pg_catalog.to_regprocedure('public.ensure_undangan(uuid)') IS NULL THEN
-    RAISE EXCEPTION 'PRASYARAT: public.ensure_undangan(uuid) belum ada (202610270001_survei_undangan)';
+    RAISE EXCEPTION 'PRASYARAT: public.ensure_undangan(uuid) belum ada (202611020001_survei_undangan)';
   END IF;
 END $$;
 

@@ -1,5 +1,5 @@
 // Sisi staf "Pesan Perilaku" (survei terpadu): QR untuk pengunjung dan lencana status di daftar staf.
-// Membungkus RPC `ambil_qr_survei` dan view `v_survei_status` (migrasi 202610270001; keduanya dijaga boleh_kunjungan
+// Membungkus RPC `ambil_qr_survei` dan view `v_survei_status` (migrasi 202611020001; keduanya dijaga boleh_kunjungan
 // terhadap pemanggil). Modul murni: tidak menyentuh DOM atau env. Token HANYA dipakai untuk membentuk nilai QR dan
 // tidak pernah ditampilkan sebagai teks.
 import type { SupabaseClient } from '@supabase/supabase-js';

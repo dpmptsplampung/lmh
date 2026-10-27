@@ -1,4 +1,4 @@
-// Skenario PGlite untuk migrasi 202610270001_survei_undangan.sql (survei terpadu Fase A, Task 2).
+// Skenario PGlite untuk migrasi 202611020001_survei_undangan.sql (survei terpadu Fase A, Task 2).
 // Membuktikan PERILAKU di atas stub skema (bukan pengganti dry-run/test:rls pemilik di DB nyata):
 //   (a) kunjungan -> selesai membuat tepat satu undangan (token 64 hex, kedaluwarsa = selesai_at + 32 jam);
 //   (b) ensure_undangan idempoten, tidak menggeser batas 32 jam (Review Focus 1);
@@ -10,7 +10,7 @@
 import { fileURLToPath } from 'node:url';
 import { bukaDb, sebagai, terapkanBerkas, cek } from './pglite-harness.mjs';
 
-const MIGRASI = fileURLToPath(new URL('../../supabase/migrations/202610270001_survei_undangan.sql', import.meta.url));
+const MIGRASI = fileURLToPath(new URL('../../supabase/migrations/202611020001_survei_undangan.sql', import.meta.url));
 
 const U_ADMIN = '00000000-0000-4000-8000-0000000000a1';
 const U_FO = '00000000-0000-4000-8000-0000000000a2';
@@ -328,9 +328,9 @@ cek('data undangan tidak berubah setelah penerapan ulang', (await snapshot()) ==
 const nTrig = (await pg(`SELECT count(*)::int AS n FROM pg_catalog.pg_trigger WHERE tgrelid = 'public.kunjungan'::regclass AND tgname = 'trg_kunjungan_selesai_undangan'`))[0].n;
 cek('tepat satu trigger trg_kunjungan_selesai_undangan', nTrig === 1);
 
-// --- Rollback (docs/rollback-survei-undangan-202610270001.sql) -------------------------------------------
+// --- Rollback (docs/rollback-survei-undangan-202611020001.sql) -------------------------------------------
 console.log('rollback');
-const ROLLBACK = fileURLToPath(new URL('../../docs/rollback-survei-undangan-202610270001.sql', import.meta.url));
+const ROLLBACK = fileURLToPath(new URL('../../docs/rollback-survei-undangan-202611020001.sql', import.meta.url));
 
 /** Keadaan objek migrasi: true = ADA. Dipakai untuk membuktikan "tidak ada yang terhapus" dan "semua terhapus". */
 const adaObjek = async () => (await pg(

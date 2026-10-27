@@ -44,7 +44,7 @@ Contoh pola:
 import { bukaDb, sebagai, terapkanBerkas, cek } from './pglite-harness.mjs';
 
 const db = await bukaDb();
-await terapkanBerkas(db, 'supabase/migrations/202610270001_survei_undangan.sql');
+await terapkanBerkas(db, 'supabase/migrations/202611020001_survei_undangan.sql');
 const r = await sebagai(db, 'anon', null, 'SELECT * FROM public.survei_undangan');
 cek('anon tidak membaca survei_undangan', r.ok ? r.rows.length === 0 : true, JSON.stringify(r));
 await db.close();

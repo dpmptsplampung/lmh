@@ -1,16 +1,16 @@
--- docs/rollback-survei-jawaban-202610270002.sql
--- Rollback manual migrasi 202610270002_survei_jawaban.sql. BUKAN migrasi: dijalankan manual HANYA atas keputusan CEO,
+-- docs/rollback-survei-jawaban-202611020002.sql
+-- Rollback manual migrasi 202611020002_survei_jawaban.sql. BUKAN migrasi: dijalankan manual HANYA atas keputusan CEO,
 -- ATOMIK (dry-run dulu):
---   node scripts/apply-migration.mjs docs/rollback-survei-jawaban-202610270002.sql --atomic --dry-run
---   node scripts/apply-migration.mjs docs/rollback-survei-jawaban-202610270002.sql --atomic
+--   node scripts/apply-migration.mjs docs/rollback-survei-jawaban-202611020002.sql --atomic --dry-run
+--   node scripts/apply-migration.mjs docs/rollback-survei-jawaban-202611020002.sql --atomic
 -- PERINGATAN: rollback ini MENGHAPUS tabel spak_respons beserta SEMUA jawaban SPAK di dalamnya, dan membuang kolom
 --   skm_respons.u10_transparansi, u11_integritas, versi, sumber, unit, jenis_kelamin, pendidikan beserta isinya (nilai
 --   transparansi dan integritas, penanda sumber/unit). Data itu tidak bisa dipulihkan dari migrasi. Baris skm_respons TIDAK
 --   dihapus: jawaban wizard yang sudah masuk tetap ada sebagai baris 9 unsur (dua nilai terakhirnya hilang), sehingga IKM
 --   dihitung ulang dari sembilan unsur pertama. Menerapkan ulang migrasi sesudah rollback menandai semua baris itu sebagai
 --   form_lama versi 1 (tanpa pemulihan sumber/unit sebelumnya).
--- URUTAN: jalankan SETELAH rollback 202610270004 dan 202610270003 (fungsi di migrasi itu memakai spak_respons dan kolom
---   u10/u11), dan SEBELUM rollback 202610270001 (survei_undangan dibaca oleh ringkasan_response_rate yang dihapus di sini).
+-- URUTAN: jalankan SETELAH rollback 202611020004 dan 202611020003 (fungsi di migrasi itu memakai spak_respons dan kolom
+--   u10/u11), dan SEBELUM rollback 202611020001 (survei_undangan dibaca oleh ringkasan_response_rate yang dihapus di sini).
 -- PENJAGA (blok DO di awal; JANGAN dihapus): Postgres menolak DROP tanpa CASCADE hanya untuk ketergantungan yang ia
 --   CATAT (view, FK, trigger, policy, constraint, ...). Badan fungsi PL/pgSQL (dan fungsi SQL biasa) terikat lambat:
 --   TIDAK ada ketergantungan tercatat ke tabel, kolom, atau fungsi yang dipanggilnya, jadi DROP TABLE/COLUMN/FUNCTION di
@@ -40,7 +40,7 @@ BEGIN
     AND p.proname NOT IN ('hitung_ikm', 'ringkasan_ikm', 'ringkasan_response_rate', 'ringkasan_spak')
     AND p.prosrc ~* '(spak_respons|u10_transparansi|u11_integritas|ringkasan_ikm|ringkasan_spak|ringkasan_response_rate)';
   IF v_fungsi IS NOT NULL THEN
-    RAISE EXCEPTION 'PRASYARAT ROLLBACK: fungsi lain masih memakai spak_respons/u10_transparansi/u11_integritas/ringkasan_* (rollback migrasi yang memakainya dulu: 202610270004, 202610270003): %', v_fungsi;
+    RAISE EXCEPTION 'PRASYARAT ROLLBACK: fungsi lain masih memakai spak_respons/u10_transparansi/u11_integritas/ringkasan_* (rollback migrasi yang memakainya dulu: 202611020004, 202611020003): %', v_fungsi;
   END IF;
 END $$;
 

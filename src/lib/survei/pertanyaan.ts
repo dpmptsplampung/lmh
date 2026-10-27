@@ -1,7 +1,7 @@
 // Konfigurasi pertanyaan "Pesan Perilaku" (survei terpadu Fase A): SPAK (5 butir, skala 1-6) dan SKM (11 unsur,
 // skala 1-4). Teks, label skala, dan pembagian langkah PERSIS Lampiran A spec
 // (docs/superpowers/specs/2026-10-26-survei-terpadu-design.md); dikunci uji golden di pertanyaan.test.ts.
-// Rentang di sini harus sama dengan CHECK di migrasi 202610270002 dan konstanta di RPC kirim_survei
+// Rentang di sini harus sama dengan CHECK di migrasi 202611020002 dan konstanta di RPC kirim_survei
 // (diperiksa supabase/migrations/survei_jawaban.test.ts). Modul murni: aman dipakai klien maupun server.
 
 export type KunciSpak = 'p1' | 'p2' | 'p3' | 'p4' | 'p5';

@@ -1,9 +1,9 @@
 // @vitest-environment node
-// Kontrak statis migrasi 202610270003_survei_rpc (survei terpadu Fase A, Task 4): dua RPC PUBLIK yang bisa dipanggil anon,
+// Kontrak statis migrasi 202611020003_survei_rpc (survei terpadu Fase A, Task 4): dua RPC PUBLIK yang bisa dipanggil anon,
 // get_survei_context (status undangan, tanpa identitas) dan kirim_survei (satu-satunya jalur tulis jawaban survei, atomik).
 // Tidak mengeksekusi SQL dan tidak menyentuh database. Uji PERILAKU (urutan hasil, batas kedaluwarsa, kiriman ganda, payload
 // nakal, atomik, hak): scripts/lokal/skenario-survei-rpc.mjs (PGlite lokal). Penyerialan oleh SELECT ... FOR UPDATE tidak bisa
-// dibuktikan di PGlite (satu sesi), jadi dijaga DI SINI lewat urutan teks fungsi. Rollback: docs/rollback-survei-rpc-202610270003.sql.
+// dibuktikan di PGlite (satu sesi), jadi dijaga DI SINI lewat urutan teks fungsi. Rollback: docs/rollback-survei-rpc-202611020003.sql.
 // Kecocokan rentang CHECK dengan src/lib/survei/pertanyaan.ts ditambahkan di Task 6 (ruling R2).
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -12,10 +12,10 @@ import { FORWARD_MIGRATION_FILES, MIGRATIONS_DIR, listMigrationFiles, stripSqlCo
 import { mengandungKontrolTransaksi, mengubahPolicyAtauFungsi } from '../../scripts/lib/sql-txn.mjs';
 import { pecahPernyataan } from '../../scripts/lib/migration-markers.mjs';
 
-const BERKAS = '202610270003_survei_rpc.sql';
-const BERKAS_UNDANGAN = '202610270001_survei_undangan.sql';
-const BERKAS_JAWABAN = '202610270002_survei_jawaban.sql';
-const BERKAS_ROLLBACK = 'rollback-survei-rpc-202610270003.sql';
+const BERKAS = '202611020003_survei_rpc.sql';
+const BERKAS_UNDANGAN = '202611020001_survei_undangan.sql';
+const BERKAS_JAWABAN = '202611020002_survei_jawaban.sql';
+const BERKAS_ROLLBACK = 'rollback-survei-rpc-202611020003.sql';
 
 const baca = (nama: string) => readFileSync(join(MIGRATIONS_DIR, nama), 'utf8').replace(/\r\n/g, '\n');
 const bacaDocs = (...bagian: string[]) => readFileSync(join(MIGRATIONS_DIR, '..', '..', 'docs', ...bagian), 'utf8').replace(/\r\n/g, '\n');
@@ -113,7 +113,7 @@ describe('survei_rpc: berkas, urutan, atomik, aditif', () => {
     const daftar = [...FORWARD_MIGRATION_FILES];
     expect(daftar).toEqual([...daftar].sort());
     expect(daftar.indexOf(BERKAS)).toBe(daftar.indexOf(BERKAS_JAWABAN) + 1);
-    const luarSeri = listMigrationFiles().filter((nama) => !/^2026102700\d\d_/.test(nama));
+    const luarSeri = listMigrationFiles().filter((nama) => !/^2026110200\d\d_/.test(nama));
     for (const nama of luarSeri) expect(nama < BERKAS).toBe(true);
     expect(BERKAS > '202610260001').toBe(true);
   });
@@ -123,10 +123,10 @@ describe('survei_rpc: berkas, urutan, atomik, aditif', () => {
     expect(mengandungKontrolTransaksi(rollbackRaw)).toBe(false);
     expect(mengubahPolicyAtauFungsi(raw)).toBe(true);
     expect(mengubahPolicyAtauFungsi(rollbackRaw)).toBe(true);
-    expect(raw).toMatch(/apply-migration\.mjs supabase\/migrations\/202610270003_survei_rpc\.sql --atomic --dry-run/);
-    expect(raw).toMatch(/apply-migration\.mjs supabase\/migrations\/202610270003_survei_rpc\.sql --atomic\s*$/m);
-    expect(raw).toContain('docs/rollback-survei-rpc-202610270003.sql');
-    expect(rollbackRaw).toMatch(/apply-migration\.mjs docs\/rollback-survei-rpc-202610270003\.sql --atomic --dry-run/);
+    expect(raw).toMatch(/apply-migration\.mjs supabase\/migrations\/202611020003_survei_rpc\.sql --atomic --dry-run/);
+    expect(raw).toMatch(/apply-migration\.mjs supabase\/migrations\/202611020003_survei_rpc\.sql --atomic\s*$/m);
+    expect(raw).toContain('docs/rollback-survei-rpc-202611020003.sql');
+    expect(rollbackRaw).toMatch(/apply-migration\.mjs docs\/rollback-survei-rpc-202611020003\.sql --atomic --dry-run/);
   });
 
   it('aditif: hanya fungsi baru (DO penjaga, CREATE OR REPLACE FUNCTION, REVOKE, GRANT, COMMENT); tanpa tabel, kolom, policy, trigger, view, DROP, atau DML tingkat-atas', () => {
@@ -480,8 +480,8 @@ describe('survei_rpc: rollback', () => {
     expect(header).toMatch(/PENJAGA/);
     expect(header).toMatch(/TIDAK ada ketergantungan tercatat/);
     expect(header).toMatch(/PERINGATAN/);
-    expect(header).toMatch(/SETELAH rollback 202610270004/);
-    expect(header).toMatch(/SEBELUM rollback 202610270002 dan 202610270001/);
+    expect(header).toMatch(/SETELAH rollback 202611020004/);
+    expect(header).toMatch(/SEBELUM rollback 202611020002 dan 202611020001/);
     expect(header).toMatch(/jawaban yang sudah tersimpan TIDAK dihapus/i);
   });
 });
@@ -494,23 +494,23 @@ describe('survei_rpc: pencatatan (docs/ATURAN_MIGRASI.md #4) dan skenario', () =
 
   it('docs/MIGRATIONS.md: bagian "Survei terpadu Fase A" memuat berkas dan rollback 0003 (baris sesudah 0002), sebelum bagian 0014', () => {
     const md = bacaDocs('MIGRATIONS.md');
-    const judul = '## Survei terpadu Fase A (202610270001-202610270004)';
+    const judul = '## Survei terpadu Fase A (202611020001-202611020004)';
     expect(md).toContain(judul);
     const bagian = md.slice(md.indexOf(judul), md.indexOf('## Data walk-in lengkap (0014)'));
     expect(md.indexOf(judul)).toBeLessThan(md.indexOf('## Data walk-in lengkap (0014)'));
     expect(bagian).toContain(BERKAS);
     expect(bagian).toContain(BERKAS_ROLLBACK);
-    const baris = bagian.split('\n').filter((l) => l.startsWith('| 20261027'));
-    expect(baris.map((l) => l.slice(0, 14))).toEqual(expect.arrayContaining(['| 202610270002', '| 202610270003']));
-    const b3 = baris.find((l) => l.startsWith('| 202610270003 |'))!;
+    const baris = bagian.split('\n').filter((l) => l.startsWith('| 20261102'));
+    expect(baris.map((l) => l.slice(0, 14))).toEqual(expect.arrayContaining(['| 202611020002', '| 202611020003']));
+    const b3 = baris.find((l) => l.startsWith('| 202611020003 |'))!;
     expect(b3).toMatch(/BELUM DITERAPKAN/);
-    expect(baris.indexOf(b3)).toBeGreaterThan(baris.findIndex((l) => l.startsWith('| 202610270002 |')));
+    expect(baris.indexOf(b3)).toBeGreaterThan(baris.findIndex((l) => l.startsWith('| 202611020002 |')));
   });
 
   it('docs/analysis/DB-CHANGES.md: entri 0003 SESUDAH entri 0002 (entri 0004 menyusul), status DITULIS, BELUM DITERAPKAN, memuat hasil PGlite, rollback, dan skenario', () => {
     const md = bacaDocs('analysis', 'DB-CHANGES.md');
-    const i = md.lastIndexOf('202610270003_survei_rpc');
-    expect(i).toBeGreaterThan(md.lastIndexOf('202610270002_survei_jawaban'));
+    const i = md.lastIndexOf('202611020003_survei_rpc');
+    expect(i).toBeGreaterThan(md.lastIndexOf('202611020002_survei_jawaban'));
     const mulai = md.lastIndexOf('\n### ', i);
     const berikut = md.indexOf('\n### ', i);
     const entri = md.slice(mulai, berikut < 0 ? undefined : berikut); // hanya entri 0003 sendiri
@@ -524,8 +524,8 @@ describe('survei_rpc: pencatatan (docs/ATURAN_MIGRASI.md #4) dan skenario', () =
     const skenario = join(MIGRATIONS_DIR, '..', '..', 'scripts', 'lokal', 'skenario-survei-rpc.mjs');
     expect(existsSync(skenario)).toBe(true);
     const isi = readFileSync(skenario, 'utf8');
-    expect(isi).toContain('202610270003_survei_rpc.sql');
-    expect(isi).toContain('rollback-survei-rpc-202610270003.sql');
+    expect(isi).toContain('202611020003_survei_rpc.sql');
+    expect(isi).toContain('rollback-survei-rpc-202611020003.sql');
     expect(isi).toContain('TEPAT di batas');
   });
 });

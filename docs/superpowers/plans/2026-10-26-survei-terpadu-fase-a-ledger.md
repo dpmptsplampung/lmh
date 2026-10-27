@@ -33,7 +33,7 @@ Ruling: R3 T6 also modifies supabase/migrations/survei_jawaban.test.ts (plan Ste
 Ruling: R4 T1 stub may include minimal visit(id) and pengunjung(id) tables so baseline FKs resolve; stub stays local to scripts/lokal — if wrong: none.
 Ruling: R5 scripts/lokal assumes @electric-sql/pglite installed via 'npm i --no-save' inside the worktree; never added to package.json/package-lock.json — if wrong: implementer must reinstall after any npm ci.
 Ruling: R6 implementation branch feat/survei-terpadu-a is based on docs/spec-survei-terpadu (spec and plan commits included) instead of origin/main so subagents can read them — if wrong: a later PR carries 3 docs commits (harmless).
-Ruling: R7 migration numbers 202610270001..0004 as in plan; the audit branch's 202610260001 is not on this branch, ordering stays valid when both merge — if wrong: renumber at merge.
+Ruling: R7 migration numbers 202611020001..0004 as in plan; the audit branch's 202610260001 is not on this branch, ordering stays valid when both merge — if wrong: renumber at merge.
 
 ## Tasks
 Task 1: dispatched (implementer agent a151f3c853ce1e788, sonnet; BASE 8abfef7)

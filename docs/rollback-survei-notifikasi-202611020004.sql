@@ -1,8 +1,8 @@
--- docs/rollback-survei-notifikasi-202610270004.sql
--- Rollback manual migrasi 202610270004_survei_notifikasi.sql. BUKAN migrasi: dijalankan manual HANYA atas keputusan CEO, ATOMIK
+-- docs/rollback-survei-notifikasi-202611020004.sql
+-- Rollback manual migrasi 202611020004_survei_notifikasi.sql. BUKAN migrasi: dijalankan manual HANYA atas keputusan CEO, ATOMIK
 -- (dry-run dulu):
---   node scripts/apply-migration.mjs docs/rollback-survei-notifikasi-202610270004.sql --atomic --dry-run
---   node scripts/apply-migration.mjs docs/rollback-survei-notifikasi-202610270004.sql --atomic
+--   node scripts/apply-migration.mjs docs/rollback-survei-notifikasi-202611020004.sql --atomic --dry-run
+--   node scripts/apply-migration.mjs docs/rollback-survei-notifikasi-202611020004.sql --atomic
 -- ISI: memulihkan notify_kunjungan_status() PERSIS ke versi 202610140007_wp24_akhiri_dual_write.sql (salinan karakter demi karakter,
 --   dijaga test supabase/migrations/survei_notifikasi.test.ts), lalu mengulang REVOKE yang sama (CREATE OR REPLACE mempertahankan ACL; REVOKE
 --   hanya menegaskan). Trigger trg_notify_kunjungan_status tidak disentuh. Fungsi TIDAK di-DROP: trigger menunjuknya (ketergantungan
@@ -10,14 +10,14 @@
 -- PERINGATAN: sesudah rollback ini email dan web push survei kembali memuat tautan lama berbasis kunjungan.qr_token ke halaman SKM lama,
 --   BUKAN tautan undangan /survei/<token>. Undangan (survei_undangan) tetap dibuat trigger 0001 tetapi tidak lagi dikirim ke pengunjung;
 --   email yang sudah terkirim dengan tautan undangan tetap bisa dipakai selama undangannya ada dan belum kedaluwarsa.
--- URUTAN: jalankan PERTAMA dalam seri rollback survei terpadu Fase A, yaitu SEBELUM rollback 202610270003, 202610270002, dan 202610270001
---   (rollback 202610270001 menolak selama fungsi notifikasi masih memanggil ensure_undangan; rollback ini menghilangkan pemanggilan itu).
+-- URUTAN: jalankan PERTAMA dalam seri rollback survei terpadu Fase A, yaitu SEBELUM rollback 202611020003, 202611020002, dan 202611020001
+--   (rollback 202611020001 menolak selama fungsi notifikasi masih memanggil ensure_undangan; rollback ini menghilangkan pemanggilan itu).
 -- PENJAGA (blok DO di awal; JANGAN dihapus): CREATE OR REPLACE menimpa isi fungsi APA PUN yang sedang terpasang. Penjaga menolak seluruh
---   rollback (PRASYARAT ROLLBACK) bila (1) fungsinya tidak ada, atau (2) isinya BUKAN versi 202610270004 (memanggil ensure_undangan dan
+--   rollback (PRASYARAT ROLLBACK) bila (1) fungsinya tidak ada, atau (2) isinya BUKAN versi 202611020004 (memanggil ensure_undangan dan
 --   memakai /survei/, tanpa tautan lama) dan BUKAN versi 202610140007 yang sudah pulih (memuat tautan lama, tanpa ensure_undangan;
 --   memulihkan lagi aman dan idempoten). Isi lain (mis. fungsi sudah diganti migrasi lanjutan) ditolak supaya perubahan itu tidak
 --   tertimpa diam-diam. Pencocokan memakai teks badan fungsi, komentar ikut dihitung (badan fungsi baru sengaja tanpa penanda lama).
---   Keterbatasan: migrasi lanjutan yang menyalin versi 202610270004 lalu mengubah bagian lain akan lolos penjaga; periksa isi fungsi
+--   Keterbatasan: migrasi lanjutan yang menyalin versi 202611020004 lalu mengubah bagian lain akan lolos penjaga; periksa isi fungsi
 --   terpasang (pg_get_functiondef) sebelum menjalankan rollback bila ada migrasi lain yang menyentuh fungsi ini. Penjaga tidak melihat
 --   pemakai di luar pg_proc.
 -- Idempoten.
@@ -40,7 +40,7 @@ BEGIN
     (pg_catalog.strpos(v_src, '/skm?token=') > 0
       AND pg_catalog.strpos(v_src, 'ensure_undangan') = 0)
   ) THEN
-    RAISE EXCEPTION 'PRASYARAT ROLLBACK: isi notify_kunjungan_status() bukan versi 202610270004 maupun 202610140007 (sudah diganti migrasi lain?); periksa dulu supaya perubahan itu tidak tertimpa';
+    RAISE EXCEPTION 'PRASYARAT ROLLBACK: isi notify_kunjungan_status() bukan versi 202611020004 maupun 202610140007 (sudah diganti migrasi lain?); periksa dulu supaya perubahan itu tidak tertimpa';
   END IF;
 END $$;
 

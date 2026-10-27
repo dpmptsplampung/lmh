@@ -30,7 +30,7 @@ Per-task review dilewati untuk Task 5–13 atas permintaan pemilik (R15); yang t
 Task 1–13 selesai dan gate penuh lolos (2026-10-27). Yang tersisa:
 
 1. **Satu review menyeluruh** atas seluruh branch (fokus: RPC publik tanpa login, token undangan, pembatasan laju, RLS jawaban, `get_survei_context` dan `kirim_survei`). Per-task review dilewati untuk Task 5–13 atas permintaan pemilik (R15).
-2. **Nomori ulang migrasi** sebelum digabung. Migrasi survei bernomor `202610270001–0004` bentrok dengan Fase 1 (`202610270001`, `0002`), padahal ledger produksi memakai nomor depan sebagai `version`. Ganti ke nomor setelah `202611010001` (mis. `202611020001–0004`), termasuk nama berkas test, `MANIFEST.json`, `FORWARD_MIGRATION_FILES`, dan rujukan di test (`survei_*.test.ts`, `scripts/lokal`).
+2. ~~**Nomori ulang migrasi**~~ **Selesai (2026-10-27):** migrasi survei kini bernomor `202611020001–0004` (sebelumnya `202610270001–0004`, bentrok dengan Fase 1 `202610270001`/`0002`). Nama berkas, `MANIFEST.json`, `FORWARD_MIGRATION_FILES`, rollback, dan rujukan di test sudah disesuaikan.
 3. **Gabungkan** dengan `feat/fase-1-fondasi-layanan`: branch ini berpangkal pada `main` lama (`49409c4`) dan tidak memuat Fase 1–6. Akan ada bentrok di `MANIFEST.json`, `migration-test-utils.ts`, `CLAUDE.md`, `docs/STATUS.md`, dan `docs/analysis/04-RBAC-MATRIX.md`.
 4. Verifikasi perilaku di Postgres sungguhan dan tampilan di browser (wizard `/survei/<token>`, QR staf, tab SPAK): belum pernah dilakukan.
 

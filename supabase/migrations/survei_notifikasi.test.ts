@@ -1,12 +1,12 @@
 // @vitest-environment node
-// Kontrak statis migrasi 202610270004_survei_notifikasi (survei terpadu Fase A, Task 5): notify_kunjungan_status() diganti
+// Kontrak statis migrasi 202611020004_survei_notifikasi (survei terpadu Fase A, Task 5): notify_kunjungan_status() diganti
 // dengan CREATE OR REPLACE penuh dari versi 202610140007; HANYA cabang status = 'selesai' yang berubah (memanggil
 // ensure_undangan(NEW.id), membaca token undangan, dan memakai <public_url>/survei/<token> pada isi email, isi push, dan
 // payload.url, bukan tautan lama berbasis qr_token). Cabang lain, signature, atribut, hak, dan trigger tidak berubah.
 // Tidak mengeksekusi SQL dan tidak menyentuh database. Fungsi ini TIDAK bisa dijalankan di stub PGlite (scripts/lokal tidak
 // memuat queue_notifikasi, notifikasi, site_settings, pengunjung, maupun trigger-nya), jadi tidak ada skenario PGlite untuk
 // migrasi ini: perilakunya dijaga di sini lewat perbandingan teks dengan versi 0007, dan dry-run oleh pemilik.
-// Rollback: docs/rollback-survei-notifikasi-202610270004.sql (memulihkan fungsi 0007 PERSIS).
+// Rollback: docs/rollback-survei-notifikasi-202611020004.sql (memulihkan fungsi 0007 PERSIS).
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -14,11 +14,11 @@ import { FORWARD_MIGRATION_FILES, MIGRATIONS_DIR, listMigrationFiles, stripSqlCo
 import { mengandungKontrolTransaksi, mengubahPolicyAtauFungsi } from '../../scripts/lib/sql-txn.mjs';
 import { pecahPernyataan } from '../../scripts/lib/migration-markers.mjs';
 
-const BERKAS = '202610270004_survei_notifikasi.sql';
+const BERKAS = '202611020004_survei_notifikasi.sql';
 const BERKAS_ASLI = '202610140007_wp24_akhiri_dual_write.sql';
-const BERKAS_UNDANGAN = '202610270001_survei_undangan.sql';
-const BERKAS_RPC = '202610270003_survei_rpc.sql';
-const BERKAS_ROLLBACK = 'rollback-survei-notifikasi-202610270004.sql';
+const BERKAS_UNDANGAN = '202611020001_survei_undangan.sql';
+const BERKAS_RPC = '202611020003_survei_rpc.sql';
+const BERKAS_ROLLBACK = 'rollback-survei-notifikasi-202611020004.sql';
 
 const baca = (nama: string) => readFileSync(join(MIGRATIONS_DIR, nama), 'utf8').replace(/\r\n/g, '\n');
 const bacaDocs = (...bagian: string[]) => readFileSync(join(MIGRATIONS_DIR, '..', '..', 'docs', ...bagian), 'utf8').replace(/\r\n/g, '\n');
@@ -91,10 +91,10 @@ describe('survei_notifikasi: berkas, urutan, atomik, aditif', () => {
     expect(mengandungKontrolTransaksi(rollbackRaw)).toBe(false);
     expect(mengubahPolicyAtauFungsi(raw)).toBe(true);
     expect(mengubahPolicyAtauFungsi(rollbackRaw)).toBe(true);
-    expect(raw).toMatch(/apply-migration\.mjs supabase\/migrations\/202610270004_survei_notifikasi\.sql --atomic --dry-run/);
-    expect(raw).toMatch(/apply-migration\.mjs supabase\/migrations\/202610270004_survei_notifikasi\.sql --atomic\s*$/m);
-    expect(raw).toContain('docs/rollback-survei-notifikasi-202610270004.sql');
-    expect(rollbackRaw).toMatch(/apply-migration\.mjs docs\/rollback-survei-notifikasi-202610270004\.sql --atomic --dry-run/);
+    expect(raw).toMatch(/apply-migration\.mjs supabase\/migrations\/202611020004_survei_notifikasi\.sql --atomic --dry-run/);
+    expect(raw).toMatch(/apply-migration\.mjs supabase\/migrations\/202611020004_survei_notifikasi\.sql --atomic\s*$/m);
+    expect(raw).toContain('docs/rollback-survei-notifikasi-202611020004.sql');
+    expect(rollbackRaw).toMatch(/apply-migration\.mjs docs\/rollback-survei-notifikasi-202611020004\.sql --atomic --dry-run/);
     expect(raw).toMatch(/BELUM DITERAPKAN/);
   });
 
@@ -123,7 +123,7 @@ describe('survei_notifikasi: berkas, urutan, atomik, aditif', () => {
     expect(pernyataan.findIndex((p) => /^DO\b/.test(p))).toBe(0);
     const guard = rapikan(raw.slice(awal, raw.indexOf('END $$', awal)));
     expect(guard).toMatch(/IF pg_catalog\.to_regprocedure\('public\.notify_kunjungan_status\(\)'\) IS NULL THEN RAISE EXCEPTION 'PRASYARAT: [^']*202610140007_wp24_akhiri_dual_write/);
-    expect(guard).toMatch(/IF pg_catalog\.to_regprocedure\('public\.ensure_undangan\(uuid\)'\) IS NULL THEN RAISE EXCEPTION 'PRASYARAT: [^']*202610270001_survei_undangan/);
+    expect(guard).toMatch(/IF pg_catalog\.to_regprocedure\('public\.ensure_undangan\(uuid\)'\) IS NULL THEN RAISE EXCEPTION 'PRASYARAT: [^']*202611020001_survei_undangan/);
     expect(guard.match(/RAISE EXCEPTION 'PRASYARAT: /g)).toHaveLength(2);
   });
 
@@ -331,7 +331,7 @@ describe('survei_notifikasi: rollback', () => {
     expect(header).toMatch(/PENJAGA/);
     expect(header).toMatch(/PERINGATAN/);
     expect(header).toMatch(/PERTAMA dalam seri/);
-    expect(header).toMatch(/SEBELUM rollback 202610270003, 202610270002, dan 202610270001/);
+    expect(header).toMatch(/SEBELUM rollback 202611020003, 202611020002, dan 202611020001/);
     expect(header).toMatch(/kembali memuat tautan lama/);
   });
 });
@@ -344,23 +344,23 @@ describe('survei_notifikasi: pencatatan (docs/ATURAN_MIGRASI.md #4)', () => {
 
   it('docs/MIGRATIONS.md: bagian "Survei terpadu Fase A" memuat baris 0004 (sesudah baris 0003, sebelum bagian 0014) dengan berkas, rollback, dan status BELUM DITERAPKAN', () => {
     const md = bacaDocs('MIGRATIONS.md');
-    const judul = '## Survei terpadu Fase A (202610270001-202610270004)';
+    const judul = '## Survei terpadu Fase A (202611020001-202611020004)';
     expect(md).toContain(judul);
     expect(md.indexOf(judul)).toBeLessThan(md.indexOf('## Data walk-in lengkap (0014)'));
     const bagian = md.slice(md.indexOf(judul), md.indexOf('## Data walk-in lengkap (0014)'));
-    const baris = bagian.split('\n').filter((x) => x.startsWith('| 20261027'));
-    const b4 = baris.find((x) => x.startsWith('| 202610270004 |'));
+    const baris = bagian.split('\n').filter((x) => x.startsWith('| 20261102'));
+    const b4 = baris.find((x) => x.startsWith('| 202611020004 |'));
     expect(b4).toBeDefined();
     expect(b4!).toContain(BERKAS);
     expect(b4!).toContain(BERKAS_ROLLBACK);
     expect(b4!).toMatch(/BELUM DITERAPKAN/);
-    expect(baris.indexOf(b4!)).toBeGreaterThan(baris.findIndex((x) => x.startsWith('| 202610270003 |')));
+    expect(baris.indexOf(b4!)).toBeGreaterThan(baris.findIndex((x) => x.startsWith('| 202611020003 |')));
   });
 
   it('docs/analysis/DB-CHANGES.md: entri 0004 adalah entri TERAKHIR, status DITULIS, BELUM DITERAPKAN, menyatakan fungsi tidak bisa dijalankan di PGlite dan verifikasi statis/dry-run pemilik, memuat rollback', () => {
     const md = bacaDocs('analysis', 'DB-CHANGES.md');
-    const i = md.lastIndexOf('202610270004_survei_notifikasi');
-    expect(i).toBeGreaterThan(md.lastIndexOf('202610270003_survei_rpc'));
+    const i = md.lastIndexOf('202611020004_survei_notifikasi');
+    expect(i).toBeGreaterThan(md.lastIndexOf('202611020003_survei_rpc'));
     const entri = md.slice(md.lastIndexOf('\n### ', i));
     expect(md.lastIndexOf('\n### ')).toBe(md.lastIndexOf('\n### ', i)); // tidak ada entri lain sesudahnya
     expect(entri).toContain('Status       : DITULIS, BELUM DITERAPKAN');

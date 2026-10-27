@@ -1,8 +1,8 @@
--- 202610270002_survei_jawaban.sql
+-- 202611020002_survei_jawaban.sql
 -- SURVEI TERPADU FASE A, langkah 2 (spec: docs/superpowers/specs/2026-10-26-survei-terpadu-design.md §4.2, §4.3, §6):
 -- tempat menyimpan jawaban survei terpadu. SKM diperluas dari 9 ke 11 unsur (u10 transparansi, u11 integritas) tanpa
 -- merusak baris lama; SPAK (5 butir, nilai 1-6) mendapat tabel sendiri yang tidak terbaca petugas; ringkasan IKM, SPAK,
--- dan response rate tersedia sebagai RPC untuk halaman admin. Penulisan jawaban (kirim_survei) menyusul di 202610270003;
+-- dan response rate tersedia sebagai RPC untuk halaman admin. Penulisan jawaban (kirim_survei) menyusul di 202611020003;
 -- tidak ada tulis langsung dari klien ke tabel jawaban.
 --
 -- ISI:
@@ -24,7 +24,7 @@
 --      (smallint NOT NULL, CHECK 1-6; 6 = Sangat Setuju), jenis_kelamin, pendidikan, created_at. RLS aktif; hak tabel dicabut
 --      dari PUBLIC/anon/authenticated lalu GRANT SELECT hanya authenticated; satu policy spak_select_staff (FOR SELECT, TO
 --      authenticated, hanya peran_saya() admin/front_office). Petugas layanan dan non-staf tidak membaca apa pun; tanpa
---      policy dan tanpa hak tulis untuk klien (penulisan lewat fungsi SECURITY DEFINER di 202610270003).
+--      policy dan tanpa hak tulis untuk klien (penulisan lewat fungsi SECURITY DEFINER di 202611020003).
 --   3. hitung_ikm(uuid, date, date) diganti (signature, hak, dan klausa FROM/WHERE identik): rata-rata per baris
 --      (u1..u9 + COALESCE(u10, 0) + COALESCE(u11, 0)) / (9.0 + u10 terisi + u11 terisi) x 25. Penyebut memakai 9.0 (numerik;
 --      9 bulat akan memotong hasil bagi). Baris 9 unsur lama menghasilkan nilai yang sama persis dengan rumus lama; baris
@@ -40,7 +40,7 @@
 --      hitung_ikm publik); selain itu hasil kosong. Periode = tanggal WIB (created_at).
 --   5. ringkasan_spak(p_start, p_end): pengelompokan yang sama, rata-rata p1..p5 dan responden; HANYA admin/front_office
 --      (petugas dan non-staf: kosong). Periode = tanggal WIB.
---   6. ringkasan_response_rate(p_start, p_end): dari survei_undangan (migrasi 202610270001): diundang = undangan yang
+--   6. ringkasan_response_rate(p_start, p_end): dari survei_undangan (migrasi 202611020001): diundang = undangan yang
 --      dibuat_pada-nya jatuh dalam periode WIB, mengisi = di antaranya yang diisi_pada-nya terisi (kohort undangan); baris per
 --      layanan dan satu baris 'fo'; undangan yang layanannya sudah dihapus masuk 'tidak_diketahui' agar jumlah tidak hilang.
 --      HANYA admin/front_office.
@@ -50,17 +50,17 @@
 --   Semua fungsi SECURITY DEFINER dengan SET search_path = pg_catalog, public; REVOKE dari PUBLIC/anon/authenticated lalu
 --   GRANT eksplisit. Ketiga fungsi ringkasan hanya authenticated (anon ditolak oleh hak, SQLSTATE 42501).
 --
--- SYARAT: skm_respons.kunjungan_id (202610140007), survei_undangan (202610270001), hitung_ikm (202607140004), v_skm_petugas
+-- SYARAT: skm_respons.kunjungan_id (202610140007), survei_undangan (202611020001), hitung_ikm (202607140004), v_skm_petugas
 --   dan peran_saya (202610090001), boleh_layanan (202610080001); dijaga blok PRASYARAT di bawah.
 -- PENERAPAN (WAJIB atomik; dry-run dulu; hanya setelah konfirmasi CEO; migrasi ini DITULIS tetapi BELUM DITERAPKAN):
---   node scripts/apply-migration.mjs supabase/migrations/202610270002_survei_jawaban.sql --atomic --dry-run
---   node scripts/apply-migration.mjs supabase/migrations/202610270002_survei_jawaban.sql --atomic
+--   node scripts/apply-migration.mjs supabase/migrations/202611020002_survei_jawaban.sql --atomic --dry-run
+--   node scripts/apply-migration.mjs supabase/migrations/202611020002_survei_jawaban.sql --atomic
 -- Idempoten (ADD COLUMN IF NOT EXISTS, DROP lalu ADD untuk constraint sendiri, CREATE OR REPLACE, DROP POLICY IF EXISTS):
 -- menerapkan ulang tidak mengubah data, kecuali menandai unit 'layanan' pada baris form_lama ber-layanan_id yang masih
 -- berunit default (mis. ditulis form lama sesudah migrasi); baris wizard dan impor tidak pernah disentuh UPDATE itu.
--- ROLLBACK: docs/rollback-survei-jawaban-202610270002.sql (memulihkan hitung_ikm dan v_skm_petugas ke versi asli, menghapus
---   yang ditambahkan; MENGHAPUS data kolom u10/u11 dan tabel spak_respons; jalankan SETELAH rollback 202610270004 dan
---   202610270003, SEBELUM rollback 202610270001).
+-- ROLLBACK: docs/rollback-survei-jawaban-202611020002.sql (memulihkan hitung_ikm dan v_skm_petugas ke versi asli, menghapus
+--   yang ditambahkan; MENGHAPUS data kolom u10/u11 dan tabel spak_respons; jalankan SETELAH rollback 202611020004 dan
+--   202611020003, SEBELUM rollback 202611020001).
 -- UJI PERILAKU: scripts/lokal/skenario-survei-jawaban.mjs (PGlite lokal, tanpa DB nyata). Kontrak statis:
 --   supabase/migrations/survei_jawaban.test.ts.
 
@@ -79,7 +79,7 @@ BEGIN
     RAISE EXCEPTION 'PRASYARAT: kolom skm_respons.kunjungan_id belum ada (202610140007_wp24_akhiri_dual_write)';
   END IF;
   IF pg_catalog.to_regclass('public.survei_undangan') IS NULL THEN
-    RAISE EXCEPTION 'PRASYARAT: tabel survei_undangan belum ada (202610270001_survei_undangan)';
+    RAISE EXCEPTION 'PRASYARAT: tabel survei_undangan belum ada (202611020001_survei_undangan)';
   END IF;
   IF pg_catalog.to_regclass('public.v_skm_petugas') IS NULL THEN
     RAISE EXCEPTION 'PRASYARAT: view v_skm_petugas belum ada (202610090001_rbac_tahap1)';
@@ -303,7 +303,7 @@ GRANT SELECT ON public.v_skm_petugas TO authenticated;
 -- 8. Komentar objek baru
 -- ============================================================
 COMMENT ON TABLE public.spak_respons IS
-  'Jawaban SPAK survei terpadu (migrasi 202610270002): 5 butir, nilai 1-6 (6 = Sangat Setuju). Baca hanya admin/front_office; tanpa tulis langsung dari klien.';
+  'Jawaban SPAK survei terpadu (migrasi 202611020002): 5 butir, nilai 1-6 (6 = Sangat Setuju). Baca hanya admin/front_office; tanpa tulis langsung dari klien.';
 COMMENT ON FUNCTION public.ringkasan_ikm(date, date) IS
   'IKM per layanan, Front Office, dan tidak terklasifikasi (periode tanggal WIB). Admin, front_office, petugas; selain itu kosong.';
 COMMENT ON FUNCTION public.ringkasan_spak(date, date) IS
