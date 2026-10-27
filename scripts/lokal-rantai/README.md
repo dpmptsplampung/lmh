@@ -7,6 +7,7 @@ bukan stub tabel seperti `scripts/lokal` di branch survei. Tanpa jaringan, tanpa
 ```bash
 npm i --no-save @electric-sql/pglite      # tidak masuk package.json; ulangi setelah npm ci
 node scripts/lokal-rantai/skenario-akses-data.mjs   # ~15 detik, exit 1 bila ada cek gagal
+node scripts/lokal-rantai/skenario-identitas.mjs     # identitas satu kesatuan, backfill, rollback (46 cek)
 ```
 
 Skenario `skenario-akses-data.mjs` (115 cek): kunjungan, penanganan, tiket_antrean, buku_tamu, chat_sesi/chat_pesan, email chat luar jam, Pendataan Khusus, rekap terpadu,

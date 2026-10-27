@@ -15,12 +15,15 @@ import { kodeGalatDariError, MAX_CATATAN_LAYANAN, PESAN_GALAT_ANTREAN } from '@/
 import { susunJawabanMentah, validasiJawabanKhusus, type NilaiForm } from '@/lib/pendataan-khusus/jawaban';
 import { kodeGalatKhusus, PESAN_GALAT_KHUSUS } from '@/lib/pendataan-khusus/galat';
 import { objekBelumAda } from '@/lib/akses-data/galat';
+import { PESAN_EMAIL_WAJIB, POLA_EMAIL_NYATA } from '@/lib/types/pelayanan';
 import FormDialog from './FormDialog';
 import PendataanKhususFields, { useFieldKhusus } from './PendataanKhususFields';
 import TopikCatatanFields, { useTopikLayanan } from './TopikCatatanFields';
 
 const PESAN_MIGRASI_SEBAGIAN =
   'Pendataan Khusus belum aktif sepenuhnya di server (migrasi belum lengkap), sehingga tiket belum dapat diselesaikan dengan isian ini. Hubungi Admin.';
+const PESAN_MIGRASI_EMAIL =
+  'Pengisian email pengunjung belum aktif di server (migrasi belum diterapkan), sehingga tiket belum dapat diselesaikan dengan email. Hubungi Admin.';
 const PESAN_ISIAN_BERUBAH =
   'Isian Pendataan Khusus Layanan ini berubah. Formulir dimuat ulang; periksa isian lalu kirim lagi.';
 
@@ -51,6 +54,8 @@ export default function SelesaiEskalasiModal({ tiket, onClose, onSuccess }: Prop
   const [galat, setGalat] = useState<string | null>(null);
   const [galatTopik, setGalatTopik] = useState<string | null>(null);
   const [galatCatatan, setGalatCatatan] = useState<string | null>(null);
+  const [email, setEmail] = useState('');
+  const [galatEmail, setGalatEmail] = useState<string | null>(null);
 
   if (!tiket) return null;
 
@@ -67,7 +72,11 @@ export default function SelesaiEskalasiModal({ tiket, onClose, onSuccess }: Prop
       ? validasiJawabanKhusus(khusus.fields, susunJawabanMentah(khusus.fields, nilaiKhusus))
       : { galat: {}, payload: {} };
     setGalatKhusus(hasilKhusus.galat);
-    if (gTopik || gCatatan || Object.keys(hasilKhusus.galat).length > 0) return;
+    // Email pengunjung: kosong = pakai email yang sudah tercatat (server menolak EMAIL_WAJIB bila belum ada); terisi = harus valid.
+    const emailBersih = email.trim();
+    const gEmail = emailBersih !== '' && !POLA_EMAIL_NYATA.test(emailBersih) ? PESAN_EMAIL_WAJIB : null;
+    setGalatEmail(gEmail);
+    if (gTopik || gCatatan || gEmail || Object.keys(hasilKhusus.galat).length > 0) return;
 
     setGalat(null);
     setMengirim(true);
@@ -76,21 +85,28 @@ export default function SelesaiEskalasiModal({ tiket, onClose, onSuccess }: Prop
       const pakaiLama = () =>
         supabase.rpc('layanan_selesai', { p_tiket_id: tiket.id, p_topik_id: topikId, p_catatan: catatanBersih });
       let hasil: { peringatan?: string }[];
+      // Email diketik atau ada isian Khusus -> RPC layanan_selesai_khusus (membawa identitas); selain itu alur lama.
+      const pakaiKhusus = adaKhusus || emailBersih !== '';
       try {
         hasil = await mutasiWajibBaris<{ peringatan?: string }>(
-          adaKhusus
+          pakaiKhusus
             ? supabase.rpc('layanan_selesai_khusus', {
                 p_tiket_id: tiket.id, p_topik_id: topikId, p_catatan: catatanBersih, p_khusus: hasilKhusus.payload,
+                ...(emailBersih !== '' ? { p_identitas: { email: emailBersih } } : {}),
               })
             : pakaiLama(),
         );
       } catch (e) {
-        // Deploy sebagian (0001 tanpa 0002): fungsi layanan_selesai_khusus belum ada.
+        // Deploy sebagian: fungsi layanan_selesai_khusus (atau parameter p_identitas) belum ada.
         const asal = (e as { asal?: unknown }).asal ?? e;
-        if (!adaKhusus || !objekBelumAda(asal)) throw e;
+        if (!pakaiKhusus || !objekBelumAda(asal)) throw e;
         const perluKhusus = khusus.fields.some((f) => f.wajib) || Object.keys(hasilKhusus.payload).length > 0;
         if (perluKhusus) {
           setGalat(PESAN_MIGRASI_SEBAGIAN);
+          return;
+        }
+        if (emailBersih !== '') {
+          setGalat(PESAN_MIGRASI_EMAIL);
           return;
         }
         hasil = await mutasiWajibBaris<{ peringatan?: string }>(pakaiLama());
@@ -107,6 +123,7 @@ export default function SelesaiEskalasiModal({ tiket, onClose, onSuccess }: Prop
         khusus.muatUlang();
         setGalat(PESAN_ISIAN_BERUBAH);
       } else if (kodeKhusus) setGalat(PESAN_GALAT_KHUSUS[kodeKhusus]);
+      else if (kode === 'EMAIL_WAJIB') setGalatEmail(PESAN_GALAT_ANTREAN.EMAIL_WAJIB);
       else if (kode === 'TOPIK_WAJIB' || kode === 'TOPIK_TIDAK_VALID') setGalatTopik(PESAN_GALAT_ANTREAN[kode]);
       else if (kode === 'CATATAN_WAJIB' || kode === 'CATATAN_TERLALU_PANJANG') setGalatCatatan(PESAN_GALAT_ANTREAN[kode]);
       else setGalat(kode ? PESAN_GALAT_ANTREAN[kode] : `Gagal menyelesaikan tiket. ${pesanMutasi(err)}`);
@@ -147,6 +164,30 @@ export default function SelesaiEskalasiModal({ tiket, onClose, onSuccess }: Prop
           galatCatatan={galatCatatan}
           disabled={mengirim}
         />
+        <div className="form-group">
+          <label htmlFor={`${idDasar}-email`} className="form-label">Email pengunjung</label>
+          <input
+            id={`${idDasar}-email`}
+            className="form-input"
+            type="email"
+            inputMode="email"
+            autoComplete="off"
+            maxLength={254}
+            value={email}
+            disabled={mengirim}
+            placeholder="nama@email.com"
+            aria-invalid={galatEmail ? true : undefined}
+            aria-describedby={`${idDasar}-email-info${galatEmail ? ` ${idDasar}-email-galat` : ''}`}
+            onChange={(e) => { setEmail(e.target.value); setGalatEmail(null); setGalat(null); }}
+          />
+          <p id={`${idDasar}-email-info`} style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--text-secondary)' }}>
+            Pengunjung yang dieskalasi wajib punya email. Isi bila belum tercatat oleh Front Office atau bila ingin
+            memperbaruinya; kosongkan bila email sudah ada.
+          </p>
+          {galatEmail && (
+            <p id={`${idDasar}-email-galat`} role="alert" style={{ color: 'var(--color-danger-600)', fontSize: 12, margin: '4px 0 0' }}>{galatEmail}</p>
+          )}
+        </div>
         {khusus.tersedia && (
           <PendataanKhususFields
             idDasar={idDasar}

@@ -74,13 +74,21 @@ interface PenangananRiwayat {
   selesai_at: string | null;
   penangan_id?: string | null;
   penangan?: NamaEmbed;
-  kunjungan: { nama: string; asal_instansi: string | null } | { nama: string; asal_instansi: string | null }[] | null;
+  kunjungan: KunjunganRiwayat | KunjunganRiwayat[] | null;
+}
+
+/** Data induk kunjungan; `email` terisi bila FO atau petugas layanan sudah melengkapinya (identitas satu kesatuan). */
+interface KunjunganRiwayat {
+  nama: string;
+  asal_instansi: string | null;
+  email?: string | null;
 }
 
 interface TiketHasilEskalasi {
   penanganan_asal_id: string;
   nomor_display: string;
   layanan_id: string;
+  status?: string | null;
 }
 
 type Hasil =
@@ -136,7 +144,7 @@ export default function PenangananFoPage() {
       let kueriRiwayat = supabase
         .from('penanganan')
         .select(
-          'id, kunjungan_id, tahap_ke, saluran, status, hasil, topik, catatan, mulai_at, selesai_at, penangan_id, penangan:penangan_id(nama), kunjungan:kunjungan_id(nama, asal_instansi)',
+          'id, kunjungan_id, tahap_ke, saluran, status, hasil, topik, catatan, mulai_at, selesai_at, penangan_id, penangan:penangan_id(nama), kunjungan:kunjungan_id(nama, asal_instansi, email)',
         )
         .eq('peran_tahap', 'fo')
         .in('status', ['selesai', 'batal'])
@@ -166,7 +174,7 @@ export default function PenangananFoPage() {
       if (idDieskalasi.length > 0) {
         const { data: tiket } = await supabase
           .from('tiket_antrean')
-          .select('penanganan_asal_id, nomor_display, layanan_id')
+          .select('penanganan_asal_id, nomor_display, layanan_id, status')
           .in('penanganan_asal_id', idDieskalasi);
         for (const t of (tiket ?? []) as unknown as TiketHasilEskalasi[]) petaTiket[t.penanganan_asal_id] = t;
       }
@@ -277,7 +285,8 @@ export default function PenangananFoPage() {
       const t = tiketPerTahap[r.id];
       if (!t) return 'Dieskalasi';
       const tujuan = namaLayanan(t.layanan_id);
-      return `Dieskalasi → ${t.nomor_display}${tujuan ? ` (${tujuan})` : ''}`;
+      const keadaan = t.status === 'selesai' ? ' · layanan selesai' : '';
+      return `Dieskalasi → ${t.nomor_display}${tujuan ? ` (${tujuan})` : ''}${keadaan}`;
     }
     if (r.hasil === 'selesai') return 'Selesai di FO';
     return r.hasil ?? 'Selesai';
@@ -488,6 +497,12 @@ export default function PenangananFoPage() {
                           {k?.nama ?? '-'}
                           <br />
                           <span className={styles.meta}>{labelSaluran(r.saluran)}</span>
+                          {k?.email && (
+                            <>
+                              <br />
+                              <span className={styles.meta}>Email: {k.email}</span>
+                            </>
+                          )}
                         </td>
                         <td>{namaFo(r)}</td>
                         <td>{labelHasil(r)}</td>

@@ -67,6 +67,8 @@ const STATUS_GALAT_ANTREAN: Record<KodeGalatAntrean, number> = {
   // Fase 3: ambil alih Koordinator (tidak dipakai route ini, wajib ada agar peta lengkap).
   BUKAN_SATU_UNIT: 403,
   KANAL_CHAT: 409,
+  // 202611010003: email pengunjung yang dieskalasi wajib nyata (isian salah, bukan konflik keadaan).
+  EMAIL_WAJIB: 422,
 };
 
 function responsGalatAntrean(kode: KodeGalatAntrean, pesan?: string) {

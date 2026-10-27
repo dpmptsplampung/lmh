@@ -29,7 +29,7 @@ const PERIZINAN_LENGKAP = {
   nama_pemohon: 'Siti',
   alamat_pemohon: 'Lampung Selatan',
   no_hp: '081200000000',
-  email: 'Tidak berlaku',
+  email: 'siti@contoh.id',
   keperluan_awal: 'Izin usaha',
   nama_perusahaan: 'PT Maju',
   lokasi_usaha: 'Lampung Selatan',
@@ -738,6 +738,8 @@ describe('API Route /api/admin/pelayanan/[tiketId]', () => {
         { catatan_internal: undefined },
         { catatan_internal: '   ' },
         { email: '' },
+        { email: 'Tidak berlaku' }, // 202611010003: email wajib nyata
+        { email: 'bukan-email' },
         { no_hp: null },
         { tipe_pelaku_usaha: 'bukan_enum' },
         { skala_usaha: '' },

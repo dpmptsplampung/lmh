@@ -52,6 +52,39 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('SelesaiEskalasiModal', () => {
+  it('email diketik: memakai layanan_selesai_khusus dengan p_identitas {email}', async () => {
+    hasilTabel.pendataan_khusus_field = { data: [] };
+    render(<SelesaiEskalasiModal tiket={TIKET} onClose={vi.fn()} />);
+    await isiTopikCatatan();
+    fireEvent.change(screen.getByLabelText('Email pengunjung'), { target: { value: 'warga@contoh.id' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Selesaikan' }));
+    await waitFor(() => expect(rpcMock).toHaveBeenCalledTimes(1));
+    expect(rpcMock).toHaveBeenCalledWith('layanan_selesai_khusus', expect.objectContaining({
+      p_tiket_id: 'tk1', p_identitas: { email: 'warga@contoh.id' },
+    }));
+  });
+
+  it('email berformat salah / nilai pengganti ditolak di klien tanpa memanggil server', async () => {
+    hasilTabel.pendataan_khusus_field = { data: [] };
+    render(<SelesaiEskalasiModal tiket={TIKET} onClose={vi.fn()} />);
+    await isiTopikCatatan();
+    fireEvent.change(screen.getByLabelText('Email pengunjung'), { target: { value: 'Tidak berlaku' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Selesaikan' }));
+    expect(await screen.findByText(/email yang valid/)).toBeTruthy();
+    expect(rpcMock).not.toHaveBeenCalled();
+  });
+
+  it('server menolak EMAIL_WAJIB (belum ada email di mana pun): pesan tampil di bawah isian email', async () => {
+    hasilTabel.pendataan_khusus_field = { data: [] };
+    rpcMock.mockResolvedValue({ data: null, error: { code: '22023', message: 'EMAIL_WAJIB: pengunjung yang dieskalasi wajib memiliki email' } });
+    render(<SelesaiEskalasiModal tiket={TIKET} onClose={vi.fn()} />);
+    await isiTopikCatatan();
+    fireEvent.click(screen.getByRole('button', { name: 'Selesaikan' }));
+    const pesan = await screen.findAllByText(/Email pengunjung wajib diisi/);
+    expect(pesan.length).toBeGreaterThan(0);
+    expect(screen.getByLabelText('Email pengunjung')).toHaveAttribute('aria-invalid', 'true');
+  });
+
   it('tanpa isian Pendataan Khusus memakai layanan_selesai (alur lama tidak berubah)', async () => {
     hasilTabel.pendataan_khusus_field = { data: [] };
     render(<SelesaiEskalasiModal tiket={TIKET} onClose={vi.fn()} />);

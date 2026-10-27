@@ -812,7 +812,7 @@ export default function PelayananWizardModal({
                     {medanTeks({
                       kunci: 'email', slug: 'email', label: 'Alamat Email', tipe: 'email',
                       ikon: <Mail size={14} aria-hidden="true" style={{ display: 'inline', marginRight: 4 }} />,
-                      nilai: email, set: setEmail, cepat: CEPAT_TIDAK_BERLAKU, placeholder: 'nama@email.com',
+                      nilai: email, set: setEmail, placeholder: 'nama@email.com (wajib, email yang valid)',
                     })}
                   </div>
                   {medanTeks({

@@ -50,6 +50,7 @@ Commit per fase di `feat/fase-1-fondasi-layanan` (di atas `565cb6f` = akhir Fase
 | 3 Koordinator dan rekap | `202610290001`, `202610290002` | Penanda `petugas.koordinator`; akses data per orang (membalik `202610140013`); ambil alih pendataan; Rekap terpadu (Harian, Data Pelayanan + Excel, Kinerja) dengan satu definisi "dilayani" |
 | 4 Pendataan | `202610300001`, `202610300002` | Pendataan Khusus dinamis per layanan non-OSS; topik di langkah selesai OSS/Non OSS; pendataan saat menutup live chat; kolom `[Khusus]` di rekap dan Excel |
 | 5 Live chat | `202610310001`, `0002`, `0003` | Satu percakapan per layanan dengan riwayat lintas sesi; bot di luar jam; email ke petugas bila pengunjung meminta; lingkup baca chat menutup celah FO membaca semua chat |
+| 6b Identitas satu kesatuan | `202611010003`, `202611010004` (backfill) | Pengunjung yang dieskalasi wajib punya email nyata saat layanan selesai; identitas dari petugas layanan kembali ke `kunjungan`; FO pencatat membaca hasil lengkap (read-only); rencana `docs/superpowers/plans/2026-11-01-identitas-satu-kesatuan.md` |
 | 6 Saran pengunjung | `202611010001` | Autocomplete di kolom Nama dan Nomor HP walk-in FO; RPC pencarian bertopeng + pengambilan identitas (diaudit, dibatasi 60/10 menit) |
 
 ## 5. Urutan terap migrasi (hanya pemilik; menyentuh produksi)
@@ -58,7 +59,7 @@ Aturan: `node scripts/apply-migration.mjs --atomic --dry-run supabase/migrations
 
 ```
 202610270001 → 202610270002 → 202610280001 → 202610290001 → 202610290002
-→ 202610300001 → 202610300002 → 202610310001 → 202610310002 → 202610310003 → 202611010001 → 202611010002
+→ 202610300001 → 202610300002 → 202610310001 → 202610310002 → 202610310003 → 202611010001 → 202611010002 → 202611010003 → 202611010004
 ```
 
 - Terapkan **dalam satu jendela dengan deploy**. Tanpa migrasi: halaman Rekap kosong (409), Kelola Layanan dan API Instansi error. Beranda, chat, dan form FO mundur ke perilaku lama tanpa crash.

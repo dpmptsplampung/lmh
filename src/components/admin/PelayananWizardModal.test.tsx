@@ -567,7 +567,10 @@ describe('PelayananWizardModal component', () => {
       // Langkah 1: Tidak berlaku untuk alamat, HP, email, keperluan
       langkah(1);
       for (const tombol of screen.getAllByRole('button', { name: 'Tidak berlaku' })) fireEvent.click(tombol);
-      expect(screen.getByLabelText(/Alamat Email/)).toHaveValue('Tidak berlaku');
+      // Email WAJIB nyata (202611010003): tidak ada isian cepat "Tidak berlaku" untuk email.
+      expect(within(screen.getByLabelText(/Alamat Email/).closest('.form-group') as HTMLElement).queryByRole('button')).toBeNull();
+      expect(screen.getByLabelText(/Alamat Email/)).toHaveValue('');
+      fireEvent.change(screen.getByLabelText(/Alamat Email/), { target: { value: 'pemohon@contoh.id' } });
       expect(screen.getByLabelText('Asal Instansi / Alamat Domisili')).toHaveValue('Tidak berlaku');
 
       // Langkah 2: usaha belum ada; pilihan eksplisit "Tidak berlaku"
@@ -588,7 +591,7 @@ describe('PelayananWizardModal component', () => {
       await waitFor(() => expect(posts()).toHaveLength(1));
       const body = JSON.parse((posts()[0][1] as RequestInit).body as string);
       expect(body).toMatchObject({
-        alamat_pemohon: 'Tidak berlaku', no_hp: 'Tidak berlaku', email: 'Tidak berlaku', keperluan_awal: 'Tidak berlaku',
+        alamat_pemohon: 'Tidak berlaku', no_hp: 'Tidak berlaku', email: 'pemohon@contoh.id', keperluan_awal: 'Tidak berlaku',
         nama_usaha: 'Belum ada', lokasi_usaha: 'Belum ada', sektor_usaha_kbli: 'Tidak berlaku',
         tipe_pelaku_usaha: 'tidak_berlaku', skala_usaha: 'Tidak berlaku', catatan_internal: '-',
       });

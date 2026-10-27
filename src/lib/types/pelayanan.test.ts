@@ -10,7 +10,7 @@ const OSS = {
   nama_pemohon: 'Budi',
   alamat_pemohon: 'Bandar Lampung',
   no_hp: '081234567890',
-  email: 'Tidak berlaku',
+  email: 'budi@majujaya.id',
   keperluan_awal: 'Mengurus NIB',
   nama_usaha: 'Belum ada',
   tipe_pelaku_usaha: 'tidak_berlaku',
@@ -67,6 +67,22 @@ describe('Pendataan: semua field wajib saat final (keputusan CEO G.5)', () => {
   it('draf (autosave) tetap longgar: hanya nama pemohon yang wajib', () => {
     expect(ossPelayananDraftSchema.safeParse({ nama_pemohon: 'Budi' }).success).toBe(true);
     expect(perizinanPelayananDraftSchema.safeParse({ nama_pemohon: 'Siti' }).success).toBe(true);
+  });
+});
+
+describe('Email pengunjung yang dieskalasi wajib nyata (202611010003)', () => {
+  const tolak = ['Tidak berlaku', '-', 'Belum ada', '', '   ', 'budi', 'budi@', '@x.id', 'budi@x', 'a b@x.id', `${'a'.repeat(250)}@x.id`];
+  it.each(tolak)('OSS dan Non OSS menolak email %j', (nilai) => {
+    expect(ossPelayananFinalSchema.safeParse({ ...OSS, email: nilai }).success).toBe(false);
+    expect(perizinanPelayananFinalSchema.safeParse({ ...PERIZINAN, email: nilai }).success).toBe(false);
+  });
+  it('menerima email valid (huruf besar dan spasi tepi dipangkas)', () => {
+    const r = ossPelayananFinalSchema.safeParse({ ...OSS, email: '  Budi.Santoso+oss@Contoh.Co.ID ' });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.email).toBe('Budi.Santoso+oss@Contoh.Co.ID');
+  });
+  it('draf (autosave) tetap boleh tanpa email', () => {
+    expect(ossPelayananDraftSchema.safeParse({ nama_pemohon: 'Budi', email: '' }).success).toBe(true);
   });
 });
 

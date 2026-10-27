@@ -1173,3 +1173,36 @@ node scripts/apply-migration.mjs supabase/migrations/202611010002_tiket_antrean_
 **Daftar periksa pemilik:** (1) dry-run lalu terapkan; (2) sebagai FO/petugas biasa buka Antrian hari ini: daftar, hitungan selesai, dan rata-rata durasi sama seperti sebelumnya; (3) buka tanggal lampau: tiket rekan tidak muncul, tiket sendiri tetap; (4) `EXPLAIN` pada `select count(*) from tiket_antrean where tanggal = current_date` (policy memanggil fungsi per baris; pantau pada data besar); (5) rollback: `docs/rollback-tiket-antrean-lingkup-202611010002.sql`.
 
 **Terbukti dengan:** `node scripts/lokal-rantai/skenario-akses-data.mjs` (PGlite, seluruh rantai migrasi pada skema asli; sebelum migrasi ini 3 cek tiket gagal, sesudahnya 115/115 lolos). `buku_tamu` sengaja TIDAK dibatasi (keputusan pemilik): meja FO bersama, hanya ditandai nama pencatat di UI.
+
+## Identitas pengunjung satu kesatuan (202611010003, 202611010004) — BELUM DITERAPKAN
+
+Keputusan pemilik 2026-10-27: `kunjungan` adalah DATA INDUK yang diisi FO (email boleh kosong di FO); pengunjung yang dieskalasi wajib punya email nyata saat layanan selesai, dan identitas yang dilengkapi petugas layanan kembali ke data induk. Rencana: `docs/superpowers/plans/2026-11-01-identitas-satu-kesatuan.md`.
+
+| Versi | Berkas | Isi | Status |
+|---|---|---|---|
+| 202611010003 | `202611010003_identitas_satu_kesatuan.sql` | `email_nyata`, `kunjungan_email_efektif`, `kunjungan_terapkan_identitas` (tulis balik, nilai terbaru menang, audit); trigger formulir OSS/Non OSS selesai (email nyata wajib + tulis balik); trigger `tiket_antrean` (tiket tidak bisa selesai tanpa email); `layanan_selesai_khusus` 5 argumen (+`p_identitas`, menggantikan 4 argumen); `chat_selesai_khusus` (identitas dan email diperiksa sebelum `chat_selesai`); FO pencatat membaca tahap, formulir, dan Pendataan Khusus kunjungannya (read-only) | DITULIS, BELUM DITERAPKAN |
+| 202611010004 | `202611010004_backfill_identitas_kunjungan.sql` | BACKFILL data lama: mengisi kolom KOSONG `kunjungan` (email, HP, instansi) dari formulir selesai terbaru; tidak menimpa; jejak per kunjungan di `audit_log` | DITULIS, BELUM DITERAPKAN. **Mengubah data nyata** |
+
+**Urutan terap (hanya pemilik, atomik, dry-run dulu):** `202611010003` SESUDAH `202611010002`, dalam satu jendela dengan deploy klien. `202611010004` hanya SESUDAH `202611010003` dan setelah daftar periksa di bawah.
+
+```bash
+node scripts/apply-migration.mjs supabase/migrations/202611010003_identitas_satu_kesatuan.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202611010003_identitas_satu_kesatuan.sql --atomic
+# sesudah deploy klien dan pemeriksaan:
+node scripts/apply-migration.mjs supabase/migrations/202611010004_backfill_identitas_kunjungan.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202611010004_backfill_identitas_kunjungan.sql --atomic
+```
+
+**Perilaku yang berubah (beritahu petugas):** tiket layanan TIDAK bisa diselesaikan bila pengunjung belum punya email nyata (formulir OSS/Non OSS: kolom Email wajib email valid, "Tidak berlaku" ditolak, tombol isian cepat email dicabut; layanan tanpa formulir: dialog Selesaikan punya isian "Email pengunjung"). Kunjungan yang selesai di FO tanpa eskalasi tidak terkena. Email akun Google/reservasi pengunjung dihitung sebagai email yang ada. Tiket lama yang belum selesai dan tak punya email akan menolak diselesaikan sampai email diisi.
+
+**Klien lama + migrasi baru:** form OSS/Non OSS lama yang mengirim "Tidak berlaku" untuk email ditolak `EMAIL_WAJIB` (HTTP 422); karena itu terapkan migrasi bersama deploy klien.
+
+**Daftar periksa pemilik:**
+1. Dry-run lalu terapkan `202611010003` bersama deploy; `scripts/lokal-rantai/skenario-identitas.mjs` (PGlite, 46 cek) sudah membuktikan alurnya pada skema asli.
+2. Buat pengunjung walk-in TANPA email di FO, eskalasi ke Helpdesk OSS, petugas OSS menyelesaikan dengan email nyata: `select email, kontak_hp, asal_instansi from kunjungan where id = ...` terisi; `select * from audit_log where aksi = 'pendataan_identitas_disatukan'` memuat nilai lama/baru; email survei terkirim ke email itu.
+3. Coba selesaikan dengan "Tidak berlaku" di Email: ditolak dengan pesan jelas; tiket tetap `dilayani`.
+4. Sebagai FO pencatat: halaman Penanganan > Riwayat menampilkan "Email: ..." dan "layanan selesai"; FO lain tidak melihat hasil itu.
+5. Sebelum backfill, hitung baca-saja: `select count(*) from kunjungan k where coalesce(btrim(k.email),'')='' and exists (select 1 from pelayanan_oss o where o.kunjungan_id=k.id and o.status_draft='selesai' and o.email ~* '^[a-z0-9._%+-]+@[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$')` (dan `pelayanan_perizinan`).
+6. Backfill tidak mengirim notifikasi (status tidak berubah). Rollback: `docs/rollback-backfill-identitas-kunjungan-202611010004.sql` (hanya nilai yang masih sama).
+7. Rollback `202611010003`: `docs/rollback-identitas-satu-kesatuan-202611010003.sql` (identitas yang sudah ditulis balik tidak dikembalikan; jejak di `audit_log`).
+8. Tidak dicakup: chat live (pengunjung login Google selalu punya email, tidak ada perubahan antarmuka); FO Koordinator/FO lain membaca hasil lengkap hanya lewat data induk atau sesuai lingkup Fase 3.

@@ -154,6 +154,31 @@ describe('Penanganan: memuat data', () => {
     expect(within(riwayat).getByText('Bayu FO')).toBeInTheDocument();
   });
 
+  it('riwayat hasil eskalasi menampilkan email yang dilengkapi petugas layanan dan status layanan selesai (identitas satu kesatuan)', async () => {
+    siapkan({
+      riwayat: [
+        {
+          id: 'r-9', kunjungan_id: 'k-9', tahap_ke: 1, saluran: 'walk_in', status: 'selesai', hasil: 'dieskalasi',
+          topik: 'Informasi perizinan/syarat', catatan: 'Ke OSS', mulai_at: '2026-10-13T01:00:00.000Z', selesai_at: '2026-10-13T01:10:00.000Z',
+          penangan_id: 'p-saya', penangan: { nama: 'Saya FO' }, kunjungan: { nama: 'Dewi', asal_instansi: 'PT Maju', email: 'dewi@majujaya.id' },
+        },
+        {
+          id: 'r-8', kunjungan_id: 'k-8', tahap_ke: 1, saluran: 'walk_in', status: 'selesai', hasil: 'selesai',
+          topik: 'Lainnya', catatan: 'Selesai di FO', mulai_at: '2026-10-13T00:30:00.000Z', selesai_at: '2026-10-13T00:35:00.000Z',
+          penangan_id: 'p-saya', penangan: { nama: 'Saya FO' }, kunjungan: { nama: 'Tamu Cepat', asal_instansi: null, email: null },
+        },
+      ],
+      tiket: [{ penanganan_asal_id: 'r-9', nomor_display: 'OS-021', layanan_id: 'l-1', status: 'selesai' }],
+    });
+    render(<PenangananFoPage />);
+    const riwayat = await screen.findByRole('table', { name: /Riwayat penanganan/ });
+    expect(await within(riwayat).findByText('Email: dewi@majujaya.id')).toBeInTheDocument();
+    expect(within(riwayat).getByText(/Dieskalasi → OS-021 \(Helpdesk OSS\) · layanan selesai/)).toBeInTheDocument();
+    // Selesai di FO tanpa email: tidak ada baris email dan tidak ada keterangan layanan.
+    expect(within(riwayat).getAllByText(/Email:/)).toHaveLength(1);
+    expect(within(riwayat).getAllByText('Selesai di FO').length).toBeGreaterThan(0);
+  });
+
   it('Koordinator FO (Fase 3): tombol Ambil alih pada tahap FO lain (bukan chat) memanggil koordinator_ambil_alih_fo', async () => {
     siapkan({
       berjalan: [
