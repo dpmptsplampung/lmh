@@ -44,6 +44,13 @@ const serverEnvSchema = z.object({
   OPENROUTER_API_KEY: z.string().optional(),
   MISTRAL_API_KEY: z.string().optional(),
   LMH_DEV_RETURN_LINK: z.string().optional(),
+  // Cloudflare R2 (penyimpanan berkas). Opsional agar deploy tanpa R2 tidak gagal start; fitur unggah memberi galat jelas bila kurang.
+  R2_ACCOUNT_ID: z.string().optional(),
+  R2_ACCESS_KEY_ID: z.string().optional(),
+  R2_SECRET_ACCESS_KEY: z.string().optional(),
+  R2_BUCKET_PRIVATE: z.string().optional(),
+  R2_BUCKET_PUBLIC: z.string().optional(),
+  R2_PUBLIC_BASE_URL: z.string().optional(),
 }).superRefine((env, context) => {
   if (env.APP_ENV !== 'staging' && env.APP_ENV !== 'production') return;
 
@@ -68,6 +75,15 @@ const serverEnvSchema = z.object({
       } catch {
         context.addIssue({ code: 'custom', path: [key], message: `${key} must be an HTTPS URL` });
       }
+    }
+  }
+
+  if (env.R2_PUBLIC_BASE_URL?.trim()) {
+    try {
+      const u = new URL(env.R2_PUBLIC_BASE_URL);
+      if (u.protocol !== 'https:' || u.pathname.replace(/\//g, '') !== '') throw new Error('invalid');
+    } catch {
+      context.addIssue({ code: 'custom', path: ['R2_PUBLIC_BASE_URL'], message: 'R2_PUBLIC_BASE_URL must be an HTTPS origin without path' });
     }
   }
 

@@ -27,6 +27,13 @@ interface PetugasData {
   layanan_id: string;
 }
 
+interface HadirFo {
+  id: string;
+  nama_petugas: string;
+  created_at: string;
+  layanan: { nama: string } | null;
+}
+
 interface Absensi {
   id: string;
   petugas_id: string;
@@ -53,6 +60,7 @@ export default function AbsensiPage() {
   const [page, setPage] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
   const [foWizardOpen, setFoWizardOpen] = useState(false);
+  const [hadirFo, setHadirFo] = useState<HadirFo[]>([]);
 
   // Mengembalikan baris yang dimuat (null = gagal memuat) agar pemanggil dapat memverifikasi hasil mutasi.
   const fetchData = useCallback(async (): Promise<Absensi[] | null> => {
@@ -109,6 +117,21 @@ export default function AbsensiPage() {
         petugas: Array.isArray(d.petugas) ? d.petugas[0] : d.petugas
       })) as unknown as Absensi[];
       
+      // Kehadiran yang dicatat FO dengan nama manual (RLS: hanya admin/FO yang melihat baris).
+      if (myRole === 'admin' || myRole === 'front_office') {
+        const { data: fo } = await supabase
+          .from('absensi_hadir_fo')
+          .select('id, nama_petugas, created_at, layanan:layanan_id ( nama )')
+          .eq('tanggal', filterTanggal)
+          .order('created_at', { ascending: false });
+        setHadirFo(((fo ?? []) as unknown[]).map((d) => {
+          const r = d as Omit<HadirFo, 'layanan'> & { layanan: HadirFo['layanan'] | HadirFo['layanan'][] };
+          return { ...r, layanan: Array.isArray(r.layanan) ? r.layanan[0] ?? null : r.layanan };
+        }));
+      } else {
+        setHadirFo([]);
+      }
+
       setAbsensi(formattedData);
       setTotalCount(count ?? formattedData.length);
       return formattedData;
@@ -255,11 +278,27 @@ export default function AbsensiPage() {
           <div style={{ background: 'var(--surface-elevated)', padding: 'var(--space-6)', borderRadius: 'var(--radius-xl)', marginBottom: 'var(--space-8)', border: '1px solid var(--border-default)' }}>
             <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, marginBottom: 'var(--space-2)' }}>Catat Hadir Petugas</h3>
             <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginBottom: 'var(--space-4)' }}>
-              Pilih layanan, ambil foto, lalu konfirmasi nama petugas yang hadir.
+              Pilih layanan, ambil foto petugas, lalu ketik nama petugas yang hadir.
             </p>
             <button className="btn btn--primary" onClick={() => setFoWizardOpen(true)}>
               <LogIn size={18} /> Catat Hadir
             </button>
+          </div>
+        )}
+
+        {hadirFo.length > 0 && (
+          <div style={{ background: 'var(--surface-elevated)', padding: 'var(--space-6)', borderRadius: 'var(--radius-xl)', marginBottom: 'var(--space-8)', border: '1px solid var(--border-default)' }}>
+            <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, marginBottom: 'var(--space-3)' }}>Hadir yang Dicatat Front Office ({hadirFo.length})</h3>
+            <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+              {hadirFo.map((h) => (
+                <li key={h.id} style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center', fontSize: 'var(--text-sm)' }}>
+                  <strong>{h.nama_petugas}</strong>
+                  <span style={{ color: 'var(--text-secondary)' }}>{h.layanan?.nama ?? '-'}</span>
+                  <span style={{ color: 'var(--text-tertiary)' }}>{new Date(h.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' })} WIB</span>
+                  <a href={`/api/absensi/foto/${h.id}`} target="_blank" rel="noopener noreferrer" style={{ marginLeft: 'auto' }}>Lihat foto</a>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
 
@@ -437,7 +476,6 @@ export default function AbsensiPage() {
       {currentUser && (currentUser.role === 'front_office' || currentUser.role === 'admin') && (
         <AbsensiWizardModal
           isOpen={foWizardOpen}
-          foId={currentUser.id}
           onClose={() => setFoWizardOpen(false)}
           onSuccess={() => {
             setFoWizardOpen(false);

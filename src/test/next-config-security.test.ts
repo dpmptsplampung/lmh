@@ -46,3 +46,21 @@ describe('Next security headers', () => {
     expect(headers['Strict-Transport-Security']).toBeUndefined();
   });
 });
+
+describe('CSP R2', () => {
+  it('menambahkan endpoint R2 ke connect-src dan basis publik ke img-src', async () => {
+    const { buildContentSecurityPolicy } = await import('../../next.config');
+    const csp = buildContentSecurityPolicy('https://project-ref.supabase.co', false, {
+      endpoint: 'https://acc.r2.cloudflarestorage.com',
+      publikBase: 'https://pub.example.org',
+    });
+    expect(csp).toMatch(/connect-src [^;]*https:\/\/acc\.r2\.cloudflarestorage\.com/);
+    expect(csp).toMatch(/img-src [^;]*https:\/\/pub\.example\.org/);
+  });
+  it('tanpa r2 atau dengan http:// hasilnya tidak berubah', async () => {
+    const { buildContentSecurityPolicy } = await import('../../next.config');
+    const dasar = buildContentSecurityPolicy('https://project-ref.supabase.co');
+    expect(buildContentSecurityPolicy('https://project-ref.supabase.co', false, { endpoint: 'http://x', publikBase: 'http://y' })).toBe(dasar);
+    expect(dasar).not.toContain('undefined');
+  });
+});
