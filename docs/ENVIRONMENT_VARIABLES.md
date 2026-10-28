@@ -51,3 +51,17 @@ Do not copy the marked replacement values from `.env.example` into staging or pr
 Only `src/lib/env/client.ts` may be imported by client code. It uses static `process.env.NEXT_PUBLIC_*` references so Next.js can inline public values. Never add a server secret to that module or to a health response.
 
 Local `next build` remains possible with replacement values because startup validation is skipped only during Next's `phase-production-build`. Outside that phase every runtime parses the environment contract. Vercel runtime detection additionally fails closed when `APP_ENV` is absent or inconsistent with `VERCEL_ENV`.
+
+## Cloudflare R2 (penyimpanan berkas)
+
+Server-only. Opsional saat start (deploy tanpa R2 tidak gagal); fitur unggah (absensi FO, foto UMKM, dokumen investasi, lampiran chat) memberi galat 503 "Penyimpanan berkas belum dikonfigurasi" bila kurang.
+
+| Variabel | Isi |
+|---|---|
+| `R2_ACCOUNT_ID` | ID akun Cloudflare (membentuk endpoint `https://<id>.r2.cloudflarestorage.com`) |
+| `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | Token API R2 (Object Read & Write) |
+| `R2_BUCKET_PRIVATE` | Bucket privat (dokumen investasi, foto absensi, lampiran chat); dibaca lewat route berizin/presigned |
+| `R2_BUCKET_PUBLIC` | Bucket publik (hanya `umkm-photos/`) |
+| `R2_PUBLIC_BASE_URL` | Domain publik bucket publik, HTTPS tanpa path/garis miring akhir |
+
+CORS bucket privat (dashboard R2): AllowedOrigins = domain LMH, AllowedMethods = `PUT`, AllowedHeaders = `content-type`, MaxAgeSeconds = 3600.

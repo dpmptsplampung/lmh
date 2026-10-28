@@ -1288,3 +1288,12 @@ node scripts/apply-migration.mjs supabase/migrations/202611010005_rekap_data_tan
 
 Urutan (sudah ditempuh): migrasi aditif; aplikasi tahan bila belum diterapkan: bagian absensi FO/saran kosong, kirim saran/pengaduan memberi galat).
 Penerapan: `doppler run --project lmh --config prd -- node scripts/terapkan-migrasi-berurutan.mjs --dry-run --berkas <f1> <f2>` lalu `--terapkan`.
+
+## Storage R2 lanjutan (202611030004-202611030005)
+
+| # | Berkas | Isi | Rollback | Status |
+|---|---|---|---|---|
+| 202611030004 | `202611030004_umkm_foto_https.sql` | fungsi `foto_umkm_semua_https` + CHECK `listing_umkm_foto_https` (elemen `foto_produk` wajib `https://`, NOT VALID) | `docs/rollback-umkm-foto-https-202611030004.sql` | **DITULIS, BELUM DITERAPKAN** (dry-run bersih) |
+| 202611030005 | `202611030005_chat_lampiran.sql` | kolom `chat_pesan.lampiran_*` + CHECK + indeks pembersihan | `docs/rollback-chat-lampiran-202611030005.sql` | **DITULIS, BELUM DITERAPKAN** (dry-run bersih) |
+
+Terapkan SEBELUM merge/deploy PR storage R2 (kode membaca kolom `lampiran_*`). Berkas Supabase Storage disalin ke R2 dengan `scripts/migrasi-r2/` (lihat README-nya).
