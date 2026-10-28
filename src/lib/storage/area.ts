@@ -11,7 +11,7 @@ export const ATURAN_AREA: Record<Area, { bucket: Bucket; mime: readonly string[]
   'investment-docs': { bucket: 'private', mime: ['application/pdf'], maksByte: 50 * 1024 * 1024, peran: ['admin'] },
   'umkm-photos': { bucket: 'public', mime: GAMBAR, maksByte: 2 * 1024 * 1024, peran: ['admin', 'petugas'] },
   'absensi-foto': { bucket: 'private', mime: GAMBAR, maksByte: 5 * 1024 * 1024, peran: ['admin', 'front_office'] },
-  'pengaduan-bukti': { bucket: 'private', mime: GAMBAR, maksByte: 5 * 1024 * 1024, peran: ['admin', 'front_office'] },
+  'pengaduan-bukti': { bucket: 'private', mime: [...GAMBAR, 'application/pdf'], maksByte: 5 * 1024 * 1024, peran: ['admin', 'front_office'] },
   'umkm-legalitas': { bucket: 'private', mime: [...GAMBAR, 'application/pdf'], maksByte: 5 * 1024 * 1024, peran: ['admin', 'front_office'] },
   'chat-lampiran': { bucket: 'private', mime: GAMBAR, maksByte: 5 * 1024 * 1024, peran: ['admin', 'petugas', 'front_office'] },
 };

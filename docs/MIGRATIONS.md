@@ -1297,3 +1297,11 @@ Penerapan: `doppler run --project lmh --config prd -- node scripts/terapkan-migr
 | 202611030005 | `202611030005_chat_lampiran.sql` | kolom `chat_pesan.lampiran_*` + CHECK + indeks pembersihan | `docs/rollback-chat-lampiran-202611030005.sql` | **DITULIS, BELUM DITERAPKAN** (dry-run bersih) |
 
 Terapkan SEBELUM merge/deploy PR storage R2 (kode membaca kolom `lampiran_*`). Berkas Supabase Storage disalin ke R2 dengan `scripts/migrasi-r2/` (lihat README-nya).
+
+## Tanggapan pengaduan (202611030006)
+
+| # | Berkas | Isi | Rollback | Status |
+|---|---|---|---|---|
+| 202611030006 | `202611030006_pengaduan_tanggapan.sql` | `pengaduan.pelapor_email`; `kirim_pengaduan_survei` menyimpan email + email "diterima"; tabel `pengaduan_tanggapan`/`pengaduan_lampiran`; RPC `tanggapi_pengaduan`, `tanggapan_pengaduan_nomor`, `lampiran_pengaduan_nomor` | `docs/rollback-pengaduan-tanggapan-202611030006.sql` | **DITULIS, BELUM DITERAPKAN** (dry-run + uji perilaku rollback bersih) |
+
+Memerlukan 202611030003. Lampiran (JPG/PNG/WEBP/PDF, 5 MB, maks 3) di R2 area `pengaduan-bukti`; DOCX/XLSX belum didukung.

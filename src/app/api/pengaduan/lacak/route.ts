@@ -85,10 +85,18 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  // Tanggapan FO hanya untuk pengaduan Pesan Perilaku yang dipantau dengan nomor laporan.
+  let tanggapan: unknown[] = [];
+  if (denganNomorSaja) {
+    const t = await service.rpc('tanggapan_pengaduan_nomor', { p_nomor: nomorLaporan });
+    if (!t.error && Array.isArray(t.data)) tanggapan = t.data;
+  }
+
   return NextResponse.json({
     nomor_tiket: row.nomor_tiket,
     jalur: row.jalur ?? 'layanan',
     status: row.status,
     dibuat_pada: row.created_at,
+    tanggapan,
   });
 }

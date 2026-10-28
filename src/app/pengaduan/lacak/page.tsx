@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { AlertCircle, Loader2, Search, ClipboardList } from 'lucide-react';
 
 // CMP-05: lacak pengaduan tanpa login — nomor tiket + kontak.
-type Hasil = { nomor_tiket: string; jalur: string; status: string; dibuat_pada: string };
+type Tanggapan = { id: string; isi: string; created_at: string; lampiran: Array<{ id: string; nama: string; mime: string; ukuran: number }> };
+type Hasil = { nomor_tiket: string; jalur: string; status: string; dibuat_pada: string; tanggapan?: Tanggapan[] };
 
 const STATUS_LABEL: Record<string, string> = {
   baru: 'Diterima',
@@ -85,6 +86,29 @@ export default function LacakPengaduanPage() {
             <dt style={{ color: 'var(--color-neutral-500)' }}>Dibuat</dt>
             <dd style={{ margin: 0 }}>{new Date(hasil.dibuat_pada).toLocaleString('id-ID')}</dd>
           </dl>
+          {hasil.tanggapan && hasil.tanggapan.length > 0 && (
+            <>
+              <h3>Tanggapan Petugas</h3>
+              <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 'var(--space-3)' }}>
+                {hasil.tanggapan.map((t) => (
+                  <li key={t.id} style={{ borderLeft: '3px solid var(--color-primary-500)', paddingLeft: 'var(--space-3)' }}>
+                    <p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{t.isi}</p>
+                    <small style={{ color: 'var(--color-neutral-500)' }}>{new Date(t.created_at).toLocaleString('id-ID')}</small>
+                    {t.lampiran.length > 0 && (
+                      <ul style={{ margin: 'var(--space-1) 0 0', paddingLeft: 18 }}>
+                        {t.lampiran.map((l) => (
+                          <li key={l.id}>
+                            <a href={`/api/pengaduan/lampiran?nomor=${encodeURIComponent(hasil.nomor_tiket)}&id=${l.id}`}>{l.nama}</a>{' '}
+                            <small style={{ color: 'var(--color-neutral-500)' }}>({Math.max(1, Math.round(l.ukuran / 1024))} KB)</small>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </div>
       )}
 
