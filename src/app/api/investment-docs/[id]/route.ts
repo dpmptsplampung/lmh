@@ -3,6 +3,8 @@ import { createClient } from '@/lib/supabase/server';
 import { mutasiWajibBaris } from '@/lib/supabase/mutate';
 import { logServerEvent } from '@/lib/observability/logger';
 import { catatMutasi } from '@/lib/observability/catat-mutasi';
+import { kunciObjek } from '@/lib/storage/area';
+import { deleteObjects } from '@/lib/storage/r2';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -60,17 +62,7 @@ export async function DELETE(_request: NextRequest, context: RouteContext) {
 
   if (paths.length > 0) {
     try {
-      const { error: removeError } = await supabase.storage.from('investment-docs').remove(paths);
-      if (removeError) {
-        // Pesan error storage tidak dicatat (bisa memuat path/bucket); jumlah file yatim + status cukup untuk tindak lanjut.
-        logServerEvent('warn', {
-          operation: 'investment_docs.delete.storage',
-          route: '/api/investment-docs/[id]',
-          docId: id,
-          nFile: paths.length,
-          statusStorage: (removeError as { status?: number }).status,
-        });
-      }
+      await deleteObjects('private', paths.map((p) => kunciObjek('investment-docs', p)));
     } catch (e) {
       logServerEvent('warn', { operation: 'investment_docs.delete.storage', route: '/api/investment-docs/[id]', docId: id, nFile: paths.length, error: e });
     }

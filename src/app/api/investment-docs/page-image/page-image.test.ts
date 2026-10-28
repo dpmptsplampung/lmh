@@ -4,6 +4,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(),
 }));
+vi.mock('@/lib/storage/r2', async () => {
+  const { createClient } = await import('@supabase/supabase-js');
+  const { r2DariTiruanSupabase } = await import('@/lib/storage/r2-test-adapter');
+  return r2DariTiruanSupabase(createClient as never);
+});
 
 vi.mock('@supabase/supabase-js', () => ({
   createClient: vi.fn(),
@@ -180,8 +185,8 @@ describe('GET /api/investment-docs/page-image — watermark + stream', () => {
     expect(buf.equals(fakePng)).toBe(true);
   });
 
-  it('returns 500 when service role key missing (misconfigured)', async () => {
-    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+  it('returns 500 when page object missing in storage', async () => {
+    await mockServiceClient({ downloadError: { message: 'not found' } });
     await mockSupabase({
       halaman_gambar: ['pages/x/page-1.png'],
       jumlah_halaman: 1,

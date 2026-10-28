@@ -5,6 +5,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn() }));
+vi.mock('@/lib/storage/r2', async () => {
+  const { createClient } = await import('@/lib/supabase/server');
+  const { r2DariTiruanSupabase } = await import('@/lib/storage/r2-test-adapter');
+  return r2DariTiruanSupabase(createClient as never);
+});
 vi.mock('@/lib/akun/server', () => ({ getServiceClient: vi.fn() }));
 
 import type { NextRequest } from 'next/server';

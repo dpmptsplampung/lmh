@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { createClient as createServiceClient } from '@supabase/supabase-js';
+import { kunciObjek } from '@/lib/storage/area';
+import { getObjectBytes } from '@/lib/storage/r2';
 import { z } from 'zod';
 import crypto from 'node:crypto';
 import sharp from 'sharp';
@@ -55,12 +56,6 @@ function checkIpRate(ipHash: string): boolean {
   return bucket.count <= RATE_LIMIT_MAX;
 }
 
-function getServiceClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) return null;
-  return createServiceClient(url, key);
-}
 
 async function hashIp(ip: string): Promise<string> {
   const hash = crypto.createHash('sha256').update(ip).digest('hex');
@@ -204,24 +199,17 @@ export async function GET(request: NextRequest) {
 
   const pagePath = docRow.halaman_gambar[page - 1]!;
 
-  const serviceClient = getServiceClient();
-  if (!serviceClient) {
-    return NextResponse.json(
-      { error: 'Server misconfigured: SUPABASE_SERVICE_ROLE_KEY required to serve watermarked pages' },
-      { status: 500 },
-    );
+  let pageBytes: Uint8Array | null = null;
+  try {
+    pageBytes = await getObjectBytes('private', kunciObjek('investment-docs', pagePath));
+  } catch {
+    pageBytes = null;
   }
-
-  const { data: downloadData, error: downloadError } = await serviceClient
-    .storage
-    .from('investment-docs')
-    .download(pagePath);
-
-  if (downloadError || !downloadData) {
+  if (!pageBytes) {
     return NextResponse.json({ error: 'Failed to fetch page image' }, { status: 500 });
   }
 
-  const pageBuffer = Buffer.from(await downloadData.arrayBuffer());
+  const pageBuffer = Buffer.from(pageBytes);
 
   // INV-04: watermark memuat identitas peminta + waktu (dibakar di server, bukan overlay CSS).
   const ts = new Date().toISOString();

@@ -5,7 +5,7 @@
  * Usage:
  *   npx tsx scripts/backfill-investment-pdf.ts
  *
- * Requires env: NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+ * Requires env: NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, R2_*
  * (service role to bypass RLS for reading _raw PDFs + writing pages/*).
  *
  * If a row's file_path points to the old `demo/*` location (pre-K1
@@ -13,6 +13,8 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { convertPdfToPngBuffers } from '../src/app/api/investment-docs/upload/route';
+import { kunciObjek } from '../src/lib/storage/area';
+import { getObjectBytes, putObject } from '../src/lib/storage/r2';
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -45,16 +47,12 @@ async function backfill() {
   for (const row of rows) {
     console.log(`\nProcessing ${row.id} (${row.file_path})...`);
 
-    const { data: dl, error: dlErr } = await supabase.storage
-      .from('investment-docs')
-      .download(row.file_path);
-
-    if (dlErr || !dl) {
-      console.error(`  SKIP: cannot download ${row.file_path}: ${dlErr?.message ?? 'no data'}`);
+    // Berkas kini di Cloudflare R2 (area investment-docs, bucket privat).
+    const pdfBytes = await getObjectBytes('private', kunciObjek('investment-docs', row.file_path));
+    if (!pdfBytes) {
+      console.error(`  SKIP: cannot download ${row.file_path}: not found in R2`);
       continue;
     }
-
-    const pdfBytes = new Uint8Array(await dl.arrayBuffer());
 
     let pngs: Buffer[];
     try {
@@ -69,11 +67,10 @@ async function backfill() {
     const halamanGambar: string[] = [];
     for (let i = 0; i < pngs.length; i++) {
       const pagePath = `pages/${row.id}/page-${i + 1}.png`;
-      const { error: upErr } = await supabase.storage
-        .from('investment-docs')
-        .upload(pagePath, pngs[i], { contentType: 'image/png', upsert: true });
-      if (upErr) {
-        console.error(`  SKIP: upload ${pagePath} failed: ${upErr.message}`);
+      try {
+        await putObject('private', kunciObjek('investment-docs', pagePath), pngs[i], 'image/png');
+      } catch (e) {
+        console.error(`  SKIP: upload ${pagePath} failed: ${e instanceof Error ? e.message : String(e)}`);
         continue;
       }
       halamanGambar.push(pagePath);
