@@ -98,6 +98,7 @@
     "202611030003_saran_pengaduan_pesan_perilaku.sql": "017c2f58ce60414b56fea035eba6434cf8ef2c4fb20e9aa694981185c6bbdfee",
     "202611030004_umkm_foto_https.sql": "06e2ad92264d79408317e9f1305b992829c8494058a8ed8b00052feb5c8d98af",
     "202611030005_chat_lampiran.sql": "9ea2a2a6e82a5dc266f715fa5a46ba7893e41c2eba142591f5903606ee5a526d",
-    "202611030006_pengaduan_tanggapan.sql": "6963091df649cc49f97bc8d6dd3f56800b69c3dbf4ab779dbea771c004cd8e84"
+    "202611030006_pengaduan_tanggapan.sql": "6963091df649cc49f97bc8d6dd3f56800b69c3dbf4ab779dbea771c004cd8e84",
+    "202611030007_public_url_dpmptsp.sql": "e9feb4bf955adc6a52fdfcb380725fcf064bff1e2414d702115620737f8eedeb"
   }
 }
