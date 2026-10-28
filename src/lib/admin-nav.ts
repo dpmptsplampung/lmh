@@ -109,6 +109,7 @@ export const ADMIN_NAV: AdminNavEntry[] = [
   // halaman lama Rekap Front Office kini redirect ke Rekap (entri tersembunyi agar tetap lolos AdminGuard).
   { label: 'Rekap', href: '/admin/rekap', iconKey: 'rekap', roles: ['admin', 'petugas', 'front_office'], group: 'laporan' },
   { label: 'Rekap Front Office', href: '/admin/rekap-fo', iconKey: 'rekapFo', roles: ['admin', 'front_office'], group: 'laporan', hidden: true, tampilSebagai: '/admin/rekap' },
+  { label: 'Cetak Laporan Pesan Perilaku', href: '/admin/pesan-perilaku/cetak', iconKey: 'skm', roles: ['admin', 'front_office'], group: 'pesanPerilaku', hidden: true, tampilSebagai: '/admin/pesan-perilaku' },
   { label: 'Hasil SKM', href: '/admin/skm', iconKey: 'skm', roles: ['admin', 'petugas', 'front_office'], group: 'pesanPerilaku', hidden: true, tampilSebagai: '/admin/pesan-perilaku' },
   { label: 'Performa Pelayanan', href: '/admin/performa', iconKey: 'performa', roles: ['admin'], group: 'laporan' },
 

@@ -159,13 +159,13 @@ const ROLES_SEBELUM: Record<string, string[]> = {
   '/admin/layanan': [A, F], '/admin/layar': [A], '/admin/pengaduan': [A, P, F], '/admin/performa': [A],
   '/admin/petugas': [A], '/admin/profil': [A, P, F], '/admin/rekap': [A, P, F], '/admin/rekap-fo': [A, F],
   '/admin/riwayat': [A], '/admin/scan': [A, F], '/admin/settings': [A], '/admin/settings/ai': [A],
-  '/admin/settings/jadwal': [A, P, F], '/admin/settings/landing': [A], '/admin/pesan-perilaku': [A, P, F], '/admin/skm': [A, P, F], '/admin/saran': [A, F],
+  '/admin/settings/jadwal': [A, P, F], '/admin/settings/landing': [A], '/admin/pesan-perilaku': [A, P, F], '/admin/pesan-perilaku/cetak': [A, F], '/admin/skm': [A, P, F], '/admin/saran': [A, F],
   '/admin/topik': [A], '/admin/umkm': [A],
 };
 
 // Halaman lama yang digabung ke /admin/fo/registrasi: tersembunyi dari sidebar, tetap boleh dibuka.
 // Fase 3: /admin/rekap-fo kini redirect ke Rekap terpadu (tersembunyi, tetap admin + front_office).
-const HIDDEN = ['/admin/fo/daftar', '/admin/scan', '/admin/rekap-fo', '/admin/skm'];
+const HIDDEN = ['/admin/fo/daftar', '/admin/scan', '/admin/rekap-fo', '/admin/skm', '/admin/pesan-perilaku/cetak'];
 
 const urutanHref = (items: AdminNavTreeItem[]) =>
   items.flatMap((i) => (i.type === 'link' ? [i.entry.href] : i.children.map((c) => c.href)));

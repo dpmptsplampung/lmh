@@ -1,0 +1,42 @@
+.layar { padding: var(--space-6); }
+.alat { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: end; margin-bottom: var(--space-5); }
+.alat label { display: flex; flex-direction: column; gap: 4px; font-size: var(--text-xs); color: var(--text-secondary); }
+.alat input { padding: var(--space-2) var(--space-3); border: 1px solid var(--border-default); border-radius: var(--radius-md); }
+
+.kertas { max-width: 210mm; margin: 0 auto; background: #fff; color: #111; padding: 14mm 12mm; border: 1px solid var(--border-default); border-radius: var(--radius-lg); font-size: 11pt; line-height: 1.45; }
+.kop { display: flex; flex-direction: column; align-items: center; text-align: center; border-bottom: 2px solid #111; padding-bottom: 8px; margin-bottom: 14px; }
+.kop h1 { margin: 0; font-size: 15pt; letter-spacing: 0.02em; }
+.kop p { margin: 2px 0 0; font-size: 10pt; }
+.judul { text-align: center; margin: 0 0 4px; font-size: 13pt; }
+.periode { text-align: center; margin: 0 0 14px; font-size: 10pt; color: #444; }
+
+.bagian { margin-top: 16px; break-inside: avoid-page; }
+.bagian h2 { font-size: 12pt; margin: 0 0 6px; padding-bottom: 3px; border-bottom: 1px solid #999; }
+.catatan { font-size: 9pt; color: #555; margin: 4px 0 0; }
+
+.kartuRingkas { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.kartu { border: 1px solid #bbb; border-radius: 6px; padding: 8px; text-align: center; }
+.kartu b { display: block; font-size: 17pt; line-height: 1.2; }
+.kartu span { font-size: 9pt; color: #444; }
+
+.tabel { width: 100%; border-collapse: collapse; font-size: 10pt; }
+.tabel th, .tabel td { border: 1px solid #999; padding: 4px 6px; vertical-align: middle; }
+.tabel th { background: #eee; text-align: left; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.tabel td.angka, .tabel th.angka { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tabel tr { break-inside: avoid; }
+
+.batang { display: block; height: 10px; background: #e5e7eb; border-radius: 5px; overflow: hidden; min-width: 90px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.batangIsi { display: block; height: 100%; background: #2563eb; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+.daftarSaran { margin: 0; padding-left: 18px; font-size: 10pt; }
+.daftarSaran li { margin-bottom: 4px; break-inside: avoid; }
+.meta { color: #666; font-size: 9pt; }
+.kosong { color: #666; font-style: italic; margin: 4px 0; }
+.ttd { margin-top: 28px; display: flex; justify-content: flex-end; }
+.ttd div { width: 60mm; text-align: center; font-size: 10pt; }
+.ttd span { display: block; height: 60px; }
+
+@media (max-width: 720px) {
+  .kartuRingkas { grid-template-columns: repeat(2, 1fr); }
+  .kertas { padding: 10px; }
+}

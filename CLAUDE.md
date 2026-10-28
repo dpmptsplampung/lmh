@@ -61,13 +61,19 @@ Pola umum: halaman (`page.tsx`) adalah **client component besar yang berisi logi
 | `/checkin` | halaman informasi statis (walk-in & scan QR dilakukan Front Office: `/admin/fo/daftar`, `/admin/scan`; `api/checkin` dihapus, RPC `fo_mulai_kunjungan`) | `WalkinWizard` (dipakai FO), `lib/offline/*` |
 | `/me`, `/me/reservasi`, `/me/notifications` | dashboard pengunjung | `kunjungan`, `notifikasi` |
 | `/chat` | daftar percakapan (satu per Layanan) -> percakapan + riwayat + bot/petugas | `api/chat/{ai,messages,sesi,status,petugas}`, `DaftarPercakapan`, RPC `chat_percakapan_saya`, tabel `chat_*` |
-| `/skm`, `/transparansi` | survei kepuasan lama (tautan lama menunjuk email/notifikasi), IKM publik | `api/skm/submit`, `lib/ikm`, `IkmPanel` |
+| `/skm` (redirect ke `/`), `/transparansi` | SKM lama DIHAPUS (keputusan pemilik 2026-10-28; ganti Pesan Perilaku); IKM publik | `lib/ikm`, `IkmPanel` |
 | `/survei/<token>` | wizard publik **Pesan Perilaku** (SPAK 5 pernyataan + SKM 9-11 unsur; tanpa login, token undangan per kunjungan) | `api/survei/kirim`, `lib/survei/*`, RPC `get_survei_context`/`kirim_survei` (migrasi survei, belum diterapkan) |
 | `/pengaduan`, `/pengaduan/lacak` | pengaduan 2 jalur + lacak | `api/pengaduan[/lacak]` |
 | `/umkm`, `/umkm/inbox`, `/umkm/edit/[id]` | marketplace dua sisi, inquiry, edit via magic-link | `api/umkm/*`, `v_umkm_public/match` |
 | `/gallery`, `/peta-potensi` | investment gallery (PDF→PNG watermark), peta potensi | `api/investment-docs/*`, `api/investasi/lead` |
 | `/standar-pelayanan`, `/kebijakan-privasi`, `/offline` | statis/PWA fallback | — |
 | `/layar/[token]`, `/layar-antrian` | layar TV antrean (token / legacy) | `v_layar_antrian`, `layar_token` |
+
+**Menu Pesan Perilaku (admin/FO):** `admin/pesan-perilaku` (hasil IKM/SPAK), `admin/pesan-perilaku/cetak` (laporan angka + grafik batang + cetak/PDF: survei, response rate, saran, pengaduan; admin & FO), `admin/saran`, `admin/pengaduan`; `/admin/skm` redirect. Saran/pengaduan dari wizard: `api/survei/{saran,pengaduan}` -> RPC `kirim_saran`/`kirim_pengaduan_survei` (migrasi `202611030003`); lacak pengaduan wizard cukup nomor laporan (`lacak_pengaduan_nomor`). Angka laporan: `lib/survei/laporan.ts`.
+
+**Storage Cloudflare R2 (rencana `docs/superpowers/plans/2026-11-02-storage-r2.md`):** lapisan inti SUDAH ada (`lib/storage/{r2,area,unggah}.ts`, `api/storage/{presign,konfirmasi}`, CSP R2, env `R2_*` opsional); baru dipakai absensi FO. Dokumen investasi, foto UMKM, dan lampiran chat masih Supabase Storage (Task 3-9 rencana belum dikerjakan).
+
+**Absensi FO (migrasi `202611030002`):** `components/admin/AbsensiWizardModal` = layanan -> foto (dikompres `lib/foto/kompres.ts`, 1280 px JPEG 0,82, ke R2 `absensi-foto/`) -> nama petugas DIKETIK -> RPC `fo_catat_hadir_layanan`; daftar + foto di `/admin/absensi` (`api/absensi/foto/[id]`).
 
 **Admin** (`/admin/*`, akses per role di `lib/admin-nav.ts`): `/admin` dashboard · `kunjungan` · `scan` (QR) · `antrian` (panggil/selesai, `PelayananWizardModal`) · `absensi` · `chat` (+`faq`, `ai-log`) · `umkm` · `gallery` · `investasi-leads` · `skm` · `pengaduan` · `petugas` (+`invite`) · `rekap` · `dokumen` (RAG peraturan) · `layar` · `data-governance` · `settings` (+`jadwal`, `landing`).
 

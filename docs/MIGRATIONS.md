@@ -1277,3 +1277,14 @@ node scripts/apply-migration.mjs supabase/migrations/202611010005_rekap_data_tan
 3. Unduh Excel dari tab Data Pelayanan: lembar Keterangan menyebut "Layanan lain (tanpa Helpdesk OSS dan Non OSS)"; `audit_log` `export_xlsx` memuat `tanpa_form: true`.
 4. Petugas Helpdesk OSS: tab Data Pelayanan tidak muncul (lingkupnya hanya Layanan berformulir); datanya di tab Helpdesk OSS.
 5. Rollback: `docs/rollback-rekap-data-tanpa-form-202611010005.sql` (mengembalikan fungsi 8 argumen 202610290002; jalankan SEBELUM `docs/rollback-rekap-terpadu-202610290002.sql`). Setelah rollback, tab Data Pelayanan menjawab 409 sampai kode dikembalikan.
+
+## Pesan Perilaku lanjutan, absensi FO (202611030001-202611030003)
+
+| # | Berkas | Isi | Rollback | Status |
+|---|---|---|---|---|
+| 202611030001 | `202611030001_pesan_perilaku_teks_wib.sql` | teks email/push survei menyebut "Pesan Perilaku"; `hitung_ikm` memakai tanggal WIB | `docs/rollback-pesan-perilaku-teks-wib-202611030001.sql` | **DITERAPKAN ke produksi 2026-10-28** (dry-run bersih) |
+| 202611030002 | `202611030002_absensi_hadir_fo.sql` | tabel `absensi_hadir_fo` + RPC `fo_catat_hadir_layanan(layanan, nama manual, path foto)`; nama yang cocok petugas aktif ikut `catat_absensi` | `docs/rollback-absensi-hadir-fo-202611030002.sql` | **DITULIS, BELUM DITERAPKAN** (dry-run + uji perilaku rollback bersih) |
+| 202611030003 | `202611030003_saran_pengaduan_pesan_perilaku.sql` | tabel `saran`; `pengaduan` +`sumber/kunjungan_id/pelapor_nama/undangan_id`; RPC `kirim_saran`, `kirim_pengaduan_survei`, `lacak_pengaduan_nomor`, `ringkasan_saran`, `ringkasan_pengaduan`; hak anon `submit_skm_response`/`get_skm_context` dicabut (SKM lama dihentikan) | `docs/rollback-saran-pengaduan-pesan-perilaku-202611030003.sql` | **DITULIS, BELUM DITERAPKAN** (dry-run + uji perilaku rollback bersih) |
+
+Urutan: deploy aplikasi dulu, lalu terapkan 0002 dan 0003 (aditif; aplikasi tahan bila belum diterapkan: bagian absensi FO/saran kosong, kirim saran/pengaduan memberi galat).
+Penerapan: `doppler run --project lmh --config prd -- node scripts/terapkan-migrasi-berurutan.mjs --dry-run --berkas <f1> <f2>` lalu `--terapkan`.

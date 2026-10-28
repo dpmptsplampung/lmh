@@ -8,6 +8,7 @@ import {
   Download,
   Loader2,
   AlertCircle,
+  Printer,
 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import { createClient } from '@/lib/supabase/client';
@@ -150,9 +151,15 @@ export default function SkmAdminPage() {
   return (
     <>
       <PageHeader
-        title="Dashboard SKM"
-        description="Indeks Kepuasan Masyarakat (PermenPANRB 14/2017) dan SPAK per unit"
-      />
+        title="Hasil Survei Pesan Perilaku"
+        description="Indeks Kepuasan Masyarakat (IKM, PermenPANRB 14/2017) dan Persepsi Anti Korupsi (SPAK) per unit"
+      >
+        {bolehSpak && (
+          <Link href="/admin/pesan-perilaku/cetak" className="btn btn--secondary btn--sm">
+            <Printer size={16} aria-hidden="true" /> Laporan &amp; Cetak
+          </Link>
+        )}
+      </PageHeader>
 
       <div className={styles.skmContainer}>
         {petugasLayanan && (
