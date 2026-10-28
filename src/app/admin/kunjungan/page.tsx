@@ -13,6 +13,7 @@ import {
   RefreshCw,
   Calendar,
   Info,
+  QrCode,
 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import Pagination from '@/components/Pagination';
@@ -20,6 +21,9 @@ import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 import { useRealtimeRefetch } from '@/lib/hooks/useRealtimeRefetch';
 import { useToast } from '@/components/Toast';
+import SurveiQrDialog from '@/components/admin/SurveiQrDialog';
+import SurveiStatusBadge from '@/components/admin/SurveiStatusBadge';
+import { ambilStatusSurvei, type StatusSurvei } from '@/lib/survei/staf';
 
 const PAGE_SIZE = 25;
 
@@ -49,6 +53,9 @@ export default function KunjunganPage() {
   const [totalCount, setTotalCount] = useState(0);
   const [filterTanggal, setFilterTanggal] = useState(todayWIB());
   const [namaFo, setNamaFo] = useState<Record<string, string>>({});
+  // Pesan Perilaku (survei terpadu): status per kunjungan selesai + kunjungan yang QR-nya sedang ditampilkan.
+  const [statusSurvei, setStatusSurvei] = useState<ReadonlyMap<string, StatusSurvei>>(new Map());
+  const [qrKunjunganId, setQrKunjunganId] = useState<string | null>(null);
 
   // Nama Front Office yang melayani tiap kunjungan (keputusan CEO 2026-10-14: semua FO melihat semua pengunjung, dengan
   // nama FO yang melayani). Sumber: tahap 'fo' ber-penangan pada tabel penanganan (RLS: Admin & FO semua, 202610140013).
@@ -83,6 +90,22 @@ export default function KunjunganPage() {
     }
   }, []);
 
+  // Status Pesan Perilaku kunjungan selesai (view v_survei_status), sekali per muat data. Pelengkap: kegagalan memuatnya
+  // tidak menggagalkan daftar (lencana tidak ditampilkan alih-alih menampilkan status keliru).
+  const muatStatusSurvei = useCallback(async (supabase: ReturnType<typeof createClient>, baris: KunjunganRow[]) => {
+    const ids = baris.filter((k) => k.status === 'selesai').map((k) => k.id);
+    if (ids.length === 0) {
+      setStatusSurvei(new Map());
+      return;
+    }
+    try {
+      setStatusSurvei(await ambilStatusSurvei(supabase, ids));
+    } catch (e) {
+      console.error('Gagal memuat status Pesan Perilaku:', e);
+      setStatusSurvei(new Map());
+    }
+  }, []);
+
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
@@ -114,14 +137,17 @@ export default function KunjunganPage() {
 
       setKunjungan(normalized);
       setTotalCount(count ?? normalized.length);
-      await muatNamaFo(supabase, normalized.map((k) => k.id));
+      await Promise.all([
+        muatNamaFo(supabase, normalized.map((k) => k.id)),
+        muatStatusSurvei(supabase, normalized),
+      ]);
     } catch (e) {
       console.error('Error loading kunjungan:', e);
       toast('Gagal memuat data kunjungan', 'error');
     } finally {
       setLoading(false);
     }
-  }, [filterTanggal, page, toast, muatNamaFo]);
+  }, [filterTanggal, page, toast, muatNamaFo, muatStatusSurvei]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -263,7 +289,7 @@ export default function KunjunganPage() {
               <tbody>
                 {Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i}>
-                    <td colSpan={8} style={{ padding: 'var(--space-3) var(--space-4)' }}>
+                    <td colSpan={9} style={{ padding: 'var(--space-3) var(--space-4)' }}>
                       <div className="skeleton" style={{ height: '20px', width: '100%' }} />
                     </td>
                   </tr>
@@ -282,6 +308,7 @@ export default function KunjunganPage() {
                 <th>Waktu Masuk</th>
                 <th>Waktu Selesai</th>
                 <th>Status</th>
+                <th>Pesan Perilaku</th>
               </tr>
             </thead>
             <tbody>
@@ -301,6 +328,26 @@ export default function KunjunganPage() {
                       {statusLabel(k.status)}
                     </span>
                   </td>
+                  <td>
+                    {k.status === 'selesai' && statusSurvei.get(k.id) ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                        <SurveiStatusBadge status={statusSurvei.get(k.id) as StatusSurvei} />
+                        {statusSurvei.get(k.id) === 'belum_diisi' && (
+                          <button
+                            className="btn btn--secondary btn--xs"
+                            onClick={() => setQrKunjunganId(k.id)}
+                            aria-label={`Tampilkan QR Pesan Perilaku untuk ${k.nama}`}
+                            style={{ fontSize: '11px', padding: '2px 6px', width: 'fit-content' }}
+                          >
+                            <QrCode size={12} style={{ marginRight: '3px' }} aria-hidden="true" />
+                            Tampilkan QR
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      '—'
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -317,6 +364,10 @@ export default function KunjunganPage() {
           </div>
         )}
       </div>
+
+      {qrKunjunganId && (
+        <SurveiQrDialog key={qrKunjunganId} kunjunganId={qrKunjunganId} onTutup={() => setQrKunjunganId(null)} />
+      )}
     </>
   );
 }

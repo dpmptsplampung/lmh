@@ -72,6 +72,7 @@
 | Rute | Admin | FO | Petugas | Pengunjung | Anonim |
 |---|:-:|:-:|:-:|:-:|:-:|
 | `/`, `/layar-antrian`(token), `/checkin`, `/chat`, `/gallery`, `/umkm`, `/skm`, `/transparansi`, `/kebijakan-privasi` | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `/survei/<token>` (Pesan Perilaku; token undangan per kunjungan, tanpa login) | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `/me`, `/me/reservasi`, `/me/notifications` | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `/peta-potensi` (baru) | ✓ | ✓ | ✓ | ✓ | **✗** |
 | `/admin` (dashboard) | ✓ | ✗ | ✗ | ✗ | ✗ |
@@ -88,7 +89,7 @@
 | `/admin/gallery`, `/admin/investasi-leads` | ✓ | ✗ | ✗ | ✗ | ✗ |
 | `/admin/pengaduan` (baru) | ✓ | ✓ (layanan saja) | `S` (diteruskan) | ✗ | ✗ |
 | `/admin/pengaduan/integritas` (baru) | ✓ | **✗** | **✗** | ✗ | ✗ |
-| `/admin/skm` | ✓ | ✓ | `S` | ✗ | ✗ |
+| `/admin/skm` (tab IKM; tab SPAK dan unduhan `/api/admin/survei/export` hanya Admin dan FO) | ✓ | ✓ | `S` | ✗ | ✗ |
 | `/admin/laporan` (baru) | ✓ | ✓ | `S` | ✗ | ✗ |
 | `/admin/petugas`, `/admin/petugas/invite` | ✓ | ✗ | ✗ | ✗ | ✗ |
 | `/admin/settings`, `/admin/settings/landing`, `/admin/settings/jadwal` | ✓ | ✓ (jadwal) | ✓ (jadwal) | ✗ | ✗ |

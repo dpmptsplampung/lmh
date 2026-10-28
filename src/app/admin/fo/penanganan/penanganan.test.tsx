@@ -25,6 +25,10 @@ vi.mock('@/lib/supabase/client', async () => {
   const { buatFakeSupabase } = await import('@/test/fo-supabase-mock');
   return { createClient: () => buatFakeSupabase(m.h) };
 });
+// Kanvas QR tidak berjalan di jsdom: tiruan mengekspos nilai yang dikodekan lewat atribut (bukan teks).
+vi.mock('@/components/QRCode', () => ({
+  default: ({ value }: { value: string }) => <div data-testid="qr" data-value={value} />,
+}));
 
 import PenangananFoPage from './page';
 
@@ -54,6 +58,13 @@ function siapkan({ berjalan: dataBerjalan = [berjalan()], riwayat = [], tiket = 
   m.h.tabel.topik_penanganan = { data: TOPIK, error: null };
   m.h.tabel.layanan = { data: LAYANAN, error: null };
 }
+
+const TOKEN_SURVEI = 'd4e5'.repeat(16);
+const hasilSelesaiFo = { ok: true, penanganan_id: 'pn-1', kunjungan_id: 'k-1', kunjungan_status: 'selesai', selesai_at: '2026-10-13T03:00:00.000Z' };
+const qrBelumDiisi = {
+  data: { status: 'belum_diisi', token: TOKEN_SURVEI, kedaluwarsa_pada: '2026-10-14T11:00:00.000Z', unit: 'fo', layanan_nama: null },
+  error: null,
+};
 
 const hasilEskalasi = (o: Record<string, unknown> = {}) => ({
   ok: true, kunjungan_id: 'k-1', penanganan_fo_id: 'pn-1', penanganan_layanan_id: 'pn-2', tiket_id: 'tk-1',
@@ -286,10 +297,7 @@ describe('Penanganan: form selesai (fo_selesai)', () => {
 
   it('berhasil: memanggil fo_selesai dengan catatan ter-trim, menampilkan pemberitahuan, dan memuat ulang', async () => {
     siapkan();
-    m.h.rpc = () => ({
-      data: { ok: true, penanganan_id: 'pn-1', kunjungan_id: 'k-1', kunjungan_status: 'selesai', selesai_at: '2026-10-13T03:00:00.000Z' },
-      error: null,
-    });
+    m.h.rpc = (nama) => (nama === 'ambil_qr_survei' ? qrBelumDiisi : { data: hasilSelesaiFo, error: null });
     render(<PenangananFoPage />);
     const form = await bukaFormSelesai();
 
@@ -298,10 +306,49 @@ describe('Penanganan: form selesai (fo_selesai)', () => {
     fireEvent.click(within(form).getByRole('button', { name: 'Selesaikan penanganan' }));
 
     expect(await screen.findByText(/Penanganan Budi Santoso selesai dicatat/)).toBeInTheDocument();
-    expect(m.h.rpcLog).toEqual([
+    expect(m.h.rpcLog[0]).toEqual(
       { nama: 'fo_selesai', args: { p_penanganan_id: 'pn-1', p_topik_id: 't-1', p_catatan: 'Tanya syarat NIB' } },
-    ]);
+    );
     expect(screen.queryByRole('form', { name: /Selesaikan penanganan/ })).toBeNull();
+  });
+
+  it('berhasil: dialog QR Pesan Perilaku dibuka untuk kunjungan_id hasil fo_selesai (token hanya sebagai QR)', async () => {
+    siapkan();
+    m.h.rpc = (nama) => (nama === 'ambil_qr_survei' ? qrBelumDiisi : { data: hasilSelesaiFo, error: null });
+    render(<PenangananFoPage />);
+    const form = await bukaFormSelesai();
+    fireEvent.change(within(form).getByLabelText('Topik'), { target: { value: 't-1' } });
+    fireEvent.change(within(form).getByLabelText('Catatan singkat'), { target: { value: 'Tanya syarat NIB' } });
+    fireEvent.click(within(form).getByRole('button', { name: 'Selesaikan penanganan' }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'QR Pesan Perilaku' });
+    expect(m.h.rpcLog.filter((r) => r.nama === 'ambil_qr_survei')).toEqual([
+      { nama: 'ambil_qr_survei', args: { p_kunjungan_id: 'k-1' } },
+    ]);
+    expect(within(dialog).getByTestId('qr').getAttribute('data-value')).toMatch(new RegExp(`/survei/${TOKEN_SURVEI}$`));
+    expect(document.body.textContent).not.toContain(TOKEN_SURVEI);
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Tutup' }));
+    expect(screen.queryByRole('dialog', { name: 'QR Pesan Perilaku' })).toBeNull();
+    // Pemberitahuan penyelesaian tetap ada setelah dialog ditutup.
+    expect(screen.getByText(/Penanganan Budi Santoso selesai dicatat/)).toBeInTheDocument();
+  });
+
+  it('berhasil tetapi tanpa token (undangan belum ada): dialog menutup diri tanpa tampil', async () => {
+    siapkan();
+    m.h.rpc = (nama) => (nama === 'ambil_qr_survei'
+      ? { data: { status: 'tidak_ada', token: null, kedaluwarsa_pada: null, unit: null, layanan_nama: null }, error: null }
+      : { data: hasilSelesaiFo, error: null });
+    render(<PenangananFoPage />);
+    const form = await bukaFormSelesai();
+    fireEvent.change(within(form).getByLabelText('Topik'), { target: { value: 't-1' } });
+    fireEvent.change(within(form).getByLabelText('Catatan singkat'), { target: { value: 'Tanya syarat NIB' } });
+    fireEvent.click(within(form).getByRole('button', { name: 'Selesaikan penanganan' }));
+
+    expect(await screen.findByText(/Penanganan Budi Santoso selesai dicatat/)).toBeInTheDocument();
+    await waitFor(() => expect(m.h.rpcLog.some((r) => r.nama === 'ambil_qr_survei')).toBe(true));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByTestId('qr')).toBeNull();
   });
 
   it('galat server (TOPIK_TIDAK_VALID) dipetakan ke pesan Indonesia pada isian topik; form tetap terbuka', async () => {

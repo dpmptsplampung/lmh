@@ -95,6 +95,10 @@ export const FORWARD_MIGRATION_FILES = [
   '202611010003_identitas_satu_kesatuan.sql',
   '202611010004_backfill_identitas_kunjungan.sql',
   '202611010005_rekap_data_tanpa_form.sql',
+  '202611020001_survei_undangan.sql',
+  '202611020002_survei_jawaban.sql',
+  '202611020003_survei_rpc.sql',
+  '202611020004_survei_notifikasi.sql',
 ] as const;
 
 export function listMigrationFiles(): string[] {

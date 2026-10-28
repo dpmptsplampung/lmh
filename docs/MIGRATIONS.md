@@ -392,6 +392,53 @@ node scripts/apply-migration.mjs supabase/migrations/202610140013_fo_keterbukaan
 
 Dry-run terhadap produksi 2026-10-14 (siang, read-only, di-ROLLBACK, saat 0003 belum terpasang): berhenti di `PRASYARAT: tabel penanganan / boleh_penanganan belum ada (202610140003_fo_model_data)` (benar); malam harinya diterapkan (dry-run lalu COMMIT). Dry-run kedua rollback (0013 dan 0012 yang diberi penjaga baru) juga berhenti di penjaganya masing-masing tanpa perubahan. Klien (rekap tanpa batas "milik sendiri", kolom Front Office) aman di-deploy sebelum/sesudah 0013: tanpa 0013 RLS lama hanya membuat data FO tidak lengkap, tidak bocor. Uji perilaku: `scripts/test-fo-keterbukaan.mjs` (dijalankan 2026-10-14 malam terhadap produksi, ROLLBACK: 26 lolos; skrip menolak Senin-Jumat 07:00-16:59 WIB). Belum terbukti: kueri rekap FO pada PostgREST sungguhan.
 
+## Survei terpadu Fase A (202611020001-202611020004)
+
+Spesifikasi: `docs/superpowers/specs/2026-10-26-survei-terpadu-design.md`; rencana: `docs/superpowers/plans/2026-10-26-survei-terpadu-fase-a.md`. Seri empat migrasi ADITIF (tanpa menghapus kolom atau data produksi) untuk survei terpadu (SPAK + SKM 11 unsur) dengan undangan berbasis QR. Urutan penerapan 0001 -> 0002 -> 0003 -> 0004; urutan rollback kebalikannya (0004 pertama, 0001 terakhir). Semuanya DITULIS tetapi BELUM DITERAPKAN: penerapan hanya oleh pemilik setelah konfirmasi CEO, lewat `scripts/apply-migration.mjs --atomic` (dry-run dulu). Perilaku diuji lebih dulu di PGlite lokal (`scripts/lokal/`, tanpa DB nyata); itu BUKAN pengganti dry-run pada DB nyata.
+
+| Versi | Berkas | Prasyarat | Rollback | Status |
+|---|---|---|---|---|
+| 202611020001 | `202611020001_survei_undangan.sql` | kolom `kunjungan.selesai_at` (`202610140003_fo_model_data`), `kunjungan_layanan_skm(uuid)` (`202610140007_wp24_akhiri_dual_write`), `boleh_kunjungan(uuid)` (`202610140009_chat_online`) — penjaga `PRASYARAT` | `docs/rollback-survei-undangan-202611020001.sql` (PALING AKHIR dalam seri; MENGHAPUS semua data undangan; diawali penjaga `PRASYARAT ROLLBACK` yang menolak bila fungsi `public` lain masih menyebut `ensure_undangan`/`survei_undangan`, karena Postgres tidak mencatat ketergantungan dari badan plpgsql) | **DITULIS, BELUM DITERAPKAN.** Uji perilaku PGlite: 94 lolos, 0 gagal (termasuk penjaga rollback) |
+| 202611020002 | `202611020002_survei_jawaban.sql` | tabel `survei_undangan` (`202611020001_survei_undangan`), kolom `skm_respons.kunjungan_id` (`202610140007_wp24_akhiri_dual_write`), `hitung_ikm` (`202607140004_security_and_automation`), `v_skm_petugas` dan `peran_saya()` (`202610090001_rbac_tahap1`), `boleh_layanan(uuid)` (`202610080001_rbac_tahap0_keamanan`) — penjaga `PRASYARAT` | `docs/rollback-survei-jawaban-202611020002.sql` (SETELAH rollback 0004 dan 0003, SEBELUM rollback 0001; memulihkan `hitung_ikm` dan `v_skm_petugas` ke versi asli; MENGHAPUS `spak_respons` dan tujuh kolom baru `skm_respons` beserta isinya; diawali penjaga `PRASYARAT ROLLBACK` yang menolak bila fungsi `public` lain masih menyebut objek baru) | **DITULIS, BELUM DITERAPKAN.** Uji perilaku PGlite: 127 lolos, 0 gagal (termasuk rollback yang memulihkan objek persis seperti sebelum migrasi) |
+| 202611020003 | `202611020003_survei_rpc.sql` | tabel `survei_undangan` (`202611020001_survei_undangan`); tabel `spak_respons`, kolom 11 unsur/`versi`/`sumber`/`unit` pada `skm_respons`, dan constraint `skm_respons_wizard_kunjungan_versi_check` (`202611020002_survei_jawaban`) — penjaga `PRASYARAT` | `docs/rollback-survei-rpc-202611020003.sql` (SETELAH rollback 0004, SEBELUM rollback 0002 dan 0001; hanya DROP kedua fungsi, jawaban yang sudah tersimpan tidak dihapus; diawali penjaga `PRASYARAT ROLLBACK` yang menolak bila fungsi `public` lain masih menyebut `kirim_survei`/`get_survei_context`; rollback 0002 dan 0001 sebaliknya menolak selama kedua fungsi ini masih ada) | **DITULIS, BELUM DITERAPKAN.** Uji perilaku PGlite: 196 lolos, 0 gagal (termasuk batas kedaluwarsa tepat, kiriman ganda, matriks payload nakal, atomik, hak, rollback berurutan) |
+| 202611020004 | `202611020004_survei_notifikasi.sql` | `notify_kunjungan_status()` (`202610140007_wp24_akhiri_dual_write`), `ensure_undangan(uuid)` (`202611020001_survei_undangan`) — penjaga `PRASYARAT` | `docs/rollback-survei-notifikasi-202611020004.sql` (PERTAMA dalam urutan rollback, SEBELUM rollback 0003, 0002, dan 0001; memulihkan fungsi 0007 PERSIS; diawali penjaga `PRASYARAT ROLLBACK` yang menolak bila fungsi tidak ada atau isinya bukan versi 0004 maupun 0007) | **DITULIS, BELUM DITERAPKAN.** Tanpa skenario PGlite (fungsi tidak bisa dijalankan di stub); diverifikasi statis lewat test kontrak, dry-run oleh pemilik |
+
+**0001 (undangan survei per kunjungan selesai):** tabel `survei_undangan` (`kunjungan_id` unik, `token` unik 64 heksadesimal, `unit` `layanan`/`fo`, `kedaluwarsa_pada`, `diisi_pada`, `saran_dikirim`, `pengaduan_dikirim`; RLS aktif TANPA policy, hak dicabut dari PUBLIC/anon/authenticated); `ensure_undangan(uuid)` idempoten (service_role; `ON CONFLICT (kunjungan_id) DO NOTHING`, batas `selesai_at` + 32 jam tidak pernah bergeser); trigger `trg_kunjungan_selesai_undangan` (`AFTER UPDATE OF status`, klausa `WHEN` hanya saat status BERUBAH menjadi `selesai`; kunjungan lama tidak di-backfill); `ambil_qr_survei(uuid)` (authenticated; penjaga `boleh_kunjungan`, `FORBIDDEN` SQLSTATE 42501; token hanya untuk `belum_diisi`); view `v_survei_status` (tanpa token, tanpa `security_invoker`, disaring `boleh_kunjungan`, ditambah `security_barrier`; GRANT SELECT authenticated). Tanpa DML, tanpa mengubah objek lama.
+
+```
+node scripts/apply-migration.mjs supabase/migrations/202611020001_survei_undangan.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202611020001_survei_undangan.sql --atomic
+```
+
+Uji: kontrak statis `supabase/migrations/survei_undangan.test.ts`; perilaku `node scripts/lokal/skenario-survei-undangan.mjs` (PGlite; tidak masuk `npm test`). Migrasi 0002-0004 menambah baris pada tabel di atas.
+
+**0002 (jawaban survei):** `skm_respons` + `u10_transparansi`/`u11_integritas` (CHECK 1-4, boleh kosong), `versi`, `sumber` (`form_lama`/`wizard`/`impor`), `unit` (`layanan`/`fo`/`tidak_diketahui`), `jenis_kelamin`, `pendidikan`; constraint `skm_respons_wizard_kunjungan_versi_check` (jawaban wizard wajib `kunjungan_id` dan `versi = 2`; konsekuensinya menghapus kunjungan yang punya jawaban wizard ditolak 23514); satu UPDATE menandai baris lama ber-`layanan_id` sebagai `unit = layanan`; tabel `spak_respons` (5 butir, CHECK 1-6; hanya admin/front_office membaca, tanpa tulis dari klien); `hitung_ikm` diganti (rata-rata unsur terisi x 25; baris 9 unsur lama menghasilkan nilai yang sama persis; penyebut numerik `9.0`); `ringkasan_ikm`, `ringkasan_spak`, `ringkasan_response_rate` (periode tanggal WIB; Front Office dan "Tidak terklasifikasi" dipisah; hanya `ringkasan_ikm` boleh dipanggil petugas); `v_skm_petugas` + `u10`/`u11` di akhir. Tanpa DROP/DELETE pada objek lama; policy dan trigger `skm_respons` tidak diubah.
+
+```
+node scripts/apply-migration.mjs supabase/migrations/202611020002_survei_jawaban.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202611020002_survei_jawaban.sql --atomic
+```
+
+Uji: kontrak statis `supabase/migrations/survei_jawaban.test.ts`; perilaku `node scripts/lokal/skenario-survei-jawaban.mjs` (PGlite; tidak masuk `npm test`).
+
+**0003 (RPC publik survei):** `get_survei_context(text)` -> jsonb `{status, unit, layanan_nama, kedaluwarsa_pada}` (`tidak_valid`, `sudah_diisi`, `kedaluwarsa`, `ok`; hanya membaca; tanpa id, token, atau identitas pengunjung) dan `kirim_survei(text, jsonb, jsonb)` -> text `submitted`/`invalid`/`expired`/`duplicate`/`not_found` (satu transaksi: validasi payload dulu, kunci undangan `FOR UPDATE`, lalu `duplicate`, `expired`, status kunjungan, kemudian `INSERT` `spak_respons` dan `skm_respons` (`sumber` `wizard`, versi 2) dan `diisi_pada = now()` dalam satu blok yang menangkap hanya `unique_violation`). Kedua fungsi `SECURITY DEFINER`, `search_path = pg_catalog, public`, `REVOKE` dari `PUBLIC`/`anon`/`authenticated` lalu `GRANT EXECUTE` hanya ke `anon` dan `authenticated`; sengaja `VOLATILE` agar PostgREST hanya mengekspos lewat POST (token tidak masuk URL/log). Batas kedaluwarsa `now() >= kedaluwarsa_pada` (tepat di batas = kedaluwarsa), jam hanya dari database. Bilangan bulat bertulisan lain (`3.0`, `1e0`) diterima dan disimpan sebagai bilangan bulat; `3.5`, `"3"`, `null`, kunci asing/kurang, SPAK di atas 6, dan SKM di atas 4 ditolak `invalid`. Tanpa objek tabel baru dan tanpa DML pada data yang ada.
+
+```
+node scripts/apply-migration.mjs supabase/migrations/202611020003_survei_rpc.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202611020003_survei_rpc.sql --atomic
+```
+
+Uji: kontrak statis `supabase/migrations/survei_rpc.test.ts`; perilaku `node scripts/lokal/skenario-survei-rpc.mjs` (PGlite; tidak masuk `npm test`).
+
+**0004 (email/push survei memakai tautan undangan):** `notify_kunjungan_status()` diganti dengan `CREATE OR REPLACE` penuh dari versi 0007. HANYA cabang `selesai` yang berubah: memanggil `ensure_undangan(NEW.id)` (idempoten), membaca token undangan, lalu memakai `<public_url>/survei/<token>` pada isi email, isi push, dan `payload.url` (bukan tautan lama berbasis `qr_token`); tanpa token tidak ada notifikasi. Signature, atribut (`SECURITY DEFINER`, `search_path`), `REVOKE`, cabang reservasi, judul/jenis notifikasi, dan trigger `trg_notify_kunjungan_status` (tidak dibuat ulang) identik dengan 0007. Tautan lama tetap berfungsi untuk email yang sudah terkirim.
+
+```
+node scripts/apply-migration.mjs supabase/migrations/202611020004_survei_notifikasi.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202611020004_survei_notifikasi.sql --atomic
+```
+
+Uji: kontrak statis `supabase/migrations/survei_notifikasi.test.ts` (membandingkan teks fungsi baru dengan 0007; rollback = salinan 0007 karakter demi karakter). Tidak ada skenario PGlite: fungsi memanggil `queue_notifikasi`, `site_settings`, dan `pengunjung` yang tidak ada di stub.
+
 ```markdown
 ## Data walk-in lengkap (0014)
 

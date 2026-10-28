@@ -19,6 +19,7 @@ import PemberitahuanAmbilAlih from '@/components/admin/PemberitahuanAmbilAlih';
 import { bolehKoordinatorAmbilAlihFo, muatKoordinator } from '@/lib/akses-data/lingkup';
 import FoEskalasiDialog from '@/components/admin/FoEskalasiDialog';
 import FoSelesaiForm from '@/components/admin/FoSelesaiForm';
+import SurveiQrDialog from '@/components/admin/SurveiQrDialog';
 import { useToast } from '@/components/Toast';
 import { createClient } from '@/lib/supabase/client';
 import { useRealtimeRefetch } from '@/lib/hooks/useRealtimeRefetch';
@@ -32,6 +33,7 @@ import {
   pesanGalatFo,
   satu,
   type HasilEskalasi,
+  type HasilSelesaiFo,
   type LayananTujuan,
   type TopikFo,
 } from '@/lib/fo-penanganan';
@@ -114,6 +116,8 @@ export default function PenangananFoPage() {
   const [formSelesaiId, setFormSelesaiId] = useState<string | null>(null);
   const [eskalasiUntuk, setEskalasiUntuk] = useState<PenangananBerjalan | null>(null);
   const [hasil, setHasil] = useState<Hasil | null>(null);
+  // Kunjungan yang QR Pesan Perilaku-nya sedang ditampilkan (dibuka setelah fo_selesai; dialog menutup sendiri bila tak ada token).
+  const [qrKunjunganId, setQrKunjunganId] = useState<string | null>(null);
   const hasilRef = useRef<HTMLDivElement>(null);
   const seqRef = useRef(0);
   // Referensi (topik FO, layanan tujuan) jarang berubah: dimuat sekali, bukan tiap refetch realtime.
@@ -259,9 +263,10 @@ export default function PenangananFoPage() {
 
   const namaDari = (b: PenangananBerjalan) => satu(b.kunjungan)?.nama ?? 'pengunjung';
 
-  const berhasilSelesai = (b: PenangananBerjalan) => {
+  const berhasilSelesai = (b: PenangananBerjalan, h: HasilSelesaiFo) => {
     setFormSelesaiId(null);
     setHasil({ jenis: 'selesai', nama: namaDari(b) });
+    setQrKunjunganId(h.kunjungan_id ?? null);
     void muat();
   };
 
@@ -376,7 +381,7 @@ export default function PenangananFoPage() {
                         penangananId={b.id}
                         namaPengunjung={nama}
                         topik={topik}
-                        onBerhasil={() => berhasilSelesai(b)}
+                        onBerhasil={(h) => berhasilSelesai(b, h)}
                         onBatal={() => { fokusKeTombolSelesai.current = b.id; setFormSelesaiId(null); }}
                         onGalatSistem={tanganiGalatSistem}
                       />
@@ -530,6 +535,10 @@ export default function PenangananFoPage() {
           onBerhasil={(h) => berhasilEskalasi(eskalasiUntuk, h)}
           onGalatSistem={tanganiGalatSistem}
         />
+      )}
+
+      {qrKunjunganId && (
+        <SurveiQrDialog key={qrKunjunganId} kunjunganId={qrKunjunganId} onTutup={() => setQrKunjunganId(null)} />
       )}
 
       {ambilAlih && (

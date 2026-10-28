@@ -36,11 +36,22 @@ vi.mock('@/components/WalkinWizard', () => ({
   ),
 }));
 
-// Mock PelayananWizardModal: teks "Pendataan Pelayanan" saat isOpen=true, "PendataanClosed" saat false.
+// Mock PelayananWizardModal: teks "Pendataan Pelayanan" saat isOpen=true, "PendataanClosed" saat false. Tombol tiruan
+// menyelesaikan wizard seperti komponen asli (onSuccess lalu onClose) untuk menguji dialog QR Pesan Perilaku.
 vi.mock('@/components/admin/PelayananWizardModal', () => ({
-  default: ({ isOpen }: { isOpen: boolean }) => (
-    <div data-testid="pelayanan-wizard">{isOpen ? 'Pendataan Pelayanan' : 'PendataanClosed'}</div>
+  default: ({ isOpen, onSuccess, onClose }: { isOpen: boolean; onSuccess?: () => void; onClose: () => void }) => (
+    <div data-testid="pelayanan-wizard">
+      {isOpen ? 'Pendataan Pelayanan' : 'PendataanClosed'}
+      {isOpen && (
+        <button type="button" onClick={() => { onSuccess?.(); onClose(); }}>Kunci data (tiruan)</button>
+      )}
+    </div>
   ),
+}));
+
+// Kanvas QR tidak berjalan di jsdom: tiruan mengekspos nilai yang dikodekan lewat atribut (bukan teks).
+vi.mock('@/components/QRCode', () => ({
+  default: ({ value }: { value: string }) => <div data-testid="qr" data-value={value} />,
 }));
 
 import AntrianPage from './page';
@@ -48,6 +59,7 @@ import { createClient } from '@/lib/supabase/client';
 
 type AntrianRow = {
   id: string;
+  kunjungan_id: string;
   legacy_visit_id: string;
   layanan_id: string;
   dilayani_oleh: string | null;
@@ -75,13 +87,16 @@ function buildMock(opts: {
   layananId?: string | null;
   // Hasil RPC per nama; nilai bisa Promise (untuk menguji tombol terkunci selama request).
   rpc?: Partial<Record<
-    'panggil_tiket' | 'layanan_mulai' | 'layanan_selesai' | 'admin_ambil_alih' | 'layanan_kembalikan' | 'admin_alihkan',
+    'panggil_tiket' | 'layanan_mulai' | 'layanan_selesai' | 'admin_ambil_alih' | 'layanan_kembalikan' | 'admin_alihkan'
+    | 'ambil_qr_survei',
     HasilRpc | Promise<HasilRpc>
   >>;
   // Baris penanganan tahap FO (kontrak §6.3), topik layanan tiket, dan layanan tujuan alih.
   penanganan?: Array<{ id: string; topik: string | null; catatan: string | null; penangan: { nama: string } | null }>;
   topik?: Array<{ id: string; nama: string }>;
   layananTujuan?: Array<{ id: string; nama: string }>;
+  // Baris v_survei_status (Pesan Perilaku) per kunjungan; 'galat' = kueri gagal.
+  survei?: Array<{ kunjungan_id: string; status: string }> | 'galat';
   /** Fase 3: penanda Koordinator akun pemanggil (dibaca terpisah lewat petugas.select('koordinator')). */
   koordinator?: boolean;
 } = {}) {
@@ -116,6 +131,8 @@ function buildMock(opts: {
     koordinator_ambil_alih_tiket: { data: { ok: true, sudah_milik_anda: false }, error: null },
     layanan_kembalikan: { data: { ok: true }, error: null },
     admin_alihkan: { data: { ok: true, nomor_display: 'BP-003', layanan_nama: 'BPJS Kesehatan', petugas_hadir: true }, error: null },
+    // Default: kunjungan tanpa undangan -> dialog QR menutup diri tanpa tampil (tidak mengganggu tes lain).
+    ambil_qr_survei: { data: { status: 'tidak_ada', token: null, kedaluwarsa_pada: null, unit: null, layanan_nama: null }, error: null },
   };
   const rpc = vi.fn((nama: string) => {
     const atur = opts.rpc?.[nama as keyof NonNullable<typeof opts.rpc>];
@@ -123,7 +140,7 @@ function buildMock(opts: {
   });
 
   // Rantai query "thenable" (select/eq/order/in mengembalikan dirinya; await -> hasil kaleng).
-  const thenable = (hasil: { data: unknown; error: null }) => {
+  const thenable = (hasil: { data: unknown; error: DbError | null }) => {
     const eq = vi.fn();
     const inFn = vi.fn();
     const p: Record<string, unknown> = {
@@ -138,6 +155,9 @@ function buildMock(opts: {
   const penangananQ = thenable({ data: opts.penanganan ?? [], error: null });
   const topikQ = thenable({ data: opts.topik ?? [], error: null });
   const layananQ = thenable({ data: opts.layananTujuan ?? [], error: null });
+  const surveiQ = thenable(
+    opts.survei === 'galat' ? { data: null, error: { message: 'boom' } } : { data: opts.survei ?? [], error: null },
+  );
 
   const mock = {
     auth: {
@@ -150,6 +170,7 @@ function buildMock(opts: {
       if (table === 'penanganan') return penangananQ.p;
       if (table === 'topik_penanganan') return topikQ.p;
       if (table === 'layanan') return layananQ.p;
+      if (table === 'v_survei_status') return surveiQ.p;
       return {};
     }),
     rpc,
@@ -158,6 +179,7 @@ function buildMock(opts: {
     _penangananIn: penangananQ.inFn,
     _topikEq: topikQ.eq,
     _layananEq: layananQ.eq,
+    _survei: surveiQ,
   };
 
   (createClient as unknown as ReturnType<typeof vi.fn>).mockReturnValue(mock);
@@ -166,6 +188,7 @@ function buildMock(opts: {
 
 const baseRow = (over: Partial<AntrianRow> = {}): AntrianRow => ({
   id: 't-1',
+  kunjungan_id: 'k-1',
   legacy_visit_id: 'v-1',
   layanan_id: 'l-1',
   dilayani_oleh: null,
@@ -223,6 +246,7 @@ describe('Admin antrian: daftar', () => {
     await screen.findByText('Budi');
     const kolom = String(mock._tiketSelect.mock.calls[0][0]);
     expect(kolom).toMatch(/dilayani_oleh/);
+    expect(kolom).toMatch(/kunjungan_id/);
     expect(kolom).toMatch(/pelayan:dilayani_oleh\(nama\)/);
     expect(kolom).toMatch(/layanan_id/);
   });
@@ -1007,5 +1031,180 @@ describe('Admin antrian B4: Alihkan (Admin, admin_alihkan)', () => {
     fireEvent.keyDown(document, { key: 'Escape' });
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(pemicu).toHaveFocus();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// Pesan Perilaku (survei terpadu): dialog QR setelah tiket selesai (tiga jalur) + lencana status di baris selesai
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+describe('Admin antrian: QR Pesan Perilaku setelah tiket selesai', () => {
+  const TOKEN = 'f9a0'.repeat(16);
+  const qrBelumDiisi: HasilRpc = {
+    data: { status: 'belum_diisi', token: TOKEN, kedaluwarsa_pada: '2026-10-28T03:30:00+00:00', unit: 'layanan', layanan_nama: 'BPJS Kesehatan' },
+    error: null,
+  };
+  const panggilanQr = (mock: ReturnType<typeof buildMock>) => mock.rpc.mock.calls.filter(([n]) => n === 'ambil_qr_survei');
+
+  const tampilQr = async () => {
+    const dialog = await screen.findByRole('dialog', { name: 'QR Pesan Perilaku' });
+    expect(within(dialog).getByTestId('qr').getAttribute('data-value')).toMatch(new RegExp(`/survei/${TOKEN}$`));
+    // Token hanya sebagai QR: tidak pernah menjadi teks.
+    expect(document.body.textContent).not.toContain(TOKEN);
+    return dialog;
+  };
+
+  it('jalur 1, layanan_selesai langsung: dialog dibuka untuk kunjungan_id tiket itu', async () => {
+    const mock = buildMock({
+      rows: [dilayaniSaya({ layanan: { nama: 'BPJS Kesehatan' }, kunjungan_id: 'k-9' })],
+      rpc: { ambil_qr_survei: qrBelumDiisi },
+    });
+    render(<AntrianPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /^selesai$/i }));
+
+    const dialog = await tampilQr();
+    expect(mock.rpc).toHaveBeenCalledWith('ambil_qr_survei', { p_kunjungan_id: 'k-9' });
+    expect(within(dialog).getByText('BPJS Kesehatan')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Tutup' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('jalur 2, PelayananWizardModal selesai: dialog dibuka untuk kunjungan_id tiket yang dikunci', async () => {
+    const mock = buildMock({
+      rows: [dilayaniSaya({ kunjungan_id: 'k-8' })],
+      rpc: { ambil_qr_survei: qrBelumDiisi },
+    });
+    render(<AntrianPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /^selesai$/i }));
+    // Wizard tiruan terbuka; menyelesaikannya memanggil onSuccess lalu onClose (urutan komponen asli).
+    fireEvent.click(await screen.findByRole('button', { name: 'Kunci data (tiruan)' }));
+
+    await tampilQr();
+    expect(mock.rpc).toHaveBeenCalledWith('ambil_qr_survei', { p_kunjungan_id: 'k-8' });
+    expect(screen.getByTestId('pelayanan-wizard')).toHaveTextContent('PendataanClosed');
+  });
+
+  it('jalur 3, SelesaiEskalasiModal: dialog dibuka untuk kunjungan_id tiket eskalasi', async () => {
+    const mock = buildMock({
+      rows: [eskalasiSaya({ layanan: noBpjs, kunjungan_id: 'k-7' })],
+      topik: [{ id: 'tp-1', nama: 'Klaim' }],
+      rpc: { ambil_qr_survei: qrBelumDiisi },
+    });
+    render(<AntrianPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /^selesai$/i }));
+    const form = await screen.findByRole('dialog', { name: /Selesaikan tiket A-001/i });
+    await waitFor(() => expect(within(form).getByRole('option', { name: 'Klaim' })).toBeInTheDocument());
+    fireEvent.change(within(form).getByLabelText(/Topik penanganan/), { target: { value: 'tp-1' } });
+    fireEvent.change(within(form).getByLabelText(/Catatan penanganan/), { target: { value: 'Klaim dijelaskan' } });
+    fireEvent.click(within(form).getByRole('button', { name: /^Selesaikan$/ }));
+
+    await tampilQr();
+    expect(mock.rpc).toHaveBeenCalledWith('ambil_qr_survei', { p_kunjungan_id: 'k-7' });
+    expect(screen.queryByRole('dialog', { name: /Selesaikan tiket/ })).toBeNull();
+  });
+
+  it('tanpa token (kunjungan belum selesai / tanpa undangan): RPC dipanggil tetapi tidak ada dialog', async () => {
+    const mock = buildMock({ rows: [dilayaniSaya({ layanan: { nama: 'BPJS Kesehatan' }, kunjungan_id: 'k-9' })] });
+    render(<AntrianPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /^selesai$/i }));
+
+    await waitFor(() => expect(panggilanQr(mock)).toHaveLength(1));
+    await waitFor(() => expect(toastMock).toHaveBeenCalledWith('Kunjungan berhasil diselesaikan', 'success'));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByTestId('qr')).toBeNull();
+  });
+
+  it('galat RPC QR: pesan singkat dengan tombol Tutup, tanpa penolakan tak tertangani; penyelesaian tetap sukses', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    buildMock({
+      rows: [dilayaniSaya({ layanan: { nama: 'BPJS Kesehatan' }, kunjungan_id: 'k-9' })],
+      rpc: { ambil_qr_survei: { data: null, error: { message: 'boom', code: '42501' } } },
+    });
+    render(<AntrianPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /^selesai$/i }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'QR Pesan Perilaku' });
+    expect(within(dialog).getByRole('alert')).toHaveTextContent(/belum dapat dimuat/i);
+    expect(toastMock).toHaveBeenCalledWith('Kunjungan berhasil diselesaikan', 'success');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Tutup' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    spy.mockRestore();
+  });
+});
+
+describe('Admin antrian: lencana status Pesan Perilaku pada tiket selesai', () => {
+  const TOKEN = '0b1c'.repeat(16);
+  const selesaiRow = (id: string, kunjunganId: string, nomor: number) =>
+    baseRow({
+      id, kunjungan_id: kunjunganId, nomor, nomor_display: `A-00${nomor}`, status: 'selesai', dilayani_oleh: SAYA,
+      waktu_mulai_layan: '2026-10-27T02:00:00.000Z', waktu_selesai: '2026-10-27T02:10:00.000Z',
+      kunjungan: { nama: `Pengunjung ${nomor}`, asal: 'walk_in', waktu_masuk: '2026-10-27T01:55:00.000Z' },
+    });
+  const barisTiket = (nomor: string) => screen.getByText(nomor).closest('tr')!;
+
+  it('lencana per kunjungan selesai; tombol Tampilkan QR hanya untuk Belum diisi; tanpa undangan = "—"; status sekali per muat', async () => {
+    const mock = buildMock({
+      rows: [
+        selesaiRow('t-1', 'k-1', 1),
+        selesaiRow('t-2', 'k-2', 2),
+        selesaiRow('t-3', 'k-3', 3),
+        selesaiRow('t-4', 'k-4', 4),
+        dilayaniLain({ id: 't-5', kunjungan_id: 'k-5', nomor: 5, nomor_display: 'A-005' }),
+      ],
+      survei: [
+        { kunjungan_id: 'k-1', status: 'belum_diisi' },
+        { kunjungan_id: 'k-2', status: 'sudah_diisi' },
+        { kunjungan_id: 'k-3', status: 'kedaluwarsa' },
+      ],
+    });
+    render(<AntrianPage />);
+    await screen.findByText('A-001');
+    await waitFor(() => expect(within(barisTiket('A-001')).getByText('Belum diisi')).toBeInTheDocument());
+
+    expect(within(barisTiket('A-001')).getByText('Pesan Perilaku')).toBeInTheDocument();
+    expect(within(barisTiket('A-001')).getByRole('button', { name: /Tampilkan QR Pesan Perilaku tiket A-001/ })).toBeInTheDocument();
+    expect(within(barisTiket('A-002')).getByText('Sudah diisi')).toBeInTheDocument();
+    expect(within(barisTiket('A-003')).getByText('Kedaluwarsa')).toBeInTheDocument();
+    expect(within(barisTiket('A-004')).getByTitle('Belum ada undangan Pesan Perilaku')).toBeInTheDocument();
+    for (const nomor of ['A-002', 'A-003', 'A-004', 'A-005']) {
+      expect(within(barisTiket(nomor)).queryByRole('button', { name: /Tampilkan QR/ })).toBeNull();
+    }
+    // Tiket belum selesai: tanpa lencana.
+    expect(within(barisTiket('A-005')).queryByText('Pesan Perilaku')).toBeNull();
+
+    // Sekali per muat data, hanya untuk kunjungan dengan tiket selesai.
+    expect(mock._survei.inFn).toHaveBeenCalledTimes(1);
+    expect(mock._survei.inFn).toHaveBeenCalledWith('kunjungan_id', ['k-1', 'k-2', 'k-3', 'k-4']);
+    expect(mock.from.mock.calls.filter(([t]) => t === 'v_survei_status')).toHaveLength(1);
+  });
+
+  it('Tampilkan QR membuka dialog untuk kunjungan baris itu', async () => {
+    const mock = buildMock({
+      rows: [selesaiRow('t-1', 'k-1', 1), selesaiRow('t-2', 'k-2', 2)],
+      survei: [{ kunjungan_id: 'k-1', status: 'sudah_diisi' }, { kunjungan_id: 'k-2', status: 'belum_diisi' }],
+      rpc: {
+        ambil_qr_survei: {
+          data: { status: 'belum_diisi', token: TOKEN, kedaluwarsa_pada: '2026-10-28T03:30:00+00:00', unit: 'layanan', layanan_nama: 'Helpdesk OSS' },
+          error: null,
+        },
+      },
+    });
+    render(<AntrianPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /Tampilkan QR Pesan Perilaku tiket A-002/ }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'QR Pesan Perilaku' });
+    expect(mock.rpc).toHaveBeenCalledWith('ambil_qr_survei', { p_kunjungan_id: 'k-2' });
+    expect(within(dialog).getByTestId('qr').getAttribute('data-value')).toMatch(new RegExp(`/survei/${TOKEN}$`));
+    expect(document.body.textContent).not.toContain(TOKEN);
+  });
+
+  it('galat memuat status tidak menggagalkan daftar: tanpa lencana dan tanpa toast galat', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    buildMock({ rows: [selesaiRow('t-1', 'k-1', 1)], survei: 'galat' });
+    render(<AntrianPage />);
+    expect(await screen.findByText('Pengunjung 1')).toBeInTheDocument();
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+    expect(screen.queryByText('Pesan Perilaku')).toBeNull();
+    expect(toastMock).not.toHaveBeenCalledWith('Gagal memuat data antrian', 'error');
+    spy.mockRestore();
   });
 });
