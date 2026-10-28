@@ -594,3 +594,107 @@
     transform: none;
   }
 }
+
+/* Saran dan pengaduan di layar akhir */
+.aksiAkhir {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2);
+  width: 100%;
+  max-width: 22rem;
+}
+
+.tombolAksi {
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 48px;
+}
+
+.terkirim {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--color-success-700);
+  font-weight: 600;
+}
+
+.kartuNomor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border-radius: var(--radius-xl);
+  background: var(--color-primary-50);
+  border: 1px solid var(--color-primary-200);
+  font-size: var(--text-sm);
+}
+
+.nomorLaporan {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-xl);
+  letter-spacing: 0.08em;
+  user-select: all;
+}
+
+.formPesan {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 100%;
+  max-width: 26rem;
+  text-align: left;
+}
+
+.labelPesan {
+  font-weight: 700;
+}
+
+.isianPesan {
+  width: 100%;
+  padding: var(--space-3);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-default);
+  font: inherit;
+  resize: vertical;
+}
+
+.isianPesan:focus-visible {
+  outline: 2px solid var(--color-primary-500);
+  outline-offset: 1px;
+}
+
+.hitung {
+  margin: 0;
+  text-align: right;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.centangAnonim {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.catatanAnonim {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.galatPesan {
+  margin: 0;
+  color: var(--color-danger-600, #dc2626);
+  font-size: var(--text-sm);
+}
+
+.barisAksi {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}

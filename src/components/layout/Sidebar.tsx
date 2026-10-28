@@ -23,6 +23,8 @@ import {
   LayoutTemplate,
   TrendingUp,
   BarChart3,
+  MessageSquareHeart,
+  Lightbulb,
   ShieldCheck,
   ShieldAlert,
   UserPlus,
@@ -99,12 +101,14 @@ const ICONS: Record<AdminNavEntry['iconKey'], React.ReactNode> = {
   topik:     <Tags size={20} />,
   rekapFo:   <FileSpreadsheet size={20} />,
   performa:  <Gauge size={20} />,
+  saran:     <Lightbulb size={20} />,
 };
 
 const GROUP_ICONS: Record<AdminNavGroupKey, React.ReactNode> = {
   frontOffice: <ConciergeBell size={20} />,
   antrean: <ListOrdered size={20} />,
   layananOnline: <Headset size={20} />,
+  pesanPerilaku: <MessageSquareHeart size={20} />,
   laporan: <FileBarChart size={20} />,
   pengelolaan: <SlidersHorizontal size={20} />,
   kemitraan: <Handshake size={20} />,

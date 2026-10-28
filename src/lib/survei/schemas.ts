@@ -23,3 +23,14 @@ export const kirimSurveiSchema = z
   .strict();
 
 export type KirimSurveiInput = z.infer<typeof kirimSurveiSchema>;
+
+/** Saran atau pengaduan sesudah survei (Fase B). `anonim` true = tanpa nama dan tanpa kaitan ke kunjungan. */
+export const kirimPesanSchema = z
+  .object({
+    token: z.string().min(32).max(128),
+    isi: z.string().trim().min(1).max(2000),
+    anonim: z.boolean(),
+  })
+  .strict();
+
+export type KirimPesanInput = z.infer<typeof kirimPesanSchema>;

@@ -49,18 +49,18 @@ export default function LacakPengaduanPage() {
         <ClipboardList size={28} style={{ color: 'var(--color-primary-500)' }} />
         <div>
           <h1 style={{ margin: 0 }}>Lacak Pengaduan</h1>
-          <p style={{ margin: 0, color: 'var(--color-neutral-500)' }}>Masukkan nomor tiket dan kontak yang Anda gunakan saat melapor.</p>
+          <p style={{ margin: 0, color: 'var(--color-neutral-500)' }}>Masukkan nomor laporan Anda. Laporan lama (tanpa nomor laporan baru) juga memerlukan kontak yang Anda gunakan saat melapor.</p>
         </div>
       </div>
 
       <form onSubmit={handleCari} className="card" style={{ display: 'grid', gap: 'var(--space-4)' }}>
         <div>
-          <label htmlFor="tiket" style={{ fontWeight: 600, display: 'block', marginBottom: 'var(--space-2)' }}>Nomor Tiket</label>
-          <input id="tiket" className="input" value={tiket} onChange={(e) => setTiket(e.target.value)} placeholder="contoh: P7K2N9X" required />
+          <label htmlFor="tiket" style={{ fontWeight: 600, display: 'block', marginBottom: 'var(--space-2)' }}>Nomor Laporan / Tiket</label>
+          <input id="tiket" className="input" value={tiket} onChange={(e) => setTiket(e.target.value)} placeholder="contoh: PK7M2N9XQ" required />
         </div>
         <div>
-          <label htmlFor="kontak" style={{ fontWeight: 600, display: 'block', marginBottom: 'var(--space-2)' }}>Kontak (email / no. HP)</label>
-          <input id="kontak" className="input" value={kontak} onChange={(e) => setKontak(e.target.value)} placeholder="kontak saat melapor" required />
+          <label htmlFor="kontak" style={{ fontWeight: 600, display: 'block', marginBottom: 'var(--space-2)' }}>Kontak (email / no. HP) <span style={{ fontWeight: 400, color: 'var(--color-neutral-500)' }}>— kosongkan bila memakai nomor laporan Pesan Perilaku</span></label>
+          <input id="kontak" className="input" value={kontak} onChange={(e) => setKontak(e.target.value)} placeholder="kontak saat melapor" />
         </div>
         {error && (
           <p style={{ color: 'var(--color-danger-600, #dc2626)', display: 'flex', gap: 6, alignItems: 'center' }}>

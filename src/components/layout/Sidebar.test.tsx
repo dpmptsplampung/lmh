@@ -64,7 +64,7 @@ afterEach(() => {
 });
 
 describe('Sidebar: struktur per role', () => {
-  it('admin: Dashboard di atas, delapan grup berurutan, Profil dan Tampilan Publik di bawah', async () => {
+  it('admin: Dashboard di atas, sembilan grup berurutan, Profil dan Tampilan Publik di bawah', async () => {
     await renderSidebar('admin', '/admin');
     const nav = screen.getByRole('navigation', { name: 'Menu admin' });
     const top = Array.from(nav.children).map((el) =>
@@ -72,7 +72,7 @@ describe('Sidebar: struktur per role', () => {
     );
     expect(top).toEqual([
       'link:Dashboard',
-      'grup:Front Office', 'grup:Antrean & Kehadiran', 'grup:Layanan Online', 'grup:Laporan & Evaluasi',
+      'grup:Front Office', 'grup:Antrean & Kehadiran', 'grup:Layanan Online', 'grup:Pesan Perilaku', 'grup:Laporan & Evaluasi',
       'grup:Pengelolaan Layanan', 'grup:Kemitraan & Investasi', 'grup:Konten & Dokumen', 'grup:Sistem & Keamanan',
       'link:Profil Saya', 'link:Tampilan Publik',
     ]);
@@ -81,9 +81,10 @@ describe('Sidebar: struktur per role', () => {
   it('semua href lama muncul tepat sekali (admin)', async () => {
     await renderSidebar('admin', '/admin');
     const hrefs = screen.getAllByRole('link', { hidden: true }).map((a) => a.getAttribute('href'));
-    // 33 href lama - 3 tersembunyi (Daftar FO, Scan QR, Rekap Front Office) + 1 Registrasi Pengunjung.
-    expect(hrefs).toHaveLength(31);
-    expect(new Set(hrefs).size).toBe(31);
+    // 33 href lama - 3 tersembunyi (Daftar FO, Scan QR, Rekap Front Office) + 1 Registrasi Pengunjung
+    // + 1 Saran (Pesan Perilaku; Hasil SKM lama menjadi Hasil Survei, alamat pengalihan tersembunyi).
+    expect(hrefs).toHaveLength(32);
+    expect(new Set(hrefs).size).toBe(32);
     expect(hrefs).not.toContain('/admin/rekap-fo');
     expect(hrefs).not.toContain('/admin/scan');
     expect(hrefs).not.toContain('/admin/fo/daftar');
@@ -184,12 +185,12 @@ describe('Sidebar: dropdown accordion', () => {
   it('pindah halaman di grup yang SAMA: state tidak berubah (terbuka tetap terbuka, tertutup manual tetap tertutup)', async () => {
     const u = await renderSidebar('admin', '/admin/chat');
     expect(terbuka('Layanan Online')).toBe(true);
-    ubahPath(u, '/admin/pengaduan');
+    ubahPath(u, '/admin/chat/faq');
     expect(terbuka('Layanan Online')).toBe(true);
 
     fireEvent.click(header('Layanan Online')); // tutup manual
     expect(terbuka('Layanan Online')).toBe(false);
-    ubahPath(u, '/admin/chat/faq');
+    ubahPath(u, '/admin/chat/ai-log');
     expect(terbuka('Layanan Online')).toBe(false); // tetap tertutup
   });
 
@@ -279,13 +280,16 @@ describe('Sidebar: badge notifikasi', () => {
       antrian: { count: 4, label: '4 tiket menunggu hari ini' },
     });
     await renderSidebar('admin', '/admin');
-    expect(header(/^Layanan Online/)).toHaveAccessibleName('Layanan Online: 3 chat menunggu diambil; 2 pengaduan baru belum ditangani');
-    expect(within(header('Layanan Online')).getByText('5')).toBeInTheDocument();
+    expect(header(/^Layanan Online/)).toHaveAccessibleName('Layanan Online: 3 chat menunggu diambil');
+    expect(within(header('Layanan Online')).getByText('3')).toBeInTheDocument();
+    expect(header(/^Pesan Perilaku/)).toHaveAccessibleName('Pesan Perilaku: 2 pengaduan baru belum ditangani');
+    expect(within(header('Pesan Perilaku')).getByText('2')).toBeInTheDocument();
     expect(within(header('Antrean & Kehadiran')).getByText('4')).toBeInTheDocument();
     // Saat dibuka, jumlah pindah ke anak.
     fireEvent.click(header('Layanan Online'));
-    expect(within(header('Layanan Online')).queryByText('5')).toBeNull();
+    expect(within(header('Layanan Online')).queryByText('3')).toBeNull();
     expect(within(screen.getByRole('link', { name: /Live Chat/ })).getByText('3')).toBeInTheDocument();
+    fireEvent.click(header('Pesan Perilaku'));
     expect(within(screen.getByRole('link', { name: /Pengaduan/ })).getByText('2')).toBeInTheDocument();
   });
 

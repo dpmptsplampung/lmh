@@ -212,7 +212,7 @@ export default function SurveiWizard({ token, onSelesai }: SurveiWizardProps) {
     else setState(mundur(state));
   }
 
-  if (tahap === 'selesai') return <AkhirSurvei onSelesai={onSelesai} />;
+  if (tahap === 'selesai') return <AkhirSurvei token={token} onSelesai={onSelesai} />;
   if (tahap === 'kedaluwarsa' || tahap === 'sudah_diisi' || tahap === 'tidak_valid') {
     return <PesanStatusSurvei status={tahap} />;
   }

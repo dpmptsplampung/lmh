@@ -6,10 +6,12 @@ export const dynamic = 'force-dynamic';
 
 // CMP-05: lacak status pengaduan TANPA login — butuh nomor tiket + kontak.
 // Rate limit ketat untuk mencegah penebakan nomor tiket.
+// Kontak boleh kosong bila nomornya nomor laporan Pesan Perilaku ('P' + 8 karakter): pengaduan itu dipantau hanya dengan nomor.
 const querySchema = z.object({
   tiket: z.string().min(5).max(20),
-  kontak: z.string().min(3).max(200),
+  kontak: z.string().max(200).optional().default(''),
 });
+const POLA_NOMOR_LAPORAN = /^P[A-HJKMNP-Z2-9]{8}$/;
 
 const RATE_MAX = 10;
 const RATE_WINDOW_MS = 60_000;
@@ -52,19 +54,23 @@ export async function GET(request: NextRequest) {
     kontak: request.nextUrl.searchParams.get('kontak') ?? '',
   });
   if (!parsed.success) {
-    return NextResponse.json({ error: 'Nomor tiket dan kontak wajib diisi' }, { status: 400 });
+    return NextResponse.json({ error: 'Nomor laporan wajib diisi' }, { status: 400 });
   }
 
   const { tiket, kontak } = parsed.data;
+  const nomorLaporan = tiket.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+  const denganNomorSaja = kontak.trim() === '' && POLA_NOMOR_LAPORAN.test(nomorLaporan);
+  if (!denganNomorSaja && kontak.trim().length < 3) {
+    return NextResponse.json({ error: 'Nomor tiket dan kontak wajib diisi' }, { status: 400 });
+  }
   const service = getServiceClient();
   if (!service) {
     return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 });
   }
 
-  const { data, error } = await service.rpc('lacak_pengaduan', {
-    p_tiket: tiket,
-    p_kontak: kontak,
-  });
+  const { data, error } = denganNomorSaja
+    ? await service.rpc('lacak_pengaduan_nomor', { p_nomor: nomorLaporan })
+    : await service.rpc('lacak_pengaduan', { p_tiket: tiket, p_kontak: kontak });
 
   if (error) {
     return NextResponse.json({ error: 'Gagal melacak pengaduan' }, { status: 500 });
@@ -81,7 +87,7 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     nomor_tiket: row.nomor_tiket,
-    jalur: row.jalur,
+    jalur: row.jalur ?? 'layanan',
     status: row.status,
     dibuat_pada: row.created_at,
   });

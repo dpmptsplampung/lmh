@@ -264,9 +264,9 @@ export default function AdminDashboard() {
               Tata Kelola Data (DPO)
             </Link>
           )}
-          <Link href="/admin/skm" className="btn btn--secondary">
+          <Link href="/admin/pesan-perilaku" className="btn btn--secondary">
             <ClipboardList size={20} />
-            Dashboard SKM
+            Pesan Perilaku
           </Link>
           {isAdmin && (
             <Link href="/admin/chat/ai-log" className="btn btn--secondary">
