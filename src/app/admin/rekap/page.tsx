@@ -5,6 +5,8 @@
 // (+ unduh Excel), Kinerja Petugas. Helpdesk OSS dan Non OSS (volume terbanyak) punya tab sendiri, terpisah dari
 // Layanan lain: tab itu terkunci ke Layanan berformulir 'oss' / 'perizinan' sehingga kolom formulirnya langsung tampil
 // tanpa memilih Layanan dulu. Tab itu hanya muncul bila Layanan berformulir tersebut ada dalam lingkup pengguna.
+// Data Pelayanan = Layanan lain: mengirim tanpa_form=1 (migrasi 202611010005) sehingga Layanan berformulir tidak ikut
+// (tab itu disembunyikan bila lingkup pengguna hanya berisi Layanan berformulir). Rekap Harian/Kinerja memuat semuanya.
 // Satu definisi "dilayani" untuk semua angka (lihat DEFINISI_DILAYANI). Tidak ada tombol "Rollup": selalu terkini.
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
@@ -91,13 +93,18 @@ function RekapTerpadu() {
     const berformulir = (f: BagianForm) => (info?.opsi_layanan ?? []).filter((o) => o.form_pendataan === f);
     return { oss: berformulir('oss'), perizinan: berformulir('perizinan') };
   }, [info]);
-  const bagian: Bagian = adalahBagianForm(bagianPilihan) && info && opsiForm[bagianPilihan].length === 0
-    ? 'data'
-    : bagianPilihan;
+  // Data Pelayanan = Layanan lain (tanpa Helpdesk OSS / Non OSS, migrasi 202611010005). Tab itu disembunyikan bila lingkup
+  // pengguna HANYA berisi Layanan berformulir (mis. Petugas Helpdesk OSS): isinya pasti kosong, datanya ada di tab OSS.
+  const adaLayananLain = !info || info.unit_opsi.includes('fo') || info.opsi_layanan.length === 0
+    || info.opsi_layanan.some((o) => !o.form_pendataan);
+  const bagianTersedia = (kunci: Bagian) => (adalahBagianForm(kunci) ? opsiForm[kunci].length > 0 : kunci !== 'data' || adaLayananLain);
+  const bagianCadangan: Bagian = adaLayananLain ? 'data' : (opsiForm.oss.length > 0 ? 'oss' : opsiForm.perizinan.length > 0 ? 'perizinan' : 'harian');
+  const bagian: Bagian = info && !bagianTersedia(bagianPilihan) ? bagianCadangan : bagianPilihan;
   const tabForm = adalahBagianForm(bagian) ? bagian : null;
   const daftarForm = tabForm ? opsiForm[tabForm] : [];
   const layananTab = tabForm ? (layananForm[tabForm] ?? daftarForm[0]?.id ?? '') : '';
-  const bagianTampil = BAGIAN.filter(({ kunci }) => !adalahBagianForm(kunci) || opsiForm[kunci].length > 0);
+  const bagianTampil = BAGIAN.filter(({ kunci }) => !info || bagianTersedia(kunci));
+  const layananLain = (info?.opsi_layanan ?? []).filter((o) => !o.form_pendataan);
 
   const params = useMemo(() => {
     const p = new URLSearchParams({ dari, sampai });
@@ -108,9 +115,11 @@ function RekapTerpadu() {
     } else {
       if (unit) p.set('unit', unit);
       if (layananId && unit !== 'fo') p.set('layanan_id', layananId);
+      // Data Pelayanan (dan unduhannya) = Layanan lain; harian/kinerja tetap memuat semua Layanan.
+      if (bagian === 'data') p.set('tanpa_form', '1');
     }
     return p;
-  }, [dari, sampai, unit, layananId, tabForm, layananTab]);
+  }, [dari, sampai, unit, layananId, tabForm, layananTab, bagian]);
 
   const tanganiGagal = useCallback((r: { status: number; body: Record<string, unknown> }) => {
     const pesan = typeof r.body.error === 'string' ? r.body.error : 'Gagal memuat rekap';
@@ -204,7 +213,7 @@ function RekapTerpadu() {
   };
 
   const kolom = kolomDataPelayanan(data?.form_type ?? null, kolomKhusus(data?.kolom_khusus ?? []));
-  const pilihLayanan = !tabForm && (info?.opsi_layanan.length ?? 0) > 0 && unit !== 'fo';
+  const pilihLayanan = !tabForm && layananLain.length > 0 && unit !== 'fo';
   const labelTab = BAGIAN.find((b) => b.kunci === bagian)?.label ?? '';
   const pindahBagian = (kunci: Bagian) => {
     if (kunci === bagian) return;
@@ -257,7 +266,7 @@ function RekapTerpadu() {
               <select id="rekap-layanan" className="form-input" value={layananId}
                 onChange={(e) => ubahFilter(setLayananId)(e.target.value)}>
                 <option value="">Semua Layanan</option>
-                {info.opsi_layanan.map((o) => <option key={o.id} value={o.id}>{o.nama}</option>)}
+                {layananLain.map((o) => <option key={o.id} value={o.id}>{o.nama}</option>)}
               </select>
             </div>
           )}
@@ -328,8 +337,11 @@ function RekapTerpadu() {
 
           {(bagian === 'data' || tabForm) && (
             <>
+              {bagian === 'data' && (opsiForm.oss.length > 0 || opsiForm.perizinan.length > 0) && (
+                <p className={styles.definisi}>Tidak termasuk Helpdesk OSS dan Non OSS; datanya ada di tab masing-masing.</p>
+              )}
               <div className={styles.aksi}>
-                <span>{data ? `${data.total} pelayanan` : ''}{!tabForm && !data?.form_type && !(data?.kolom_khusus?.length) && ' · pilih satu Layanan untuk menampilkan kolom formulir / Pendataan Khusus-nya'}</span>
+                <span>{data ? `${data.total} pelayanan` : ''}{!tabForm && !(data?.kolom_khusus?.length) && ' · pilih satu Layanan untuk menampilkan kolom Pendataan Khusus-nya'}</span>
                 <button type="button" className="btn btn--primary btn--sm" onClick={unduh}
                   disabled={memuat || mengekspor || status.jenis !== 'siap'}>
                   {mengekspor ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Download size={14} aria-hidden="true" />}

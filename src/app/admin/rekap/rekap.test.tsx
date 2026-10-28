@@ -133,6 +133,7 @@ describe('/admin/rekap (terpadu)', () => {
       const u = new URL(urlData()[0], 'http://x').searchParams;
       expect(u.get('unit')).toBe('layanan');
       expect(u.get('layanan_id')).toBe('L-OSS');
+      expect(u.get('tanpa_form')).toBeNull();
       expect(screen.getByRole('columnheader', { name: '[OSS] Email' })).toBeInTheDocument();
       expect(screen.getByRole('cell', { name: 'budi@majujaya.id' })).toBeInTheDocument();
       expect(screen.queryByLabelText('Unit')).not.toBeInTheDocument();
@@ -163,7 +164,27 @@ describe('/admin/rekap (terpadu)', () => {
       const terakhir = new URL(urlData().at(-1)!, 'http://x').searchParams;
       expect(terakhir.get('layanan_id')).toBeNull();
       expect(terakhir.get('unit')).toBeNull();
-      expect((await screen.findByLabelText('Layanan') as HTMLSelectElement).value).toBe('');
+      expect(terakhir.get('tanpa_form')).toBe('1');
+      const pilih = (await screen.findByLabelText('Layanan')) as HTMLSelectElement;
+      expect(pilih.value).toBe('');
+      // Layanan berformulir (OSS / Non OSS) tidak ada di pilihan tab umum; datanya hanya di tab masing-masing.
+      expect(Array.from(pilih.options).map((o) => o.text)).toEqual(['Semua Layanan', 'Balmon']);
+      expect(screen.getByText(/Tidak termasuk Helpdesk OSS dan Non OSS/)).toBeInTheDocument();
+    });
+
+    it('Rekap Harian dan Kinerja Petugas tidak mengirim tanpa_form (tetap memuat semua Layanan)', async () => {
+      rute({
+        lingkup: LINGKUP_ADMIN,
+        harian: { rows: [], ringkasan: { jumlah: 0, tatap_muka: 0, live_chat: 0, per_unit: [] } },
+        kinerja: { rows: [] },
+      });
+      render(<AdminRekapPage />);
+      await screen.findByRole('tab', { name: /Helpdesk OSS/ });
+      fireEvent.click(screen.getByRole('tab', { name: /Kinerja Petugas/ }));
+      await waitFor(() => expect(mockFetch.mock.calls.some((c) => String(c[0]).includes('bagian=kinerja'))).toBe(true));
+      const semua = mockFetch.mock.calls.map((c) => String(c[0])).filter((u) => /bagian=(harian|kinerja)/.test(u));
+      expect(semua.length).toBeGreaterThan(1);
+      expect(semua.every((u) => !u.includes('tanpa_form'))).toBe(true);
     });
 
     it('?bagian=oss tanpa Layanan OSS dalam lingkup (Petugas Layanan lain / FO) jatuh ke Data Pelayanan, tanpa tab OSS', async () => {
@@ -189,6 +210,34 @@ describe('/admin/rekap (terpadu)', () => {
       expect(screen.queryByRole('tab', { name: /Non OSS/ })).not.toBeInTheDocument();
       expect(screen.getByRole('tab', { name: /Helpdesk OSS/ })).toHaveAttribute('aria-selected', 'true');
       expect(new URL(urlData()[0], 'http://x').searchParams.get('layanan_id')).toBe('L-OSS');
+      // Lingkupnya hanya Layanan berformulir: tab Data Pelayanan (Layanan lain) pasti kosong, jadi disembunyikan.
+      expect(screen.queryByRole('tab', { name: /Data Pelayanan/ })).not.toBeInTheDocument();
+      expect(screen.getAllByRole('tab').map((t) => t.textContent?.trim())).toEqual(['Rekap Harian', 'Helpdesk OSS', 'Kinerja Petugas']);
+    });
+
+    it('?bagian=data oleh Petugas Helpdesk OSS (tab Data disembunyikan) jatuh ke tab Helpdesk OSS', async () => {
+      params.nilai = new URLSearchParams('bagian=data');
+      rute({
+        lingkup: { label: 'Layanan Anda.', unit_opsi: ['layanan'], opsi_layanan: [{ id: 'L-OSS', nama: 'Helpdesk OSS', form_pendataan: 'oss' }] },
+        data: BARIS_OSS,
+      });
+      render(<AdminRekapPage />);
+      expect(await screen.findByText('Budi')).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: /Helpdesk OSS/ })).toHaveAttribute('aria-selected', 'true');
+    });
+
+    it('Petugas Layanan lain + Layanan berformulir tidak ada: Data Pelayanan tetap ada dan meminta tanpa_form', async () => {
+      params.nilai = new URLSearchParams('bagian=data');
+      rute({
+        lingkup: { label: 'Layanan Anda.', unit_opsi: ['layanan'], opsi_layanan: [{ id: 'L-BAL', nama: 'Balmon', form_pendataan: null }] },
+        data: { total: 0, form_type: null, rows: [] },
+      });
+      render(<AdminRekapPage />);
+      await waitFor(() => expect(urlData().length).toBeGreaterThan(0));
+      expect(new URL(urlData()[0], 'http://x').searchParams.get('tanpa_form')).toBe('1');
+      expect(screen.getByRole('tab', { name: /Data Pelayanan/ })).toHaveAttribute('aria-selected', 'true');
+      // Tidak ada tab OSS/Non OSS untuknya, jadi catatan "tidak termasuk ..." tidak ditampilkan.
+      expect(screen.queryByText(/Tidak termasuk Helpdesk OSS dan Non OSS/)).not.toBeInTheDocument();
     });
 
     it('lebih dari satu Layanan berformulir OSS: pilihan Layanan khusus tab itu (tanpa "Semua"), ganti pilihan memuat ulang', async () => {

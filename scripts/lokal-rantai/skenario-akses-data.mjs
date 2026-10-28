@@ -254,5 +254,50 @@ cek('Petugas Koordinator tidak bisa menambah isian (hanya admin)', !tulisField.o
 const tulisFieldAdmin = await sebagai(db, 'authenticated', U.admin, "INSERT INTO pendataan_khusus_field(layanan_id, label, jenis) VALUES ('10000000-0000-0000-0000-000000000001','Baru','teks_singkat')");
 cek('admin bisa menambah isian', tulisFieldAdmin.ok, JSON.stringify(tulisFieldAdmin));
 
+// ---- 202611010005: Data Pelayanan "layanan lain" (p_tanpa_form mengecualikan Layanan berformulir; hanya mempersempit)
+console.log('rekap_data_pelayanan p_tanpa_form (Helpdesk OSS / Non OSS punya tab sendiri):');
+const L1 = '10000000-0000-0000-0000-000000000001';
+const L2 = '10000000-0000-0000-0000-000000000002';
+const setForm = await pg(`UPDATE layanan SET form_pendataan = 'oss' WHERE id = '${L1}'`);
+cek('L1 dijadikan Layanan berformulir OSS (setup)', setForm.ok, JSON.stringify(setForm));
+const dataRekap = (who, tanpa, unit = null, layanan = null) => sebagai(db, 'authenticated', U[who],
+  'SELECT public.rekap_data_pelayanan(current_date - 30, current_date, $1, $2, 50, 0, NULL, true, $3) AS j', [unit, layanan, tanpa]);
+const ringkasRekap = (r) => ({ total: Number(r.rows[0].j.total), unit: r.rows[0].j.rows.map((x) => `${x.unit}:${x.layanan_id ?? '-'}`) });
+const semuaAdmin = await dataRekap('admin', false);
+const tanpaAdmin = await dataRekap('admin', true);
+const l1Admin = await dataRekap('admin', false, 'layanan', L1);
+const a = ringkasRekap(semuaAdmin), b = ringkasRekap(tanpaAdmin), c = ringkasRekap(l1Admin);
+cek('default (false) = semua baris seperti sebelumnya', semuaAdmin.ok && a.total === 5, JSON.stringify(a));
+cek('p_tanpa_form: baris unit Layanan milik L1 (berformulir) hilang dari total', tanpaAdmin.ok && b.total === a.total - c.total && c.total >= 1, JSON.stringify({ a, b, c }));
+cek('p_tanpa_form: tidak ada baris L1 di halaman, baris L2 dan Front Office tetap', tanpaAdmin.ok && !b.unit.some((x) => x === `layanan:${L1}`) && b.unit.includes(`layanan:${L2}`) && b.unit.some((x) => x.startsWith('fo:')), JSON.stringify(b));
+const eksplisit = await dataRekap('admin', true, 'layanan', L1);
+cek('p_tanpa_form + layanan_id berformulir = kosong (tab umum tidak membocorkan OSS)', eksplisit.ok && ringkasRekap(eksplisit).total === 0, JSON.stringify(eksplisit));
+const tanpaNull = await sebagai(db, 'authenticated', U.admin,
+  'SELECT public.rekap_data_pelayanan(current_date - 30, current_date, NULL, NULL, 50, 0, NULL, true, NULL) AS j');
+cek('p_tanpa_form NULL diperlakukan FALSE', tanpaNull.ok && Number(tanpaNull.rows[0].j.total) === a.total, JSON.stringify(tanpaNull));
+const delapan = await sebagai(db, 'authenticated', U.admin,
+  'SELECT public.rekap_data_pelayanan(p_dari => current_date - 30, p_sampai => current_date, p_hitung => true) AS j');
+cek('panggilan 8 argumen bernama (gaya PostgREST lama) tetap jalan lewat DEFAULT', delapan.ok && Number(delapan.rows[0].j.total) === a.total, JSON.stringify(delapan));
+const halaman1 = await sebagai(db, 'authenticated', U.admin,
+  'SELECT public.rekap_data_pelayanan(current_date - 30, current_date, NULL, NULL, 1, 0, NULL, false, true) AS j');
+const berikut = halaman1.ok ? halaman1.rows[0].j.berikut : null;
+const halaman2 = berikut ? await sebagai(db, 'authenticated', U.admin,
+  'SELECT public.rekap_data_pelayanan(current_date - 30, current_date, NULL, NULL, 1000, 0, $1::jsonb, false, true) AS j', [JSON.stringify(berikut)]) : null;
+cek('paging keyset ikut tersaring: halaman kedua tidak memuat baris L1', !!halaman2 && halaman2.ok
+  && !halaman2.rows[0].j.rows.some((x) => x.layanan_id === L1 && x.unit === 'layanan'), JSON.stringify(halaman2));
+// Lingkup tidak melebar: setiap orang hanya melihat subhimpunan dari yang dilihatnya tanpa filter.
+for (const who of ['fo1', 'fo2', 'p1', 'p2', 'pk1', 'p3']) {
+  const sem = await dataRekap(who, false), tan = await dataRekap(who, true);
+  const s1 = sem.ok ? ringkasRekap(sem) : null, t1 = tan.ok ? ringkasRekap(tan) : null;
+  cek(`lingkup ${who} tidak melebar (tanpa_form <= default)`, !!s1 && !!t1 && t1.total <= s1.total, JSON.stringify({ s1, t1 }));
+}
+const p1Tanpa = ringkasRekap(await dataRekap('p1', true));
+cek('Petugas L1 (berformulir) dengan p_tanpa_form: tidak ada baris tersisa', p1Tanpa.total === 0, JSON.stringify(p1Tanpa));
+const p2Tanpa = ringkasRekap(await dataRekap('p2', true));
+cek('Petugas L2 (tanpa formulir) dengan p_tanpa_form: barisnya tetap', p2Tanpa.total === 1, JSON.stringify(p2Tanpa));
+const anonRekap = await sebagai(db, 'anon', null,
+  'SELECT public.rekap_data_pelayanan(current_date - 30, current_date, NULL, NULL, 50, 0, NULL, true, true) AS j');
+cek('anon tetap ditolak', !anonRekap.ok, JSON.stringify(anonRekap));
+
 ringkas();
 await db.close();

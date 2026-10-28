@@ -11,7 +11,7 @@ export type HasilLingkup =
   | { ok: false; res: NextResponse };
 
 export const PESAN_MIGRASI_REKAP =
-  'Rekap terpadu belum tersedia: migrasi 202610290001 dan 202610290002 belum diterapkan.';
+  'Rekap terpadu belum tersedia: migrasi 202610290001, 202610290002, dan 202611010005 belum diterapkan.';
 
 /** Respons untuk galat RPC rekap: 409 bila migrasi belum ada, 422 untuk validasi DB, selain itu 500. */
 export function responsGalatRekap(error: unknown, label: string): NextResponse {
@@ -43,10 +43,17 @@ export interface ArgRekap {
   p_sampai: string;
   p_unit: string | null;
   p_layanan_id: string | null;
+  /** Hanya rekap_data_pelayanan (202611010005); dikirim HANYA bila true agar jalur lain tetap jalan tanpa migrasi itu. */
+  p_tanpa_form?: boolean;
 }
 
 export function argRekap(q: { dari: string; sampai: string; unit?: string; layanan_id?: string }): ArgRekap {
   return { p_dari: q.dari, p_sampai: q.sampai, p_unit: q.unit ?? null, p_layanan_id: q.layanan_id ?? null };
+}
+
+/** Argumen rekap_data_pelayanan: argRekap + p_tanpa_form (hanya bila diminta; harian/kinerja tidak mengenalnya). */
+export function argData(q: { dari: string; sampai: string; unit?: string; layanan_id?: string; tanpa_form?: string }): ArgRekap {
+  return q.tanpa_form === '1' ? { ...argRekap(q), p_tanpa_form: true } : argRekap(q);
 }
 
 /** Batas baris satu berkas Excel; satu panggilan RPC maksimal 1000 baris (dibatasi juga di DB). */

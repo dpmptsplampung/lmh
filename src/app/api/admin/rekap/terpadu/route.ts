@@ -10,7 +10,7 @@ import {
   rekapTerpaduQuerySchema,
   type UnitRekap,
 } from '@/lib/rekap/terpadu';
-import { argRekap, formLayanan, muatLingkup, responsGalatRekap } from '@/lib/rekap/terpaduServer';
+import { argData, argRekap, formLayanan, muatLingkup, responsGalatRekap } from '@/lib/rekap/terpaduServer';
 import { lampirkanKhusus } from '@/lib/rekap/khusus';
 import type { FieldKhusus } from '@/lib/pendataan-khusus/jenis';
 import { muatFieldKhusus, muatJawabanKhusus } from '@/lib/rekap/khususServer';
@@ -68,7 +68,7 @@ export async function GET(request: NextRequest) {
 
   // bagian === 'data': satu halaman (detail hanya untuk halaman ini) + total dari DB.
   const { data, error } = await supabase.rpc('rekap_data_pelayanan', {
-    ...arg, p_batas: q.page_size, p_lewati: q.page * q.page_size, p_setelah: null, p_hitung: true,
+    ...argData(q), p_batas: q.page_size, p_lewati: q.page * q.page_size, p_setelah: null, p_hitung: true,
   });
   if (error) return responsGalatRekap(error, LABEL);
   const b = (data ?? {}) as { total?: unknown; rows?: unknown };

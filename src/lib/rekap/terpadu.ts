@@ -82,6 +82,8 @@ const dasarQuery = {
   sampai: tanggalSchema.default(() => todayWIB()),
   unit: z.enum(['fo', 'layanan']).optional(),
   layanan_id: z.uuid().optional(),
+  // '1' = tab Data Pelayanan "Layanan lain": kecualikan Layanan berformulir (Helpdesk OSS / Non OSS; tab sendiri). Migrasi 202611010005.
+  tanpa_form: z.literal('1').optional(),
 };
 
 export const rekapTerpaduQuerySchema = z

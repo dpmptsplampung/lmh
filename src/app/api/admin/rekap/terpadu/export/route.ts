@@ -5,7 +5,7 @@ import { paramsDariRequest } from '@/lib/rekap/akses';
 import { labelLingkup } from '@/lib/akses-data/lingkup';
 import { buildDataPelayananWorkbook } from '@/lib/rekap/excelTerpadu';
 import { kolomDataPelayanan, NAMA_UNIT_FO, petaBarisPelayanan, rekapTerpaduExportSchema } from '@/lib/rekap/terpadu';
-import { ambilSemuaDataPelayanan, argRekap, formLayanan, muatLingkup, responsGalatRekap } from '@/lib/rekap/terpaduServer';
+import { ambilSemuaDataPelayanan, argData, formLayanan, muatLingkup, responsGalatRekap } from '@/lib/rekap/terpaduServer';
 import { kolomKhusus, lampirkanKhusus } from '@/lib/rekap/khusus';
 import type { FieldKhusus } from '@/lib/pendataan-khusus/jenis';
 import { muatFieldKhusus, muatJawabanKhusus } from '@/lib/rekap/khususServer';
@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
   const staf = await muatLingkup(supabase, LABEL);
   if (!staf.ok) return staf.res;
 
-  const arg = argRekap(q);
+  const arg = argData(q);
   let hasil;
   try {
     hasil = await ambilSemuaDataPelayanan(supabase, arg);
@@ -59,7 +59,8 @@ export async function GET(request: NextRequest) {
     ? (rows.find((r) => r.layanan_id === q.layanan_id)?.layanan_nama ?? q.layanan_id)
     : null;
   const unit = q.unit === 'fo' ? NAMA_UNIT_FO : q.unit === 'layanan' ? 'Semua Layanan' : null;
-  const filter = [unit, namaLayanan].filter(Boolean).join(' · ') || 'Semua unit';
+  const tanpaForm = q.tanpa_form === '1' ? 'Layanan lain (tanpa Helpdesk OSS dan Non OSS)' : null;
+  const filter = [unit, namaLayanan, tanpaForm].filter(Boolean).join(' · ') || 'Semua unit';
 
   const buf = await buildDataPelayananWorkbook(rows, kolomDataPelayanan(formType, kolomKhusus(fieldKhusus)), {
     dari: q.dari, sampai: q.sampai, lingkup: labelLingkup(staf.lingkup), filter, truncated: hasil.truncated,
@@ -72,7 +73,7 @@ export async function GET(request: NextRequest) {
     aksi: 'export_xlsx',
     entitas: 'rekap_data_pelayanan',
     detail: {
-      dari: q.dari, sampai: q.sampai, unit: q.unit ?? null, layanan_id: q.layanan_id ?? null,
+      dari: q.dari, sampai: q.sampai, unit: q.unit ?? null, layanan_id: q.layanan_id ?? null, tanpa_form: q.tanpa_form === '1',
       koordinator: staf.lingkup.koordinator, total_rows: rows.length, truncated: hasil.truncated,
     },
   })) ?? { error: { message: 'service client tidak tersedia' } };

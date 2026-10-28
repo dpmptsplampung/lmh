@@ -1206,3 +1206,27 @@ node scripts/apply-migration.mjs supabase/migrations/202611010004_backfill_ident
 6. Backfill tidak mengirim notifikasi (status tidak berubah). Rollback: `docs/rollback-backfill-identitas-kunjungan-202611010004.sql` (hanya nilai yang masih sama).
 7. Rollback `202611010003`: `docs/rollback-identitas-satu-kesatuan-202611010003.sql` (identitas yang sudah ditulis balik tidak dikembalikan; jejak di `audit_log`).
 8. Tidak dicakup: chat live (pengunjung login Google selalu punya email, tidak ada perubahan antarmuka); FO Koordinator/FO lain membaca hasil lengkap hanya lewat data induk atau sesuai lingkup Fase 3.
+
+## Data Pelayanan = Layanan lain (202611010005) — BELUM DITERAPKAN
+
+Di Rekap, Helpdesk OSS dan Non OSS (volume terbanyak) punya tab sendiri; tab **Data Pelayanan** kini berisi Layanan lain saja. Pengecualian dilakukan di DB agar total, halaman, dan unduhan Excel ikut benar.
+
+| # | Berkas | Isi | Status |
+|---|---|---|---|
+| 202611010005 | `202611010005_rekap_data_tanpa_form.sql` | `rekap_data_pelayanan` mendapat argumen ke-9 `p_tanpa_form boolean DEFAULT false`: bila TRUE, baris unit `layanan` milik Layanan berformulir (`layanan.form_pendataan IS NOT NULL`) dikecualikan di total dan di halaman; baris Front Office tidak pernah dikecualikan. Tanda tangan 8 argumen lama di-DROP dalam transaksi yang sama | DITULIS, BELUM DITERAPKAN |
+
+Syarat: setelah `202610290002`. Hanya mengganti satu fungsi baca (tanpa perubahan data); lingkup akses §6.1 tetap ditegakkan `rekap_pelayanan_inti`; Rekap Harian dan Kinerja Petugas tidak berubah (tetap memuat semua Layanan).
+
+```bash
+node scripts/apply-migration.mjs supabase/migrations/202611010005_rekap_data_tanpa_form.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202611010005_rekap_data_tanpa_form.sql --atomic
+```
+
+**Urutan deploy:** terapkan migrasi SEBELUM deploy aplikasi. Sebelum migrasi ada, tab Data Pelayanan menjawab 409 `MIGRASI_BELUM_DITERAPKAN` (aplikasi mengirim `p_tanpa_form`); tab Helpdesk OSS / Non OSS tidak mengirimnya dan tetap berjalan.
+
+**Daftar periksa pemilik:**
+1. Dry-run lalu terapkan; `scripts/lokal-rantai/skenario-akses-data.mjs` (PGlite, 132 cek, 17 di antaranya untuk migrasi ini) sudah membuktikan: total dan halaman tersaring, Front Office tetap ada, lingkup tidak melebar, panggilan 8 argumen bernama tetap jalan, anon ditolak.
+2. Sebagai Admin pada rentang tanggal yang sama: tab Data Pelayanan tidak memuat baris Helpdesk OSS / Non OSS, dan total tab Helpdesk OSS + Non OSS + Data Pelayanan sama dengan total Data Pelayanan sebelum migrasi ini (Semua unit, Semua Layanan).
+3. Unduh Excel dari tab Data Pelayanan: lembar Keterangan menyebut "Layanan lain (tanpa Helpdesk OSS dan Non OSS)"; `audit_log` `export_xlsx` memuat `tanpa_form: true`.
+4. Petugas Helpdesk OSS: tab Data Pelayanan tidak muncul (lingkupnya hanya Layanan berformulir); datanya di tab Helpdesk OSS.
+5. Rollback: `docs/rollback-rekap-data-tanpa-form-202611010005.sql` (mengembalikan fungsi 8 argumen 202610290002; jalankan SEBELUM `docs/rollback-rekap-terpadu-202610290002.sql`). Setelah rollback, tab Data Pelayanan menjawab 409 sampai kode dikembalikan.

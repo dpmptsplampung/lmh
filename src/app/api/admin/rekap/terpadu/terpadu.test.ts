@@ -136,6 +136,42 @@ describe('GET /api/admin/rekap/terpadu', () => {
     expect((await res.json()).kode).toBe('RENTANG_TIDAK_VALID');
   });
 
+  it('data: tanpa_form=1 meneruskan p_tanpa_form true ke RPC; tanpa parameter itu argumen tidak dikirim sama sekali (aman sebelum 202611010005)', async () => {
+    const { rpc } = pasang({
+      rpc: {
+        lingkup_data_saya: { data: LINGKUP_BIASA, error: null },
+        rekap_data_pelayanan: { data: { total: 1, rows: [baris], berikut: null }, error: null },
+      },
+    });
+    await get('bagian=data&dari=2026-10-14&sampai=2026-10-20&tanpa_form=1');
+    expect(rpc).toHaveBeenCalledWith('rekap_data_pelayanan', {
+      p_dari: '2026-10-14', p_sampai: '2026-10-20', p_unit: null, p_layanan_id: null,
+      p_batas: 50, p_lewati: 0, p_setelah: null, p_hitung: true, p_tanpa_form: true,
+    });
+    rpc.mockClear();
+    await get('bagian=data&dari=2026-10-14&sampai=2026-10-20');
+    const arg = rpc.mock.calls.find(([n]) => n === 'rekap_data_pelayanan')![1] as Record<string, unknown>;
+    expect('p_tanpa_form' in arg).toBe(false);
+  });
+
+  it('tanpa_form hanya menerima "1" (nilai lain = 422) dan tidak diteruskan ke harian/kinerja', async () => {
+    const { rpc } = pasang({
+      rpc: {
+        lingkup_data_saya: { data: LINGKUP_BIASA, error: null },
+        rekap_harian_terpadu: { data: { rows: [], ringkasan: {} }, error: null },
+        rekap_kinerja_petugas: { data: { rows: [] }, error: null },
+      },
+    });
+    expect((await get('bagian=data&tanpa_form=2')).status).toBe(422);
+    expect((await get('bagian=data&tanpa_form=true')).status).toBe(422);
+    await get('bagian=harian&tanpa_form=1');
+    await get('bagian=kinerja&tanpa_form=1');
+    for (const nama of ['rekap_harian_terpadu', 'rekap_kinerja_petugas']) {
+      const arg = rpc.mock.calls.find(([n]) => n === nama)![1] as Record<string, unknown>;
+      expect('p_tanpa_form' in arg).toBe(false);
+    }
+  });
+
   it('kinerja: memanggil rekap_kinerja_petugas (jsonb rows)', async () => {
     const { rpc } = pasang({
       rpc: {
@@ -189,6 +225,52 @@ describe('GET /api/admin/rekap/terpadu/export', () => {
     expect(auditInsert).toHaveBeenCalledWith(expect.objectContaining({
       aksi: 'export_xlsx', entitas: 'rekap_data_pelayanan', actor_role: 'front_office',
       detail: expect.objectContaining({ total_rows: 2, unit: 'fo', koordinator: false }),
+    }));
+  });
+});
+
+describe('GET /api/admin/rekap/terpadu/export (tanpa_form)', () => {
+  const auditInsert = vi.fn();
+  beforeEach(() => {
+    vi.clearAllMocks();
+    auditInsert.mockResolvedValue({ error: null });
+    (getServiceClient as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      from: (t: string) => (t === 'audit_log' ? { insert: auditInsert } : undefined),
+    });
+  });
+
+  it('tanpa_form=1: RPC ekspor menerima p_tanpa_form true, lembar Keterangan dan audit_log mencatatnya', async () => {
+    const { rpc } = pasang({ rpc: { lingkup_data_saya: { data: LINGKUP_BIASA, error: null } } });
+    rpc.mockImplementation((nama: string) => {
+      if (nama === 'lingkup_data_saya') return thenable({ data: LINGKUP_BIASA, error: null });
+      return thenable({ data: { total: null, rows: [baris], berikut: null }, error: null });
+    });
+    const res = await getExport('dari=2026-10-01&sampai=2026-10-31&tanpa_form=1');
+    expect(res.status).toBe(200);
+    const panggilan = rpc.mock.calls.filter(([n]) => n === 'rekap_data_pelayanan');
+    expect(panggilan).toHaveLength(1);
+    expect(panggilan[0][1]).toMatchObject({ p_tanpa_form: true, p_hitung: false });
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(Buffer.from(await res.arrayBuffer()) as unknown as ArrayBuffer);
+    const teks: string[] = [];
+    wb.getWorksheet('Keterangan')!.eachRow((r) => r.eachCell((c) => teks.push(String(c.value ?? ''))));
+    expect(teks.join(' ')).toContain('Layanan lain (tanpa Helpdesk OSS dan Non OSS)');
+    expect(auditInsert).toHaveBeenCalledWith(expect.objectContaining({
+      detail: expect.objectContaining({ tanpa_form: true }),
+    }));
+  });
+
+  it('tanpa parameter itu: argumen tidak dikirim dan audit mencatat tanpa_form false', async () => {
+    const { rpc } = pasang({ rpc: { lingkup_data_saya: { data: LINGKUP_BIASA, error: null } } });
+    rpc.mockImplementation((nama: string) => {
+      if (nama === 'lingkup_data_saya') return thenable({ data: LINGKUP_BIASA, error: null });
+      return thenable({ data: { total: null, rows: [baris], berikut: null }, error: null });
+    });
+    await getExport('dari=2026-10-01&sampai=2026-10-31');
+    const arg = rpc.mock.calls.find(([n]) => n === 'rekap_data_pelayanan')![1] as Record<string, unknown>;
+    expect('p_tanpa_form' in arg).toBe(false);
+    expect(auditInsert).toHaveBeenCalledWith(expect.objectContaining({
+      detail: expect.objectContaining({ tanpa_form: false }),
     }));
   });
 });
