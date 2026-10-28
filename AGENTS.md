@@ -35,17 +35,16 @@ Model akun mitra: **individual account** (satu akun per individu), bukan akun be
 - Sebelum menyatakan selesai, baca diff aktual, scan secret, dan laporkan skill yang dipakai serta bukti test/lint/typecheck/build.
 - Jangan mengubah data nyata, `.env`, credential, backup, atau konfigurasi deployment tanpa instruksi eksplisit.
 
-## Keamanan data dan server (wajib)
+## Keamanan data dan server (mode develop)
 
-Berlaku untuk semua AI agent, di laptop maupun di server. Sumber: `/opt/serverkit/docs/DECISIONS.md` D-24, D-25, D-29, D-30, D-31.
+Berlaku untuk semua AI agent, di laptop maupun di server. Selama tahap develop aturan sengaja dilonggarkan supaya agent bisa membantu lebih banyak. Daftar yang dilonggarkan ada di `/opt/serverkit/docs/DECISIONS.md` D-37 dan wajib dikencangkan lagi sebelum go-live.
 
-1. Jangan menjalankan perintah yang menghapus atau mengosongkan database selain database lokal atau database percobaan: `prisma migrate reset`, `prisma db push --force-reset`, `supabase db reset --linked`, `DROP DATABASE`, `DROP SCHEMA`, `DROP TABLE`, `TRUNCATE`, `DELETE` tanpa `WHERE`, dan sejenisnya. Sebelum perintah apa pun yang mengubah database, tampilkan host tujuan (tanpa password) dan berhenti jika host itu bukan `localhost`, `127.0.0.1`, atau container percobaan.
-2. Jangan menyimpan, meminta, atau memakai kunci production. Di laptop hanya config Doppler `dev`; di server hanya `stg` dan kunci read-only backup. Jangan menjalankan `doppler login` dengan akun pribadi.
-3. Restore ke production hanya lewat script restore resmi, dijalankan oleh pemilik, dengan konfirmasi pemilik.
-4. Jangan menghapus, memindahkan, atau menimpa isi `/backup`, partisi `backup2`, atau `/srv/data`.
+1. **Tidak pernah, ke database selain lokal atau container percobaan (termasuk production):** menghapus atau mengosongkan database. Contoh: `prisma migrate reset`, `prisma db push --force-reset`, `supabase db reset --linked`, `DROP DATABASE`, `DROP SCHEMA`, `DROP TABLE`, `TRUNCATE`, `DELETE` tanpa `WHERE`. Tampilkan host tujuan (tanpa password) sebelum perintah apa pun yang mengubah database.
+2. **Migration ke production boleh dibantu agent, dengan syarat:** migration sudah diterapkan dan lolos di staging lebih dulu; hanya migration maju (`prisma migrate deploy`, `supabase db push` tanpa reset); host dan daftar migration ditampilkan sebelum dijalankan. Tidak ada migration ke production tanpa staging.
+3. Agent boleh memakai Doppler yang sudah login di server dan membaca atau memindahkan secret. Jangan commit secret ke git dan jangan menaruhnya di file yang ikut di-track.
+4. Jangan menghapus atau menimpa isi `/backup`, `backup2`, dan `/srv/data`.
 5. Jangan menghentikan, mengubah, atau merapikan `9router`, `9remote`, `hermes-gateway`, dan Tramo.
-6. Jangan mencetak nilai secret ke terminal, log, commit, atau chat. Sebutkan nama variabelnya saja.
-7. Jika ragu apakah sebuah perintah aman, berhenti dan tanya pemilik.
+6. Jika ragu apakah sebuah perintah merusak data tanpa bisa dibatalkan, berhenti dan tanya pemilik.
 
 ## Remote safety
 
