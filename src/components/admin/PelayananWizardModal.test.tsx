@@ -249,6 +249,18 @@ describe('PelayananWizardModal component', () => {
       expect(mockFetch.mock.calls.filter((c) => (c[1] as RequestInit | undefined)?.method === 'PATCH')).toHaveLength(0);
     });
 
+    it('Fase 3: pemegang lama setelah diambil alih Koordinator: draf bisa disunting, tanpa tombol Selesaikan', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => dataOss({ dilayani_oleh: 'p-koord', dilayani_oleh_nama: 'Koord Satu', boleh_ubah: true, boleh_selesaikan: false }),
+      });
+      render(<PelayananWizardModal isOpen={true} tiketId="t-301" onClose={vi.fn()} />);
+      expect(await screen.findByDisplayValue('Rina')).not.toBeDisabled();
+      expect(screen.getByRole('status')).toHaveTextContent(/diambil alih Koord Satu/);
+      fireEvent.click(screen.getByRole('button', { name: /3\. Tindakan & Solusi/i }));
+      expect(screen.queryByRole('button', { name: /Selesaikan Antrian/i })).not.toBeInTheDocument();
+    });
+
     it('tiket belum dimulai (menunggu): baca-saja dengan pesan mulai layanan dulu', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -555,7 +567,10 @@ describe('PelayananWizardModal component', () => {
       // Langkah 1: Tidak berlaku untuk alamat, HP, email, keperluan
       langkah(1);
       for (const tombol of screen.getAllByRole('button', { name: 'Tidak berlaku' })) fireEvent.click(tombol);
-      expect(screen.getByLabelText(/Alamat Email/)).toHaveValue('Tidak berlaku');
+      // Email WAJIB nyata (202611010003): tidak ada isian cepat "Tidak berlaku" untuk email.
+      expect(within(screen.getByLabelText(/Alamat Email/).closest('.form-group') as HTMLElement).queryByRole('button')).toBeNull();
+      expect(screen.getByLabelText(/Alamat Email/)).toHaveValue('');
+      fireEvent.change(screen.getByLabelText(/Alamat Email/), { target: { value: 'pemohon@contoh.id' } });
       expect(screen.getByLabelText('Asal Instansi / Alamat Domisili')).toHaveValue('Tidak berlaku');
 
       // Langkah 2: usaha belum ada; pilihan eksplisit "Tidak berlaku"
@@ -576,7 +591,7 @@ describe('PelayananWizardModal component', () => {
       await waitFor(() => expect(posts()).toHaveLength(1));
       const body = JSON.parse((posts()[0][1] as RequestInit).body as string);
       expect(body).toMatchObject({
-        alamat_pemohon: 'Tidak berlaku', no_hp: 'Tidak berlaku', email: 'Tidak berlaku', keperluan_awal: 'Tidak berlaku',
+        alamat_pemohon: 'Tidak berlaku', no_hp: 'Tidak berlaku', email: 'pemohon@contoh.id', keperluan_awal: 'Tidak berlaku',
         nama_usaha: 'Belum ada', lokasi_usaha: 'Belum ada', sektor_usaha_kbli: 'Tidak berlaku',
         tipe_pelaku_usaha: 'tidak_berlaku', skala_usaha: 'Tidak berlaku', catatan_internal: '-',
       });

@@ -7,10 +7,15 @@
 import ExcelJS from 'exceljs';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { ikmQualityLabel } from '@/lib/ikm';
-import { amanSel } from '@/lib/rekap/excelPenanganan';
 import { fetchAllPages } from '@/lib/rekap/exportAll';
 import { awalHariBerikutnyaWIB, awalHariWIB, formatTanggalId } from '@/lib/rekap/format';
 import { PERTANYAAN_SPAK, SKALA_SKM, SKALA_SPAK, UNSUR_SKM } from './pertanyaan';
+
+/** Teks diawali = + - @ tab/CR diberi apostrof agar tidak dieksekusi Excel sebagai rumus (formula injection). */
+export function amanSel(v: string | null | undefined): string {
+  const s = v ?? '';
+  return /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
+}
 
 export const LABEL_UNIT_FO = 'Front Office';
 export const LABEL_UNIT_TIDAK_DIKETAHUI = 'Tidak terklasifikasi (data lama/impor)';

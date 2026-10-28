@@ -272,8 +272,8 @@ describe('hari tanpa pelayanan (Sabtu/Minggu/hari_libur): chat tidak dapat diamb
     m.h.tabel.hari_libur = { data: [{ tanggal: '2026-10-14', keterangan: 'Cuti bersama' }], error: null };
     await bukaSesi();
     const banner = await screen.findByTestId('admin-chat-hari-tanpa-layanan');
-    expect(banner).toHaveTextContent(/hari ini hari libur \(Cuti bersama\)/);
-    expect(banner).toHaveTextContent(/ditutup otomatis setelah 24 jam/);
+    expect(banner).toHaveTextContent(/tidak beroperasi hari ini \(hari libur: Cuti bersama\)/);
+    expect(banner).toHaveTextContent(/tidak ditutup otomatis sebelum ada hari operasional/);
     const tombol = screen.getByRole('button', { name: /Ambil Chat/ });
     await waitFor(() => expect(tombol).toBeDisabled());
     expect(tombol).toHaveAttribute('aria-describedby', 'alasan-hari-tanpa-layanan');
@@ -289,7 +289,7 @@ describe('hari tanpa pelayanan (Sabtu/Minggu/hari_libur): chat tidak dapat diamb
     vi.setSystemTime(new Date('2026-10-17T10:00:00+07:00')); // Sabtu
     siapkan('admin', { sesiRow: sesi0({ status: 'aktif', ditangani_oleh: 'pet-2' }), tahapRows: [tahapFo({ status: 'berjalan', penangan_id: 'pet-2' })] });
     await bukaSesi();
-    expect(await screen.findByTestId('admin-chat-hari-tanpa-layanan')).toHaveTextContent(/hari ini Sabtu/);
+    expect(await screen.findByTestId('admin-chat-hari-tanpa-layanan')).toHaveTextContent(/tidak beroperasi hari ini \(di luar jadwal\)/);
     await waitFor(() => expect(screen.getByRole('button', { name: /Ambil Alih Chat/ })).toBeDisabled());
     cleanup();
 

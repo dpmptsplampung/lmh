@@ -60,6 +60,14 @@ interface Pratinjau {
 }
 
 type ScanState = 'scanning' | 'mencari' | 'found' | 'not_found' | 'hangus' | 'error' | 'processed' | 'ditolak';
+type StatusQr = 'tidak_ditemukan' | 'tanggal_lain' | 'sudah_diproses';
+
+// Pesan untuk QR yang tidak terbaca lewat RLS. 'tidak_berlaku' (no_show/batal/lewat tanggal) ditampilkan sebagai 'hangus'.
+const PESAN_QR: Record<StatusQr, { judul: string; teks: string }> = {
+  tidak_ditemukan: { judul: 'Tidak Ditemukan', teks: 'QR code tidak terdaftar, bukan reservasi, atau tidak berlaku hari ini.' },
+  tanggal_lain: { judul: 'Reservasi Tanggal Lain', teks: 'Reservasi ini untuk tanggal lain. Minta pengunjung datang sesuai tanggal reservasinya.' },
+  sudah_diproses: { judul: 'Sudah Diproses', teks: 'Reservasi ini sudah di-check-in atau sudah selesai dilayani.' },
+};
 
 const LABEL_STATUS: Record<string, string> = {
   menunggu: 'menunggu ditangani',
@@ -84,6 +92,8 @@ export default function ScanPanel() {
   const { toast } = useToast();
   const router = useRouter();
   const [scanState, setScanState] = useState<ScanState>('scanning');
+  // Fase 3: RLS hanya memuat reservasi HARI INI untuk FO biasa; kategori QR lain dari RPC fo_status_qr (tanpa PII).
+  const [statusQr, setStatusQr] = useState<StatusQr>('tidak_ditemukan');
   const [result, setResult] = useState<Pratinjau | null>(null);
   const [hasilCheckin, setHasilCheckin] = useState<HasilCheckinReservasi | null>(null);
   const [processing, setProcessing] = useState(false);
@@ -129,6 +139,14 @@ export default function ScanPanel() {
       }
       if (!data) {
         setResult(null);
+        // Kategori saja (tanpa PII); RPC belum ada (migrasi belum diterapkan) / galat -> "tidak ditemukan".
+        const { data: kategori, error: eKategori } = await supabase.rpc('fo_status_qr', { p_qr_token: token });
+        const kat = eKategori ? null : (kategori as string | null);
+        if (kat === 'tidak_berlaku') {
+          setScanState('hangus');
+          return;
+        }
+        setStatusQr(kat === 'tanggal_lain' || kat === 'sudah_diproses' ? kat : 'tidak_ditemukan');
         setScanState('not_found');
         return;
       }
@@ -358,8 +376,8 @@ export default function ScanPanel() {
               {scanState === 'not_found' && (
                 <div className={styles.notFound}>
                   <XCircle size={48} className={styles.notFoundIcon} aria-hidden="true" />
-                  <h3 className={styles.judulHasil}>Tidak Ditemukan</h3>
-                  <p className={styles.teksHasil}>QR code tidak terdaftar atau bukan reservasi.</p>
+                  <h3 className={styles.judulHasil}>{PESAN_QR[statusQr].judul}</h3>
+                  <p className={styles.teksHasil}>{PESAN_QR[statusQr].teks}</p>
                   <button type="button" className="btn btn--secondary btn--sm" onClick={handleReset}>
                     <RotateCcw size={14} aria-hidden="true" /> Scan Ulang
                   </button>

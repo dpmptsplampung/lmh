@@ -3,6 +3,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const serverState = {
   callerId: 'auth-officer-1' as string | null,
+  // RPC lingkup chat (boleh_chat_sesi, Fase 5) klien berJWT pengguna; undefined = migrasi belum diterapkan (aturan lama).
+  rpc: undefined as undefined | ((nama: string, args: unknown) => Promise<unknown>),
 };
 
 vi.mock('@/lib/supabase/server', () => ({
@@ -13,6 +15,7 @@ vi.mock('@/lib/supabase/server', () => ({
         error: null,
       })),
     },
+    rpc: serverState.rpc,
   })),
 }));
 
@@ -137,6 +140,30 @@ const mockServiceClient = async (
 describe('POST /api/chat/ai/draft', () => {
   beforeEach(() => {
     vi.resetModules();
+    serverState.rpc = undefined;
+  });
+
+  it('lingkup DB (Fase 5): petugas Layanan sama tetap DITOLAK bila boleh_chat_sesi false (chat tertutup milik rekan)', async () => {
+    await mockServiceClient({ isPetugas: true });
+    const rpc = vi.fn(async () => ({ data: false, error: null }));
+    serverState.rpc = rpc;
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest({ sesi_id: SESI_ID }));
+    expect(res.status).toBe(403);
+    expect(rpc).toHaveBeenCalledWith('boleh_chat_sesi', { p_sesi: SESI_ID });
+  });
+
+  it('lingkup DB (Fase 5): boleh_chat_sesi true -> 200; galat RPC selain "belum ada" -> 403', async () => {
+    await mockServiceClient({ isPetugas: true });
+    serverState.rpc = vi.fn(async () => ({ data: true, error: null }));
+    let { POST } = await import('./route');
+    expect((await POST(buildRequest({ sesi_id: SESI_ID }))).status).toBe(200);
+
+    vi.resetModules();
+    await mockServiceClient({ isPetugas: true });
+    serverState.rpc = vi.fn(async () => ({ data: null, error: { code: '57014', message: 'timeout' } }));
+    ({ POST } = await import('./route'));
+    expect((await POST(buildRequest({ sesi_id: SESI_ID }))).status).toBe(403);
   });
 
   it('returns 401 when caller is unauthenticated', async () => {

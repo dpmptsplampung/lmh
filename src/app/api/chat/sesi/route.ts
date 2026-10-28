@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { createClient as createServerClient } from '@/lib/supabase/server';
 import { MutasiError, mutasiWajibBaris } from '@/lib/supabase/mutate';
 import { catatMutasi } from '@/lib/observability/catat-mutasi';
+import { KODE_MIGRASI_BELUM, objekBelumAda } from '@/lib/akses-data/galat';
+import { kodeGalatKhusus, PESAN_GALAT_KHUSUS } from '@/lib/pendataan-khusus/galat';
 import {
   kodeGalatChat,
   PESAN_GALAT_CHAT,
@@ -22,6 +24,19 @@ const ROUTE = '/api/chat/sesi';
 // "Kembali ke bot" tidak lagi didukung DB (kontrak §3): dijawab 410 dengan pesan jelas.
 
 const sesiId = z.string().uuid();
+// Fase 4: identitas pengunjung chat (Pendataan Umum; kosong = tidak diubah, divalidasi DB) dan jawaban Pendataan Khusus
+// ({ "<id isian>": nilai }, divalidasi DB terhadap definisi Layanan).
+const identitasSchema = z
+  .object({
+    nama: z.string().max(200).optional(),
+    kontak_hp: z.string().max(40).optional(),
+    email: z.string().max(300).optional(),
+    asal_instansi: z.string().max(300).optional(),
+    kategori: z.string().max(40).optional(),
+    keperluan: z.string().max(1000).optional(),
+  })
+  .strict();
+const khususSchema = z.record(z.string().max(64), z.unknown());
 const bodySchema = z.discriminatedUnion('aksi', [
   z.object({
     sesi_id: sesiId,
@@ -41,6 +56,8 @@ const bodySchema = z.discriminatedUnion('aksi', [
     aksi: z.literal('selesaikan'),
     topik_id: z.string().uuid(),
     catatan: z.string().max(5000),
+    khusus: khususSchema.optional(),
+    identitas: identitasSchema.optional(),
   }),
 ]);
 
@@ -99,10 +116,22 @@ export async function POST(request: NextRequest) {
               p_catatan: input.catatan.trim(),
             },
           ]
-        : [
-            'chat_selesai',
-            { p_sesi_id: input.sesi_id, p_topik_id: input.topik_id, p_catatan: input.catatan.trim() },
-          ];
+        : input.khusus !== undefined || input.identitas !== undefined
+          ? [
+              // Fase 4 (migrasi 202610300002): selesai + identitas + Pendataan Khusus dalam satu transaksi.
+              'chat_selesai_khusus',
+              {
+                p_sesi_id: input.sesi_id,
+                p_topik_id: input.topik_id,
+                p_catatan: input.catatan.trim(),
+                p_khusus: input.khusus ?? null,
+                p_identitas: input.identitas ?? null,
+              },
+            ]
+          : [
+              'chat_selesai',
+              { p_sesi_id: input.sesi_id, p_topik_id: input.topik_id, p_catatan: input.catatan.trim() },
+            ];
 
   try {
     const [data] = await mutasiWajibBaris<Record<string, unknown>>(supabase.rpc(nama, args));
@@ -112,6 +141,16 @@ export async function POST(request: NextRequest) {
     }
     return NextResponse.json({ ok: true, aksi: input.aksi, data });
   } catch (e) {
+    if (objekBelumAda(e instanceof MutasiError ? e.asal : e)) {
+      return NextResponse.json(
+        { error: 'Pendataan Khusus belum tersedia: migrasi 202610300001/0002 belum diterapkan.', kode: KODE_MIGRASI_BELUM },
+        { status: 409 },
+      );
+    }
+    const kodeKhusus = kodeGalatKhusus(e);
+    if (kodeKhusus) {
+      return NextResponse.json({ error: PESAN_GALAT_KHUSUS[kodeKhusus], kode: kodeKhusus }, { status: 422 });
+    }
     const kode = kodeGalatChat(e);
     if (kode) {
       if (kode === 'DIVERGENSI') catatMutasi('error', `chat.sesi.${input.aksi}`, ROUTE, e);

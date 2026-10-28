@@ -115,6 +115,12 @@ export const ossPelayananDraftSchema = z.object({
 // Skema FINAL (menyelesaikan layanan): SEMUA field wajib non-kosong (keputusan CEO G.5). Draf (autosave) tetap
 // longgar. Cermin validasi server: migrasi 202610140011 (layanan_selesai -> INVALID_PAYLOAD).
 const wajibTeks = (pesan: string) => z.string({ error: pesan }).trim().min(1, pesan);
+// Email pengunjung yang dieskalasi WAJIB nyata (bukan "Tidak berlaku"/"-"): ditegakkan DB (migrasi 202611010003, EMAIL_WAJIB).
+// Pola sama dengan email_nyata() di DB.
+export const POLA_EMAIL_NYATA = /^[a-z0-9._%+-]+@[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/i;
+export const PESAN_EMAIL_WAJIB = 'Alamat email wajib diisi dengan email yang valid (contoh: nama@email.com)';
+const wajibEmail = () =>
+  z.string({ error: PESAN_EMAIL_WAJIB }).trim().max(254, PESAN_EMAIL_WAJIB).regex(POLA_EMAIL_NYATA, PESAN_EMAIL_WAJIB);
 const wajibPilihan = <T extends readonly [string, ...string[]]>(opsi: T, pesan: string) =>
   z.enum(opsi, { error: pesan });
 
@@ -122,7 +128,7 @@ export const ossPelayananFinalSchema = z.object({
   nama_pemohon: wajibTeks('Nama pemohon wajib diisi'),
   alamat_pemohon: wajibTeks('Asal instansi / alamat domisili wajib diisi (isi "Tidak berlaku" bila tidak ada)'),
   no_hp: wajibTeks('Nomor HP / WhatsApp wajib diisi (isi "Tidak berlaku" bila tidak ada)'),
-  email: wajibTeks('Alamat email wajib diisi (isi "Tidak berlaku" bila tidak ada)'),
+  email: wajibEmail(),
   keperluan_awal: wajibTeks('Keperluan awal wajib diisi (isi "Tidak berlaku" bila tidak ada)'),
   nama_usaha: wajibTeks('Nama usaha wajib diisi (isi "Belum ada" atau "Tidak berlaku" bila tidak ada)'),
   tipe_pelaku_usaha: wajibPilihan(TIPE_PELAKU_USAHA_OPTIONS, 'Tipe pelaku usaha wajib dipilih'),
@@ -154,7 +160,7 @@ export const perizinanPelayananFinalSchema = z.object({
   nama_pemohon: wajibTeks('Nama pemohon wajib diisi'),
   alamat_pemohon: wajibTeks('Asal instansi / alamat domisili wajib diisi (isi "Tidak berlaku" bila tidak ada)'),
   no_hp: wajibTeks('Nomor HP / WhatsApp wajib diisi (isi "Tidak berlaku" bila tidak ada)'),
-  email: wajibTeks('Alamat email wajib diisi (isi "Tidak berlaku" bila tidak ada)'),
+  email: wajibEmail(),
   keperluan_awal: wajibTeks('Keperluan awal wajib diisi (isi "Tidak berlaku" bila tidak ada)'),
   nama_perusahaan: wajibTeks('Nama perusahaan / pemohon wajib diisi (isi "Belum ada" atau "Tidak berlaku" bila tidak ada)'),
   lokasi_usaha: wajibTeks('Lokasi usaha wajib diisi (isi "Belum ada" atau "Tidak berlaku" bila tidak ada)'),
@@ -200,6 +206,8 @@ export interface PelayananInitialData {
    * hanya saat itu draf boleh disimpan dan layanan boleh diselesaikan. Selain itu wizard baca-saja.
    */
   boleh_ubah: boolean;
+  /** Fase 3: boleh menyelesaikan (pemilik tiket). Tidak ada = sama dengan boleh_ubah (respons lama). */
+  boleh_selesaikan?: boolean;
   /** true bila tiket hasil eskalasi Front Office (penanganan_asal_id terisi). Informasi saja sejak 202610140015. */
   dari_eskalasi?: boolean;
   is_locked: boolean;

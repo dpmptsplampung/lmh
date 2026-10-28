@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { Fragment, useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
@@ -22,6 +22,7 @@ import { truncate, relativeTime } from '@/lib/utils';
 import { urlLoginAlasan } from '@/lib/sesi-staf';
 import {
   GalatAksiChat,
+  JENIS_PENUTUP_SURVEI,
   kirimAksiChat,
   kodeChatPerluMuatUlang,
   type HasilChatAmbil,
@@ -30,7 +31,8 @@ import {
   type PeranTahapChat,
 } from '@/lib/chat-staf';
 import type { TopikFo } from '@/lib/fo-penanganan';
-import { muatInfoHariLayanan, sebabHariTanpaLayanan, type InfoHariLayanan } from '@/lib/chat/hari-tanpa-layanan';
+import { bersihkanPenutup } from '@/lib/chat/percakapan';
+import { muatStatusLayananChat, type StatusLayananChat } from '@/lib/chat/status-layanan';
 import {
   ChatAmbilAlihDialog,
   ChatSelesaiDialog,
@@ -105,6 +107,9 @@ export default function AdminChatPage() {
   // Cadangan bila sesi terpilih hilang dari daftar (mis. selesai & disembunyikan).
   const [snapshot, setSnapshot] = useState<RingkasRow | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  // Riwayat percakapan (semua sesi pengunjung + Layanan yang sama) dipaginasi mundur; true = ada pesan lebih lama.
+  const [riwayatAdaLebih, setRiwayatAdaLebih] = useState(false);
+  const [riwayatMemuat, setRiwayatMemuat] = useState(false);
   const [messageInput, setMessageInput] = useState('');
   const [loading, setLoading] = useState(true);
   const [loadingDraft, setLoadingDraft] = useState(false);
@@ -126,36 +131,13 @@ export default function AdminChatPage() {
   const [aksiBusy, setAksiBusy] = useState(false);
   // Peringatan setelah meneruskan chat ke layanan yang belum ada petugas hadir (bukan galat; kontrak §2.2).
   const [peringatan, setPeringatan] = useState<string | null>(null);
-  // Hari tanpa pelayanan (Sabtu/Minggu/hari_libur; keputusan CEO 2026-10-14): chat tidak dapat diambil, diambil alih,
-  // atau diteruskan (DB menolak HARI_TANPA_LAYANAN). Tombol dinonaktifkan dengan alasan; pemegang chat dari hari kerja
-  // tetap dapat membalas dan menyelesaikan.
-  const [infoHari, setInfoHari] = useState<InfoHariLayanan | null>(null);
-  useEffect(() => {
-    let batal = false;
-    Promise.resolve()
-      .then(() => muatInfoHariLayanan(createClient(), new Date(), { kanal: false }))
-      .then((info) => {
-        if (!batal) setInfoHari(info);
-      })
-      .catch(() => {
-        /* gagal menilai hari: tombol tetap aktif; DB tetap penegak */
-      });
-    return () => {
-      batal = true;
-    };
-  }, []);
-  const tanpaLayanan = !!infoHari?.alasan;
-  const alasanTanpaLayanan = infoHari?.alasan
-    ? `Chat tidak dapat diambil atau diteruskan karena ${sebabHariTanpaLayanan(infoHari)} (hari tanpa pelayanan). ` +
-      'Pengunjung hanya dilayani asisten virtual; chat yang menunggu ditutup otomatis setelah 24 jam tanpa aktivitas.'
-    : null;
-
   const { toast } = useToast();
   const selectedIdRef = useRef<string | null>(null);
   const layananFilterRef = useRef<string | null>(null);
   const showSelesaiRef = useRef(false);
   const listSeq = useRef(0);
   const msgSeq = useRef(0);
+  const riwayatSeq = useRef(0);
   // client_uuid dipertahankan selama teks yang sama belum terkirim, sehingga
   // klik ulang setelah gagal bersifat idempoten di server.
   const pendingSend = useRef<{ text: string; uuid: string } | null>(null);
@@ -166,6 +148,35 @@ export default function AdminChatPage() {
   const selectedSession =
     sessions.find((s) => s.id === selectedId) ??
     (snapshot && snapshot.id === selectedId ? snapshot : null);
+
+  // Hari tanpa pelayanan PER LAYANAN (Fase 5, spec §4.4: jadwal per Layanan = satu sumber kebenaran; menggantikan kalender
+  // global Sabtu/Minggu/hari_libur). Layanan sesi terpilih tidak beroperasi hari ini: chat tidak dapat diambil, diambil
+  // alih, atau diteruskan (DB menolak HARI_TANPA_LAYANAN). Tombol dinonaktifkan dengan alasan; pemegang chat tetap dapat
+  // membalas dan menyelesaikan. Gagal menilai = tombol tetap aktif; DB tetap penegak.
+  const layananTerpilihId = selectedSession?.layanan_id ?? null;
+  const [statusStaf, setStatusStaf] = useState<{ layananId: string; status: StatusLayananChat } | null>(null);
+  useEffect(() => {
+    if (!layananTerpilihId) return;
+    let batal = false;
+    Promise.resolve()
+      .then(() => muatStatusLayananChat(createClient(), layananTerpilihId))
+      .then((status) => {
+        if (!batal) setStatusStaf({ layananId: layananTerpilihId, status });
+      })
+      .catch(() => {
+        /* gagal menilai: tombol tetap aktif */
+      });
+    return () => {
+      batal = true;
+    };
+  }, [layananTerpilihId]);
+  const statusLayananStaf = statusStaf && statusStaf.layananId === layananTerpilihId ? statusStaf.status : null;
+  const tanpaLayanan = !!statusLayananStaf?.hariTanpaLayanan;
+  const alasanTanpaLayanan = statusLayananStaf?.hariTanpaLayanan
+    ? `Chat tidak dapat diambil atau diteruskan karena ${layananNama[layananTerpilihId ?? ''] ?? 'layanan ini'} tidak beroperasi hari ini` +
+      `${statusLayananStaf.liburKeterangan ? ` (hari libur: ${statusLayananStaf.liburKeterangan})` : ' (di luar jadwal)'}. ` +
+      'Pengunjung hanya dilayani asisten virtual; chat yang menunggu tidak ditutup otomatis sebelum ada hari operasional Layanan.'
+    : null;
 
   useEffect(() => {
     selectedIdRef.current = selectedId;
@@ -356,7 +367,9 @@ export default function AdminChatPage() {
   // Cadangan: poll daftar hanya saat realtime tidak sehat; refetch saat tab
   // kembali terlihat / online.
   useOnSubscribed(rt, fetchSessions, !loading);
-  useFallbackPoll(fetchSessions, rt, { fastMs: 15000, slowMs: null, enabled: !loading });
+  // slowMs 60 dtk (Fase 5): event Realtime untuk baris yang keluar dari lingkup (mis. chat ditutup rekan) tidak terkirim,
+  // jadi daftar disegarkan pelan walau Realtime sehat.
+  useFallbackPoll(fetchSessions, rt, { fastMs: 15000, slowMs: 60000, enabled: !loading });
 
   // Ganti filter "selesai" -> muat ulang daftar (bukan saat render awal).
   const firstFilter = useRef(true);
@@ -368,26 +381,49 @@ export default function AdminChatPage() {
     fetchSessions();
   }, [showSelesai, fetchSessions]);
 
-  const loadMessages = useCallback(async () => {
+  // riwayat=true (hanya saat sesi dipilih): seluruh percakapan lintas sesi (lingkup ditegakkan route/DB). Poll dan
+  // Realtime memuat sesi terpilih saja.
+  const loadMessages = useCallback(async (opsi?: { riwayat?: boolean }) => {
     const id = selectedIdRef.current;
     if (!id) return;
-    const seq = ++msgSeq.current;
+    // Muat riwayat punya nomor urut sendiri: poll sesi terpilih yang berjalan bersamaan tidak boleh membuangnya.
+    const urutan = opsi?.riwayat ? riwayatSeq : msgSeq;
+    const seq = ++urutan.current;
     try {
-      const res = await fetch(`/api/chat/messages?sesi_id=${id}`);
+      const res = await fetch(`/api/chat/messages?sesi_id=${id}${opsi?.riwayat ? '&riwayat=1' : ''}`);
       if (!res.ok) return;
       const data = await res.json();
       // Abaikan respons usang: sesi sudah berganti atau ada fetch yang lebih baru.
-      if (seq !== msgSeq.current || id !== selectedIdRef.current) return;
+      if (seq !== urutan.current || id !== selectedIdRef.current) return;
       if (data.messages) setMessages((prev) => mergeMessages(prev, data.messages as Message[]));
+      if (opsi?.riwayat) setRiwayatAdaLebih(!!data.ada_lebih);
     } catch {
       /* jaringan putus: poll/refetch berikutnya akan mencoba lagi */
     }
   }, []);
 
+  const muatRiwayatLebihLama = async () => {
+    const id = selectedIdRef.current;
+    const tertua = messages.find((m) => !m.local)?.created_at;
+    if (!id || !tertua || riwayatMemuat) return;
+    setRiwayatMemuat(true);
+    try {
+      const res = await fetch(`/api/chat/messages?sesi_id=${id}&riwayat=1&sebelum=${encodeURIComponent(tertua)}`);
+      if (!res.ok || id !== selectedIdRef.current) return;
+      const data = await res.json();
+      if (data.messages) setMessages((prev) => mergeMessages(prev, data.messages as Message[]));
+      setRiwayatAdaLebih(!!data.ada_lebih);
+    } catch {
+      /* tombol tetap ada: coba lagi */
+    } finally {
+      setRiwayatMemuat(false);
+    }
+  };
+
   // Utas pesan: kunci pada id sesi (bukan objek) supaya refresh daftar tidak
   // memicu muat ulang. Pesan sesi lain tidak terbawa.
   useEffect(() => {
-    if (selectedId) loadMessages();
+    if (selectedId) void loadMessages({ riwayat: true });
   }, [selectedId, loadMessages]);
 
   const threadLive = !!selectedId && selectedSession?.status !== 'selesai';
@@ -401,10 +437,12 @@ export default function AdminChatPage() {
     if (session.id !== selectedId) {
       // Reset utas: pesan sesi sebelumnya tidak boleh terbawa; fetch lama diabaikan.
       setMessages([]);
+      setRiwayatAdaLebih(false);
       setMessageInput('');
       setSendError('');
       pendingSend.current = null;
       msgSeq.current++;
+      riwayatSeq.current++;
     }
     setSelectedId(session.id);
     setSnapshot(session);
@@ -560,6 +598,10 @@ export default function AdminChatPage() {
     }
   };
 
+  // Pembatas sesi hanya bila percakapan memuat lebih dari satu sesi (riwayat lintas sesi, Fase 5).
+  const banyakSesi = new Set(messages.map((m) => m.sesi_id).filter(Boolean)).size > 1;
+  const tanggalSesi = (iso: string) =>
+    new Date(iso).toLocaleDateString('id-ID', { timeZone: 'Asia/Jakarta', day: 'numeric', month: 'long', year: 'numeric' });
   const namaSender = (p: Message['pengirim']) =>
     p === 'petugas' ? 'Petugas' : p === 'bot' ? 'Bot FAQ' : 'Pengunjung';
 
@@ -824,20 +866,47 @@ export default function AdminChatPage() {
                 <MainContainer responsive>
                   <ChatContainer>
                     <MessageList>
-                      {messages.map((msg) => (
-                        <ChatMessage
-                          key={msg.client_uuid ?? msg.id}
-                          model={{
-                            message: msg.isi,
-                            sentTime: waktuLabel(msg.created_at),
-                            sender: namaSender(msg.pengirim),
-                            direction: msg.pengirim === 'petugas' ? 'outgoing' : 'incoming',
-                            position: 'single',
-                          }}
-                        >
-                          <ChatMessage.Header sender={namaSender(msg.pengirim)} sentTime={waktuLabel(msg.created_at)} />
-                        </ChatMessage>
-                      ))}
+                      {riwayatAdaLebih && (
+                        <div style={{ textAlign: 'center', padding: 'var(--space-2)' }}>
+                          <button
+                            type="button"
+                            className="btn btn--secondary btn--sm"
+                            onClick={() => void muatRiwayatLebihLama()}
+                            disabled={riwayatMemuat}
+                          >
+                            {riwayatMemuat ? 'Memuat...' : 'Muat riwayat sebelumnya'}
+                          </button>
+                        </div>
+                      )}
+                      {messages.map((msg, i) => {
+                        const sebelumnya = messages[i - 1];
+                        const pembatas =
+                          banyakSesi && msg.sesi_id && (!sebelumnya || sebelumnya.sesi_id !== msg.sesi_id);
+                        return (
+                          <Fragment key={msg.client_uuid ?? msg.id}>
+                            {pembatas && (
+                              <div
+                                role="separator"
+                                aria-label={`Sesi ${tanggalSesi(msg.created_at)}`}
+                                style={{ textAlign: 'center', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', padding: 'var(--space-2) 0' }}
+                              >
+                                — Sesi {tanggalSesi(msg.created_at)} —
+                              </div>
+                            )}
+                            <ChatMessage
+                              model={{
+                                message: msg.jenis_jawaban === JENIS_PENUTUP_SURVEI ? bersihkanPenutup(msg.isi) : msg.isi,
+                                sentTime: waktuLabel(msg.created_at),
+                                sender: namaSender(msg.pengirim),
+                                direction: msg.pengirim === 'petugas' ? 'outgoing' : 'incoming',
+                                position: 'single',
+                              }}
+                            >
+                              <ChatMessage.Header sender={namaSender(msg.pengirim)} sentTime={waktuLabel(msg.created_at)} />
+                            </ChatMessage>
+                          </Fragment>
+                        );
+                      })}
                     </MessageList>
 
                     {/* MessageInput harus anak LANGSUNG ChatContainer: pembungkus <div> dibuang chatscope. */}

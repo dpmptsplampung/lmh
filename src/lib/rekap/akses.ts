@@ -1,7 +1,12 @@
 // Identitas staf untuk route rekap penanganan/performa. Mengikuti pola route rekap yang ada: 401 bila belum masuk
 // atau akun tidak aktif; peran dibaca dari tabel `petugas` lewat klien pengguna (RLS).
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { StafRekap } from './penanganan';
+
+export interface StafRekap {
+  id: string;
+  role: string;
+  layanan_id: string | null;
+}
 
 export type HasilMuatStaf = { ok: true; userId: string; me: StafRekap } | { ok: false };
 

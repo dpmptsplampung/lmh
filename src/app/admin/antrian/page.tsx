@@ -44,7 +44,9 @@ import Pagination from '@/components/Pagination';
 import WalkinWizard from '@/components/WalkinWizard';
 import PelayananWizardModal from '@/components/admin/PelayananWizardModal';
 import KoreksiPelayananModal from '@/components/admin/KoreksiPelayananModal';
-import AmbilAlihTiketModal, { type TiketAmbilAlih } from '@/components/admin/AmbilAlihTiketModal';
+import AmbilAlihTiketModal, { type ModeAmbilAlih, type TiketAmbilAlih } from '@/components/admin/AmbilAlihTiketModal';
+import PemberitahuanAmbilAlih from '@/components/admin/PemberitahuanAmbilAlih';
+import { bolehKoordinatorAmbilAlihTiket, muatKoordinator } from '@/lib/akses-data/lingkup';
 import AlihkanTiketModal, { type TiketAlihkan } from '@/components/admin/AlihkanTiketModal';
 import KembalikanKeFoModal, { type TiketKembalikan } from '@/components/admin/KembalikanKeFoModal';
 import SelesaiEskalasiModal, { type TiketSelesaiEskalasi } from '@/components/admin/SelesaiEskalasiModal';
@@ -93,6 +95,8 @@ interface PetugasData {
   role: string;
   layanan_id: string;
   layanan?: { nama: string } | { nama: string }[];
+  /** Fase 3: penanda Koordinator (false bila migrasi 202610290001 belum diterapkan). */
+  koordinator?: boolean;
 }
 
 interface KunjunganEmbed {
@@ -158,6 +162,7 @@ export default function AntrianPage() {
   const [activeWizardTiketId, setActiveWizardTiketId] = useState<string | null>(null);
   const [koreksiTiketId, setKoreksiTiketId] = useState<string | null>(null);
   const [ambilAlihTiket, setAmbilAlihTiket] = useState<TiketAmbilAlih | null>(null);
+  const [modeAmbilAlih, setModeAmbilAlih] = useState<ModeAmbilAlih>('admin');
   const [alihkanTiket, setAlihkanTiket] = useState<TiketAlihkan | null>(null);
   const [kembalikanTiket, setKembalikanTiket] = useState<TiketKembalikan | null>(null);
   const [selesaiEskalasiTiket, setSelesaiEskalasiTiket] = useState<TiketSelesaiEskalasi | null>(null);
@@ -203,7 +208,9 @@ export default function AntrianPage() {
         if (p) {
           myRole = p.role;
           myLayananId = p.layanan_id;
-          setCurrentUser(p as unknown as PetugasData);
+          // Penanda dibaca terpisah: select kolom yang belum ada akan menggagalkan seluruh kueri sebelum migrasi.
+          const koordinator = p.role === 'petugas' ? await muatKoordinator(supabase, p.id) : false;
+          setCurrentUser({ ...(p as unknown as PetugasData), koordinator });
         }
       }
 
@@ -554,6 +561,7 @@ export default function AntrianPage() {
 
       <div style={{ padding: 'var(--space-8)' }}>
         <CalendarBanner />
+        <PemberitahuanAmbilAlih petugasId={currentUser?.id} />
         {currentUser?.role === 'petugas' && layananNamaHeader && (
           <RoleNote>
             Anda melayani antrean {layananNamaHeader}. Pengunjung layanan lain diatur Front Office.
@@ -922,14 +930,17 @@ export default function AntrianPage() {
                                         Lihat Data
                                       </button>
                                     )}
-                                    {bolehAmbilAlihTiket(currentUser, a) && (
+                                    {(bolehAmbilAlihTiket(currentUser, a) || bolehKoordinatorAmbilAlihTiket(currentUser, a)) && (
                                       <button
                                         className="btn btn--secondary btn--xs"
-                                        onClick={() =>
-                                          setAmbilAlihTiket({ id: a.id, nomor_display: a.nomor_display, pemilik_nama: pelayanNama })
-                                        }
+                                        onClick={() => {
+                                          setModeAmbilAlih(bolehAmbilAlihTiket(currentUser, a) ? 'admin' : 'koordinator_tiket');
+                                          setAmbilAlihTiket({ id: a.id, nomor_display: a.nomor_display, pemilik_nama: pelayanNama });
+                                        }}
                                         disabled={sibuk}
-                                        title="Darurat: jadikan Anda penanggung jawab tiket ini (wajib alasan, tercatat di audit)"
+                                        title={bolehAmbilAlihTiket(currentUser, a)
+                                          ? 'Darurat: jadikan Anda penanggung jawab tiket ini (wajib alasan, tercatat di audit)'
+                                          : 'Koordinator: ambil alih pendataan ini (wajib alasan, tercatat di audit; petugas semula diberi tahu)'}
                                         style={{ fontSize: '11px', padding: '2px 6px', width: 'fit-content' }}
                                       >
                                         <UserCog size={12} style={{ marginRight: '3px' }} aria-hidden="true" />
@@ -1021,6 +1032,7 @@ export default function AntrianPage() {
         <AmbilAlihTiketModal
           key={ambilAlihTiket.id}
           tiket={ambilAlihTiket}
+          mode={modeAmbilAlih}
           onClose={() => setAmbilAlihTiket(null)}
           onSuccess={fetchData}
         />

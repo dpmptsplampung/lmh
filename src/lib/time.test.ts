@@ -60,3 +60,11 @@ describe('addDaysWIB', () => {
     expect(addDaysWIB(3, new Date('2026-07-30T16:00:00Z'))).toBe('2026-08-02');
   });
 });
+
+describe('menitWIB', () => {
+  it('menghitung menit sejak tengah malam menurut WIB, bukan UTC', async () => {
+    const { menitWIB } = await import('./time');
+    expect(menitWIB(new Date('2026-10-14T03:00:00Z'))).toBe(10 * 60); // 10:00 WIB
+    expect(menitWIB(new Date('2026-10-14T17:10:00Z'))).toBe(10); // 00:10 WIB hari berikutnya
+  });
+});

@@ -40,6 +40,8 @@ const eslintConfig = defineConfig([
     ".opencode/**",
     ".superpowers/**",
     ".codex/**",
+    // Worktree sesi lain dan konfigurasi lokal Claude (bukan kode aplikasi):
+    ".claude/**",
     ".github/prompts/**",
     // Artefak lokal `npm run test:coverage` (sudah di .gitignore), bukan kode aplikasi:
     "coverage/**",

@@ -73,6 +73,172 @@ sehingga perubahan yang bisa memutus alur pengguna (mis. policy `visit`/`kunjung
 Runbook lengkap RBAC Tahap 0: `docs/RUNBOOK_RBAC_TAHAP0.md`. Tes perilaku (transaksi + ROLLBACK): `npm run test:rls:tahap0`.
 Skrip ini menyentuh DB produksi (terapan nyata butuh izin CEO).
 
+## Layanan dinamis Fase 1 (202610270001, 202610270002) — BELUM DITERAPKAN
+
+| Versi | Berkas | Isi | Status |
+|---|---|---|---|
+| 202610270001 | `202610270001_instansi_layanan_konten.sql` | Tabel `instansi` dan `layanan_tautan`; kolom baru `layanan.instansi_id`, `slug`, `deskripsi`, `urutan`, `konten_sumber_url`, `konten_diperbarui_at`, `diarsipkan_at`; `v_layanan_publik` diperluas; trigger tebakan `form_pendataan` dari nama layanan dihapus. Satu-satunya UPDATE: mengisi `layanan.slug`. | **DITULIS, BELUM DITERAPKAN** |
+| 202610270002 | `202610270002_jadwal_tunggal_layanan.sql` | Satu sumber jadwal (`jadwal_standby` + `hari_libur`): `is_layanan_buka_jadwal` menolak layanan terarsip dan `hari_libur`; fungsi baru `layanan_sudah_tutup_untuk`; trigger jadwal default (Senin–Jumat 08:00–15:30) untuk layanan baru; penjaga jam tutup `jadwal_standby` ≤ 16:00; `fo_eskalasi`/`admin_alihkan` memakai jam tutup per layanan; `reservasi_buat` (akhir pekan hanya `bertemu_seseorang`, plus `hari_libur`); `v_antrian_loket` hanya layanan `punya_antrean`. | **DITULIS, BELUM DITERAPKAN** |
+
+Tidak ada `DELETE`/`TRUNCATE`/`DROP TABLE`/`DROP COLUMN`; tabel lama `layanan_jadwal`, `layanan_libur`, `jadwal_harian_beku`, `layanan_hari` dibiarkan (aplikasi tidak lagi memakai `layanan_jadwal`/`layanan_libur`). Belum ada berkas SQL rollback (migrasi aditif; fungsi lama dapat dipulihkan dari berkas migrasi sebelumnya bila perlu).
+
+**Urutan terap (hanya pemilik/CEO, atomik):** `202610270001` lebih dulu, lalu `202610270002`.
+
+```
+node scripts/apply-migration.mjs supabase/migrations/202610270001_instansi_layanan_konten.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202610270001_instansi_layanan_konten.sql --atomic
+node scripts/apply-migration.mjs supabase/migrations/202610270002_jadwal_tunggal_layanan.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202610270002_jadwal_tunggal_layanan.sql --atomic
+```
+
+**Urutan deploy:** terapkan kedua migrasi SEBELUM (atau bersamaan dengan) men-deploy branch `feat/fase-1-fondasi-layanan`. Sebelum diterapkan, bagian berikut tidak berfungsi atau berbeda dari yang dimaksud (bot chat sendiri aman: select layanan fallback ke kolom lama):
+
+- **Sebelum 0001:** halaman admin Kelola Layanan galat (GET memilih kolom baru); API Instansi (`/api/admin/instansi`) tidak bisa dipakai (tabel `instansi` belum ada); toggle hidup/mati bot (di halaman Kelola Layanan) tidak bisa dipakai karena halaman itu sendiri tidak termuat; profil layanan bot (deskripsi, instansi, website terkait) kosong karena select profil jatuh ke fallback.
+- **Sebelum 0002:** perilaku halaman Jadwal (`/admin/settings/jadwal`) hanya tersimpan di tabel; yang ditegakkan DB belum berubah: hari libur nasional belum menutup antrean/reservasi (`is_layanan_buka_jadwal` belum membaca `hari_libur`), jam tutup per layanan belum dipakai gerbang eskalasi/alih (masih batas global), dan layanan baru belum mendapat jadwal default Senin-Jumat 08:00-15:30.
+
+**Daftar periksa sebelum terap (hanya baca, oleh pemilik; tidak mengubah data):**
+
+1. Jumlah `layanan` dengan `aktif = false`: `SELECT count(*) FROM public.layanan WHERE aktif = false;`. Setelah deploy, halaman Kelola Layanan menampilkan SEMUA baris `aktif = false` di bagian "Diarsipkan" (termasuk data lama tanpa tanggal arsip), dan gerbang jadwal menolak layanan itu. Pastikan daftarnya memang layanan yang ingin ditutup.
+2. Baris `jadwal_pengecualian` bertanggal ke depan: `SELECT layanan_id, tanggal, jenis, jam_mulai, jam_selesai, alasan FROM public.jadwal_pengecualian WHERE tanggal >= (now() AT TIME ZONE 'Asia/Jakarta')::date ORDER BY tanggal;`. Baris ini tetap menutup/mengubah hari di gerbang DB, tetapi tidak ada layar admin yang menampilkannya; catat dan putuskan perlu dipertahankan atau tidak (jangan dihapus dari skrip migrasi).
+
+**Catatan setelah terap:**
+
+- **Briefing Front Office (batas tiket eskalasi/alih):** setelah `202610270002`, `fo_eskalasi`/`admin_alihkan` memakai `jam_selesai` jadwal tiap layanan, bukan lagi batas global 16:00. Baris jadwal hasil backfill/default berjam tutup paling lambat 15:30, jadi batas efektif eskalasi dan alih tiket turun dari 16:00 menjadi sekitar 15:30 (menurut jadwal masing-masing layanan). Pendaftaran walk-in oleh FO (`fo_mulai_kunjungan`) tetap berjalan sampai 16:00. Akibatnya, antara jam tutup layanan dan 16:00 FO masih bisa mendaftarkan tamu tetapi tidak bisa meneruskannya ke layanan: beri tahu staf FO sebelum cutover.
+
+- `scripts/test-fo-eskalasi.mjs` (fixture A/B/C) dan `scripts/test-perbaikan-review.mjs` (fixture A/O/P/C) rusak setelah `202610270002`. Trigger jadwal default mengisi `jadwal_standby` hari 1-5 (08:00-15:30, aktif) SETELAH INSERT pada `layanan` (`ON CONFLICT DO NOTHING`). Skrip lalu menjalankan `INSERT INTO jadwal_standby (layanan_id, hari, aktif)` biasa untuk hari 1-7 pada fixture berjadwal, yang bentrok dengan `UNIQUE (layanan_id, hari)` (`202607290010_jadwal_standby.sql`): hari 1-5 ditolak duplicate key (23505; hasil `pgq` pada loop fixture tidak diperiksa, jadi kegagalannya diam-diam dan baris tetap berjam default, bukan nilai yang dimaksud fixture). Fixture C, yang dimaksudkan TANPA jadwal, kini justru punya jadwal Senin-Jumat sehingga ekspektasi `LAYANAN_TIDAK_BUKA` gagal pada hari kerja. Perbaikan fixture (sebelum verifikasi pasca-terap): ganti INSERT jadwal dengan upsert (`ON CONFLICT (layanan_id, hari) DO UPDATE SET aktif = true, ...`) dan, untuk fixture C, nonaktifkan atau hapus baris jadwal default secara eksplisit setelah INSERT layanan. Skrip menyentuh produksi; tidak diubah/dijalankan di branch ini.
+- Migrasi `202610260001` ada di branch lain (`claude/busy-poitras-cb912c`). Bila kedua branch di-merge, `supabase/migrations/MANIFEST.json` perlu digabung (entri dari kedua branch dipertahankan).
+- Setelah diterapkan, ledger produksi tertinggal lagi (`apply-migration` tidak menulis ledger): ulangi verifikasi ledger.
+
+## Homepage etalase Fase 2 (202610280001) — BELUM DITERAPKAN
+
+| Versi | Berkas | Isi | Status |
+|---|---|---|---|
+| 202610280001 | `202610280001_homepage_etalase.sql` | Kolom baru `layanan.tampil_di_homepage` (default true); `v_layanan_publik` memuatnya (kolom di akhir); tabel `homepage_blok` (aktif/urutan/teks per jenis blok, baca publik, tulis Admin `TO authenticated`, audit) berikut 7 baris awal insert-if-missing (teks hero/layanan/ajakan/footer disalin dari `landing_content`, baris lama tidak diubah); fungsi publik `layanan_status_hari_ini()` (status buka/tutup SAAT INI, hari + jam WIB, lewat `is_layanan_buka_jadwal` + jadwal mingguan; sesudah jam tutup hasilnya tutup); `audit_perubahan()` diganti dengan salinan utuh yang hanya menambah `jenis` pada COALESCE `entitas_id` (agar audit `homepage_blok` tidak berisi `entitas_id` NULL; tabel lain tidak terpengaruh). | **DITULIS, BELUM DITERAPKAN** |
+
+Tidak ada `DELETE`/`TRUNCATE`/`DROP`/`UPDATE`. Spesifikasi: bagian 5 rancangan layanan dinamis; rencana `docs/superpowers/plans/2026-10-28-fase-2-homepage-etalase.md`.
+
+**Urutan terap (hanya pemilik/CEO, atomik):** `202610270001`, `202610270002`, lalu `202610280001` (migrasi ini membaca kolom/tabel Fase 1: `slug`, `instansi`, `layanan_tautan`).
+
+```
+node scripts/apply-migration.mjs supabase/migrations/202610280001_homepage_etalase.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202610280001_homepage_etalase.sql --atomic
+```
+
+**Perilaku bila belum diterapkan (homepage tidak boleh 500):** pemuat `src/lib/homepage/data.ts` turun ke bawaan. Tanpa 0001 Fase 2: blok memakai bawaan kode (semua menyala, papan kinerja mati), kartu dimuat tanpa saklar homepage (semua layanan publik tampil), status buka/tutup dan jadwal popup **dihilangkan** (bukan ditebak), halaman admin `/admin/settings/landing` memberi pesan migrasi dan tombol simpan nonaktif (hanya untuk galat tabel hilang 42P01/PGRST205; galat baca lain tampil sebagai galat + Coba lagi), GET/POST/PATCH `/api/admin/layanan` mengulang tanpa kolom `tampil_di_homepage` (PATCH yang HANYA mengubah saklar itu dijawab 409 MIGRASI_BELUM_DITERAPKAN). Halaman `/` menunggu tiap pemuat paling lama 6 detik lalu memakai bawaan. Tanpa migrasi Fase 1: kartu dimuat dari kolom lama dan slug diturunkan dari nama (jalur darurat).
+
+**Catatan setelah terap:** judul bagian layanan memakai `{jumlah}` (hitungan dari data); judul lama "10 Layanan..." di `landing_content` tidak disalin. Blok mati tidak tampil sama sekali; tautan Kebijakan Privasi tetap tampil di luar blok footer.
+
+**LANGKAH ADMIN WAJIB setelah terap: isi Deskripsi tiap layanan.** Deskripsi lama kartu (baris `landing_content` bertipe `service`) SENGAJA tidak disalin otomatis (pencocokan nama ke layanan bersifat kabur dan melanggar prinsip B1). Setelah migrasi dan deploy, buka `/admin/layanan`, ubah tiap layanan, dan isi kolom Deskripsi (juga Instansi dan website terkait); tanpa itu kartu dan popup tampil tanpa deskripsi. Bantuan baca-saja (pemilik, tidak mengubah data) untuk menyalin teks lama:
+
+```sql
+-- 1) Teks lama kartu layanan (landing_content, tipe service), per urutan
+SELECT item_order,
+       max(item_value) FILTER (WHERE item_key = 'title')       AS judul_lama,
+       max(item_value) FILTER (WHERE item_key = 'description') AS deskripsi_lama
+FROM public.landing_content
+WHERE section = 'service'
+GROUP BY item_order
+ORDER BY item_order;
+
+-- 2) Layanan yang perlu diisi (deskripsi kosong ditandai)
+SELECT nama, slug, (deskripsi IS NULL OR btrim(deskripsi) = '') AS deskripsi_kosong
+FROM public.layanan
+WHERE aktif = true
+ORDER BY urutan, nama;
+```
+
+Jalankan keduanya lalu cocokkan judul lama dengan nama layanan secara manual.
+
+## Fase 3 layanan dinamis: Koordinator, akses data per orang, rekap terpadu (202610290001, 202610290002) — BELUM DITERAPKAN
+
+| Versi | Berkas | Isi | Status |
+|---|---|---|---|
+| 202610290001 | `202610290001_koordinator_akses_data.sql` | Kolom `petugas.koordinator` (default false) + pemicu `trg_petugas_cabut_koordinator` (penanda dicabut atomik saat role/layanan_id berubah); RPC `fo_status_qr` (kategori status QR tanpa PII untuk FO/Admin); helper `staf_lingkup`, `boleh_data_pelayanan`, `kunjungan_operasional`; **membalik 202610140013**: `boleh_penanganan`/`boleh_kunjungan` diganti isinya (lingkup data per orang/Koordinator + jendela operasional = hanya pekerjaan terbuka); policy baca `pelayanan_oss`/`pelayanan_perizinan` -> `boleh_baca_pendataan`; policy tulis draf -> `boleh_sunting_pendataan` (pemilik + pemegang lama yang diambil alih Koordinator); `rekap_harian_staff_read` dan arsip `visit_select_own` -> admin + Koordinator unit; tabel `ambil_alih_pendataan` (SELECT admin/pemegang lama/baru); RPC `koordinator_ambil_alih_tiket`, `koordinator_ambil_alih_fo`, `ambil_alih_tandai_dilihat` (audit_log + `queue_notifikasi`). | **DITULIS, BELUM DITERAPKAN** |
+| 202610290002 | `202610290002_rekap_terpadu.sql` | Fungsi baca SECURITY DEFINER: dasar internal `rekap_pelayanan_inti` (satu definisi "dilayani"; lingkup ketat; tanpa GRANT ke klien), `lingkup_data_saya`, `rekap_data_pelayanan` (jsonb, halaman maks 1000 + keyset), `rekap_harian_terpadu`/`rekap_kinerja_petugas` (agregat SQL satu jsonb). Tanpa tabel/policy/data baru. | **DITULIS, BELUM DITERAPKAN** |
+
+**Urutan terap (hanya pemilik, atomik, dry-run dulu):** `202610270001`, `202610270002`, `202610280001`, lalu `202610290001`, lalu `202610290002` (0001 menolak berjalan bila `instansi`/`homepage_blok` belum ada; 0002 menolak bila `staf_lingkup` belum ada).
+
+```bash
+node scripts/apply-migration.mjs supabase/migrations/202610290001_koordinator_akses_data.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202610290001_koordinator_akses_data.sql --atomic
+node scripts/apply-migration.mjs supabase/migrations/202610290002_rekap_terpadu.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202610290002_rekap_terpadu.sql --atomic
+```
+
+**Deploy dan migrasi WAJIB dalam SATU jendela** (urutan: terapkan 0001 + 0002, lalu deploy klien; atau sebaliknya dengan jeda sesingkat mungkin). Di antara keduanya halaman Rekap kosong (409).
+
+**Perilaku bila belum diterapkan (aplikasi tidak crash):** halaman Rekap menampilkan pemberitahuan "Rekap terpadu belum tersedia" (API `/api/admin/rekap/terpadu[/export]` menjawab 409 `MIGRASI_BELUM_DITERAPKAN`); Kelola Petugas tidak menampilkan tombol Koordinator (PATCH penanda = 409); Antrian/Penanganan FO membaca penanda = false (tanpa tombol ambil alih Koordinator); sunting draf Pendataan = pemilik saja (RPC `boleh_sunting_pendataan` belum ada); kartu pemberitahuan ambil alih tidak tampil. RLS lama (keterbukaan 202610140013) tetap berlaku sampai 0001 diterapkan.
+
+**Daftar periksa pemilik:**
+1. Sebelum terap: pastikan Fase 1/Fase 2 (`202610270001`, `202610270002`, `202610280001`) sudah diterapkan.
+2. Setelah 0001: tandai Koordinator di `/admin/petugas` (tombol "Jadikan Koordinator" per akun FO/Petugas Layanan; penanda otomatis dicabut bila role/layanan akun diubah). Tanpa penanda, **semua** FO/petugas hanya melihat data yang ia tangani sendiri; selain itu hanya pekerjaan yang masih terbuka (antrean berjalan, reservasi hari ini). Beri tahu staf bahwa riwayat rekan kini tertutup (ADR 0003).
+3. Uji baca-saja dengan akun FO biasa, FO Koordinator, Petugas biasa, Petugas Koordinator: buka `/admin/rekap` rentang 7 hari; angka harus sesuai lingkup. Kunjungan/dasbor/Antrian FO biasa: kunjungan rekan yang sudah ditutup (termasuk hari ini) tidak terbaca; arsip `visit` hanya admin/Koordinator (keputusan K1/K15 rencana Fase 3).
+4. Uji ambil alih pada antrean nyata (tiket `dilayani` milik rekan di layanan yang sama), lalu periksa `audit_log` (`aksi = 'koordinator_ambil_alih'`) dan `ambil_alih_pendataan`.
+5. Uji perilaku RLS (`npm run test:rls`) **belum** mencakup Fase 3: kebijakan baru hanya diuji statis (`supabase/migrations/koordinator_akses_data.test.ts`, `rekap_terpadu.test.ts`).
+
+**Rollback (urutan terbalik, atomik, dry-run dulu):** `docs/rollback-rekap-terpadu-202610290002.sql` (menghapus fungsi rekap baru), lalu `docs/rollback-koordinator-akses-data-202610290001.sql` (memulihkan `boleh_penanganan` 0013 + penandanya, `boleh_kunjungan` 0009, policy Pendataan/rekap_harian/visit lama, mencabut hak RPC ambil alih; kolom `petugas.koordinator` dan tabel `ambil_alih_pendataan` dibiarkan, B1). Rollback 0012/0013 kini menolak selama penanda 0029 masih ada.
+
+## Fase 4 layanan dinamis: Pendataan Khusus, selesai tiket/chat dengan pendataan (202610300001, 202610300002) — BELUM DITERAPKAN
+
+| Versi | Berkas | Isi | Status |
+|---|---|---|---|
+| 202610300001 | `202610300001_pendataan_khusus.sql` | (batas 40 isian + urutan dijaga trigger di bawah kunci penasihat per Layanan; RPC `pendataan_khusus_urutkan` (urutan atomik) dan `pendataan_khusus_peta` (peta jawaban untuk rekap, SECURITY INVOKER = RLS berlaku); topik "Lainnya" hanya Layanan aktif.) Tabel `pendataan_khusus_field` (definisi isian per Layanan; 7 jenis; trigger DB: jenis terkunci dan tidak dapat dihapus bila pernah diisi, `layanan_id` tetap, ditolak untuk Layanan ber-formulir tetap, maks 40 isian, opsi 2-20 butir) dan `pendataan_khusus_jawaban` (per tahap penanganan; kunci `field_id` + salinan label/jenis; FK RESTRICT; klien hanya SELECT); helper `boleh_baca_khusus` (= `boleh_data_pelayanan` Fase 3); fungsi internal `pendataan_khusus_validasi`/`pendataan_khusus_simpan`; topik awal "Lainnya" untuk Layanan tanpa topik (backfill `INSERT` + trigger Layanan baru). | **DITULIS, BELUM DITERAPKAN** |
+| 202610300002 | `202610300002_selesai_dengan_pendataan.sql` | RPC `layanan_selesai_khusus` (memanggil `layanan_selesai` apa adanya + simpan Khusus) dan `chat_selesai_khusus` (memanggil `chat_selesai` + lengkapi identitas kunjungan chat + simpan Khusus tahap Layanan); fungsi internal `pendataan_identitas_validasi`. Tidak mengganti `layanan_selesai`/`chat_selesai`. | **DITULIS, BELUM DITERAPKAN** |
+
+**`202610300001` dan `202610300002` DITERAPKAN BERSAMA dalam satu jendela deploy** (jangan berhenti di 0001: dengan 0001 saja isian Khusus sudah tampil tetapi RPC selesai belum ada; klien hanya turun ke alur lama bila tidak ada isian wajib/jawaban, selain itu menampilkan pesan "belum aktif sepenuhnya di server").
+
+**Urutan terap (hanya pemilik, atomik, dry-run dulu):** setelah `202610270001`, `202610270002`, `202610280001`, `202610290001`, `202610290002`: lalu `202610300001`, lalu `202610300002` (0001 menolak berjalan bila `boleh_data_pelayanan` belum ada; 0002 menolak bila `pendataan_khusus_simpan` belum ada).
+
+```bash
+node scripts/apply-migration.mjs supabase/migrations/202610300001_pendataan_khusus.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202610300001_pendataan_khusus.sql --atomic
+node scripts/apply-migration.mjs supabase/migrations/202610300002_selesai_dengan_pendataan.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202610300002_selesai_dengan_pendataan.sql --atomic
+```
+
+**Perilaku bila belum diterapkan (aplikasi tidak crash):** dialog selesai tiket Layanan non-OSS memakai `layanan_selesai` lama; dialog selesai chat hanya topik + catatan (blok identitas dan Pendataan Khusus tersembunyi karena tabel tidak ada); `/admin/layanan/[id]/pendataan` dan route `api/admin/layanan/[id]/pendataan-khusus` menjawab 409 `MIGRASI_BELUM_DITERAPKAN`; Rekap Data Pelayanan tanpa kolom Khusus; `POST /api/chat/sesi` `selesaikan` dengan `khusus`/`identitas` menjawab 409. Pilihan topik di langkah selesai OSS/Non OSS memakai tabel `topik_penanganan` yang sudah ada (tidak butuh migrasi).
+
+**Daftar periksa pemilik:**
+1. Sebelum terap: pastikan migrasi Fase 1-3 sudah diterapkan. Setelah 0001, buka `/admin/topik`: setiap Layanan tanpa topik kini punya topik "Lainnya" (ganti nama/nonaktifkan bila perlu; Layanan tanpa topik aktif tidak bisa menyelesaikan tiket/chat).
+2. Di `/admin/layanan` klik "Pendataan Khusus" pada Layanan non-OSS (mis. BPJS, Bank Lampung) dan susun isian. Isian yang sudah pernah diisi hanya bisa disembunyikan, jenisnya terkunci. Layanan OSS/Non OSS memakai formulir tetap (tombol tidak tampil).
+3. Uji: selesaikan satu tiket hasil eskalasi di Layanan ber-Khusus (isian tampil, wajib ditegakkan), satu live chat oleh petugas Layanan (identitas terprapengisi dari profil, Khusus tampil) dan satu live chat oleh FO (identitas saja). Periksa `/admin/rekap` > Data Pelayanan dengan satu Layanan dipilih: kolom `[Khusus] ...` dan Excel; kanal Live Chat.
+4. Uji OSS/Non OSS: langkah 3 wizard meminta "Topik penanganan" (wajib bila Layanan punya topik aktif).
+5. RLS jawaban Khusus belum diuji perilaku (`npm run test:rls` belum mencakup): hanya kontrak statis (`supabase/migrations/pendataan_khusus.test.ts`, `selesai_dengan_pendataan.test.ts`).
+6. `audit_log` kini memuat nilai lama/baru identitas yang dikoreksi petugas saat chat selesai (`chat_pendataan_identitas`). `audit_log` hanya terbaca Admin dan **tidak** dianonimkan job retensi (lihat `docs/KEBIJAKAN_PDP.md`): tindak lanjut bila DPO menilai perlu.
+7. Rollback tidak disediakan: migrasi aditif; bila perlu menonaktifkan fitur, sembunyikan semua isian Khusus di Admin (alur selesai kembali seperti sebelumnya).
+
+## Fase 5 layanan dinamis: live chat per Layanan, bot di luar jam, email ke petugas (202610310001, 202610310002, 202610310003) — BELUM DITERAPKAN
+
+| Versi | Berkas | Isi | Status |
+|---|---|---|---|
+| 202610310001 | `202610310001_chat_lingkup_percakapan.sql` | `boleh_chat_sesi` (lingkup baca chat staf, memakai `staf_lingkup()` Fase 3); policy baca `chat_sesi_owner_select`, `chat_pesan_owner_select` diganti (pemilik ATAU `boleh_chat_sesi`) dan UPDATE `chat_sesi_petugas_update` menjadi pemilik-saja ( **menutup celah Fase 3: semua FO/petugas Layanan tak lagi membaca semua chat**); RPC `chat_percakapan_saya()` (daftar percakapan = satu baris per pengunjung+Layanan, diturunkan dari `chat_sesi`, tanpa tabel/kolom baru); indeks `(pengunjung_id, layanan_id, created_at)`. | **DITULIS, BELUM DITERAPKAN** |
+| 202610310002 | `202610310002_chat_luar_jam.sql` | `chat_layanan_status` (satu fungsi "petugas chat tersedia?" = `is_layanan_buka_jadwal` dan bukan `hari_tanpa_layanan`); `chat_minta_petugas` (eskalasi, pesan tunggu, antrean email berdedup per sesi per penerima); `chat_selesai` (salinan + anti-drift; kalimat survei Q24 dihapus); `tutup_chat_tertinggal` (salinan + anti-drift; sesi `eskalasi` tidak ditutup sebelum ada hari operasional penuh, batas 14 hari); helper `chat_ada_hari_kerja_sejak`. | **DITULIS, BELUM DITERAPKAN** |
+| 202610310003 | `202610310003_chat_perbaikan_review.sql` | Perbaikan review akhir: `chat_boleh_riwayat` (izin riwayat lintas sesi: admin, FO Koordinator, petugas Layanan jangkar yang Koordinator/penangan kini); `chat_sesi_jaga_rpc` (salinan 0009 + `pengunjung_id` tak dapat dipindah); gerbang "hari tanpa pelayanan" **per Layanan** (salinan 0012: `chat_sesi_eskalasi_kunjungan`, `chat_pesan_eskalasi_kunjungan`, `chat_ambil`, `chat_teruskan`); `kunjungan_operasional` (salinan Fase 3 + chat online dengan penanganan terbuka selalu operasional). | **DITULIS, BELUM DITERAPKAN** |
+
+**Urutan terap (hanya pemilik, atomik, dry-run dulu, ketiganya dalam satu jendela):** setelah `202610270001`, `202610270002`, `202610280001`, `202610290001`, `202610290002`, `202610300001`, `202610300002`: lalu `202610310001`, `202610310002`, `202610310003` (sebelum `202611010001`; 0001 menolak berjalan bila `staf_lingkup` belum ada; 0002 menolak bila `boleh_chat_sesi`/`is_layanan_buka_jadwal`/kolom email verifikasi petugas belum ada).
+
+```bash
+node scripts/apply-migration.mjs supabase/migrations/202610310001_chat_lingkup_percakapan.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202610310001_chat_lingkup_percakapan.sql --atomic
+node scripts/apply-migration.mjs supabase/migrations/202610310002_chat_luar_jam.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202610310002_chat_luar_jam.sql --atomic
+node scripts/apply-migration.mjs supabase/migrations/202610310003_chat_perbaikan_review.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202610310003_chat_perbaikan_review.sql --atomic
+```
+
+**Perilaku bila belum diterapkan (aplikasi tidak crash):** daftar percakapan disusun dari `select chat_sesi` (tanpa pratinjau pesan); status petugas memakai kalender global lama (Sabtu/Minggu/`hari_libur` + tutup 16:00 WIB) dan bot tetap memakai `muatKalender`; "Hubungkan ke Petugas" menjawab 409 `MIGRASI_BELUM_DITERAPKAN` lalu klien memakai jalur lama (pertanyaan ke AI); route chat staf memakai aturan TS lama (FO semua, petugas Layanannya) karena `boleh_chat_sesi` belum ada; pesan penutup lama tetap memuat kalimat survei tetapi disaring di tampilan. Riwayat lintas sesi (semua sesi pengunjung+Layanan sama) bekerja tanpa migrasi (route memakai service-role setelah otorisasi).
+
+**Daftar periksa pemilik:**
+1. **Email petugas:** email "permintaan chat" hanya terkirim ke petugas aktif Layanan itu yang `email_notifikasi`-nya **terverifikasi** (menu Profil). Bila tidak ada, dikirim ke FO aktif ber-email terverifikasi; bila tetap tidak ada, tidak ada email (pengunjung tetap melihat teks tunggu). Pastikan tiap Layanan punya minimal satu petugas ber-email terverifikasi dan `CRON_SECRET`/`RESEND_API_KEY` terpasang (pengiriman lewat `api/notif/send`).
+2. Uji luar jam: uji setelah jam tutup/akhir pekan (atau ubah jadwal Layanan uji di `/admin/settings/jadwal`): spanduk "Petugas ... sedang tidak tersedia", bot menjawab, tombol "Hubungkan ke Petugas" menampilkan "Mohon menunggu respon dari petugas; petugas akan menjawab pada jam kerja." dan satu email tiba (klik ulang tidak menggandakan). Layanan tanpa bot: pesan pertama otomatis jadi permintaan petugas.
+3. Uji lingkup: akun FO biasa **tidak** dapat membuka chat yang sudah selesai milik FO lain (`/admin/chat` > "Tampilkan selesai"); FO/Petugas Koordinator dapat. Chat terbuka (menunggu/aktif) tetap terlihat FO dan petugas Layanannya.
+4. Jadwal per Layanan = satu sumber kebenaran untuk chat (spec §4.4): Layanan yang buka Sabtu = buka; gerbang "hari tanpa pelayanan" 2026-10-14 (Sabtu/Minggu/libur global) tidak lagi dipakai chat (fungsi `hari_tanpa_layanan` dibiarkan). Periksa jadwal tiap Layanan di `/admin/settings/jadwal`.
+5. Chat `eskalasi` yang menunggu akhir pekan tidak ditutup otomatis sebelum ada hari operasional penuh; sesi `aktif` tetap ditutup setelah 24 jam tanpa aktivitas.
+6. RLS chat belum diuji perilaku (`npm run test:rls` belum mencakup): hanya kontrak statis (`supabase/migrations/chat_lingkup_percakapan.test.ts`, `chat_luar_jam.test.ts`).
+6b. Email permintaan petugas butuh login Google (JWT anonim ditolak di server), sesi dengan minimal satu pesan pengunjung, dan didedup per percakapan + hari buka berikutnya.
+7. Koordinator mengambil alih chat (K7 Fase 3) ditunda; Admin tetap dapat mengambil alih.
+8. Rollback tidak disediakan sebagai berkas (aditif): kembalikan policy lama dengan DDL di komentar kepala 0001 dan `chat_selesai`/`tutup_chat_tertinggal` dari `202610140009`/`202610140012`.
+
 ## Migrasi forward (status penerapan produksi)
 
 > **Status per 2026-10-14 malam:** semua migrasi di tabel ini sudah DITERAPKAN ke produksi (0002-0009, 0011, 0012, 0013 pada ±17:52-17:57 WIB, tanpa 0010 karena tidak ada berkasnya). Terapan atomik (`apply-migration --atomic`, dry-run lalu COMMIT) dan diverifikasi read-only. Ledger `supabase_migrations.schema_migrations` sudah diisi (12 baris, `scripts/fill-migration-ledger.mjs --apply --yes`; verifikasi `docs/analysis/LEDGER-VERIFIKASI-2026-10-14.md`). Perintah "Cara menerapkan" di bawah dipertahankan sebagai catatan prosedur, bukan langkah yang masih tertunda. Yang BELUM TERBUKTI: tampilan di browser, konkurensi sejati, kueri rekap FO pada PostgREST sungguhan, `session_id` JWT stabil setelah refresh; flag `sesi_tunggal_aktif` masih `false`.
@@ -1009,3 +1175,105 @@ node scripts/fill-migration-ledger.mjs                    # dry-run pengisi ledg
 ```
 
 Keduanya membaca `DIRECT_URL` dari `.env.local` (nilainya tidak pernah dicetak), memakai `BEGIN READ ONLY` + SELECT saja, dan berakhir dengan ROLLBACK. Parser penanda ada di `scripts/lib/migration-markers.mjs`; ujinya `src/test/migration-markers.test.ts`. Ujinya ikut `npm test` (ditempatkan di `src/test/` karena `vitest.config.ts` hanya meng-include `src/**` dan `supabase/migrations/**`).
+
+## Fase 6 layanan dinamis: saran pengunjung lama pada isian Nama/HP Front Office (202611010001) — BELUM DITERAPKAN
+
+| Versi | Berkas | Isi | Status |
+|---|---|---|---|
+| 202611010001 | `202611010001_fo_cari_pengunjung.sql` | `hp_normal(text)` (IMMUTABLE); indeks trigram `idx_kunjungan_nama_trgm`, `idx_kunjungan_hp_trgm`; RPC `fo_cari_pengunjung(p_q)` (FO/admin aktif; min 3 karakter/digit di server; maks 5 orang; HP disamarkan; tanpa data teranonimkan dan > 730 hari); RPC `fo_ambil_pengunjung(p_id)` (identitas penuh satu kunjungan terpilih; diaudit di `audit_log`; 60 per 10 menit per akun). Aditif: tanpa DELETE/DROP/UPDATE nilai lama, tanpa ekstensi baru. | **DITULIS, BELUM DITERAPKAN** |
+
+**Urutan terap (hanya pemilik, atomik, dry-run dulu):** SESUDAH `202610310002` (dan seluruh rantai Fase 1-5 sebelumnya). Migrasi menolak berjalan bila `staf_lingkup` (202610290001), `sesi_valid` atau ekstensi `pg_trgm` belum ada.
+
+```bash
+node scripts/apply-migration.mjs supabase/migrations/202611010001_fo_cari_pengunjung.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202611010001_fo_cari_pengunjung.sql --atomic
+```
+
+**Perilaku bila belum diterapkan (aplikasi tidak crash):** formulir walk-in mem-probe RPC sekali; bila tidak ada, isian Nama/Nomor HP tetap input biasa (tanpa saran). Banner "Pernah berkunjung" lama sudah dihapus (sejak Fase 3 hanya menemukan kunjungan milik sendiri); datalist asal/instansi tidak berubah.
+
+**Daftar periksa pemilik:**
+1. Dry-run, lalu terapkan atomik setelah `202610310002`.
+2. Sebagai akun FO: buka Registrasi > Walk-in, ketik 3 huruf nama pengunjung yang pernah datang: dropdown muncul di bawah isian Nama (<= 5 saran, HP tersamar `0812****789`). Pilih satu: nama/HP/email/asal/kategori terisi; "Kosongkan isian" membatalkan.
+3. Ketik 3 angka di Nomor HP: saran muncul juga. Ketik nama baru yang belum pernah ada: tidak ada saran, formulir terkirim seperti biasa.
+4. Sebagai akun Petugas Layanan atau pengunjung: `select fo_cari_pengunjung('budi')` ditolak `FORBIDDEN` (42501); isian Nama tidak menampilkan saran.
+5. Pastikan pengunjung yang sudah dianonimkan (nama `[anonim]`) tidak muncul.
+6. `select aksi, count(*) from audit_log where aksi = 'fo_ambil_pengunjung' group by 1` bertambah setiap kali saran dipilih (detail hanya id kunjungan, tanpa PII).
+7. `EXPLAIN` pada `fo_cari_pengunjung` dengan tabel `kunjungan` besar memakai indeks trigram (pantau; bila lambat, laporkan).
+8. `buku_tamu` terbaca semua FO untuk semua tanggal: SENGAJA (keputusan pemilik 2026-10-27); hanya ditandai nama pencatat di halaman Buku Tamu.
+9. Rollback: `docs/rollback-fo-cari-pengunjung-202611010001.sql` (hanya menghapus objek baru; baris `audit_log` dibiarkan).
+
+## Penutupan celah `tiket_antrean` (202611010002) — BELUM DITERAPKAN
+
+| Versi | Berkas | Isi | Status |
+|---|---|---|---|
+| 202611010002 | `202611010002_tiket_antrean_lingkup.sql` | `boleh_tiket_baca(kunjungan, layanan, tanggal)` (SECURITY DEFINER) dan policy `tiket_staff_select` diganti: `TO authenticated`, admin / FO Koordinator semua; selain itu `boleh_kunjungan()` atau, HARI INI (WIB), FO semua tiket dan petugas tiket layanannya | DITULIS, BELUM DITERAPKAN |
+
+**Urutan terap (hanya pemilik, atomik, dry-run dulu):** SESUDAH `202611010001` (menolak berjalan bila `staf_lingkup`/`boleh_kunjungan` belum ada).
+
+```bash
+node scripts/apply-migration.mjs supabase/migrations/202611010002_tiket_antrean_lingkup.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202611010002_tiket_antrean_lingkup.sql --atomic
+```
+
+**Dampak yang terlihat pengguna:** FO dan petugas biasa tidak lagi membaca tiket HARI-HARI SEBELUMNYA milik rekan (mis. halaman Antrian dengan tanggal lampau, hitungan dasbor tanggal lampau). Hari ini tetap utuh (antrean, hitungan "selesai", rata-rata durasi). Koordinator dan admin sesuai lingkup. Riwayat lintas orang tersedia lewat halaman Rekap.
+
+**Daftar periksa pemilik:** (1) dry-run lalu terapkan; (2) sebagai FO/petugas biasa buka Antrian hari ini: daftar, hitungan selesai, dan rata-rata durasi sama seperti sebelumnya; (3) buka tanggal lampau: tiket rekan tidak muncul, tiket sendiri tetap; (4) `EXPLAIN` pada `select count(*) from tiket_antrean where tanggal = current_date` (policy memanggil fungsi per baris; pantau pada data besar); (5) rollback: `docs/rollback-tiket-antrean-lingkup-202611010002.sql`.
+
+**Terbukti dengan:** `node scripts/lokal-rantai/skenario-akses-data.mjs` (PGlite, seluruh rantai migrasi pada skema asli; sebelum migrasi ini 3 cek tiket gagal, sesudahnya 115/115 lolos). `buku_tamu` sengaja TIDAK dibatasi (keputusan pemilik): meja FO bersama, hanya ditandai nama pencatat di UI.
+
+## Identitas pengunjung satu kesatuan (202611010003, 202611010004) — BELUM DITERAPKAN
+
+Keputusan pemilik 2026-10-27: `kunjungan` adalah DATA INDUK yang diisi FO (email boleh kosong di FO); pengunjung yang dieskalasi wajib punya email nyata saat layanan selesai, dan identitas yang dilengkapi petugas layanan kembali ke data induk. Rencana: `docs/superpowers/plans/2026-11-01-identitas-satu-kesatuan.md`.
+
+| Versi | Berkas | Isi | Status |
+|---|---|---|---|
+| 202611010003 | `202611010003_identitas_satu_kesatuan.sql` | `email_nyata`, `kunjungan_email_efektif`, `kunjungan_terapkan_identitas` (tulis balik, nilai terbaru menang, audit); trigger formulir OSS/Non OSS selesai (email nyata wajib + tulis balik); trigger `tiket_antrean` (tiket tidak bisa selesai tanpa email); `layanan_selesai_khusus` 5 argumen (+`p_identitas`, menggantikan 4 argumen); `chat_selesai_khusus` (identitas dan email diperiksa sebelum `chat_selesai`); FO pencatat membaca tahap, formulir, dan Pendataan Khusus kunjungannya (read-only) | DITULIS, BELUM DITERAPKAN |
+| 202611010004 | `202611010004_backfill_identitas_kunjungan.sql` | BACKFILL data lama: mengisi kolom KOSONG `kunjungan` (email, HP, instansi) dari formulir selesai terbaru; tidak menimpa; jejak per kunjungan di `audit_log` | DITULIS, BELUM DITERAPKAN. **Mengubah data nyata** |
+
+**Urutan terap (hanya pemilik, atomik, dry-run dulu):** `202611010003` SESUDAH `202611010002`, dalam satu jendela dengan deploy klien. `202611010004` hanya SESUDAH `202611010003` dan setelah daftar periksa di bawah.
+
+```bash
+node scripts/apply-migration.mjs supabase/migrations/202611010003_identitas_satu_kesatuan.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202611010003_identitas_satu_kesatuan.sql --atomic
+# sesudah deploy klien dan pemeriksaan:
+node scripts/apply-migration.mjs supabase/migrations/202611010004_backfill_identitas_kunjungan.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202611010004_backfill_identitas_kunjungan.sql --atomic
+```
+
+**Perilaku yang berubah (beritahu petugas):** tiket layanan TIDAK bisa diselesaikan bila pengunjung belum punya email nyata (formulir OSS/Non OSS: kolom Email wajib email valid, "Tidak berlaku" ditolak, tombol isian cepat email dicabut; layanan tanpa formulir: dialog Selesaikan punya isian "Email pengunjung"). Kunjungan yang selesai di FO tanpa eskalasi tidak terkena. Email akun Google/reservasi pengunjung dihitung sebagai email yang ada. Tiket lama yang belum selesai dan tak punya email akan menolak diselesaikan sampai email diisi.
+
+**Klien lama + migrasi baru:** form OSS/Non OSS lama yang mengirim "Tidak berlaku" untuk email ditolak `EMAIL_WAJIB` (HTTP 422); karena itu terapkan migrasi bersama deploy klien.
+
+**Daftar periksa pemilik:**
+1. Dry-run lalu terapkan `202611010003` bersama deploy; `scripts/lokal-rantai/skenario-identitas.mjs` (PGlite, 46 cek) sudah membuktikan alurnya pada skema asli.
+2. Buat pengunjung walk-in TANPA email di FO, eskalasi ke Helpdesk OSS, petugas OSS menyelesaikan dengan email nyata: `select email, kontak_hp, asal_instansi from kunjungan where id = ...` terisi; `select * from audit_log where aksi = 'pendataan_identitas_disatukan'` memuat nilai lama/baru; email survei terkirim ke email itu.
+3. Coba selesaikan dengan "Tidak berlaku" di Email: ditolak dengan pesan jelas; tiket tetap `dilayani`.
+4. Sebagai FO pencatat: halaman Penanganan > Riwayat menampilkan "Email: ..." dan "layanan selesai"; FO lain tidak melihat hasil itu.
+5. Sebelum backfill, hitung baca-saja: `select count(*) from kunjungan k where coalesce(btrim(k.email),'')='' and exists (select 1 from pelayanan_oss o where o.kunjungan_id=k.id and o.status_draft='selesai' and o.email ~* '^[a-z0-9._%+-]+@[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$')` (dan `pelayanan_perizinan`).
+6. Backfill tidak mengirim notifikasi (status tidak berubah). Rollback: `docs/rollback-backfill-identitas-kunjungan-202611010004.sql` (hanya nilai yang masih sama).
+7. Rollback `202611010003`: `docs/rollback-identitas-satu-kesatuan-202611010003.sql` (identitas yang sudah ditulis balik tidak dikembalikan; jejak di `audit_log`).
+8. Tidak dicakup: chat live (pengunjung login Google selalu punya email, tidak ada perubahan antarmuka); FO Koordinator/FO lain membaca hasil lengkap hanya lewat data induk atau sesuai lingkup Fase 3.
+
+## Data Pelayanan = Layanan lain (202611010005) — BELUM DITERAPKAN
+
+Di Rekap, Helpdesk OSS dan Non OSS (volume terbanyak) punya tab sendiri; tab **Data Pelayanan** kini berisi Layanan lain saja. Pengecualian dilakukan di DB agar total, halaman, dan unduhan Excel ikut benar.
+
+| # | Berkas | Isi | Status |
+|---|---|---|---|
+| 202611010005 | `202611010005_rekap_data_tanpa_form.sql` | `rekap_data_pelayanan` mendapat argumen ke-9 `p_tanpa_form boolean DEFAULT false`: bila TRUE, baris unit `layanan` milik Layanan berformulir (`layanan.form_pendataan IS NOT NULL`) dikecualikan di total dan di halaman; baris Front Office tidak pernah dikecualikan. Tanda tangan 8 argumen lama di-DROP dalam transaksi yang sama | DITULIS, BELUM DITERAPKAN |
+
+Syarat: setelah `202610290002`. Hanya mengganti satu fungsi baca (tanpa perubahan data); lingkup akses §6.1 tetap ditegakkan `rekap_pelayanan_inti`; Rekap Harian dan Kinerja Petugas tidak berubah (tetap memuat semua Layanan).
+
+```bash
+node scripts/apply-migration.mjs supabase/migrations/202611010005_rekap_data_tanpa_form.sql --atomic --dry-run
+node scripts/apply-migration.mjs supabase/migrations/202611010005_rekap_data_tanpa_form.sql --atomic
+```
+
+**Urutan deploy:** terapkan migrasi SEBELUM deploy aplikasi. Sebelum migrasi ada, tab Data Pelayanan menjawab 409 `MIGRASI_BELUM_DITERAPKAN` (aplikasi mengirim `p_tanpa_form`); tab Helpdesk OSS / Non OSS tidak mengirimnya dan tetap berjalan.
+
+**Daftar periksa pemilik:**
+1. Dry-run lalu terapkan; `scripts/lokal-rantai/skenario-akses-data.mjs` (PGlite, 132 cek, 17 di antaranya untuk migrasi ini) sudah membuktikan: total dan halaman tersaring, Front Office tetap ada, lingkup tidak melebar, panggilan 8 argumen bernama tetap jalan, anon ditolak.
+2. Sebagai Admin pada rentang tanggal yang sama: tab Data Pelayanan tidak memuat baris Helpdesk OSS / Non OSS, dan total tab Helpdesk OSS + Non OSS + Data Pelayanan sama dengan total Data Pelayanan sebelum migrasi ini (Semua unit, Semua Layanan).
+3. Unduh Excel dari tab Data Pelayanan: lembar Keterangan menyebut "Layanan lain (tanpa Helpdesk OSS dan Non OSS)"; `audit_log` `export_xlsx` memuat `tanpa_form: true`.
+4. Petugas Helpdesk OSS: tab Data Pelayanan tidak muncul (lingkupnya hanya Layanan berformulir); datanya di tab Helpdesk OSS.
+5. Rollback: `docs/rollback-rekap-data-tanpa-form-202611010005.sql` (mengembalikan fungsi 8 argumen 202610290002; jalankan SEBELUM `docs/rollback-rekap-terpadu-202610290002.sql`). Setelah rollback, tab Data Pelayanan menjawab 409 sampai kode dikembalikan.

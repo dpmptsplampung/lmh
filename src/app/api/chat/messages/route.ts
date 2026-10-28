@@ -4,6 +4,9 @@ import { z } from 'zod';
 import { createClient as createServerClient } from '@/lib/supabase/server';
 import { MutasiError, mutasiInsert } from '@/lib/supabase/mutate';
 import { catatMutasi } from '@/lib/observability/catat-mutasi';
+import { bolehAksesSesiStaf, bolehRiwayatPenuh } from '@/lib/chat/akses';
+import { objekBelumAda } from '@/lib/akses-data/galat';
+import { muatRiwayatPercakapan } from '@/lib/chat/riwayat';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,6 +24,10 @@ function getServiceClient() {
 
 const getQuerySchema = z.object({
   sesi_id: z.string().uuid(),
+  // Fase 5: riwayat percakapan lintas sesi (semua sesi pengunjung + Layanan yang sama), dipaginasi mundur.
+  riwayat: z.enum(['1']).optional(),
+  sebelum: z.string().datetime({ offset: true }).optional(),
+  limit: z.string().regex(/^\d{1,3}$/).optional(),
 });
 
 // pengirim is derived server-side; body only carries sesi_id + isi.
@@ -81,10 +88,23 @@ export function canAccessSesi(
   return !!sesi.pengunjung_id && sesi.pengunjung_id === actor.pengunjungId;
 }
 
+/** Pengunjung: pemilik sesi. Staf: lingkup DB (boleh_chat_sesi, Fase 5) dengan JWT pengguna; aturan TS lama bila RPC belum ada. */
+async function bolehAkses(
+  serverClient: Awaited<ReturnType<typeof createServerClient>>,
+  actor: Actor,
+  sesi: { id: string; pengunjung_id: string | null; layanan_id: string | null },
+): Promise<boolean> {
+  if (actor.kind !== 'staff') return canAccessSesi(actor, sesi);
+  return bolehAksesSesiStaf(serverClient, sesi.id, () => canAccessSesi(actor, sesi));
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const parsed = getQuerySchema.safeParse({
     sesi_id: searchParams.get('sesi_id'),
+    riwayat: searchParams.get('riwayat') ?? undefined,
+    sebelum: searchParams.get('sebelum') ?? undefined,
+    limit: searchParams.get('limit') ?? undefined,
   });
   if (!parsed.success) {
     return NextResponse.json({ error: 'Valid sesi_id is required' }, { status: 400 });
@@ -118,8 +138,36 @@ export async function GET(request: NextRequest) {
     console.error('[api/chat/messages GET] sesi error:', sesiErr);
     return NextResponse.json({ error: 'Failed to fetch messages' }, { status: 500 });
   }
-  if (!sesiData || !canAccessSesi(actor, sesiData)) {
+  if (!sesiData || !(await bolehAkses(serverClient, actor, sesiData))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  // Riwayat percakapan (Fase 5): seluruh sesi pengunjung + Layanan yang sama. Lolos otorisasi sesi jangkar = boleh
+  // melihat percakapan itu (K4). Sesi tanpa pemilik (pengunjung dianonimkan) hanya punya pesannya sendiri.
+  if (parsed.data.riwayat === '1' && sesiData.pengunjung_id && sesiData.layanan_id) {
+    try {
+      // A1: lintas sesi dengan service-role HANYA bila chat_boleh_riwayat (admin, FO Koordinator, petugas Layanan jangkar
+      // Koordinator/penangan kini). Staf lain: klien berJWT pengguna, jadi RLS chat_pesan menyaring per sesi.
+      let klienRiwayat: typeof adminClient | Awaited<ReturnType<typeof createServerClient>> = adminClient;
+      if (actor.kind === 'staff') {
+        const penuh = await bolehRiwayatPenuh(serverClient, sesiData.id);
+        if (penuh === false) klienRiwayat = serverClient;
+      }
+      const hasil = await muatRiwayatPercakapan(
+        klienRiwayat as Parameters<typeof muatRiwayatPercakapan>[0],
+        { pengunjung_id: sesiData.pengunjung_id, layanan_id: sesiData.layanan_id },
+        { sebelum: parsed.data.sebelum ?? null, limit: parsed.data.limit ? Number(parsed.data.limit) : undefined },
+      );
+      return NextResponse.json({
+        messages: hasil.messages,
+        status: sesiData.status || 'bot',
+        ada_lebih: hasil.adaLebih,
+        sesi_terbuka_id: hasil.sesiTerbukaId,
+      });
+    } catch (e) {
+      console.error('[api/chat/messages GET] riwayat error:', e);
+      return NextResponse.json({ error: 'Failed to fetch messages' }, { status: 500 });
+    }
   }
 
   const { data, error } = await adminClient
@@ -183,7 +231,7 @@ export async function POST(request: NextRequest) {
     console.error('[api/chat/messages POST] sesi error:', sesiErr);
     return NextResponse.json({ error: 'Failed to insert message' }, { status: 500 });
   }
-  if (!sesiData || !canAccessSesi(actor, sesiData)) {
+  if (!sesiData || !(await bolehAkses(serverClient, actor, sesiData))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
@@ -243,6 +291,23 @@ export async function POST(request: NextRequest) {
   if (!data) {
     catatMutasi('error', 'chat.messages.insert', '/api/chat/messages', new MutasiError('tidak_ada_baris'));
     return NextResponse.json({ error: 'Failed to insert message' }, { status: 500 });
+  }
+
+  // Fase 5: pesan pengunjung pada sesi yang menunggu petugas di luar jam (mis. Layanan tanpa bot, atau eskalasi otomatis
+  // sebelum jam tutup): DB menulis pesan tunggu + email berdedup SEKALI per sesi. Galat apa pun tidak menggagalkan
+  // pengiriman (pesan sudah tersimpan); RPC belum ada = perilaku lama.
+  if (actor.kind === 'pengunjung' && sesiData.status === 'eskalasi') {
+    try {
+      const { error: mintaErr } = await serverClient.rpc('chat_minta_petugas', {
+        p_sesi_id: parsed.data.sesi_id,
+        p_eksplisit: false,
+      });
+      if (mintaErr && !objekBelumAda(mintaErr)) {
+        catatMutasi('warn', 'chat.messages.minta_petugas', '/api/chat/messages', new MutasiError('database', { asal: mintaErr }));
+      }
+    } catch {
+      /* tidak menggagalkan pengiriman */
+    }
   }
 
   return NextResponse.json({ message: data }, { status: 201 });

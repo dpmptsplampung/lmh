@@ -8,6 +8,8 @@ export interface ChatMsg {
   pengirim: 'pengunjung' | 'bot' | 'petugas';
   isi: string;
   created_at: string;
+  /** Sesi asal pesan (riwayat lintas sesi, Fase 5); kosong pada pesan lokal. */
+  sesi_id?: string;
   client_uuid?: string | null;
   // Penanda pesan sistem tertentu, mis. 'penutup_survei' (ditulis RPC chat_selesai; tempat tautan survei).
   jenis_jawaban?: string | null;

@@ -30,6 +30,8 @@ async function setup(o: {
   authError?: { message: string } | null;
   /** Galat RPC akun_akhiri_sesi (sesi lama target gagal diakhiri). */
   sesiError?: { code?: string; message: string } | null;
+  /** Fase 3: galat saat membaca petugas.koordinator (select('koordinator')). */
+  penandaError?: { code?: string; message: string } | null;
 } = {}) {
   process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://supabase.local';
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'svc';
@@ -40,6 +42,7 @@ async function setup(o: {
     from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: o.actor === undefined ? ADMIN : o.actor }) }) }) }),
   });
   const updates: Array<{ table: string; values: unknown }> = [];
+  const seleksi: string[] = [];
   const inserts: Array<{ table: string; values: unknown }> = [];
   const rpc = vi.fn(async (nama: string) =>
     nama === 'akun_akhiri_sesi' && o.sesiError
@@ -51,7 +54,17 @@ async function setup(o: {
     rpc,
     auth: { admin: { updateUserById } },
     from: (table: string) => ({
-      select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: o.target === undefined ? TARGET : o.target }) }) }),
+      select: (kolom?: string) => {
+        seleksi.push(String(kolom ?? ''));
+        return {
+          eq: () => ({
+            maybeSingle: async () =>
+              kolom === 'koordinator' && o.penandaError
+                ? { data: null, error: o.penandaError }
+                : { data: o.target === undefined ? TARGET : o.target },
+          }),
+        };
+      },
       // UPDATE kini berakhir .select('id') (mutasiWajibBaris): rantai .update().eq().select() -> { data: baris, error }.
       update: (values: unknown) => {
         updates.push({ table, values });
@@ -66,7 +79,7 @@ async function setup(o: {
   const logger = await import('@/lib/observability/logger');
   const log = vi.mocked(logger.logServerEvent);
   log.mockClear();
-  return { rpc, updateUserById, updates, inserts, log };
+  return { rpc, updateUserById, updates, inserts, log, seleksi };
 }
 
 describe('GET /api/admin/petugas', () => {
@@ -159,6 +172,49 @@ describe('PATCH /api/admin/petugas/[id]', () => {
       expect(res.status, role).toBe(200);
       expect(s.updates[0]).toEqual({ table: 'petugas', values: { role, layanan_id: null } });
     }
+  });
+  it('Fase 3: perubahan role/layanan_id pada Koordinator -> SATU UPDATE (DB mencabut penanda atomik), audit koordinator_dicabut', async () => {
+    const LAY = '660e8400-e29b-41d4-a716-4466554400aa';
+    const kasus: Array<[Record<string, unknown>, Record<string, unknown>]> = [
+      [{ ...TARGET, koordinator: true }, { role: 'front_office' }],
+      [{ ...TARGET, koordinator: true }, { layanan_id: LAY }],
+      [{ ...TARGET, role: 'front_office', layanan_id: null, koordinator: true }, { role: 'petugas', layanan_id: LAY }],
+    ];
+    for (const [target, body] of kasus) {
+      vi.resetModules();
+      const s = await setup({ target });
+      const res = await (await import('./[id]/route')).PATCH(req('PATCH', body), ctx());
+      expect(res.status, JSON.stringify(body)).toBe(200);
+      // Tidak ada UPDATE kedua yang bisa gagal sendiri: pencabutan = pemicu DB dalam UPDATE yang sama.
+      expect(s.updates).toHaveLength(1);
+      expect(s.updates[0].values).not.toHaveProperty('koordinator');
+      const auditBaris = s.inserts.find((i) => i.table === 'audit_log')!;
+      expect(auditBaris.values).toMatchObject({ aksi: 'akun_ubah', detail: { koordinator_dicabut: true } });
+    }
+  });
+  it('Fase 3: galat membaca penanda (bukan kolom hilang) -> 500 SEBELUM menulis; kolom hilang -> tetap tersimpan & diaudit', async () => {
+    let s = await setup({ target: { ...TARGET, koordinator: true }, penandaError: { code: '57014', message: 'timeout' } });
+    let res = await (await import('./[id]/route')).PATCH(req('PATCH', { role: 'front_office' }), ctx());
+    expect(res.status).toBe(500);
+    expect(s.updates).toHaveLength(0);
+    expect(s.inserts).toHaveLength(0);
+    vi.resetModules();
+    s = await setup({ target: TARGET, penandaError: { code: '42703', message: 'column koordinator does not exist' } });
+    res = await (await import('./[id]/route')).PATCH(req('PATCH', { role: 'front_office' }), ctx());
+    expect(res.status).toBe(200);
+    expect(s.updates).toHaveLength(1);
+    const auditBaris = s.inserts.find((i) => i.table === 'audit_log')!;
+    expect(auditBaris.values).toMatchObject({ aksi: 'akun_ubah', detail: { role: { dari: 'petugas', ke: 'front_office' } } });
+  });
+  it('Fase 3: perubahan yang tidak menyentuh role/layanan tidak membaca penanda; akun bukan Koordinator tanpa koordinator_dicabut', async () => {
+    let s = await setup({ target: { ...TARGET, koordinator: true } });
+    await (await import('./[id]/route')).PATCH(req('PATCH', { nama: 'Nama Baru' }), ctx());
+    expect(s.seleksi).not.toContain('koordinator');
+    vi.resetModules();
+    s = await setup({ target: { ...TARGET, koordinator: false } });
+    await (await import('./[id]/route')).PATCH(req('PATCH', { role: 'front_office' }), ctx());
+    const auditBaris = s.inserts.find((i) => i.table === 'audit_log')!;
+    expect((auditBaris.values as { detail: Record<string, unknown> }).detail.koordinator_dicabut).toBeUndefined();
   });
   it('FO lama yang masih membawa layanan_id (sisa data): ikut dikosongkan pada PATCH berikutnya; null eksplisit diterima', async () => {
     let s = await setup({ target: { ...TARGET, role: 'front_office', layanan_id: 'l-1' } });

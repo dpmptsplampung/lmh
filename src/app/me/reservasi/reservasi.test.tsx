@@ -18,6 +18,8 @@ describe('reservasi pengunjung (rpc reservasi_buat / reservasi_batalkan, daftar 
   const tabelDiakses: string[] = [];
   let kunjunganRows: Record<string, unknown>[] = [];
   let layananRows: { id: string; nama: string }[] = [];
+  let hariLiburTanggal: string[] = [];
+  let hariLiburError: { message: string } | null = null;
   const kunjunganEq = vi.fn();
 
   // Format tanggal lokal (bukan toISOString yang bergeser karena timezone)
@@ -42,6 +44,8 @@ describe('reservasi pengunjung (rpc reservasi_buat / reservasi_batalkan, daftar 
     tabelDiakses.length = 0;
     kunjunganRows = [];
     layananRows = [];
+    hariLiburTanggal = [];
+    hariLiburError = null;
     consentInsert.mockResolvedValue({ error: null });
     rpc.mockImplementation(async (nama) => {
       if (nama === 'reservasi_buat') return berhasilBuat;
@@ -69,6 +73,21 @@ describe('reservasi pengunjung (rpc reservasi_buat / reservasi_batalkan, daftar 
           }),
           order: vi.fn(() => b),
           limit: vi.fn(async () => ({ data: kunjunganRows, error: null })),
+        };
+        return b;
+      }
+      if (table === 'hari_libur') {
+        let tanggalDicari = '';
+        const b = {
+          select: vi.fn(() => b),
+          eq: vi.fn((_k: string, v: string) => {
+            tanggalDicari = v;
+            return b;
+          }),
+          maybeSingle: vi.fn(async () => ({
+            data: hariLiburError || !hariLiburTanggal.includes(tanggalDicari) ? null : { tanggal: tanggalDicari },
+            error: hariLiburError,
+          })),
         };
         return b;
       }
@@ -163,6 +182,83 @@ describe('reservasi pengunjung (rpc reservasi_buat / reservasi_batalkan, daftar 
       disetujui: true,
       versi_kebijakan: '1.0',
     });
+  });
+
+  const tanggalAkhirPekan = (hari: 0 | 6) => {
+    const d = new Date();
+    while (d.getDay() !== hari) d.setDate(d.getDate() + 1);
+    return toLocalYmd(d);
+  };
+
+  it('loket: Sabtu tidak ditolak di klien bila is_layanan_buka_jadwal mengembalikan true', async () => {
+    layananRows = [{ id: 'lay-1', nama: 'Helpdesk OSS' }];
+    render(<ReservasiPage />);
+    await screen.findByText('Rencanakan Kedatangan');
+    fireEvent.click(screen.getByText('Menuju Loket Layanan'));
+    fireEvent.change(await screen.findByLabelText('Layanan Tujuan'), { target: { value: 'lay-1' } });
+    fireEvent.change(screen.getByLabelText('Tanggal Kedatangan'), { target: { value: tanggalAkhirPekan(6) } });
+    fireEvent.click(screen.getByLabelText(/saya setuju data saya diproses/i));
+    kirim();
+
+    expect(await screen.findByText(/Reservasi Berhasil/)).toBeInTheDocument();
+    expect(screen.queryByText(/hari kerja \(Senin–Jumat\)/)).not.toBeInTheDocument();
+    expect(panggilanRpc('is_layanan_buka_jadwal')[0][1]).toMatchObject({ p_layanan_id: 'lay-1', p_tanggal: tanggalAkhirPekan(6) });
+    expect(panggilanRpc('reservasi_buat')[0][1]).toMatchObject({ p_tujuan: 'loket', p_tanggal: tanggalAkhirPekan(6) });
+    expect(tabelDiakses).not.toContain('hari_libur');
+  });
+
+  it('loket: hari buka yang ternyata hari libur ditolak lewat RPC (false) dengan pesan jadwal terdekat', async () => {
+    layananRows = [{ id: 'lay-1', nama: 'Helpdesk OSS' }];
+    rpc.mockImplementation(async (nama) => {
+      if (nama === 'is_layanan_buka_jadwal') return { data: false, error: null };
+      if (nama === 'jadwal_berikutnya') return { data: '2099-01-05', error: null };
+      return berhasilBuat;
+    });
+    render(<ReservasiPage />);
+    await screen.findByText('Rencanakan Kedatangan');
+    fireEvent.click(screen.getByText('Menuju Loket Layanan'));
+    fireEvent.change(await screen.findByLabelText('Layanan Tujuan'), { target: { value: 'lay-1' } });
+    fireEvent.change(screen.getByLabelText('Tanggal Kedatangan'), { target: { value: nextWeekday() } });
+    fireEvent.click(screen.getByLabelText(/saya setuju data saya diproses/i));
+    kirim();
+
+    expect((await screen.findAllByText(/Helpdesk OSS di kantor DPMPTSP tidak beroperasi pada tanggal itu\. Jadwal terdekat:/)).length).toBeGreaterThan(0);
+    expect(panggilanRpc('reservasi_buat')).toHaveLength(0);
+  });
+
+  it('bertemu_seseorang: akhir pekan tetap ditolak (Minggu) tanpa memanggil rpc', async () => {
+    render(<ReservasiPage />);
+    await screen.findByText('Rencanakan Kedatangan');
+    fireEvent.click(screen.getByText('Bertemu Seseorang'));
+    fireEvent.change(screen.getByLabelText('Nama yang Ingin Ditemui'), { target: { value: 'Kepala Bidang' } });
+    fireEvent.change(screen.getByLabelText('Tanggal Kedatangan'), { target: { value: tanggalAkhirPekan(0) } });
+    fireEvent.click(screen.getByLabelText(/saya setuju data saya diproses/i));
+    kirim();
+
+    expect((await screen.findAllByText(/hari kerja \(Senin–Jumat\)/)).length).toBeGreaterThan(0);
+    expect(panggilanRpc('reservasi_buat')).toHaveLength(0);
+  });
+
+  it('bertemu_seseorang: tanggal di hari_libur ditolak "Kantor libur pada tanggal tersebut."', async () => {
+    hariLiburTanggal = [nextWeekday()];
+    render(<ReservasiPage />);
+    await screen.findByText('Rencanakan Kedatangan');
+    fillValidForm();
+    kirim();
+
+    expect((await screen.findAllByText('Kantor libur pada tanggal tersebut.')).length).toBeGreaterThan(0);
+    expect(panggilanRpc('reservasi_buat')).toHaveLength(0);
+  });
+
+  it('bertemu_seseorang: galat baca hari_libur tidak memblokir (DB yang memvalidasi)', async () => {
+    hariLiburError = { message: 'boom' };
+    render(<ReservasiPage />);
+    await screen.findByText('Rencanakan Kedatangan');
+    fillValidForm();
+    kirim();
+
+    expect(await screen.findByText(/Reservasi Berhasil/)).toBeInTheDocument();
+    expect(panggilanRpc('reservasi_buat')).toHaveLength(1);
   });
 
   it('menolak tanggal akhir pekan di klien tanpa memanggil rpc', async () => {
