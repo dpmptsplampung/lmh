@@ -57,7 +57,7 @@ describe('survei_jawaban: berkas, urutan, atomik, aditif', () => {
     const daftar = [...FORWARD_MIGRATION_FILES];
     expect(daftar).toEqual([...daftar].sort());
     expect(daftar.indexOf(BERKAS)).toBe(daftar.indexOf(BERKAS_UNDANGAN) + 1);
-    const luarSeri = listMigrationFiles().filter((nama) => !/^2026110200\d\d_/.test(nama));
+    const luarSeri = listMigrationFiles().filter((nama) => !/^20261(?:1020|1030)\d{3}_/.test(nama));
     for (const nama of luarSeri) expect(nama < BERKAS).toBe(true);
     expect(BERKAS > '202610260001').toBe(true);
   });

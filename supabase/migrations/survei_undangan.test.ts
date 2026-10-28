@@ -46,7 +46,7 @@ describe('survei_undangan: berkas, urutan, atomik', () => {
     // (202611020001-202611020004; Task 3-5 menambah yang lain sesudahnya).
     const daftar = [...FORWARD_MIGRATION_FILES];
     expect(daftar).toEqual([...daftar].sort());
-    const luarSeri = listMigrationFiles().filter((nama) => nama !== BERKAS && !/^2026110200\d\d_/.test(nama));
+    const luarSeri = listMigrationFiles().filter((nama) => nama !== BERKAS && !/^20261(?:1020|1030)\d{3}_/.test(nama));
     for (const nama of luarSeri) expect(nama < BERKAS).toBe(true);
     // Nomor di atas paket audit (202610260001) agar urutan tetap sah bila kedua cabang digabung.
     expect(BERKAS > '202610260001').toBe(true);

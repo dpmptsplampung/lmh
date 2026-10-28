@@ -82,7 +82,7 @@ describe('survei_notifikasi: berkas, urutan, atomik, aditif', () => {
     const daftar = [...FORWARD_MIGRATION_FILES];
     expect(daftar).toEqual([...daftar].sort());
     expect(daftar.indexOf(BERKAS)).toBe(daftar.indexOf(BERKAS_RPC) + 1);
-    for (const nama of listMigrationFiles().filter((n) => n !== BERKAS)) expect(nama < BERKAS).toBe(true);
+    for (const nama of listMigrationFiles().filter((n) => n !== BERKAS && !n.startsWith('20261103'))) expect(nama < BERKAS).toBe(true);
     expect(BERKAS > '202610260001').toBe(true);
   });
 
@@ -128,7 +128,7 @@ describe('survei_notifikasi: berkas, urutan, atomik, aditif', () => {
   });
 
   it('objek yang dikonsumsi didefinisikan migrasi sebelumnya; satu-satunya definisi lama fungsi ini adalah 0007 (yang disalin), tidak ada migrasi lain di antaranya', () => {
-    const pendefinisi = listMigrationFiles().filter((nama) => /CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+public\.notify_kunjungan_status\s*\(/i.test(stripSqlComments(baca(nama))));
+    const pendefinisi = listMigrationFiles().filter((nama) => !nama.startsWith('20261103')).filter((nama) => /CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+public\.notify_kunjungan_status\s*\(/i.test(stripSqlComments(baca(nama))));
     expect(pendefinisi).toEqual([BERKAS_ASLI, BERKAS]);
     const undangan = stripSqlComments(baca(BERKAS_UNDANGAN));
     expect(undangan).toMatch(/CREATE OR REPLACE FUNCTION public\.ensure_undangan\(p_kunjungan_id uuid\)\s+RETURNS uuid/);
