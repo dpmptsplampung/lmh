@@ -102,6 +102,7 @@ export const FORWARD_MIGRATION_FILES = [
   '202611030001_pesan_perilaku_teks_wib.sql',
   '202611030002_absensi_hadir_fo.sql',
   '202611030003_saran_pengaduan_pesan_perilaku.sql',
+  '202611030004_umkm_foto_https.sql',
 ] as const;
 
 export function listMigrationFiles(): string[] {
