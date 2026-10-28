@@ -158,12 +158,17 @@ If `pg_cron` is available, verify scheduled jobs from baseline
 (`docs/MIGRATIONS.md` / SQL in `202607140005_*`). Otherwise schedule
 equivalent maintenance externally.
 
-Cron HTTP dijadwalkan di **cron-job.org** (bukan `vercel.json`, sengaja kosong sejak `7fc4de7`).
-Semua job: header `Authorization: Bearer <CRON_SECRET>` (nilai sama dengan env Vercel).
+Cron HTTP berjalan di **server sendiri** (`/etc/cron.d/lmh` -> `/usr/local/bin/lmh-cron <path>`), bukan `vercel.json`
+(sengaja kosong sejak `7fc4de7`). Pemanggil membaca `CRON_SECRET` dari Doppler `lmh/prd` saat dijalankan dan mengirim
+`Authorization: Bearer <CRON_SECRET>`; nilainya HARUS sama dengan env Vercel. Galat masuk syslog (`journalctl -t lmh-cron`).
+Matikan job lama di cron-job.org agar tidak dobel.
 
-| Job | Jadwal | Panggilan |
+| Job | Jadwal | Panggilan (POST) |
 |---|---|---|
-| Retensi lampiran chat (90 hari, hapus objek R2) | harian, mis. 02:00 WIB | `POST https://<domain>/api/chat/lampiran/bersihkan` |
+| Kirim notifikasi | tiap 2 menit | `/api/notif/send` |
+| Ulang notifikasi gagal | tiap 5 menit | `/api/notif/retry` |
+| Embedding FAQ | tiap jam | `/api/admin/faq/embed` |
+| Retensi lampiran chat (90 hari, hapus objek R2) | harian 02:00 WIB | `/api/chat/lampiran/bersihkan` |
 
 Respons 401 = secret salah; 500 `Server misconfigured` = `R2_*` atau service-role belum ada di Vercel.
 Satu panggilan memproses maks 500 pesan; bila backlog besar, panggil ulang sampai jumlah terhapus 0.
