@@ -88,7 +88,8 @@ export default function SurveiQrDialog({ kunjunganId, onTutup }: Props) {
           <QRCodeDisplay value={urlSurvei(asalSurvei(), keadaan.token)} size={240} />
         </div>
         <p className={styles.petunjuk}>
-          Minta pengunjung memindai kode ini dengan kamera ponsel untuk mengisi Pesan Perilaku.
+          Tawarkan pengunjung memindai kode ini dengan kamera ponsel untuk mengisi Pesan Perilaku. Pengisian bersifat
+          sukarela; statusnya tercatat otomatis di daftar.
         </p>
         {keadaan.layananNama && <p className={styles.layanan}>{keadaan.layananNama}</p>}
         {keadaan.kedaluwarsaPada && (

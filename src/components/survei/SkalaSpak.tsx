@@ -1,5 +1,6 @@
 'use client';
 
+import { Check } from 'lucide-react';
 import { SKALA_SPAK, type KunciSpak } from '@/lib/survei/pertanyaan';
 import { otomatisDariKlik, tanganiPanahRadio } from './navigasiRadio';
 import styles from './survei.module.css';
@@ -23,10 +24,10 @@ export default function SkalaSpak({ kunci, nomor, teks, nilai, nonaktif = false,
   const terpilih = SKALA_SPAK.find((s) => s.nilai === nilai);
 
   return (
-    <div className={styles.soal} data-soal={kunci}>
+    <div className={styles.soal} data-soal={kunci} data-terjawab={nilai !== undefined || undefined}>
       <div className={styles.soalKepala}>
         <span className={styles.nomor} aria-hidden="true">
-          {nomor}
+          {nilai !== undefined ? <Check size={16} strokeWidth={3} /> : nomor}
         </span>
         <p id={idTeks} className={styles.soalTeks}>
           {teks}
@@ -46,7 +47,8 @@ export default function SkalaSpak({ kunci, nomor, teks, nilai, nonaktif = false,
               // Satu tab stop per kelompok (roving tabindex): jawaban terpilih, atau opsi pertama bila belum ada.
               tabIndex={dipilih || (nilai === undefined && posisi === 0) ? 0 : -1}
               disabled={nonaktif}
-              className={styles.opsi}
+              className={`${styles.opsi} ${styles.opsiSpak}`}
+              data-nilai={opsi.nilai}
               onClick={(e) => {
                 const otomatis = otomatisDariKlik(e.detail);
                 if (otomatis !== null) onPilih(opsi.nilai, otomatis);
@@ -58,13 +60,17 @@ export default function SkalaSpak({ kunci, nomor, teks, nilai, nonaktif = false,
           );
         })}
       </div>
-      <div className={styles.ujung} aria-hidden="true">
-        <span>{SKALA_SPAK[0].label}</span>
-        <span>{SKALA_SPAK[SKALA_SPAK.length - 1].label}</span>
-      </div>
-      <p className={styles.terpilih} aria-hidden="true">
-        {terpilih ? `Terpilih: ${terpilih.label}` : 'Ketuk angka untuk memilih'}
-      </p>
+      {/* Satu baris saja (hemat gulir): label kedua ujung sebelum memilih, lalu digantikan arti jawaban terpilih. */}
+      {terpilih ? (
+        <p className={styles.terpilih} aria-hidden="true">
+          Terpilih: {terpilih.label}
+        </p>
+      ) : (
+        <div className={styles.ujung} aria-hidden="true">
+          <span>{SKALA_SPAK[0].label}</span>
+          <span>{SKALA_SPAK[SKALA_SPAK.length - 1].label}</span>
+        </div>
+      )}
     </div>
   );
 }

@@ -376,15 +376,43 @@ describe('SurveiWizard: judul, fokus, dan pengumuman', () => {
     expect(pengumuman()).toHaveTextContent('Langkah 3 dari 5');
   });
 
-  it('memberi tahu di awal bahwa halaman otomatis lanjut dan menyebut unit yang dinilai', () => {
+  it('memberi tahu di awal bahwa halaman otomatis lanjut, tanpa menyebut Layanan/unit tertentu', () => {
     render(<SurveiWizard token={TOKEN} konteks={KONTEKS} />);
     expect(screen.getByText(/halaman akan otomatis lanjut/i)).toBeInTheDocument();
-    expect(screen.getByText('Konsultasi OSS')).toBeInTheDocument();
+    expect(screen.queryByText(/Konsultasi OSS/)).toBeNull();
+    expect(screen.queryByText(/Unit yang dinilai/)).toBeNull();
   });
 
-  it('unit fo ditampilkan sebagai Front Office', () => {
+  it('menyebut bahwa pengisian sukarela dan menghitung soal terjawab, soal terjawab diberi tanda', () => {
+    const { container } = render(<SurveiWizard token={TOKEN} konteks={KONTEKS} />);
+    expect(screen.getByText(/pengisian sukarela/i)).toBeInTheDocument();
+    expect(screen.getByText('0/16 terjawab')).toBeInTheDocument();
+    expect(container.querySelector('[data-soal="p1"]')).not.toHaveAttribute('data-terjawab');
+    ketuk('p1', 5);
+    expect(screen.getByText('1/16 terjawab')).toBeInTheDocument();
+    expect(container.querySelector('[data-soal="p1"]')).toHaveAttribute('data-terjawab');
+  });
+
+  it('unit fo juga tidak ditampilkan ke pengunjung', () => {
     render(<SurveiWizard token={TOKEN} konteks={{ ...KONTEKS, unit: 'fo', layananNama: null }} />);
-    expect(screen.getByText('Front Office')).toBeInTheDocument();
+    expect(screen.queryByText(/Front Office/)).toBeNull();
+  });
+
+  it('SKM tampil dari kiri ke kanan: Kurang, Cukup, Baik, Sangat Baik', () => {
+    render(<SurveiWizard token={TOKEN} konteks={KONTEKS} />);
+    ketuk('p1', 5);
+    ketuk('p2', 5);
+    ketuk('p3', 5);
+    ketuk('p4', 5);
+    ketuk('p5', 5);
+    const grup = screen.getByRole('radiogroup', { name: UNSUR_SKM[0].teks });
+    expect(within(grup).getAllByRole('radio').map((r) => r.textContent)).toEqual(['Kurang', 'Cukup', 'Baik', 'Sangat Baik']);
+  });
+
+  it('legenda SPAK berurutan 1-6 di DOM (kolom kiri 1-3, kanan 4-6 diatur CSS grid-auto-flow: column)', () => {
+    render(<SurveiWizard token={TOKEN} konteks={KONTEKS} />);
+    const legenda = screen.getByRole('list', { name: 'Keterangan skala' });
+    expect(within(legenda).getAllByRole('listitem').map((li) => li.getAttribute('data-nilai'))).toEqual(['1', '2', '3', '4', '5', '6']);
   });
 
   it('kelompok radio berlabel teks pertanyaan, tepat satu tab stop per kelompok, dan label terpilih tampil', () => {

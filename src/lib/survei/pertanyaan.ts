@@ -23,7 +23,8 @@ export const SKALA_SPAK: readonly { nilai: 1 | 2 | 3 | 4 | 5 | 6; label: string 
   { nilai: 6, label: 'Sangat Setuju' },
 ];
 
-// Urutan tampil dari yang terbaik, bukan urutan nilai naik.
+// Urutan sumber (Lampiran A) dari yang terbaik. Wizard menampilkannya terbalik (Kurang di kiri, Sangat Baik di kanan),
+// lihat components/survei/SegmenSkm.tsx.
 export const SKALA_SKM: readonly { nilai: 4 | 3 | 2 | 1; label: string }[] = [
   { nilai: 4, label: 'Sangat Baik' },
   { nilai: 3, label: 'Baik' },

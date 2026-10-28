@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Image from 'next/image';
 import { useParams } from 'next/navigation';
 import { LoaderCircle } from 'lucide-react';
 import ErrorRetry from '@/components/ErrorRetry';
@@ -43,7 +44,11 @@ export default function SurveiPage() {
   return (
     <div className={styles.halaman}>
       <header className={styles.kepala}>
-        <h1 className={styles.merek}>Pesan Perilaku</h1>
+        <Image src="/logo.png" alt="" width={48} height={38} className={styles.logo} priority />
+        <div>
+          <p className={styles.instansi}>DPMPTSP Provinsi Lampung</p>
+          <h1 className={styles.merek}>Pesan Perilaku</h1>
+        </div>
       </header>
 
       {muat.tahap === 'memuat' && (

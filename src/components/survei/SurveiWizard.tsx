@@ -25,6 +25,7 @@ import styles from './survei.module.css';
 interface SurveiWizardProps {
   /** Token undangan dari URL; dipakai untuk kunci draf dan dikirim apa adanya ke POST /api/survei/kirim. */
   token: string;
+  /** Konteks undangan (status sudah 'ok' saat wizard dipasang). Unit/Layanan sengaja tidak ditampilkan ke pengunjung. */
   konteks: KonteksSurvei;
   /** Dipanggil saat "Selesai" di layar akhir ditekan (bawaan layar akhir: kembali ke beranda). */
   onSelesai?: () => void;
@@ -33,6 +34,7 @@ interface SurveiWizardProps {
 type Tahap = 'mengisi' | 'mengirim' | 'galat' | 'selesai' | StatusPesanSurvei;
 
 const JUMLAH_SURVEI = 2;
+const JUMLAH_SOAL = LANGKAH.reduce((n, l) => n + l.kunci.length, 0);
 const JUDUL_GALAT = 'Jawaban belum terkirim';
 const GALAT_JARINGAN =
   'Koneksi bermasalah. Jawaban Anda masih ada di halaman ini; periksa jaringan lalu coba lagi.';
@@ -76,7 +78,7 @@ function pindahKe(state: StateWizard, target: number): StateWizard {
   return { indeks: target, jawaban: state.jawaban };
 }
 
-export default function SurveiWizard({ token, konteks, onSelesai }: SurveiWizardProps) {
+export default function SurveiWizard({ token, onSelesai }: SurveiWizardProps) {
   const [state, setState] = useState<StateWizard>(() => pulihkan(token));
   const [tahap, setTahap] = useState<Tahap>('mengisi');
   const [pesanGalat, setPesanGalat] = useState(GALAT_JARINGAN);
@@ -220,7 +222,7 @@ export default function SurveiWizard({ token, konteks, onSelesai }: SurveiWizard
   const terakhir = state.indeks === LANGKAH.length - 1;
   const mengirim = tahap === 'mengirim';
   const siap = terakhir ? bangunPayload(state.jawaban) !== null : langkahLengkap(state);
-  const namaUnit = konteks.unit === 'fo' ? 'Front Office' : (konteks.layananNama ?? 'Layanan');
+  const jumlahTerjawab = LANGKAH.reduce((n, l) => n + l.kunci.filter((k) => state.jawaban[k] !== undefined).length, 0);
 
   return (
     <div ref={akarRef} className={styles.wizard}>
@@ -229,25 +231,27 @@ export default function SurveiWizard({ token, konteks, onSelesai }: SurveiWizard
         {mengirim ? 'Mengirim jawaban Anda' : `Langkah ${state.indeks + 1} dari ${LANGKAH.length}`}
       </div>
 
-      <p className={styles.unit}>
-        Unit yang dinilai: <strong>{namaUnit}</strong>
-      </p>
+      {/* Pengantar ringkas hanya di langkah pertama: penilaian untuk pelayanan DPMPTSP secara umum, tidak menyebut satu
+          Layanan tertentu (keputusan pemilik), dan tidak memakan layar supaya soal pertama langsung terlihat. */}
       {state.indeks === 0 && (
         <p className={styles.intro}>
-          Isi dua survei singkat tentang layanan yang baru Anda terima. Setelah Anda mengetuk jawaban, halaman akan otomatis
-          lanjut. Bila memakai papan ketik atau pembaca layar, gunakan tombol Lanjut.
+          Bantu kami melayani lebih baik. Pengisian sukarela; ketuk jawaban Anda, halaman akan otomatis lanjut.
+          <span className={styles.srOnly}> Bila memakai papan ketik atau pembaca layar, gunakan tombol Lanjut.</span>
         </p>
       )}
 
       <div ref={kepalaRef} className={styles.kepalaLangkah}>
-        <div className={styles.progres} aria-hidden="true">
-          {LANGKAH.map((_, i) => (
-            <span key={i} className={i <= state.indeks ? styles.segAktif : styles.seg} />
-          ))}
+        <div className={styles.progresBaris}>
+          <p className={styles.langkahTeks} aria-hidden="true">
+            Langkah {state.indeks + 1} dari {LANGKAH.length}
+          </p>
+          <p className={styles.terjawabTeks} aria-hidden="true">
+            {jumlahTerjawab}/{JUMLAH_SOAL} terjawab
+          </p>
         </div>
-        <p className={styles.langkahTeks} aria-hidden="true">
-          Langkah {state.indeks + 1} dari {LANGKAH.length}
-        </p>
+        <div className={styles.progres} aria-hidden="true">
+          <span className={styles.progresIsi} style={{ width: `${(jumlahTerjawab / JUMLAH_SOAL) * 100}%` }} />
+        </div>
         <h2 ref={judulRef} tabIndex={-1} className={styles.judulLangkah}>
           <span className={styles.penanda}>
             Survei {nomorSurvei} dari {JUMLAH_SURVEI}
@@ -262,7 +266,7 @@ export default function SurveiWizard({ token, konteks, onSelesai }: SurveiWizard
           <p className={styles.instruksi}>{SURVEI.spak.instruksi}</p>
           <ul className={styles.legenda} aria-label="Keterangan skala">
             {SKALA_SPAK.map((s) => (
-              <li key={s.nilai}>
+              <li key={s.nilai} data-nilai={s.nilai}>
                 <strong>{s.nilai}</strong> {s.label}
               </li>
             ))}
@@ -272,7 +276,8 @@ export default function SurveiWizard({ token, konteks, onSelesai }: SurveiWizard
         <p className={styles.instruksi}>Bagaimana penilaian Anda terhadap setiap unsur pelayanan berikut?</p>
       )}
 
-      <div className={styles.daftarSoal}>
+      {/* key = langkah: daftar soal dipasang ulang tiap langkah sehingga animasi masuk berjalan (dimatikan bila reduced motion). */}
+      <div key={state.indeks} className={styles.daftarSoal}>
         {langkah.kunci.map((kunci) =>
           langkah.survei === 'spak' ? (
             <SkalaSpak
@@ -310,10 +315,10 @@ export default function SurveiWizard({ token, konteks, onSelesai }: SurveiWizard
           <span>Mengirim jawaban Anda…</span>
         </div>
       ) : (
-        <>
+        <div className={styles.navigasiLengket}>
           {!siap && (
-            <p id="petunjuk-lanjut" className={styles.petunjuk}>
-              Jawab semua pertanyaan di langkah ini untuk melanjutkan.
+            <p id="petunjuk-lanjut" className={styles.srOnly}>
+              Jawab semua pertanyaan untuk melanjutkan.
             </p>
           )}
           <div className={styles.navigasi}>
@@ -334,7 +339,7 @@ export default function SurveiWizard({ token, konteks, onSelesai }: SurveiWizard
               {terakhir ? <Send size={18} aria-hidden="true" /> : <ArrowRight size={18} aria-hidden="true" />}
             </button>
           </div>
-        </>
+        </div>
       )}
     </div>
   );

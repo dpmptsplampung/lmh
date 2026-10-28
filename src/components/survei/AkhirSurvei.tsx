@@ -21,10 +21,15 @@ export default function AkhirSurvei({ onSelesai }: AkhirSurveiProps) {
 
   return (
     <section className={styles.akhir} aria-labelledby="judul-akhir-survei">
-      <CircleCheck size={48} className={styles.ikonAkhir} aria-hidden="true" />
+      <div className={styles.lingkaranAkhir} aria-hidden="true">
+        <CircleCheck size={56} className={styles.ikonAkhir} />
+      </div>
       <h2 id="judul-akhir-survei" ref={judulRef} tabIndex={-1} className={styles.judulPesan}>
         Terima kasih, jawaban Anda sudah terkirim.
       </h2>
+      <p className={styles.isiPesan}>
+        Penilaian Anda membantu DPMPTSP Provinsi Lampung menjaga pelayanan yang bersih, cepat, dan ramah.
+      </p>
       <button
         type="button"
         className={`btn btn--primary ${styles.tombolNav}`}
