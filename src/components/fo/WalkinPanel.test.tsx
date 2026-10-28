@@ -2,7 +2,10 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { pushMock, enqueueMock, syncMock, rpcMock, createClientMock, kunjunganMock } = vi.hoisted(() => ({
+const { pushMock, enqueueMock, syncMock, rpcMock, createClientMock, kunjunganMock, periksaMock, cariMock, ambilMock } = vi.hoisted(() => ({
+  periksaMock: vi.fn(),
+  cariMock: vi.fn(),
+  ambilMock: vi.fn(),
   pushMock: vi.fn(),
   enqueueMock: vi.fn(),
   syncMock: vi.fn(),
@@ -15,6 +18,12 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ push: pushMock, replace:
 vi.mock('@/lib/supabase/client', () => ({ createClient: createClientMock }));
 vi.mock('@/lib/offline/queue', () => ({ enqueueAction: enqueueMock }));
 vi.mock('@/lib/offline/sync', () => ({ daftarkanSyncOffline: syncMock }));
+vi.mock('@/lib/fo/cari-pengunjung', async (asli) => ({
+  ...(await asli<typeof import('@/lib/fo/cari-pengunjung')>()),
+  periksaKetersediaan: periksaMock,
+  cariPengunjung: cariMock,
+  ambilPengunjung: ambilMock,
+}));
 
 import WalkinPanel from './WalkinPanel';
 
@@ -89,6 +98,7 @@ describe('Panel Walk-in (/admin/fo/registrasi?tab=walkin, pendaftaran walk-in ol
     enqueueMock.mockResolvedValue('q-1');
     syncMock.mockResolvedValue(true);
     kunjunganMock.mockResolvedValue({ data: [], error: null });
+    periksaMock.mockResolvedValue(false);
     Element.prototype.scrollIntoView = vi.fn();
     const layanan = {
       select: vi.fn(() => layanan),
@@ -271,72 +281,92 @@ describe('Panel Walk-in (/admin/fo/registrasi?tab=walkin, pendaftaran walk-in ol
     });
   });
 
-  describe('pengunjung yang pernah datang', () => {
-    const lama = {
+  describe('saran pengunjung lama pada isian Nama dan Nomor HP (Fase 6)', () => {
+    const terpilih = {
       nama: 'Siti Aminah',
       asal_instansi: 'CV Sentosa',
       kategori: 'Investor',
       email: 'siti@yahoo.com',
       kontak_hp: '081234567890',
-      tanggal: '2026-09-01',
     };
+    const saran = [{ id: 'k-1', nama: 'Siti Aminah', hpSamar: '0812****890', asal: 'CV Sentosa', tanggal: '2026-09-01' }];
 
-    it('banner muncul setelah HP valid (debounce) dan "Isi otomatis" mengisi nama, asal, kategori, email', async () => {
-      kunjunganMock.mockImplementation(async (kolom: string) =>
-        kolom.includes('kontak_hp') ? { data: [lama], error: null } : { data: [], error: null },
-      );
+    beforeEach(() => {
+      periksaMock.mockResolvedValue(true);
+      cariMock.mockResolvedValue({ status: 'ok', hasil: saran });
+      ambilMock.mockResolvedValue({ status: 'ok', data: terpilih });
+    });
+
+    it('mengetik 3 huruf di Nama menampilkan saran di bawah isian itu; memilih mengisi seluruh identitas', async () => {
       await renderHalaman();
-      isi(/Nomor HP/, '0812-3456-7890');
+      await waitFor(() => expect(field(/Nama Lengkap/)).toHaveAttribute('role', 'combobox'));
+      isi(/Nama Lengkap/, 'Sit');
+      expect(await screen.findByRole('option', { name: /Siti Aminah/ }, { timeout: 3000 })).toHaveTextContent('0812****890');
+      expect(cariMock).toHaveBeenCalledWith(expect.anything(), 'Sit', expect.anything());
 
-      expect(await screen.findByText(/Pernah berkunjung sebagai/, {}, { timeout: 3000 })).toHaveTextContent('Siti Aminah');
-      expect(screen.getByText(/Pernah berkunjung sebagai/)).toHaveTextContent('CV Sentosa');
-      // pencarian memakai HP kanonik
-      const pencarian = kunjunganMock.mock.calls.find(([kolom]) => String(kolom).includes('kontak_hp'));
-      expect(pencarian?.[1]).toContainEqual(['in', ['kontak_hp', ['081234567890', '6281234567890', '+6281234567890']]]);
-
-      fireEvent.click(screen.getByRole('button', { name: 'Isi otomatis' }));
-      expect(field(/Nama Lengkap/)).toHaveValue('Siti Aminah');
-      expect(field(/Asal \/ Instansi/)).toHaveValue('CV Sentosa');
+      fireEvent.click(screen.getByRole('option', { name: /Siti Aminah/ }));
+      await waitFor(() => expect(field(/Nama Lengkap/)).toHaveValue('Siti Aminah'));
+      expect(field(/Asal [/] Instansi/)).toHaveValue('CV Sentosa');
       expect(field(/Kategori Pengunjung/)).toHaveValue('Investor');
       expect(field(/^Email/)).toHaveValue('siti@yahoo.com');
-      expect(screen.queryByText(/Pernah berkunjung sebagai/)).toBeNull();
-      // FO tetap bisa mengubah
-      isi(/Asal \/ Instansi/, 'CV Sentosa Abadi');
-      expect(field(/Asal \/ Instansi/)).toHaveValue('CV Sentosa Abadi');
+      expect(field(/Nomor HP/)).toHaveValue('0812-3456-7890');
+      expect(screen.queryByRole('listbox')).toBeNull();
+      // Pencarian tidak terpicu ulang oleh pengisian otomatis.
+      expect(cariMock).toHaveBeenCalledTimes(1);
     });
 
-    it('"Abaikan" menutup banner dan tidak mengubah isian', async () => {
-      kunjunganMock.mockResolvedValue({ data: [lama], error: null });
+    it('mengetik angka di Nomor HP juga menampilkan saran', async () => {
       await renderHalaman();
-      isi(/^Email/, 'siti@yahoo.com');
-      await screen.findByText(/Pernah berkunjung sebagai/, {}, { timeout: 3000 });
-      fireEvent.click(screen.getByRole('button', { name: 'Abaikan' }));
-      expect(screen.queryByText(/Pernah berkunjung sebagai/)).toBeNull();
-      expect(field(/Nama Lengkap/)).toHaveValue('');
-    });
-
-    it('kunjungan hari ini memberi peringatan pendaftaran ganda', async () => {
-      const hariIni = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' });
-      kunjunganMock.mockResolvedValue({ data: [{ ...lama, tanggal: hariIni }], error: null });
-      await renderHalaman();
-      isi(/Nomor HP/, '081234567890');
-      expect(await screen.findByText(/pendaftaran ganda/, {}, { timeout: 3000 })).toBeInTheDocument();
-    });
-
-    it('pencarian gagal: diam-diam, tanpa banner dan tanpa galat', async () => {
-      kunjunganMock.mockRejectedValue(new Error('jaringan'));
-      await renderHalaman();
-      isi(/Nomor HP/, '081234567890');
-      await waitFor(() => expect(kunjunganMock.mock.calls.some(([k]) => String(k).includes('kontak_hp'))).toBe(true), { timeout: 3000 });
-      expect(screen.queryByText(/Pernah berkunjung sebagai/)).toBeNull();
-      expect(screen.queryByRole('alert')).toBeNull();
-    });
-
-    it('HP belum valid: tidak mencari', async () => {
-      await renderHalaman();
+      await waitFor(() => expect(field(/Nomor HP/)).toHaveAttribute('role', 'combobox'));
       isi(/Nomor HP/, '0812');
-      await new Promise((r) => setTimeout(r, 500));
-      expect(kunjunganMock.mock.calls.some(([k]) => String(k).includes('kontak_hp'))).toBe(false);
+      expect(await screen.findByRole('listbox', {}, { timeout: 3000 })).toBeInTheDocument();
+      expect(cariMock).toHaveBeenCalledWith(expect.anything(), '0812', expect.anything());
+    });
+
+    it('"Kosongkan isian" mengosongkan identitas dan FO bebas mengetik lagi', async () => {
+      await renderHalaman();
+      await waitFor(() => expect(field(/Nama Lengkap/)).toHaveAttribute('role', 'combobox'));
+      isi(/Nama Lengkap/, 'Sit');
+      fireEvent.click(await screen.findByRole('option', { name: /Siti Aminah/ }, { timeout: 3000 }));
+      await screen.findByText(/Diisi dari data pengunjung lama/);
+      fireEvent.click(screen.getByRole('button', { name: 'Kosongkan isian' }));
+      expect(field(/Nama Lengkap/)).toHaveValue('');
+      expect(field(/Asal [/] Instansi/)).toHaveValue('');
+      expect(field(/Nomor HP/)).toHaveValue('');
+      expect(screen.queryByText(/Diisi dari data pengunjung lama/)).toBeNull();
+      isi(/Nama Lengkap/, 'Nama Baru Sekali');
+      expect(field(/Nama Lengkap/)).toHaveValue('Nama Baru Sekali');
+    });
+
+    it('nama yang tidak cocok apa pun: mengetik dan mengirim persis seperti biasa', async () => {
+      cariMock.mockResolvedValue({ status: 'ok', hasil: [] });
+      await renderHalaman();
+      await waitFor(() => expect(field(/Nama Lengkap/)).toHaveAttribute('role', 'combobox'));
+      isiLengkap({ nama: 'Orang Baru Sekali' });
+      await waitFor(() => expect(cariMock).toHaveBeenCalled(), { timeout: 3000 });
+      expect(screen.queryByRole('listbox')).toBeNull();
+      kirim();
+      await waitFor(() => expect(rpcMock).toHaveBeenCalledWith('fo_mulai_kunjungan', expect.objectContaining({ p_nama: 'Orang Baru Sekali' })));
+    });
+
+    it('RPC galat/lambat: tanpa saran dan tanpa galat; formulir tetap bisa dikirim', async () => {
+      cariMock.mockRejectedValue(new Error('jaringan'));
+      cariMock.mockImplementation(() => new Promise(() => {}));
+      await renderHalaman();
+      await waitFor(() => expect(field(/Nama Lengkap/)).toHaveAttribute('role', 'combobox'));
+      isiLengkap();
+      kirim();
+      await waitFor(() => expect(rpcMock).toHaveBeenCalledWith('fo_mulai_kunjungan', expect.anything()));
+      expect(screen.queryByRole('listbox')).toBeNull();
+    });
+
+    it('RPC belum diterapkan: isian Nama/HP tetap input biasa (tanpa role combobox)', async () => {
+      periksaMock.mockResolvedValue(false);
+      await renderHalaman();
+      isi(/Nama Lengkap/, 'Budi Santoso');
+      await new Promise((r) => setTimeout(r, 450));
+      expect(field(/Nama Lengkap/)).not.toHaveAttribute('role');
+      expect(cariMock).not.toHaveBeenCalled();
     });
   });
 

@@ -1,8 +1,9 @@
 // Mode waktu bot (semua WIB): akhir pekan, hari libur nasional (tabel hari_libur), setelah jam tutup
 // (site_settings.jam_tutup_layanan, default 16:00). Di luar jam layanan bot TETAP menjawab, tanpa eskalasi.
 import { toWIBDateString } from '@/lib/time';
+import type { StatusLayananChat } from '@/lib/chat/status-layanan';
 
-export type AlasanTutup = 'akhir_pekan' | 'libur_nasional' | 'setelah_jam_tutup';
+export type AlasanTutup = 'akhir_pekan' | 'libur_nasional' | 'setelah_jam_tutup' | 'di_luar_jadwal';
 export interface ModeLayanan {
   tutup: boolean;
   alasan: AlasanTutup | null;
@@ -50,6 +51,16 @@ export function hariTanpaLayanan(iso: string, libur: ReadonlySet<string>): Alasa
 /** true bila mode menandakan hari tanpa pelayanan (bukan sekadar setelah jam tutup hari kerja). */
 export const modeHariTanpaLayanan = (m: Pick<ModeLayanan, 'alasan'>): boolean =>
   m.alasan === 'akhir_pekan' || m.alasan === 'libur_nasional';
+
+/**
+ * Mode dari status jadwal PER LAYANAN (Fase 5, chat_layanan_status): tutup = petugas chat tidak tersedia. Bot tetap
+ * menjawab tanpa eskalasi otomatis; kerjaBerikutnya = tanggal petugas kembali bertugas.
+ */
+export function modeDariStatus(s: StatusLayananChat): ModeLayanan {
+  if (s.buka) return { tutup: false, alasan: null, kerjaBerikutnya: null };
+  const alasan: AlasanTutup = s.liburKeterangan !== null ? 'libur_nasional' : s.hariTanpaLayanan ? 'akhir_pekan' : 'di_luar_jadwal';
+  return { tutup: true, alasan, kerjaBerikutnya: s.bukaBerikutnya?.tanggal ?? null };
+}
 
 export function hitungMode(now: Date, jamTutupMenit: number, libur: ReadonlySet<string>): ModeLayanan {
   const hari = toWIBDateString(now);

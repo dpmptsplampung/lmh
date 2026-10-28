@@ -4,6 +4,8 @@
 //  - ChatAmbilAlihDialog : Admin merebut chat yang dipegang staf lain, alasan 5-500 karakter wajib (chat_ambil).
 //  - ChatTeruskanDialog  : FO meneruskan ke layanan (punya_chat), topik FO + catatan <=200 wajib (chat_teruskan).
 //  - ChatSelesaiDialog   : pemilik tahap menutup chat; topik + catatan wajib (FO <=200, layanan <=1000) (chat_selesai).
+//                          Fase 4: bila migrasi Pendataan Khusus terpasang, juga identitas pengunjung (Pendataan Umum) dan,
+//                          untuk tahap layanan, Pendataan Khusus Layanan itu (chat_selesai_khusus).
 // Semua lewat `kirimAksiChat` (route /api/chat/sesi -> RPC). Kerangka dialog + isian memakai ulang FoDialog,
 // FoTopikCatatan, TopikCatatanFields (fokus awal, Escape, focus trap, label terhubung, galat role=alert).
 // Hasil dikirim ke pemanggil lewat `onBerhasil`; galat sistem (sesi tidak sah / tampilan basi) lewat `onGalat`.
@@ -22,10 +24,19 @@ import {
   type PeranTahapChat,
 } from '@/lib/chat-staf';
 import type { TopikFo } from '@/lib/fo-penanganan';
+import { susunJawabanMentah, validasiJawabanKhusus, type NilaiForm } from '@/lib/pendataan-khusus/jawaban';
+import { identitasBerubah, validasiIdentitasBerubah, type IdentitasForm, type KolomIdentitas } from '@/lib/pendataan-khusus/identitas';
 import FoDialog from './FoDialog';
 import FoTopikCatatan from './FoTopikCatatan';
+import IdentitasPengunjungFields, { useIdentitasKunjungan } from './IdentitasPengunjungFields';
+import PendataanKhususFields, { useFieldKhusus } from './PendataanKhususFields';
 import TopikCatatanFields, { useTopikLayanan } from './TopikCatatanFields';
 import styles from './fo.module.css';
+
+const PESAN_MIGRASI_SEBAGIAN =
+  'Pendataan Khusus belum aktif sepenuhnya di server (migrasi belum lengkap), sehingga chat belum dapat diselesaikan dengan isian ini. Hubungi Admin.';
+const PESAN_ISIAN_BERUBAH =
+  'Isian Pendataan Khusus Layanan ini berubah. Formulir dimuat ulang; periksa isian lalu kirim lagi.';
 
 export interface LayananChatOpsi {
   id: string;
@@ -285,6 +296,14 @@ export function ChatSelesaiDialog({
 }: SelesaiProps) {
   const idDasar = useId();
   const topikLayanan = useTopikLayanan(layananId, peran === 'layanan');
+  // Fase 4: `tersedia` = migrasi Pendataan Khusus terpasang. Tahap FO tidak punya Layanan (hanya identitas).
+  const khusus = useFieldKhusus(peran === 'layanan' ? layananId : null, true);
+  const identitasAwal = useIdentitasKunjungan(sesiId, khusus.tersedia);
+  // Hanya EDIT petugas yang disimpan; tampilan = profil terbaca + edit (edit sebelum profil termuat tidak membekukan kolom lain).
+  const [editIdentitas, setEditIdentitas] = useState<Partial<IdentitasForm>>({});
+  const [galatIdentitas, setGalatIdentitas] = useState<Partial<Record<KolomIdentitas, string>>>({});
+  const [nilaiKhusus, setNilaiKhusus] = useState<NilaiForm>({});
+  const [galatKhusus, setGalatKhusus] = useState<Record<string, string>>({});
   const [topikId, setTopikId] = useState('');
   const [catatan, setCatatan] = useState('');
   const [mengirim, setMengirim] = useState(false);
@@ -292,6 +311,7 @@ export function ChatSelesaiDialog({
   const [galatCatatan, setGalatCatatan] = useState<string | null>(null);
   const [galat, setGalat] = useState<string | null>(null);
   const kunciRef = useRef(false);
+  const identitasTampil: IdentitasForm = { ...identitasAwal.awal, ...editIdentitas };
 
   // Peran layanan memakai TopikCatatanFields (tanpa data-autofocus): fokus awal ke pilihan topik setelah focus trap dialog.
   useEffect(() => {
@@ -305,18 +325,49 @@ export function ChatSelesaiDialog({
     const salah = validasiTopikCatatanChat(topikId, catatan, peran);
     setGalatTopik(!topikId ? salah : null);
     setGalatCatatan(topikId ? salah : null);
-    if (salah) return;
+    // Pendataan Umum (identitas) dan Pendataan Khusus hanya bila migrasi terpasang (khusus.tersedia).
+    const ubahIdentitas = khusus.tersedia ? identitasBerubah(identitasAwal.awal, identitasTampil) : {};
+    // Validasi HANYA kolom yang diubah: profil lama yang tidak valid dan tidak disentuh tidak boleh memblokir.
+    const gIdentitas = khusus.tersedia ? validasiIdentitasBerubah(identitasAwal.awal, identitasTampil) : {};
+    setGalatIdentitas(gIdentitas);
+    const adaKhusus = khusus.tersedia && peran === 'layanan' && khusus.fields.length > 0;
+    const hasilKhusus = adaKhusus
+      ? validasiJawabanKhusus(khusus.fields, susunJawabanMentah(khusus.fields, nilaiKhusus))
+      : { galat: {}, payload: {} };
+    setGalatKhusus(hasilKhusus.galat);
+    if (salah || Object.keys(gIdentitas).length > 0 || Object.keys(hasilKhusus.galat).length > 0) return;
     kunciRef.current = true;
     setMengirim(true);
     try {
-      const hasil = await kirimAksiChat<HasilChatSelesai>({
-        sesi_id: sesiId, aksi: 'selesaikan', topik_id: topikId, catatan: catatan.trim(),
-      });
+      const dasar = { sesi_id: sesiId, aksi: 'selesaikan' as const, topik_id: topikId, catatan: catatan.trim() };
+      let hasil: HasilChatSelesai;
+      try {
+        hasil = await kirimAksiChat<HasilChatSelesai>({
+          ...dasar,
+          ...(adaKhusus ? { khusus: hasilKhusus.payload } : {}),
+          ...(Object.keys(ubahIdentitas).length > 0 ? { identitas: ubahIdentitas } : {}),
+        });
+      } catch (err) {
+        // Deploy sebagian (0001 tanpa 0002): chat_selesai_khusus belum ada.
+        if (!(err instanceof GalatAksiChat) || err.kodeMentah !== 'MIGRASI_BELUM_DITERAPKAN') throw err;
+        const perlu = khusus.fields.some((f) => f.wajib) || Object.keys(hasilKhusus.payload).length > 0
+          || Object.keys(ubahIdentitas).length > 0;
+        if (perlu) {
+          setGalat(PESAN_MIGRASI_SEBAGIAN);
+          return;
+        }
+        hasil = await kirimAksiChat<HasilChatSelesai>(dasar);
+      }
       onBerhasil(hasil);
     } catch (err) {
       const kode = err instanceof GalatAksiChat ? err.kode : null;
+      const mentah = err instanceof GalatAksiChat ? err.kodeMentah : null;
       const pesan = pesanDari(err, 'Gagal menyelesaikan chat.');
-      if (kode === 'TOPIK_WAJIB' || kode === 'TOPIK_TIDAK_VALID') setGalatTopik(pesan);
+      if (mentah === 'KHUSUS_TIDAK_VALID' || mentah === 'KHUSUS_WAJIB') {
+        // Isian Layanan berubah (Admin) saat dialog terbuka: muat ulang isian; nilai yang diketik dipertahankan.
+        khusus.muatUlang();
+        setGalat(PESAN_ISIAN_BERUBAH);
+      } else if (kode === 'TOPIK_WAJIB' || kode === 'TOPIK_TIDAK_VALID') setGalatTopik(pesan);
       else if (kode === 'CATATAN_WAJIB' || kode === 'CATATAN_TERLALU_PANJANG') setGalatCatatan(pesan);
       else setGalat(pesan);
       onGalat?.(err as Galat);
@@ -329,7 +380,7 @@ export function ChatSelesaiDialog({
   return (
     <FoDialog
       judul={`Selesaikan chat ${namaPengunjung}`}
-      deskripsi="Pilih topik dan tulis catatan sebelum menutup chat. Pengunjung akan menerima pesan penutup."
+      deskripsi="Pilih topik, tulis catatan, dan lengkapi pendataan sebelum menutup chat. Pengunjung akan menerima pesan penutup."
       onClose={onClose}
       dikunci={mengirim}
       onSubmit={kirim}
@@ -339,7 +390,7 @@ export function ChatSelesaiDialog({
           <button
             type="submit"
             className="btn btn--primary btn--sm"
-            disabled={mengirim || (peran === 'layanan' && topikLayanan.memuat)}
+            disabled={mengirim || (peran === 'layanan' && topikLayanan.memuat) || khusus.memuat || (khusus.tersedia && identitasAwal.memuat)}
             aria-busy={mengirim}
           >
             {mengirim ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <CheckCircle2 size={14} aria-hidden="true" />}
@@ -378,6 +429,33 @@ export function ChatSelesaiDialog({
           galatCatatan={galatCatatan}
           disabled={mengirim}
         />
+      )}
+      {khusus.tersedia && (
+        <>
+          <IdentitasPengunjungFields
+            idDasar={idDasar}
+            nilai={identitasTampil}
+            onNilai={(k, v) => {
+              setEditIdentitas((e) => ({ ...e, [k]: v }));
+              setGalatIdentitas((g) => ({ ...g, [k]: undefined }));
+            }}
+            galat={galatIdentitas}
+            disabled={mengirim}
+          />
+          {peran === 'layanan' && (
+            <PendataanKhususFields
+              idDasar={idDasar}
+              fields={khusus.fields}
+              nilai={nilaiKhusus}
+              onNilai={(id, v) => {
+                setNilaiKhusus((n) => ({ ...n, [id]: v }));
+                setGalatKhusus((g) => { const { [id]: _hapus, ...sisa } = g; void _hapus; return sisa; });
+              }}
+              galat={galatKhusus}
+              disabled={mengirim}
+            />
+          )}
+        </>
       )}
       {galat && <p role="alert" className={styles.galat}>{galat}</p>}
     </FoDialog>

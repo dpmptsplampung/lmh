@@ -1,9 +1,3 @@
 {
-  "pengecualian": [
-    {
-      "id": "GHSA-vfj7-8cjw-p6xm",
-      "alasan": "braces <=3.0.3 (DoS stack-exhaustion pada pola kurung-kurawal bersarang dalam; CVSS 7.5). Rantai DEV-ONLY: braces -> micromatch -> fast-glob -> @next/eslint-plugin-next -> eslint-config-next, hanya dipakai `npm run lint`; tidak masuk bundel produksi (`npm ls braces --omit=dev` kosong; `npm audit --omit=dev` tidak melaporkan high). Belum ada perbaikan layak: braces 3.0.3 masih rilis terbaru (diverifikasi 2026-10-13) dan satu-satunya saran npm adalah menurunkan eslint-config-next ke 14.2.35 (mayor mundur; peer-dependency-nya eslint ^7.23 || ^8, sedangkan proyek memakai ESLint 9 + flat config `eslint-config-next/core-web-vitals`). Kaji ulang: cek rilis braces > 3.0.3 / pembaruan eslint-config-next, atau hapus entri ini bila rantai sudah tidak dilaporkan.",
-      "tenggat": "2027-01-13"
-    }
-  ]
+  "pengecualian": []
 }

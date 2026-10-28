@@ -11,7 +11,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/client';
 import { useRealtimeRefetch } from '@/lib/hooks/useRealtimeRefetch';
 import { badgeKeysForRole, type AdminBadgeKey } from '@/lib/admin-nav';
-import { muatInfoHariLayanan } from '@/lib/chat/hari-tanpa-layanan';
+import { muatStatusLayananChat } from '@/lib/chat/status-layanan';
 import { todayWIB } from '@/lib/time';
 
 export interface NavBadge {
@@ -163,8 +163,13 @@ export function useNavBadges(who: PenggunaBadge | null): NavBadges {
         const supabase = createClient();
         const tanggal = todayWIB();
         if (badgeKeysForRole(w.role).includes('liveChat') && hariRef.current?.tanggal !== tanggal) {
-          const info = await muatInfoHariLayanan(supabase, new Date(), { kanal: false });
-          hariRef.current = { tanggal, libur: !!info.alasan };
+          // Jadwal PER LAYANAN (spec §4.4): hanya petugas Layanan yang punya satu Layanan untuk dinilai; FO/Admin
+          // melihat chat banyak Layanan sehingga badge tetap dihitung (tidak dinolkan oleh satu hari tanpa pelayanan).
+          const libur =
+            w.role === 'petugas' && w.layananId
+              ? (await muatStatusLayananChat(supabase, w.layananId)).hariTanpaLayanan
+              : false;
+          hariRef.current = { tanggal, libur };
         }
         const baru = await hitungBadge(supabase, w, { tanggal, hariTanpaLayanan: !!hariRef.current?.libur });
         if (hidup.current && mine === seq.current && whoRef.current?.role === w.role) {

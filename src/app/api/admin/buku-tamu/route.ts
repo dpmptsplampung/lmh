@@ -6,14 +6,17 @@ import { todayWIB } from '@/lib/time';
 
 export const dynamic = 'force-dynamic';
 
-const KOLOM = 'id, nama, asal, no_hp, menemui_siapa, keperluan, waktu_masuk, dicatat_oleh';
+// `pencatat` = nama staf yang mencatat (tanda saja; daftar sengaja tidak dibatasi per pencatat, keputusan pemilik).
+const KOLOM = 'id, nama, asal, no_hp, menemui_siapa, keperluan, waktu_masuk, dicatat_oleh, pencatat:petugas!dicatat_oleh(nama)';
 type Baris = {
   id: string; nama: string; asal: string | null; no_hp: string | null; menemui_siapa: string;
   keperluan: string | null; waktu_masuk: string; dicatat_oleh: string | null;
+  pencatat?: { nama: string | null } | null;
 };
 const peta = (r: Baris) => ({
   id: r.id, nama: r.nama, instansi: r.asal, no_hp: r.no_hp, bertemu: r.menemui_siapa,
   tujuan: r.keperluan, waktu_masuk: r.waktu_masuk, dicatat_oleh: r.dicatat_oleh,
+  dicatat_nama: r.pencatat?.nama ?? null,
 });
 
 const tgl = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);

@@ -1,9 +1,11 @@
 'use client';
 
 // Penanganan (Front Office; Tahap B, kontrak docs/analysis/FO-ESKALASI-KONTRAK-RPC.md §6.2, §2.4, §2.5).
-// Menampilkan tahap FO yang sedang saya pegang (status `berjalan`), tahap FO yang sedang dipegang FO lain (baca saja),
-// dan riwayat hari ini (WIB) SEMUA Front Office dengan nama FO yang melayani (keputusan CEO 2026-10-14: keterbukaan
-// data antar FO; RLS migrasi 202610140013). Tombol aksi hanya untuk milik sendiri; DB tetap menolak BUKAN_PEMILIK.
+// Menampilkan tahap FO yang sedang saya pegang (status `berjalan`), tahap FO yang sedang dipegang FO lain (baca saja,
+// pekerjaan terbuka = operasional), dan riwayat hari ini (WIB): FO biasa hanya riwayat MILIKNYA; Koordinator FO dan Admin
+// riwayat semua Front Office (Fase 3, spec §6.1, ADR 0003; RLS 202610290001 membalik keterbukaan 202610140013).
+// Koordinator FO dapat mengambil alih tahap FO lain yang berjalan. Tombol aksi hanya untuk milik sendiri; DB tetap menolak
+// BUKAN_PEMILIK.
 // Penutupan tahap hanya lewat RPC: "Selesaikan" (fo_selesai: topik + catatan wajib) atau "Eskalasi" (fo_eskalasi:
 // layanan tujuan, topik, catatan wajib; tiket baru terbit di sini, mis. OS-014). Hasil eskalasi (nomor tiket, peringatan
 // bila belum ada petugas layanan yang hadir) tetap tampil sampai ditutup agar nomor dapat disampaikan ke pengunjung.
@@ -12,6 +14,9 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowRight, CheckCircle2, RotateCcw, UserRound, X } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
+import AmbilAlihTiketModal, { type TiketAmbilAlih } from '@/components/admin/AmbilAlihTiketModal';
+import PemberitahuanAmbilAlih from '@/components/admin/PemberitahuanAmbilAlih';
+import { bolehKoordinatorAmbilAlihFo, muatKoordinator } from '@/lib/akses-data/lingkup';
 import FoEskalasiDialog from '@/components/admin/FoEskalasiDialog';
 import FoSelesaiForm from '@/components/admin/FoSelesaiForm';
 import { useToast } from '@/components/Toast';
@@ -69,13 +74,21 @@ interface PenangananRiwayat {
   selesai_at: string | null;
   penangan_id?: string | null;
   penangan?: NamaEmbed;
-  kunjungan: { nama: string; asal_instansi: string | null } | { nama: string; asal_instansi: string | null }[] | null;
+  kunjungan: KunjunganRiwayat | KunjunganRiwayat[] | null;
+}
+
+/** Data induk kunjungan; `email` terisi bila FO atau petugas layanan sudah melengkapinya (identitas satu kesatuan). */
+interface KunjunganRiwayat {
+  nama: string;
+  asal_instansi: string | null;
+  email?: string | null;
 }
 
 interface TiketHasilEskalasi {
   penanganan_asal_id: string;
   nomor_display: string;
   layanan_id: string;
+  status?: string | null;
 }
 
 type Hasil =
@@ -88,6 +101,10 @@ export default function PenangananFoPage() {
   const [berjalan, setBerjalan] = useState<PenangananBerjalan[]>([]);
   const [berjalanLain, setBerjalanLain] = useState<PenangananBerjalan[]>([]);
   const [petugasSaya, setPetugasSaya] = useState<string | null>(null);
+  // Fase 3: Koordinator Front Office boleh mengambil alih penanganan FO lain yang sedang berjalan (bukan chat).
+  const [stafSaya, setStafSaya] = useState<{ id: string; role: string; koordinator: boolean } | null>(null);
+  const [ambilAlih, setAmbilAlih] = useState<TiketAmbilAlih | null>(null);
+  const riwayatSemua = stafSaya?.role === 'admin' || !!stafSaya?.koordinator;
   const [riwayat, setRiwayat] = useState<PenangananRiwayat[]>([]);
   const [tiketPerTahap, setTiketPerTahap] = useState<Record<string, TiketHasilEskalasi>>({});
   const [topik, setTopik] = useState<TopikFo[]>([]);
@@ -112,14 +129,27 @@ export default function PenangananFoPage() {
       if (!user) throw new Error('Belum masuk');
       const { data: saya, error: eSaya } = await supabase
         .from('petugas')
-        .select('id')
+        .select('id, role')
         .eq('auth_user_id', user.id)
         .maybeSingle();
       if (eSaya) throw eSaya;
       if (!saya) throw new Error('Akun petugas tidak ditemukan');
       const petugasId = (saya as { id: string }).id;
+      const peranSaya = (saya as { role?: string }).role ?? '';
+      const koordinator = peranSaya === 'front_office' ? await muatKoordinator(supabase, petugasId) : false;
 
-      // Semua FO (keterbukaan antar FO): tahap berjalan milik saya dipisah dari milik FO lain di klien.
+      // Tahap berjalan (operasional, semua FO): milik saya dipisah dari milik FO lain di klien. Riwayat (sudah ditutup):
+      // FO biasa hanya miliknya; Koordinator FO dan Admin semua FO (RLS menegakkan hal yang sama).
+      const semuaFo = peranSaya === 'admin' || koordinator;
+      let kueriRiwayat = supabase
+        .from('penanganan')
+        .select(
+          'id, kunjungan_id, tahap_ke, saluran, status, hasil, topik, catatan, mulai_at, selesai_at, penangan_id, penangan:penangan_id(nama), kunjungan:kunjungan_id(nama, asal_instansi, email)',
+        )
+        .eq('peran_tahap', 'fo')
+        .in('status', ['selesai', 'batal'])
+        .gte('mulai_at', awalHariWIBIso());
+      if (!semuaFo) kueriRiwayat = kueriRiwayat.eq('penangan_id', petugasId);
       const [resBerjalan, resRiwayat] = await Promise.all([
         supabase
           .from('penanganan')
@@ -129,15 +159,7 @@ export default function PenangananFoPage() {
           .eq('peran_tahap', 'fo')
           .eq('status', 'berjalan')
           .order('mulai_at', { ascending: true }),
-        supabase
-          .from('penanganan')
-          .select(
-            'id, kunjungan_id, tahap_ke, saluran, status, hasil, topik, catatan, mulai_at, selesai_at, penangan_id, penangan:penangan_id(nama), kunjungan:kunjungan_id(nama, asal_instansi)',
-          )
-          .eq('peran_tahap', 'fo')
-          .in('status', ['selesai', 'batal'])
-          .gte('mulai_at', awalHariWIBIso())
-          .order('selesai_at', { ascending: false }),
+        kueriRiwayat.order('selesai_at', { ascending: false }),
       ]);
       if (resBerjalan.error) throw resBerjalan.error;
       if (resRiwayat.error) throw resRiwayat.error;
@@ -152,7 +174,7 @@ export default function PenangananFoPage() {
       if (idDieskalasi.length > 0) {
         const { data: tiket } = await supabase
           .from('tiket_antrean')
-          .select('penanganan_asal_id, nomor_display, layanan_id')
+          .select('penanganan_asal_id, nomor_display, layanan_id, status')
           .in('penanganan_asal_id', idDieskalasi);
         for (const t of (tiket ?? []) as unknown as TiketHasilEskalasi[]) petaTiket[t.penanganan_asal_id] = t;
       }
@@ -185,6 +207,7 @@ export default function PenangananFoPage() {
 
       if (seq !== seqRef.current) return; // respons lama tidak boleh menimpa yang lebih baru
       setPetugasSaya(petugasId);
+      setStafSaya({ id: petugasId, role: peranSaya, koordinator });
       setBerjalan(dataBerjalan);
       setBerjalanLain(dataBerjalanLain);
       setRiwayat(dataRiwayat);
@@ -262,7 +285,8 @@ export default function PenangananFoPage() {
       const t = tiketPerTahap[r.id];
       if (!t) return 'Dieskalasi';
       const tujuan = namaLayanan(t.layanan_id);
-      return `Dieskalasi → ${t.nomor_display}${tujuan ? ` (${tujuan})` : ''}`;
+      const keadaan = t.status === 'selesai' ? ' · layanan selesai' : '';
+      return `Dieskalasi → ${t.nomor_display}${tujuan ? ` (${tujuan})` : ''}${keadaan}`;
     }
     if (r.hasil === 'selesai') return 'Selesai di FO';
     return r.hasil ?? 'Selesai';
@@ -272,9 +296,10 @@ export default function PenangananFoPage() {
     <>
       <PageHeader
         title="Penanganan"
-        description="Pengunjung yang sedang Anda tangani sebagai Front Office, yang sedang ditangani Front Office lain, dan riwayat hari ini semua Front Office."
+        description="Pengunjung yang sedang Anda tangani sebagai Front Office, yang sedang ditangani Front Office lain, dan riwayat penanganan hari ini."
       />
       <div className={styles.halaman}>
+        <PemberitahuanAmbilAlih petugasId={petugasSaya} />
         {/* Pengumuman hasil tindakan; bertahan sampai ditutup agar nomor tiket tidak hilang seperti toast. */}
         <div role="status" aria-live="polite">
           {hasil && (
@@ -403,6 +428,7 @@ export default function PenangananFoPage() {
                       <th scope="col">Mulai</th>
                       <th scope="col">Pengunjung</th>
                       <th scope="col">Front Office</th>
+                      {stafSaya?.koordinator && <th scope="col">Aksi</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -417,6 +443,19 @@ export default function PenangananFoPage() {
                             <span className={styles.meta}>{labelSaluran(b.saluran)}</span>
                           </td>
                           <td>{namaFo(b)}</td>
+                          {stafSaya?.koordinator && (
+                            <td>
+                              {bolehKoordinatorAmbilAlihFo(stafSaya, b) ? (
+                                <button type="button" className="btn btn--secondary btn--sm"
+                                  aria-label={`Ambil alih penanganan ${k?.nama ?? ''}`.trim()}
+                                  onClick={() => setAmbilAlih({ id: b.id, nomor_display: k?.nama ?? '', pemilik_nama: namaFo(b) })}>
+                                  Ambil alih
+                                </button>
+                              ) : (
+                                <span className={styles.meta}>{b.saluran === 'chat' ? 'Live chat: tidak dapat diambil alih' : '-'}</span>
+                              )}
+                            </td>
+                          )}
                         </tr>
                       );
                     })}
@@ -429,7 +468,7 @@ export default function PenangananFoPage() {
 
         <section className={styles.seksi} aria-labelledby="judul-riwayat">
           <h2 id="judul-riwayat" className={styles.judulSeksi}>
-            Riwayat hari ini (semua Front Office)
+            {riwayatSemua ? 'Riwayat hari ini (semua Front Office)' : 'Riwayat hari ini (milik Anda)'}
             <span className={styles.jumlah}>{riwayat.length}</span>
           </h2>
           {riwayat.length === 0 ? (
@@ -458,6 +497,12 @@ export default function PenangananFoPage() {
                           {k?.nama ?? '-'}
                           <br />
                           <span className={styles.meta}>{labelSaluran(r.saluran)}</span>
+                          {k?.email && (
+                            <>
+                              <br />
+                              <span className={styles.meta}>Email: {k.email}</span>
+                            </>
+                          )}
                         </td>
                         <td>{namaFo(r)}</td>
                         <td>{labelHasil(r)}</td>
@@ -484,6 +529,16 @@ export default function PenangananFoPage() {
           onClose={() => setEskalasiUntuk(null)}
           onBerhasil={(h) => berhasilEskalasi(eskalasiUntuk, h)}
           onGalatSistem={tanganiGalatSistem}
+        />
+      )}
+
+      {ambilAlih && (
+        <AmbilAlihTiketModal
+          key={ambilAlih.id}
+          tiket={ambilAlih}
+          mode="koordinator_fo"
+          onClose={() => setAmbilAlih(null)}
+          onSuccess={muat}
         />
       )}
     </>

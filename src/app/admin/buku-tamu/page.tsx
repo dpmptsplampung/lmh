@@ -17,6 +17,8 @@ interface Tamu {
   bertemu: string | null;
   tujuan: string | null;
   waktu_masuk: string;
+  dicatat_oleh: string | null;
+  dicatat_nama: string | null;
 }
 
 const LIMIT = 50;
@@ -60,7 +62,7 @@ export default function BukuTamuPage() {
     <>
       <PageHeader title="Buku Tamu" description="Catatan tamu kantor hari ini" />
       <div style={{ padding: 'clamp(var(--space-4), 4vw, var(--space-8))' }}>
-        <RoleNote>Admin dan Front Office dapat mencatat tamu kantor. Daftar di bawah menampilkan tamu hari ini.</RoleNote>
+        <RoleNote>Admin dan Front Office dapat mencatat tamu kantor. Daftar di bawah menampilkan semua tamu hari ini; kolom &ldquo;Dicatat oleh&rdquo; menandai siapa yang mencatat.</RoleNote>
         <TamuForm onSubmit={catat} />
         <div className="table-wrapper">
           {loading ? (
@@ -75,7 +77,7 @@ export default function BukuTamuPage() {
             <>
               <table className="table">
                 <thead>
-                  <tr><th>Jam</th><th>Nama</th><th>Instansi</th><th>Bertemu</th><th>Tujuan</th></tr>
+                  <tr><th>Jam</th><th>Nama</th><th>Instansi</th><th>Bertemu</th><th>Tujuan</th><th>Dicatat oleh</th></tr>
                 </thead>
                 <tbody>
                   {items.map((t) => (
@@ -85,6 +87,7 @@ export default function BukuTamuPage() {
                       <td>{t.instansi ?? '—'}</td>
                       <td>{t.bertemu ?? '—'}</td>
                       <td>{t.tujuan ?? '—'}</td>
+                      <td>{t.dicatat_nama ?? '—'}</td>
                     </tr>
                   ))}
                 </tbody>

@@ -113,6 +113,29 @@ describe('Scan QR: pratinjau reservasi (baca kunjungan, bukan visit)', () => {
     expect(await screen.findByText('Tidak Ditemukan')).toBeInTheDocument();
   });
 
+  it('Fase 3: QR di luar jendela FO -> kategori dari fo_status_qr (tanpa PII)', async () => {
+    siapkan(null);
+    m.h.rpc = (nama) => ({ data: nama === 'fo_status_qr' ? 'tanggal_lain' : null, error: null });
+    await pindaiManual('tok-besok');
+    expect(await screen.findByText('Reservasi Tanggal Lain')).toBeInTheDocument();
+    expect(m.h.rpcLog).toContainEqual({ nama: 'fo_status_qr', args: { p_qr_token: 'tok-besok' } });
+  });
+
+  it('Fase 3: fo_status_qr tidak_berlaku -> "QR Sudah Hangus"; RPC belum ada -> pesan tidak ditemukan/tidak berlaku hari ini', async () => {
+    siapkan(null);
+    m.h.rpc = () => ({ data: 'tidak_berlaku', error: null });
+    await pindaiManual('tok-lama');
+    expect(await screen.findByText('QR Sudah Hangus')).toBeInTheDocument();
+  });
+
+  it('Fase 3: RPC galat -> "Tidak Ditemukan" dengan keterangan tidak berlaku hari ini', async () => {
+    siapkan(null);
+    m.h.rpc = () => ({ data: null, error: { message: 'not found', code: 'PGRST202' } });
+    await pindaiManual('tok-x');
+    expect(await screen.findByText('Tidak Ditemukan')).toBeInTheDocument();
+    expect(screen.getByText(/tidak berlaku hari ini/)).toBeInTheDocument();
+  });
+
   it('galat membaca (jaringan/DB) dibedakan dari "tidak ditemukan"', async () => {
     m.h.tabel.kunjungan = { data: null, error: { message: 'TypeError: Failed to fetch', code: '' } };
     await pindaiManual();

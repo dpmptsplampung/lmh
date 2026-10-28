@@ -6,6 +6,8 @@ import { isValidUsername, normalizeNoHp, normalizeUsername, usernameToEmail } fr
 export const dynamic = 'force-dynamic';
 
 // GET daftar akun (Admin aktif): termasuk last_sign_in_at / belum_pernah_login, email notifikasi tersamar.
+// Fase 3: penanda Koordinator (petugas.koordinator, migrasi 202610290001) digabung ke tiap akun. Sebelum migrasi
+// diterapkan kolom belum ada: semua `koordinator: false` dan `koordinator_tersedia: false` (UI menyembunyikan tombol).
 export async function GET() {
   const g = await requireAdmin();
   if ('res' in g) return g.res;
@@ -14,7 +16,13 @@ export async function GET() {
     console.error('[admin/petugas] akun_daftar gagal', error.message);
     return json({ error: 'Gagal memuat daftar akun' }, 500);
   }
-  return json({ akun: data ?? [] });
+  const { data: penanda, error: ePenanda } = await g.service.from('petugas').select('id, koordinator');
+  const tersedia = !ePenanda && Array.isArray(penanda);
+  const peta = new Map<string, boolean>(
+    tersedia ? (penanda as { id: string; koordinator: boolean | null }[]).map((p) => [p.id, p.koordinator === true]) : [],
+  );
+  const akun = ((data ?? []) as { id: string }[]).map((a) => ({ ...a, koordinator: peta.get(a.id) ?? false }));
+  return json({ akun, koordinator_tersedia: tersedia });
 }
 
 const createSchema = z

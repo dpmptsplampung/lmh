@@ -1,0 +1,72 @@
+/* Dropdown saran pengunjung lama di bawah isian Nama / Nomor HP (combobox pada input yang sudah ada). Token global. */
+.pembungkus {
+  position: relative;
+}
+
+.daftar {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--glass-bg-strong, #fff);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--glass-shadow);
+  max-height: 20rem;
+  overflow-y: auto;
+}
+
+.opsi {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.opsiAktif {
+  background: var(--color-primary-50);
+  outline: 2px solid var(--color-primary-600);
+  outline-offset: -2px;
+}
+
+.nama {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.rincian {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.peringatan {
+  font-weight: 600;
+  color: var(--color-danger-700);
+}
+
+.catatan {
+  display: block;
+  margin-top: var(--space-1, 4px);
+  font-size: var(--text-xs);
+  color: var(--color-danger-700);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

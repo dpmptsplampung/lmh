@@ -10,7 +10,7 @@ import BukuTamuPage from './page';
 let fetchMock: ReturnType<typeof vi.fn>;
 let daftar: unknown[];
 beforeEach(() => {
-  daftar = [{ id: 't1', nama: 'Budi Santoso', instansi: 'Dinas X', no_hp: null, bertemu: 'Kepala Bidang', tujuan: 'Koordinasi', waktu_masuk: '2026-10-08T02:30:00Z' }];
+  daftar = [{ id: 't1', nama: 'Budi Santoso', instansi: 'Dinas X', no_hp: null, bertemu: 'Kepala Bidang', tujuan: 'Koordinasi', waktu_masuk: '2026-10-08T02:30:00Z', dicatat_oleh: 'p1', dicatat_nama: 'FO Satu' }];
   fetchMock = vi.fn((url: string, init?: RequestInit) => {
     const ok = (b: unknown) => Promise.resolve({ ok: true, json: () => Promise.resolve(b) });
     if (init?.method === 'POST') return ok({ tamu: { id: 't2' } });
@@ -25,6 +25,19 @@ describe('buku tamu', () => {
     render(<BukuTamuPage />);
     expect(await screen.findByText('Budi Santoso')).toBeTruthy();
     expect(screen.getByRole('note').textContent).toMatch(/Front Office/);
+  });
+
+  it('menandai siapa yang mencatat tiap tamu (daftar tidak dibatasi)', async () => {
+    daftar = [
+      { id: 't1', nama: 'Budi Santoso', instansi: null, no_hp: null, bertemu: 'Kabid', tujuan: null, waktu_masuk: '2026-10-08T02:30:00Z', dicatat_oleh: 'p1', dicatat_nama: 'FO Satu' },
+      { id: 't2', nama: 'Siti', instansi: null, no_hp: null, bertemu: 'Sekretaris', tujuan: null, waktu_masuk: '2026-10-08T03:00:00Z', dicatat_oleh: 'p2', dicatat_nama: 'FO Dua' },
+      { id: 't3', nama: 'Andi', instansi: null, no_hp: null, bertemu: 'Kabid', tujuan: null, waktu_masuk: '2026-10-08T03:30:00Z', dicatat_oleh: null, dicatat_nama: null },
+    ];
+    render(<BukuTamuPage />);
+    expect(await screen.findByRole('columnheader', { name: 'Dicatat oleh' })).toBeTruthy();
+    expect(screen.getByText('FO Satu')).toBeTruthy();
+    expect(screen.getByText('FO Dua')).toBeTruthy();
+    expect(screen.getAllByRole('row')).toHaveLength(4);
   });
 
   it('keadaan kosong', async () => {

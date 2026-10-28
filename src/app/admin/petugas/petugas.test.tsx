@@ -38,6 +38,35 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+describe('penanda Koordinator (Fase 3)', () => {
+  it('tanpa migrasi (koordinator_tersedia false): tombol Koordinator tidak tampil', async () => {
+    render(<AdminPetugasPage />);
+    await screen.findByText('helpdesk-oss');
+    expect(screen.queryByRole('button', { name: /Koordinator/ })).toBeNull();
+  });
+
+  it('tersedia: badge untuk Koordinator, tombol hanya untuk non-admin, PATCH ke route koordinator', async () => {
+    fetchMock.mockImplementation((url: string) => {
+      const ok = (b: unknown) => Promise.resolve({ ok: true, json: () => Promise.resolve(b) });
+      if (url === '/api/admin/petugas') {
+        return ok({ koordinator_tersedia: true, akun: [...DAFTAR, akun({ id: 'u3', nama: 'Koord FO', username: 'koord-fo', role: 'front_office', layanan_id: null, layanan_nama: null, koordinator: true })] });
+      }
+      if (url === '/api/me/profil') return ok({ profil: { id: 'me' } });
+      return ok({ ok: true });
+    });
+    render(<AdminPetugasPage />);
+    await screen.findByText('koord-fo');
+    expect(screen.getByText('Koordinator')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Koordinator Admin Satu/ })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Cabut penanda Koordinator Koord FO' }).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: 'Jadikan Koordinator Helpdesk OSS' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/admin/petugas/u2/koordinator', expect.objectContaining({
+      method: 'PATCH', body: JSON.stringify({ koordinator: true }),
+    })));
+    await waitFor(() => expect(toastMock).toHaveBeenCalledWith('Helpdesk OSS kini Koordinator.', 'success'));
+  });
+});
+
 describe('kelola akun', () => {
   it('menampilkan username dan badge "Belum pernah login"', async () => {
     render(<AdminPetugasPage />);

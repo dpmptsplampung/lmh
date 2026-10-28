@@ -81,9 +81,10 @@ describe('Sidebar: struktur per role', () => {
   it('semua href lama muncul tepat sekali (admin)', async () => {
     await renderSidebar('admin', '/admin');
     const hrefs = screen.getAllByRole('link', { hidden: true }).map((a) => a.getAttribute('href'));
-    // 33 href lama - 2 tersembunyi (Daftar FO, Scan QR) + 1 Registrasi Pengunjung.
-    expect(hrefs).toHaveLength(32);
-    expect(new Set(hrefs).size).toBe(32);
+    // 33 href lama - 3 tersembunyi (Daftar FO, Scan QR, Rekap Front Office) + 1 Registrasi Pengunjung.
+    expect(hrefs).toHaveLength(31);
+    expect(new Set(hrefs).size).toBe(31);
+    expect(hrefs).not.toContain('/admin/rekap-fo');
     expect(hrefs).not.toContain('/admin/scan');
     expect(hrefs).not.toContain('/admin/fo/daftar');
     expect(hrefs).toContain('/admin/fo/registrasi');
@@ -134,7 +135,7 @@ describe('Sidebar: dropdown accordion', () => {
     expect(document.querySelectorAll('[aria-expanded="true"]').length).toBe(0);
     cleanup();
     await renderSidebar('admin', '/admin/rekap-fo');
-    expect(navAktif()).toEqual(['Rekap Front Office']);
+    expect(navAktif()).toEqual(['Rekap']);
   });
 
   it('halaman lama /admin/scan dan /admin/fo/daftar menandai Registrasi Pengunjung dan membuka grup Front Office', async () => {

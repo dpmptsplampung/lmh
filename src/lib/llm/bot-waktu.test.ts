@@ -59,3 +59,17 @@ describe('hariTanpaLayanan (cermin public.hari_tanpa_layanan)', () => {
     expect(modeHariTanpaLayanan(hitungMode(wib('2026-08-17T10:00:00'), 960, new Set(['2026-08-17'])))).toBe(true);
   });
 });
+
+describe('modeDariStatus (Fase 5, jadwal per Layanan)', () => {
+  const dasar = { tanggal: '2026-10-31', liburKeterangan: null, hariTanpaLayanan: false, bukaBerikutnya: { tanggal: '2026-11-02', jam: '08:00' }, sumber: 'jadwal' as const };
+  it('buka -> tidak tutup', async () => {
+    const { modeDariStatus } = await import('./bot-waktu');
+    expect(modeDariStatus({ ...dasar, buka: true })).toEqual({ tutup: false, alasan: null, kerjaBerikutnya: null });
+  });
+  it('tutup: libur, hari tanpa pelayanan, dan di luar jadwal; kerjaBerikutnya dari status', async () => {
+    const { modeDariStatus } = await import('./bot-waktu');
+    expect(modeDariStatus({ ...dasar, buka: false, liburKeterangan: 'Libur' }).alasan).toBe('libur_nasional');
+    expect(modeDariStatus({ ...dasar, buka: false, hariTanpaLayanan: true }).alasan).toBe('akhir_pekan');
+    expect(modeDariStatus({ ...dasar, buka: false })).toEqual({ tutup: true, alasan: 'di_luar_jadwal', kerjaBerikutnya: '2026-11-02' });
+  });
+});

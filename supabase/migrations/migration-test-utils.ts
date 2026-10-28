@@ -80,6 +80,21 @@ export const FORWARD_MIGRATION_FILES = [
   '202610140013_fo_keterbukaan_data.sql',
   '202610140014_walkin_data_lengkap.sql',
   '202610140015_pendataan_tanpa_topik_email_opsional.sql',
+  '202610270001_instansi_layanan_konten.sql',
+  '202610270002_jadwal_tunggal_layanan.sql',
+  '202610280001_homepage_etalase.sql',
+  '202610290001_koordinator_akses_data.sql',
+  '202610290002_rekap_terpadu.sql',
+  '202610300001_pendataan_khusus.sql',
+  '202610300002_selesai_dengan_pendataan.sql',
+  '202610310001_chat_lingkup_percakapan.sql',
+  '202610310002_chat_luar_jam.sql',
+  '202610310003_chat_perbaikan_review.sql',
+  '202611010001_fo_cari_pengunjung.sql',
+  '202611010002_tiket_antrean_lingkup.sql',
+  '202611010003_identitas_satu_kesatuan.sql',
+  '202611010004_backfill_identitas_kunjungan.sql',
+  '202611010005_rekap_data_tanpa_form.sql',
 ] as const;
 
 export function listMigrationFiles(): string[] {

@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react';
 
-// Sesi dipulihkan dari localStorage: nama layanan di banner & label petugas harus
+// Percakapan dibuka dari daftar: nama layanan di banner & label petugas harus
 // berasal dari layanan milik SESI (chat_sesi.layanan_id), bukan dropdown/URL.
 vi.mock('@/lib/supabase/client', () => {
   const q = (table: string) => {
@@ -21,7 +21,9 @@ vi.mock('@/lib/supabase/client', () => {
     b.then = (r: (v: unknown) => unknown) =>
       Promise.resolve({
         data:
-          table === 'v_layanan_publik'
+          table === 'chat_sesi'
+            ? [{ id: 's1', layanan_id: '22222222-2222-4222-8222-222222222222', status: 'aktif', created_at: '2026-01-01T00:00:00Z' }]
+            : table === 'v_layanan_publik'
             ? [
                 { id: '11111111-1111-4111-8111-111111111111', nama: 'Bank Lampung', chatbot_aktif: true },
                 { id: '22222222-2222-4222-8222-222222222222', nama: 'Helpdesk OSS', chatbot_aktif: true },
@@ -44,11 +46,8 @@ vi.mock('@/lib/supabase/client', () => {
 
 import PublicChatPage from './page';
 
-describe('chat pengunjung: nama layanan pada sesi yang dipulihkan', () => {
+describe('chat pengunjung: nama layanan pada percakapan yang dibuka', () => {
   beforeEach(() => {
-    localStorage.setItem('lmh_chat_sesi_id', 's1');
-    // localStorage sengaja menyimpan layanan LAIN: sumber kebenaran = chat_sesi.layanan_id.
-    localStorage.setItem('lmh_chat_layanan_id', '11111111-1111-4111-8111-111111111111');
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => ({
@@ -70,6 +69,7 @@ describe('chat pengunjung: nama layanan pada sesi yang dipulihkan', () => {
 
   it('banner dan label petugas menyebut layanan sesi', async () => {
     render(<PublicChatPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /buka percakapan helpdesk oss/i }));
     await waitFor(() =>
       expect(screen.getByText('Terhubung langsung dengan Petugas Helpdesk OSS')).toBeTruthy(),
     );
@@ -78,14 +78,16 @@ describe('chat pengunjung: nama layanan pada sesi yang dipulihkan', () => {
 });
 
 describe('chat pengunjung: SSR tidak merender banner offline', () => {
-  it('HTML server (navigator.onLine undefined seperti Node) berisi form, bukan alert offline', async () => {
+  it('HTML server (navigator.onLine undefined seperti Node) tidak berisi alert offline', async () => {
     const { renderToString } = await import('react-dom/server');
     const desc = Object.getOwnPropertyDescriptor(Navigator.prototype, 'onLine');
     Object.defineProperty(navigator, 'onLine', { value: undefined, configurable: true });
     try {
       const html = renderToString(<PublicChatPage />);
-      expect(html).toContain('<form');
+      // SSR: belum diketahui login/percakapan -> keadaan memuat; tidak ada alert offline.
+      expect(html).toContain('Memuat percakapan');
       expect(html).not.toContain('form-error');
+      expect(html).not.toContain('role="alert"');
     } finally {
       delete (navigator as unknown as Record<string, unknown>).onLine;
       if (desc) Object.defineProperty(Navigator.prototype, 'onLine', desc);

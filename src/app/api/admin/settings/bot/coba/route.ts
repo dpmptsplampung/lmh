@@ -4,6 +4,7 @@ import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { ambilJatah, getServiceClient, json, requireStaf } from '@/lib/akun/server';
 import { jalankanBot } from '@/lib/llm/bot';
+import { muatLayananDanProfil } from '@/lib/llm/profil-layanan-server';
 import { redactPii } from '@/lib/pii';
 import { readJson } from '@/lib/settings/admin';
 
@@ -26,12 +27,18 @@ export async function POST(request: NextRequest) {
   if (!service) return json({ error: 'Server misconfigured' }, 500);
   if (!(await ambilJatah(service, `bot_coba:${me.id}`, 30, 3600))) return json({ error: 'Batas uji tercapai (30 per jam)' }, 429);
 
-  const { data: lay } = await service.from('layanan').select('nama, chatbot_aktif').eq('id', layanan_id).maybeSingle();
-  if (!lay) return json({ error: 'Layanan tidak ditemukan' }, 404);
+  // Profil yang sama dengan jalur chat pengunjung (deskripsi, instansi, tautan, jadwal).
+  const muat = await muatLayananDanProfil(service, layanan_id, { route: '/api/admin/settings/bot/coba' });
+  if (!muat.ok) {
+    return muat.status === 503
+      ? json({ error: 'Layanan sementara tidak tersedia. Coba lagi beberapa saat.' }, 503)
+      : json({ error: 'Layanan tidak ditemukan' }, 404);
+  }
+  const lay = muat.layanan;
 
   const t0 = Date.now();
   const hasil = await jalankanBot({
-    admin: service, pertanyaan: redactPii(raw), rawPertanyaan: raw, layananId: layanan_id, layananNama: lay.nama as string,
+    admin: service, pertanyaan: redactPii(raw), rawPertanyaan: raw, layananId: layanan_id, layananNama: lay.nama, profilLayanan: muat.profil,
   });
   const latensi_ms = Date.now() - t0;
   const chatbot_aktif = lay.chatbot_aktif === true;

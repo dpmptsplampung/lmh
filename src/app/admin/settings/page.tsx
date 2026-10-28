@@ -211,7 +211,7 @@ export default function AdminSettingsPage() {
             </button>
             <Link href="/admin/settings/landing" className="btn btn--secondary">
               <ExternalLink size={16} />
-              Edit Konten Landing Page
+              Edit Blok Homepage
             </Link>
           </div>
         </form>

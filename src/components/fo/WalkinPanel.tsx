@@ -8,7 +8,7 @@
 // Semua isian wajib KECUALI email (opsional sejak 202610140015; bila diisi tetap divalidasi). Aturan di
 // src/lib/fo/walkin.ts, sama dengan DB. Formulir "pintar": validasi per isian saat
 // blur (bukan sebelum disentuh), ringkasan + fokus ke galat pertama saat kirim, normalisasi HP/email/nama, saran
-// koreksi email, pengenalan pengunjung lama, datalist asal/instansi. Tombol kirim SENGAJA tetap aktif (kecuali
+// koreksi email, saran pengunjung lama pada isian Nama/HP (Fase 6), datalist asal/instansi. Tombol kirim SENGAJA tetap aktif (kecuali
 // sedang mengirim): tombol mati tidak bisa difokuskan dan tidak menjelaskan apa yang kurang (a11y).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
@@ -20,7 +20,6 @@ import { enqueueAction } from '@/lib/offline/queue';
 import { daftarkanSyncOffline } from '@/lib/offline/sync';
 import { urlLoginAlasan } from '@/lib/sesi-staf';
 import { GalatRpc } from '@/lib/rpc-galat';
-import { todayWIB } from '@/lib/time';
 import {
   BATAS_WALKIN,
   KATEGORI_WALKIN,
@@ -35,7 +34,6 @@ import {
   normalisasiEmail,
   normalisasiHp,
   panggilFoMulaiKunjungan,
-  periksaEmail,
   periksaHp,
   pesanGalatFoMulai,
   rapikanNama,
@@ -46,7 +44,9 @@ import {
   type GalatFieldServer,
   type ParamFoMulai,
 } from '@/lib/fo/walkin';
-import { cariPengunjungLama, muatAsalSering, type PengunjungLama } from '@/lib/fo/pengunjung-lama';
+import { muatAsalSering } from '@/lib/fo/pengunjung-lama';
+import { periksaKetersediaan, type PengunjungTerpilih } from '@/lib/fo/cari-pengunjung';
+import InputSaranPengunjung from './InputSaranPengunjung';
 import styles from './walkin-panel.module.css';
 
 interface LayananOpsi {
@@ -56,16 +56,7 @@ interface LayananOpsi {
 
 type Umpan = { jenis: 'galat' | 'info'; teks: string; sesiBerakhir?: boolean; field?: keyof DataWalkin };
 
-/** Jeda (ms) setelah HP/email terakhir diketik sebelum mencari pengunjung lama. */
-const JEDA_CARI_PENGUNJUNG_MS = 350;
-
 const idField = (k: keyof DataWalkin) => `fo-${k}`;
-
-function formatTanggalId(tanggal: string): string {
-  const d = new Date(`${tanggal}T00:00:00+07:00`);
-  if (Number.isNaN(d.getTime())) return tanggal;
-  return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta' });
-}
 
 function fokusField(k: keyof DataWalkin) {
   const el = document.getElementById(idField(k));
@@ -134,8 +125,9 @@ export default function WalkinPanel({ fokusAwal = true }: WalkinPanelProps) {
   const [layanan, setLayanan] = useState<LayananOpsi[]>([]);
   const [asalSaran, setAsalSaran] = useState<string[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
-  const [lama, setLama] = useState<{ kunci: string; data: PengunjungLama } | null>(null);
-  const [lamaDitutup, setLamaDitutup] = useState<string | null>(null);
+  // Saran pengunjung lama pada isian Nama/HP (Fase 6): aktif hanya bila RPC ada dan akun FO/admin.
+  const [cariTersedia, setCariTersedia] = useState(false);
+  const [terpilihLama, setTerpilihLama] = useState<{ nama: string; asal: string } | null>(null);
   // Guard sinkron: klik ganda sebelum re-render tidak boleh mengirim dua kali.
   const kirimRef = useRef(false);
   const formRef = useRef<HTMLFormElement>(null);
@@ -153,10 +145,6 @@ export default function WalkinPanel({ fokusAwal = true }: WalkinPanelProps) {
     (disentuh[k] || sudahCoba ? galatSemua[k] : undefined) ?? (galatServerField?.field === k ? galatServerField.pesan : undefined);
   // Isian opsional yang dikosongkan (email) tidak diberi tanda "benar".
   const validDi = (k: keyof DataWalkin) => Boolean(disentuh[k]) && !galatDi(k) && (k !== 'email' || form.email.trim() !== '');
-
-  const hpKunci = !periksaHp(form.kontak_hp) ? normalisasiHp(form.kontak_hp) : '';
-  const emailKunci = !periksaEmail(form.email) ? normalisasiEmail(form.email) : '';
-  const kunciCari = `${hpKunci}|${emailKunci}`;
 
   useEffect(() => {
     let aktif = true;
@@ -194,21 +182,16 @@ export default function WalkinPanel({ fokusAwal = true }: WalkinPanelProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Cari pengunjung lama (debounce). Gagal/tidak ada = diam-diam tanpa banner.
+  // Probe sekali: tanpa RPC (migrasi belum diterapkan) isian Nama/HP tetap input biasa.
   useEffect(() => {
-    if (kunciCari === '|') return;
     let batal = false;
-    const [hp, email] = kunciCari.split('|');
-    const t = setTimeout(() => {
-      void cariPengunjungLama(createClient(), { hp: hp || null, email: email || null }).then((data) => {
-        if (!batal && data) setLama({ kunci: kunciCari, data });
-      });
-    }, JEDA_CARI_PENGUNJUNG_MS);
+    void periksaKetersediaan(createClient()).then((ok) => {
+      if (!batal) setCariTersedia(ok);
+    });
     return () => {
       batal = true;
-      clearTimeout(t);
     };
-  }, [kunciCari]);
+  }, []);
 
   // Umpan hasil kirim (galat server / info offline) muncul di dekat tombol kirim: bawa ke layar dan fokuskan.
   useEffect(() => {
@@ -266,23 +249,45 @@ export default function WalkinPanel({ fokusAwal = true }: WalkinPanelProps) {
     });
   };
 
-  const isiOtomatis = () => {
-    if (!lama || lama.kunci !== kunciCari) return;
-    const d = lama.data;
+  /** Pilihan saran (Fase 6): identitas lengkap mengisi lima isian identitas; FO tetap bisa mengubahnya. */
+  const isiDariPengunjungLama = (d: PengunjungTerpilih) => {
     const baru: DataWalkin = {
       ...form,
       nama: d.nama,
       asal_instansi: d.asal_instansi,
       kategori: d.kategori || form.kategori,
-      email: form.email.trim() ? form.email : d.email || form.email,
-      kontak_hp: form.kontak_hp.trim() ? form.kontak_hp : d.kontak_hp ? formatHpTampil(normalisasiHp(d.kontak_hp)) : form.kontak_hp,
+      email: d.email,
+      kontak_hp: d.kontak_hp ? formatHpTampil(normalisasiHp(d.kontak_hp)) : '',
     };
     setForm(baru);
-    setDisentuh((t) => ({ ...t, nama: true, asal_instansi: true, kategori: Boolean(d.kategori) || t.kategori }));
-    setLamaDitutup(lama.kunci);
+    setGalatServerField(null);
+    setTerpilihLama({ nama: d.nama, asal: d.asal_instansi });
+    setDisentuh((t) => ({
+      ...t,
+      nama: true,
+      asal_instansi: true,
+      kategori: Boolean(d.kategori) || t.kategori,
+      kontak_hp: Boolean(d.kontak_hp) || t.kontak_hp,
+    }));
     const salah = validasiWalkin(baru);
     const pertama = URUTAN_FIELD_WALKIN.find((k) => salah[k]);
     if (pertama) fokusField(pertama);
+  };
+
+  /** "Kosongkan isian": hanya lima isian identitas; keperluan dan layanan saran dibiarkan. */
+  const kosongkanPengunjungLama = () => {
+    setForm((f) => ({
+      ...f,
+      nama: WALKIN_KOSONG.nama,
+      asal_instansi: WALKIN_KOSONG.asal_instansi,
+      kategori: WALKIN_KOSONG.kategori,
+      email: WALKIN_KOSONG.email,
+      kontak_hp: WALKIN_KOSONG.kontak_hp,
+    }));
+    setDisentuh((t) => ({ ...t, nama: false, asal_instansi: false, kategori: false, email: false, kontak_hp: false }));
+    setGalatServerField(null);
+    setTerpilihLama(null);
+    fokusField('nama');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -366,11 +371,9 @@ export default function WalkinPanel({ fokusAwal = true }: WalkinPanelProps) {
   };
 
   const saranEmail = disentuh.email && !galatSemua.email ? sarankanEmail(form.email) : null;
+  // Ringkasan "diisi dari pengunjung lama" hanya selama Nama masih sama dengan yang dipilih.
   const lamaTampil =
-    lama && lama.kunci === kunciCari && lamaDitutup !== kunciCari
-      ? lama.data
-      : null;
-  const lamaHariIni = lamaTampil?.tanggal === todayWIB();
+    terpilihLama && terpilihLama.nama.trim().toLowerCase() === form.nama.trim().toLowerCase() ? terpilihLama : null;
   const keperluanPanjang = Array.from(form.keperluan.trim()).length;
 
   return (
@@ -397,12 +400,16 @@ export default function WalkinPanel({ fokusAwal = true }: WalkinPanelProps) {
                   galat={galatDi('nama')}
                   valid={validDi('nama')}
                 >
-                  <input
+                  <InputSaranPengunjung
                     {...atribut('nama', true)}
+                    jenis="nama"
+                    aktif={cariTersedia}
+                    onPilih={isiDariPengunjungLama}
+                    onTidakTersedia={() => setCariTersedia(false)}
                     type="text"
                     className="form-input"
                     value={form.nama}
-                    onChange={(e) => ubah('nama', e.target.value)}
+                    onChange={(v) => ubah('nama', v)}
                     onKeyDown={enterPindah('nama')}
                     maxLength={BATAS_WALKIN.namaMax}
                     autoComplete="off"
@@ -473,14 +480,18 @@ export default function WalkinPanel({ fokusAwal = true }: WalkinPanelProps) {
                   galat={galatDi('kontak_hp')}
                   valid={validDi('kontak_hp')}
                 >
-                  <input
+                  <InputSaranPengunjung
                     {...atribut('kontak_hp', true)}
+                    jenis="hp"
+                    aktif={cariTersedia}
+                    onPilih={isiDariPengunjungLama}
+                    onTidakTersedia={() => setCariTersedia(false)}
                     type="tel"
                     inputMode="tel"
                     className="form-input"
                     placeholder="0812-3456-7890"
                     value={form.kontak_hp}
-                    onChange={(e) => ubah('kontak_hp', e.target.value)}
+                    onChange={(v) => ubah('kontak_hp', v)}
                     onKeyDown={enterPindah('kontak_hp')}
                     maxLength={24}
                     autoComplete="off"
@@ -537,20 +548,12 @@ export default function WalkinPanel({ fokusAwal = true }: WalkinPanelProps) {
                     <History size={18} className={styles.bannerIkon} aria-hidden="true" />
                     <div className={styles.bannerIsi}>
                       <p className={styles.bannerTeks}>
-                        Pernah berkunjung sebagai <strong>{lamaTampil.nama}</strong> ({lamaTampil.asal_instansi})
-                        {lamaTampil.tanggal ? `, terakhir ${formatTanggalId(lamaTampil.tanggal)}` : ''}. Isi otomatis?
+                        Diisi dari data pengunjung lama: <strong>{lamaTampil.nama}</strong> ({lamaTampil.asal}). Periksa
+                        dan ubah bila ada yang berbeda.
                       </p>
-                      {lamaHariIni && (
-                        <p className={styles.bannerPeringatan}>
-                          Nomor/email ini juga sudah tercatat hari ini. Pastikan bukan pendaftaran ganda.
-                        </p>
-                      )}
                       <div className={styles.bannerAksi}>
-                        <button type="button" className="btn btn--primary btn--sm" onClick={isiOtomatis}>
-                          Isi otomatis
-                        </button>
-                        <button type="button" className="btn btn--ghost btn--sm" onClick={() => setLamaDitutup(kunciCari)}>
-                          Abaikan
+                        <button type="button" className="btn btn--ghost btn--sm" onClick={kosongkanPengunjungLama}>
+                          Kosongkan isian
                         </button>
                       </div>
                     </div>

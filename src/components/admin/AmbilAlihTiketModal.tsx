@@ -4,6 +4,9 @@
 // RPC admin_ambil_alih (migrasi 202610140002): hanya Admin dengan sesi sah, alasan wajib (minimal 5 karakter),
 // tercatat di audit_log (pemilik lama, pemilik baru, alasan). Status tiket TIDAK berubah; setelah ambil alih,
 // Admin menjadi pemilik dan dapat mengisi pendataan lalu menyelesaikan tiket.
+// Fase 3 (migrasi 202610290001): mode Koordinator memakai RPC yang sama polanya: `koordinator_tiket` (Koordinator
+// Petugas Layanan, tiket di Layanannya; pemegang lama tetap boleh menyunting draf) dan `koordinator_fo` (Koordinator
+// Front Office, tahap FO berjalan; `tiket.id` = id tahap penanganan). Pemegang lama menerima pemberitahuan.
 import { useEffect, useId, useState } from 'react';
 import { X, Loader2, UserCog } from 'lucide-react';
 import { useToast } from '@/components/Toast';
@@ -18,14 +21,18 @@ export interface TiketAmbilAlih {
   pemilik_nama: string | null;
 }
 
+export type ModeAmbilAlih = 'admin' | 'koordinator_tiket' | 'koordinator_fo';
+
 interface Props {
   tiket: TiketAmbilAlih | null;
+  /** Bawaan 'admin' (admin_ambil_alih). */
+  mode?: ModeAmbilAlih;
   onClose: () => void;
   /** Dipanggil setelah berhasil (dan setelah galat yang menandakan tampilan basi) agar daftar dimuat ulang. */
   onSuccess?: () => void | Promise<void>;
 }
 
-export default function AmbilAlihTiketModal({ tiket, onClose, onSuccess }: Props) {
+export default function AmbilAlihTiketModal({ tiket, mode = 'admin', onClose, onSuccess }: Props) {
   const { toast } = useToast();
   const [alasan, setAlasan] = useState('');
   const [mengirim, setMengirim] = useState(false);
@@ -65,9 +72,18 @@ export default function AmbilAlihTiketModal({ tiket, onClose, onSuccess }: Props
     try {
       const supabase = createClient();
       await mutasiWajibBaris(
-        supabase.rpc('admin_ambil_alih', { p_tiket_id: tiket.id, p_alasan: alasanBersih }),
+        mode === 'koordinator_fo'
+          ? supabase.rpc('koordinator_ambil_alih_fo', { p_penanganan_id: tiket.id, p_alasan: alasanBersih })
+          : supabase.rpc(mode === 'koordinator_tiket' ? 'koordinator_ambil_alih_tiket' : 'admin_ambil_alih', {
+              p_tiket_id: tiket.id, p_alasan: alasanBersih,
+            }),
       );
-      toast(`Tiket ${tiket.nomor_display} kini menjadi tanggung jawab Anda`, 'success');
+      toast(
+        mode === 'koordinator_fo'
+          ? `Penanganan ${tiket.nomor_display} kini menjadi tanggung jawab Anda`
+          : `Tiket ${tiket.nomor_display} kini menjadi tanggung jawab Anda`,
+        'success',
+      );
       await onSuccess?.();
       onClose();
     } catch (err) {
@@ -94,19 +110,23 @@ export default function AmbilAlihTiketModal({ tiket, onClose, onSuccess }: Props
       <form
         onSubmit={kirim}
         style={{
-          background: 'var(--surface-elevated, #ffffff)', borderRadius: 'var(--radius-2xl, 16px)', width: '100%',
+          background: '#ffffff', borderRadius: 'var(--radius-2xl, 16px)', width: '100%',
           maxWidth: '480px', border: '1px solid var(--border-default, #e2e8f0)', overflow: 'hidden',
         }}
       >
         <div style={{ padding: 'var(--space-5) var(--space-6)', borderBottom: '1px solid var(--border-default, #e2e8f0)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 'var(--space-3)' }}>
           <div>
             <h2 id={idJudul} style={{ fontSize: 'var(--text-lg)', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <UserCog size={18} aria-hidden="true" /> Ambil alih tiket {tiket.nomor_display}
+              <UserCog size={18} aria-hidden="true" /> {mode === 'koordinator_fo' ? 'Ambil alih penanganan' : 'Ambil alih tiket'} {tiket.nomor_display}
             </h2>
             <p id={idDesk} style={{ margin: '4px 0 0', fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
-              Tiket ini sedang dilayani {tiket.pemilik_nama ? <strong>{tiket.pemilik_nama}</strong> : 'petugas lain'}.
-              Setelah diambil alih, Anda menjadi penanggung jawab dan hanya Anda yang dapat menyelesaikannya.
-              Tindakan ini tercatat di riwayat audit beserta alasannya.
+              {mode === 'koordinator_fo' ? 'Penanganan' : 'Tiket'} ini sedang dipegang{' '}
+              {tiket.pemilik_nama ? <strong>{tiket.pemilik_nama}</strong> : 'petugas lain'}.
+              Setelah diambil alih, Anda menjadi penanggung jawab, pelayanan tercatat atas nama Anda, dan hanya Anda yang
+              dapat menyelesaikannya.
+              {mode === 'koordinator_tiket' && ' Petugas semula tetap dapat menyunting draf pendataan dan akan menerima pemberitahuan.'}
+              {mode === 'koordinator_fo' && ' Petugas semula akan menerima pemberitahuan.'}
+              {' '}Tindakan ini tercatat di riwayat audit beserta alasannya.
             </p>
           </div>
           <button type="button" className="btn btn--ghost btn--sm" onClick={onClose} disabled={mengirim} aria-label="Tutup">
