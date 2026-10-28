@@ -1,6 +1,8 @@
 'use client';
 
 import { Fragment, useState, useEffect, useRef, useCallback } from 'react';
+import GambarLampiran from '@/components/chat/GambarLampiran';
+import { unggahLampiranChat } from '@/lib/chat/lampiran-klien';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
@@ -558,6 +560,30 @@ export default function AdminChatPage() {
   };
   const onDialogGalat = (err: unknown) => tanganiGalat(err);
 
+  // Kirim foto sebagai balasan petugas (hanya-lampiran), memakai izin yang sama dengan balasan teks.
+  const berkasRef = useRef<HTMLInputElement>(null);
+  const [mengirimFoto, setMengirimFoto] = useState(false);
+  const kirimFoto = async (berkas: File | undefined) => {
+    if (!berkas || !selectedSession || sending || mengirimFoto || !canReply) return;
+    const sesiId = selectedSession.id;
+    setMengirimFoto(true);
+    try {
+      const lampiran = await unggahLampiranChat(sesiId, berkas);
+      const res = await fetch('/api/chat/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sesi_id: sesiId, isi: '', lampiran, client_uuid: crypto.randomUUID() }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? 'Foto gagal dikirim');
+      if (sesiId === selectedIdRef.current && body.message) setMessages((prev) => mergeMessages(prev, [body.message as Message]));
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Foto gagal dikirim', 'error');
+    } finally {
+      setMengirimFoto(false);
+    }
+  };
+
   const handleSendMessage = async (textToSubmit: string) => {
     const text = textToSubmit.trim();
     if (!text || !selectedSession || sending || !canReply) return;
@@ -903,11 +929,21 @@ export default function AdminChatPage() {
                               }}
                             >
                               <ChatMessage.Header sender={namaSender(msg.pengirim)} sentTime={waktuLabel(msg.created_at)} />
+                              {msg.lampiran_kunci && (
+                                <ChatMessage.CustomContent><GambarLampiran pesanId={msg.id} nama={msg.lampiran_nama} /></ChatMessage.CustomContent>
+                              )}
                             </ChatMessage>
                           </Fragment>
                         );
                       })}
                     </MessageList>
+                    <input
+                      ref={berkasRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      hidden
+                      onChange={(e) => { void kirimFoto(e.target.files?.[0]); e.target.value = ''; }}
+                    />
 
                     {/* MessageInput harus anak LANGSUNG ChatContainer: pembungkus <div> dibuang chatscope. */}
                     {selectedSession.status !== 'selesai' && (
@@ -916,8 +952,9 @@ export default function AdminChatPage() {
                         value={messageInput}
                         onChange={(val) => setMessageInput(val)}
                         onSend={(_html, _text, innerText) => handleSendMessage(innerText)}
-                        attachButton={false}
-                        disabled={!canReply || sending}
+                        attachButton={canReply}
+                        onAttachClick={() => berkasRef.current?.click()}
+                        disabled={!canReply || sending || mengirimFoto}
                       />
                     )}
                   </ChatContainer>

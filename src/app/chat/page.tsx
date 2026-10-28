@@ -27,6 +27,8 @@ import {
   type PercakapanRingkas,
 } from '@/lib/chat/percakapan';
 import { teksPetugasTidakTersedia, TEKS_MENUNGGU_PETUGAS, type StatusLayananChat } from '@/lib/chat/status-layanan';
+import GambarLampiran from '@/components/chat/GambarLampiran';
+import { unggahLampiranChat } from '@/lib/chat/lampiran-klien';
 import { mergeMessages, petugasLabel, rtFromStatus, senderLabel, useFallbackPoll, useOnSubscribed, waktuLabel, type ChatMsg, type RtState } from './merge';
 import DaftarPercakapan from './DaftarPercakapan';
 import '@chatscope/chat-ui-kit-styles/dist/default/styles.min.css';
@@ -803,6 +805,30 @@ export default function PublicChatPage() {
     }
   };
 
+  // Kirim foto: unggah ke R2 lalu simpan sebagai pesan hanya-lampiran. Tidak memanggil bot (bukan pertanyaan teks).
+  const berkasRef = useRef<HTMLInputElement>(null);
+  const [mengirimFoto, setMengirimFoto] = useState(false);
+  const kirimFoto = async (berkas: File | undefined) => {
+    if (!berkas || mengirimFoto || !isOnline || hanyaBaca || tampilan !== 'percakapan') return;
+    setMengirimFoto(true);
+    try {
+      const sid = await pastikanSesi();
+      const lampiran = await unggahLampiranChat(sid, berkas);
+      const res = await fetch('/api/chat/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sesi_id: sid, isi: '', lampiran, client_uuid: crypto.randomUUID() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? 'Foto gagal dikirim');
+      if (data.message) setMessages((prev) => mergeMessages(prev, [data.message as Message]));
+    } catch (e) {
+      setMessages((prev) => [...prev, notice(e instanceof Error ? e.message : 'Foto gagal dikirim')]);
+    } finally {
+      setMengirimFoto(false);
+    }
+  };
+
   const handleRetry = async (msg: Message) => {
     setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, local: 'pending' } : m)));
     await sendAndAsk(msg);
@@ -1201,6 +1227,9 @@ export default function PublicChatPage() {
                         }}
                       >
                         <ChatMessage.Header sender={senderLabel(msg.pengirim, sesiLayananNama)} sentTime={waktuLabel(msg.created_at)} />
+                        {msg.lampiran_kunci && (
+                          <ChatMessage.CustomContent><GambarLampiran pesanId={msg.id} nama={msg.lampiran_nama} /></ChatMessage.CustomContent>
+                        )}
                         {msg.local === 'pending' && (
                           <ChatMessage.Footer><span className={ui.msgStatus} role="status">Mengirim…</span></ChatMessage.Footer>
                         )}
@@ -1261,12 +1290,20 @@ export default function PublicChatPage() {
                             ? 'Ketik pesan untuk memulai sesi baru...'
                             : 'Ketik pertanyaan Anda...'
                     }
-                    disabled={hanyaBaca || !isOnline}
-                    attachButton={false}
+                    disabled={hanyaBaca || !isOnline || mengirimFoto}
+                    attachButton
+                    onAttachClick={() => berkasRef.current?.click()}
                     onSend={(_html, _text, innerText) => handleSendMessage(innerText)} // innerText: baris baru (Shift+Enter) ikut terkirim
                   />
                 </ChatContainer>
               </MainContainer>
+              <input
+                ref={berkasRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                hidden
+                onChange={(e) => { void kirimFoto(e.target.files?.[0]); e.target.value = ''; }}
+              />
             </div>
           </>
         )}
