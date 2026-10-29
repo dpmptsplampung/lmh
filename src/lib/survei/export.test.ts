@@ -6,9 +6,7 @@ import {
   muatDataSurvei,
   type BarisSkm,
   type BarisSpak,
-  type RingkasanIkmRow,
   type RingkasanRateRow,
-  type RingkasanSpakRow,
 } from './export';
 import { PERTANYAAN_SPAK, UNSUR_SKM, SKALA_SPAK, SKALA_SKM } from './pertanyaan';
 
@@ -49,13 +47,6 @@ function skm(sebagian: Partial<BarisSkm> = {}): BarisSkm {
   };
 }
 
-const ringkasanIkm: RingkasanIkmRow[] = [
-  { layanan_id: 'l-1', unit: 'layanan', nama: 'Helpdesk OSS', ikm: 80.123, responden: 3 },
-  { layanan_id: null, unit: 'fo', nama: 'Front Office', ikm: '70.5', responden: 2 },
-];
-const ringkasanSpak: RingkasanSpakRow[] = [
-  { layanan_id: 'l-1', unit: 'layanan', nama: 'Helpdesk OSS', responden: 3, p1: 5.5, p2: 4, p3: '3.25', p4: 2, p5: 1 },
-];
 const ringkasanRate: RingkasanRateRow[] = [
   { layanan_id: 'l-1', unit: 'layanan', nama: 'Helpdesk OSS', diundang: 6, mengisi: 4 },
   { layanan_id: null, unit: 'fo', nama: 'Front Office', diundang: 0, mengisi: 0 },
@@ -88,8 +79,6 @@ async function bangun(sebagian: Partial<Parameters<typeof buildSurveiWorkbook>[0
     sampai: '2026-10-14',
     spak: [spak()],
     skm: [skm()],
-    ringkasanIkm,
-    ringkasanSpak,
     ringkasanRate,
     ...sebagian,
   });
@@ -186,8 +175,6 @@ describe('buildSurveiWorkbook', () => {
     const wb = await bangun({
       spak: [spak({ layanan: { nama: '=HYPERLINK("http://jahat")' }, kunjungan: { tanggal: '2026-10-12', kategori: '+cmd' } })],
       skm: [skm({ layanan: { nama: '-2+3' }, kunjungan: { tanggal: '2026-10-12', kategori: '@SUM(A1)' } })],
-      ringkasanIkm: [{ layanan_id: 'l-1', unit: 'layanan', nama: '=1+1', ikm: 70, responden: 1 }],
-      ringkasanSpak: [{ layanan_id: 'l-1', unit: 'layanan', nama: '@x', responden: 1, p1: 1, p2: 1, p3: 1, p4: 1, p5: 1 }],
       ringkasanRate: [{ layanan_id: 'l-1', unit: 'layanan', nama: '+x', diundang: 1, mengisi: 1 }],
     });
     const spakRow = baris(wb.getWorksheet('SPAK')!)[1];
@@ -196,8 +183,6 @@ describe('buildSurveiWorkbook', () => {
     const skmRow = baris(wb.getWorksheet('SKM')!)[1];
     expect(skmRow[1]).toBe("'-2+3");
     expect(skmRow[2]).toBe("'@SUM(A1)");
-    const ringkasan = baris(wb.getWorksheet('Ringkasan')!).flat();
-    expect(ringkasan).toEqual(expect.arrayContaining(["'=1+1", "'@x", "'+x"]));
     // Tidak ada sel string berawalan karakter rumus di sheet mana pun.
     for (const ws of wb.worksheets) {
       for (const r of baris(ws)) {
@@ -208,39 +193,54 @@ describe('buildSurveiWorkbook', () => {
     }
   });
 
-  it('Ringkasan: IKM, rata-rata SPAK, dan response rate (diundang, mengisi, persen)', async () => {
-    const wb = await bangun();
+  it('Ringkasan GLOBAL: IKM, SPAK per pernyataan dengan persen, dan response rate total (tanpa pemecahan per unit)', async () => {
+    const wb = await bangun({
+      spak: [spak(), spak({ id: 's-2', layanan_id: null, unit: 'fo', layanan: null, p1_tanpa_diskriminasi: 2, p2_tanpa_kecurangan: 2, p3_tanpa_imbalan: 2, p4_tanpa_pungli: 2, p5_tanpa_percaloan: 2 })],
+      ringkasanRate: [
+        { layanan_id: 'l-1', unit: 'layanan', nama: 'Helpdesk OSS', diundang: 6, mengisi: 4 },
+        { layanan_id: null, unit: 'fo', nama: 'Front Office', diundang: 0, mengisi: 0 },
+      ],
+    });
     const rows = baris(wb.getWorksheet('Ringkasan')!);
     const cari = (awal: string) => rows.findIndex((r) => r[0] === awal);
 
     expect(rows[cari('Periode')][1]).toBe('12/10/2026 s.d. 14/10/2026');
+    expect(rows[cari('Cakupan')][1]).toMatch(/Seluruh pelayanan digabung/);
 
-    const iIkm = cari('IKM per Unit');
-    expect(iIkm).toBeGreaterThanOrEqual(0);
-    expect(rows[iIkm + 1]).toEqual(['Unit', 'IKM', 'Responden', 'Predikat']);
-    expect(rows[iIkm + 2]).toEqual(['Helpdesk OSS', 80.1, 3, 'B — Baik']);
-    expect(rows[iIkm + 3]).toEqual(['Front Office', 70.5, 2, 'C — Kurang Baik']);
+    const iIkm = cari('Ringkasan IKM (Indeks Kepuasan Masyarakat)');
+    expect(rows[iIkm + 2]).toEqual(['Responden', 1]);
+    // skm(): unsur 4,3,2,1,4,3,2,1,4,3,2 -> rata-rata 29/11 x 25 = 65,9
+    expect(rows[iIkm + 3]).toEqual(['IKM (skala 25-100)', 65.9]);
+    expect(rows[iIkm + 4]).toEqual(['Predikat', 'C — Kurang Baik']);
+    const iUnsur = cari('IKM per Unsur');
+    expect(rows[iUnsur + 1]).toEqual(['Unsur', 'Keterangan', 'Jawaban', 'Rata-rata (1-4)', 'Nilai IKM (25-100)']);
+    expect(rows[iUnsur + 2]).toEqual(['U1', UNSUR_SKM[0].teks, 1, 4, 100]);
 
-    const iSpak = cari('Rata-rata SPAK per Unit (skala 1-6)');
-    expect(iSpak).toBeGreaterThanOrEqual(0);
-    expect(rows[iSpak + 1]).toEqual(['Unit', 'Responden', 'P1', 'P2', 'P3', 'P4', 'P5']);
-    expect(rows[iSpak + 2]).toEqual(['Helpdesk OSS', 3, 5.5, 4, 3.3, 2, 1]);
+    const iSpak = cari('Ringkasan SPAK (Survey Persepsi Anti Korupsi)');
+    expect(rows[iSpak + 2]).toEqual(['Responden', 2]);
+    expect(rows[iSpak + 3]).toEqual(['Rata-rata (skala 1-6)', 3]); // (6+5+4+3+2 + 5x2) / 10
+    expect(rows[iSpak + 4]).toEqual(['Indeks SPAK (skala 0-100)', 50]);
+    const iButir = cari('SPAK per Pernyataan');
+    expect(rows[iButir + 1].slice(0, 8)).toEqual(['Pernyataan', 'Keterangan', 'Jawaban', 'Rata-rata (1-6)', 'Indeks (0-100)', 'Setuju (%)', 'Netral (%)', 'Tidak setuju (%)']);
+    expect(rows[iButir + 2].slice(0, 3)).toEqual(['P1', PERTANYAAN_SPAK[0].teks, 2]);
 
     const iRate = cari('Response Rate');
-    expect(iRate).toBeGreaterThanOrEqual(0);
-    expect(rows[iRate + 1]).toEqual(['Unit', 'Diundang', 'Mengisi', 'Persen (%)']);
-    expect(rows[iRate + 2]).toEqual(['Helpdesk OSS', 6, 4, 66.7]);
-    expect(rows[iRate + 3]).toEqual(['Front Office', 0, 0, '—']);
-    expect(rows[iRate + 4]).toEqual(['Total', 6, 4, 66.7]);
+    expect(rows[iRate + 2]).toEqual(['Diundang', 6]);
+    expect(rows[iRate + 3]).toEqual(['Mengisi', 4]);
+    expect(rows[iRate + 4]).toEqual(['Persen (%)', 66.7]);
+
+    // Tidak ada nama layanan/unit di sheet Ringkasan.
+    const teksRingkasan = rows.flat().map((v) => String(v ?? '')).join('|');
+    expect(teksRingkasan).not.toMatch(/Helpdesk OSS|Front Office|Tidak terklasifikasi/);
   });
 
-  it('Ringkasan: IKM kosong tampil "—" dan catatan data terpotong muncul hanya bila terpotong', async () => {
-    const kosong = await bangun({
-      ringkasanIkm: [{ layanan_id: 'l-1', unit: 'layanan', nama: 'Helpdesk OSS', ikm: null, responden: 0 }],
-    });
+  it('Ringkasan: tanpa jawaban tampil "—" dan catatan data terpotong muncul hanya bila terpotong', async () => {
+    const kosong = await bangun({ spak: [], skm: [], ringkasanRate: [] });
     const rows = baris(kosong.getWorksheet('Ringkasan')!);
-    const i = rows.findIndex((r) => r[0] === 'IKM per Unit');
-    expect(rows[i + 2]).toEqual(['Helpdesk OSS', '—', 0, 'N/A']);
+    const i = rows.findIndex((r) => r[0] === 'Ringkasan IKM (Indeks Kepuasan Masyarakat)');
+    expect(rows[i + 2]).toEqual(['Responden', 0]);
+    expect(rows[i + 3]).toEqual(['IKM (skala 25-100)', '—']);
+    expect(rows[i + 4]).toEqual(['Predikat', 'N/A']);
     expect(rows.flat().some((v) => /terpotong/i.test(String(v ?? '')))).toBe(false);
 
     const terpotong = await bangun({ terpotong: true });

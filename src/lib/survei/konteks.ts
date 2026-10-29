@@ -9,6 +9,8 @@ export type KonteksSurvei = {
   unit: 'layanan' | 'fo' | null;
   layananNama: string | null;
   kedaluwarsaPada: string | null;
+  /** Nama pengunjung untuk sapaan (RPC `get_survei_context` sejak 202611030008); null bila belum diterapkan atau tidak ada. */
+  nama: string | null;
 };
 
 const STATUS_DIKENAL: readonly StatusKonteks[] = ['ok', 'kedaluwarsa', 'sudah_diisi', 'tidak_valid'];
@@ -36,5 +38,6 @@ export async function ambilKonteks(supabase: Pick<SupabaseClient, 'rpc'>, token:
     unit: data.unit === 'layanan' || data.unit === 'fo' ? data.unit : null,
     layananNama: teksAtauNull(data.layanan_nama),
     kedaluwarsaPada: teksAtauNull(data.kedaluwarsa_pada),
+    nama: teksAtauNull(data.nama),
   };
 }

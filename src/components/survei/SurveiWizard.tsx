@@ -5,6 +5,7 @@ import { ArrowLeft, ArrowRight, LoaderCircle, Send } from 'lucide-react';
 import ErrorRetry from '@/components/ErrorRetry';
 import type { KonteksSurvei } from '@/lib/survei/konteks';
 import { hapusDraf, muatDraf, simpanDraf } from '@/lib/survei/penyimpanan';
+import { buatSapaan } from '@/lib/survei/sapaan';
 import {
   LANGKAH,
   PERTANYAAN_SPAK,
@@ -33,7 +34,6 @@ interface SurveiWizardProps {
 
 type Tahap = 'mengisi' | 'mengirim' | 'galat' | 'selesai' | StatusPesanSurvei;
 
-const JUMLAH_SURVEI = 2;
 const JUMLAH_SOAL = LANGKAH.reduce((n, l) => n + l.kunci.length, 0);
 const JUDUL_GALAT = 'Jawaban belum terkirim';
 const GALAT_JARINGAN =
@@ -78,10 +78,12 @@ function pindahKe(state: StateWizard, target: number): StateWizard {
   return { indeks: target, jawaban: state.jawaban };
 }
 
-export default function SurveiWizard({ token, onSelesai }: SurveiWizardProps) {
+export default function SurveiWizard({ token, konteks, onSelesai }: SurveiWizardProps) {
   const [state, setState] = useState<StateWizard>(() => pulihkan(token));
   const [tahap, setTahap] = useState<Tahap>('mengisi');
   const [pesanGalat, setPesanGalat] = useState(GALAT_JARINGAN);
+  // Dihitung sekali saat dipasang (di klien): salam tidak berganti di tengah pengisian.
+  const [sapaan] = useState(() => buatSapaan(konteks.nama));
 
   const akarRef = useRef<HTMLDivElement>(null);
   const kepalaRef = useRef<HTMLDivElement>(null);
@@ -218,7 +220,6 @@ export default function SurveiWizard({ token, onSelesai }: SurveiWizardProps) {
   }
 
   const langkah = LANGKAH[state.indeks];
-  const nomorSurvei = langkah.survei === 'spak' ? 1 : 2;
   const terakhir = state.indeks === LANGKAH.length - 1;
   const mengirim = tahap === 'mengirim';
   const siap = terakhir ? bangunPayload(state.jawaban) !== null : langkahLengkap(state);
@@ -234,10 +235,13 @@ export default function SurveiWizard({ token, onSelesai }: SurveiWizardProps) {
       {/* Pengantar ringkas hanya di langkah pertama: penilaian untuk pelayanan DPMPTSP secara umum, tidak menyebut satu
           Layanan tertentu (keputusan pemilik), dan tidak memakan layar supaya soal pertama langsung terlihat. */}
       {state.indeks === 0 && (
-        <p className={styles.intro}>
-          Bantu kami melayani lebih baik. Pengisian sukarela; ketuk jawaban Anda, halaman akan otomatis lanjut.
-          <span className={styles.srOnly}> Bila memakai papan ketik atau pembaca layar, gunakan tombol Lanjut.</span>
-        </p>
+        <>
+          <p className={styles.sapaan}>{sapaan}</p>
+          <p className={styles.intro}>
+            Bantu kami melayani lebih baik. Pengisian sukarela; ketuk jawaban Anda, halaman akan otomatis lanjut.
+            <span className={styles.srOnly}> Bila memakai papan ketik atau pembaca layar, gunakan tombol Lanjut.</span>
+          </p>
+        </>
       )}
 
       <div ref={kepalaRef} className={styles.kepalaLangkah}>
@@ -253,16 +257,12 @@ export default function SurveiWizard({ token, onSelesai }: SurveiWizardProps) {
           <span className={styles.progresIsi} style={{ width: `${(jumlahTerjawab / JUMLAH_SOAL) * 100}%` }} />
         </div>
         <h2 ref={judulRef} tabIndex={-1} className={styles.judulLangkah}>
-          <span className={styles.penanda}>
-            Survei {nomorSurvei} dari {JUMLAH_SURVEI}
-          </span>{' '}
           <span className={styles.judulSurvei}>{SURVEI[langkah.survei].judul}</span>
         </h2>
       </div>
 
       {langkah.survei === 'spak' ? (
         <>
-          <p className={styles.bagian}>{SURVEI.spak.bagian}</p>
           <p className={styles.instruksi}>{SURVEI.spak.instruksi}</p>
           <ul className={styles.legenda} aria-label="Keterangan skala">
             {SKALA_SPAK.map((s) => (

@@ -31,7 +31,7 @@ describe('halaman /survei/[token]', () => {
     render(<SurveiPage />);
 
     expect(screen.getByRole('status')).toHaveTextContent('Memuat');
-    expect(await screen.findByRole('heading', { level: 2, name: /Survei 1 dari 2/ })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 2, name: /Survey Persepsi Anti Korupsi/ })).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 1, name: 'Pesan Perilaku' })).toBeInTheDocument();
     expect(rpc).toHaveBeenCalledWith('get_survei_context', { p_token: TOKEN });
   });
@@ -58,7 +58,7 @@ describe('halaman /survei/[token]', () => {
     expect(screen.queryByText('Tautan survei tidak dikenali')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Coba lagi' }), { detail: 1 });
-    expect(await screen.findByRole('heading', { level: 2, name: /Survei 1 dari 2/ })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 2, name: /Survey Persepsi Anti Korupsi/ })).toBeInTheDocument();
     expect(rpc).toHaveBeenCalledTimes(2);
   });
 });

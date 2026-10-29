@@ -159,7 +159,7 @@ describe('GET /api/admin/survei/export', () => {
   it('ringkasan dibaca lewat klien SESI pengguna (bukan service role) dengan p_start/p_end', async () => {
     const k = pasang({ role: 'front_office' });
     await get();
-    expect(k.rpc.mock.calls.map((c) => c[0]).sort()).toEqual(['ringkasan_ikm', 'ringkasan_response_rate', 'ringkasan_spak']);
+    expect(k.rpc.mock.calls.map((c) => c[0]).sort()).toEqual(['ringkasan_response_rate']); // IKM/SPAK global dihitung dari jawaban, bukan RPC per unit
     for (const [, args] of k.rpc.mock.calls) {
       expect(args).toEqual({ p_start: '2026-10-12', p_end: '2026-10-14' });
     }
@@ -211,7 +211,7 @@ describe('GET /api/admin/survei/export', () => {
 
   it('500 (tanpa membocorkan detail dan tanpa audit) bila RPC ringkasan atau kueri jawaban gagal', async () => {
     const galat = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    pasang({ role: 'admin', rpcGalat: 'ringkasan_spak' });
+    pasang({ role: 'admin', rpcGalat: 'ringkasan_response_rate' });
     const res1 = await get();
     expect(res1.status).toBe(500);
     expect(JSON.stringify(await res1.json())).not.toContain('rpc gagal');

@@ -15,6 +15,7 @@ const KONTEKS: KonteksSurvei = {
   unit: 'layanan',
   layananNama: 'Konsultasi OSS',
   kedaluwarsaPada: '2026-10-28T10:00:00+00:00',
+  nama: 'Budi Santoso',
 };
 
 const fetchMock = vi.fn();
@@ -351,10 +352,47 @@ describe('SurveiWizard: draf sessionStorage', () => {
   });
 });
 
-describe('SurveiWizard: judul, fokus, dan pengumuman', () => {
-  it('(i) "Survei 1 dari 2" lalu "Survei 2 dari 2"; fokus ke judul langkah dan region aria-live mengumumkan langkah', () => {
+describe('SurveiWizard: sapaan dan teks pengantar', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it.each([
+    ['2026-11-03T02:00:00Z', 'Selamat Pagi, Budi Santoso'], // 09.00 WIB
+    ['2026-11-03T06:00:00Z', 'Selamat Siang, Budi Santoso'], // 13.00 WIB
+    ['2026-11-03T09:00:00Z', 'Selamat Sore, Budi Santoso'], // 16.00 WIB
+  ])('langkah pertama menyapa nama pengunjung di atas pengantar (%s)', (waktu, sapaan) => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(waktu));
     render(<SurveiWizard token={TOKEN} konteks={KONTEKS} />);
-    expect(judulLangkah()).toHaveTextContent('Survei 1 dari 2');
+    const salam = screen.getByText(sapaan);
+    const intro = screen.getByText(/Bantu kami melayani lebih baik/);
+    expect(salam.compareDocumentPosition(intro) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('tanpa nama hanya menyapa dengan salam', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-03T02:00:00Z'));
+    render(<SurveiWizard token={TOKEN} konteks={{ ...KONTEKS, nama: null }} />);
+    expect(screen.getByText('Selamat Pagi')).toBeInTheDocument();
+  });
+
+  it('judul bagian "A. PERTANYAAN TERKAIT ..." tidak ditampilkan', () => {
+    render(<SurveiWizard token={TOKEN} konteks={KONTEKS} />);
+    expect(screen.queryByText(/PERTANYAAN TERKAIT/i)).toBeNull();
+  });
+
+  it('sapaan hanya di langkah pertama', () => {
+    render(<SurveiWizard token={TOKEN} konteks={KONTEKS} />);
+    ketuk('p1', 6);
+    ketuk('p2', 5);
+    ketuk('p3', 4);
+    expect(screen.queryByText(/^Selamat (Pagi|Siang|Sore|Malam)/)).toBeNull();
+  });
+});
+
+describe('SurveiWizard: judul, fokus, dan pengumuman', () => {
+  it('(i) judul SPAK lalu SKM tanpa penanda "Survei X dari 2"; fokus ke judul langkah dan region aria-live mengumumkan langkah', () => {
+    render(<SurveiWizard token={TOKEN} konteks={KONTEKS} />);
+    expect(judulLangkah().textContent).not.toMatch(/dari 2/);
     expect(judulLangkah()).toHaveTextContent('Survey Persepsi Anti Korupsi');
     expect(pengumuman()).toHaveTextContent('Langkah 1 dari 5');
     expect(pengumuman()).toHaveAttribute('aria-live', 'polite');
@@ -364,13 +402,13 @@ describe('SurveiWizard: judul, fokus, dan pengumuman', () => {
     ketuk('p1', 6);
     ketuk('p2', 5);
     ketuk('p3', 4);
-    expect(judulLangkah()).toHaveTextContent('Survei 1 dari 2');
+    expect(judulLangkah()).toHaveTextContent('Survey Persepsi Anti Korupsi');
     expect(judulLangkah()).toHaveFocus();
     expect(pengumuman()).toHaveTextContent('Langkah 2 dari 5');
 
     ketuk('p4', 3);
     ketuk('p5', 2);
-    expect(judulLangkah()).toHaveTextContent('Survei 2 dari 2');
+    expect(judulLangkah().textContent).not.toMatch(/dari 2/);
     expect(judulLangkah()).toHaveTextContent('Survey Kepuasan Masyarakat');
     expect(judulLangkah()).toHaveFocus();
     expect(pengumuman()).toHaveTextContent('Langkah 3 dari 5');

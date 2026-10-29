@@ -55,14 +55,12 @@ export const UNSUR_SKM: readonly { kunci: KunciSkm; teks: string }[] = [
 ];
 
 export const SURVEI: {
-  spak: { judul: string; instruksi: string; bagian: string };
+  spak: { judul: string; instruksi: string };
   skm: { judul: string };
 } = {
   spak: {
     judul: 'Survey Persepsi Anti Korupsi',
     instruksi: 'Berikan penilaian Anda dari skala 1-6 dengan keterangan sebagai berikut',
-    // Judul bagian dibiarkan seperti sumber (keputusan pemilik, spec Lampiran A).
-    bagian: 'A. PERTANYAAN TERKAIT SURVEY PERSEPSI KUALITAS PELAYANAN',
   },
   skm: {
     judul: 'Survey Kepuasan Masyarakat',
