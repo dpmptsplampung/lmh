@@ -1,18 +1,17 @@
 'use client';
 
 import { useEffect, useRef, useCallback, useReducer, useState } from 'react';
-import { X, ChevronRight, ChevronLeft, Camera, CheckCircle2, Loader2 } from 'lucide-react';
+import { X, ChevronRight, ChevronLeft, Camera, CheckCircle2, Loader2, ImagePlus } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/components/Toast';
 import { todayWIB } from '@/lib/time';
+import { kompresBerkas, kompresKeJpeg } from '@/lib/foto/kompres';
+import { unggahKeR2 } from '@/lib/storage/unggah';
 
 interface Layanan { id: string; nama: string; }
-interface Petugas { id: string; nama: string; }
 
 interface AbsensiWizardModalProps {
   isOpen: boolean;
-  /** ID petugas FO yang sedang login (yang mencatat hadir) */
-  foId: string;
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -25,20 +24,19 @@ type Step = 1 | 2 | 3;
 type WizardState = {
   step: Step;
   selectedLayananId: string;
-  selectedPetugasId: string;
-  fotoDataUrl: string | null;
+  nama: string;
+  /** Foto terkompresi (JPEG) + URL pratinjau (blob:) */
+  foto: { blob: Blob; url: string } | null;
   layananList: Layanan[];
-  petugasList: Petugas[];
   streaming: boolean;
 };
 
 const INITIAL: WizardState = {
   step: 1,
   selectedLayananId: '',
-  selectedPetugasId: '',
-  fotoDataUrl: null,
+  nama: '',
+  foto: null,
   layananList: [],
-  petugasList: [],
   streaming: false,
 };
 
@@ -46,10 +44,9 @@ type WizardAction =
   | { type: 'RESET' }
   | { type: 'SET_STEP'; step: Step }
   | { type: 'SET_LAYANAN'; id: string }
-  | { type: 'SET_PETUGAS'; id: string }
-  | { type: 'SET_FOTO'; dataUrl: string | null }
+  | { type: 'SET_NAMA'; nama: string }
+  | { type: 'SET_FOTO'; foto: { blob: Blob; url: string } | null }
   | { type: 'SET_LAYANAN_LIST'; list: Layanan[] }
-  | { type: 'SET_PETUGAS_LIST'; list: Petugas[] }
   | { type: 'SET_STREAMING'; value: boolean };
 
 function reducer(state: WizardState, action: WizardAction): WizardState {
@@ -57,27 +54,25 @@ function reducer(state: WizardState, action: WizardAction): WizardState {
     case 'RESET':             return INITIAL;
     case 'SET_STEP':          return { ...state, step: action.step };
     case 'SET_LAYANAN':       return { ...state, selectedLayananId: action.id };
-    case 'SET_PETUGAS':       return { ...state, selectedPetugasId: action.id };
-    case 'SET_FOTO':          return { ...state, fotoDataUrl: action.dataUrl };
+    case 'SET_NAMA':          return { ...state, nama: action.nama };
+    case 'SET_FOTO':          return { ...state, foto: action.foto };
     case 'SET_LAYANAN_LIST':  return { ...state, layananList: action.list };
-    case 'SET_PETUGAS_LIST':  return { ...state, petugasList: action.list };
     case 'SET_STREAMING':     return { ...state, streaming: action.value };
     default:                  return state;
   }
 }
 
 export default function AbsensiWizardModal({
-  isOpen, foId, onClose, onSuccess,
+  isOpen, onClose, onSuccess,
 }: AbsensiWizardModalProps) {
   const { toast } = useToast();
 
   const [w, dispatch] = useReducer(reducer, INITIAL);
-  // loading & submitting diset dari event handler — boleh useState
-  const [loading, setLoading] = useState(false);
+  // submitting diset dari event handler — boleh useState
   const [submitting, setSubmitting] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const berkasRef = useRef<HTMLInputElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
   // ── Helpers (deklarasikan sebelum effects) ────────────────────────────────
@@ -91,17 +86,8 @@ export default function AbsensiWizardModal({
 
   const loadLayanan = useCallback(async () => {
     const supabase = createClient();
-    const { data } = await supabase.from('layanan').select('id, nama').order('nama');
+    const { data } = await supabase.from('layanan').select('id, nama').is('diarsipkan_at', null).order('nama');
     dispatch({ type: 'SET_LAYANAN_LIST', list: data ?? [] });
-  }, []);
-
-  const loadPetugas = useCallback(async (layananId: string) => {
-    if (!layananId) { dispatch({ type: 'SET_PETUGAS_LIST', list: [] }); return; }
-    const supabase = createClient();
-    const { data } = await supabase
-      .from('petugas').select('id, nama')
-      .eq('layanan_id', layananId).eq('aktif', true).order('nama');
-    dispatch({ type: 'SET_PETUGAS_LIST', list: data ?? [] });
   }, []);
 
   // ── Effects: hanya dispatch (reducer) — tidak ada useState setter ─────────
@@ -120,16 +106,13 @@ export default function AbsensiWizardModal({
   }, [stopStream]);
 
   // ── Navigasi ──────────────────────────────────────────────────────────────
-  const handleNextToWebcam = async () => {
+  const handleNextToWebcam = () => {
     if (!w.selectedLayananId) { toast('Pilih layanan terlebih dahulu', 'warning'); return; }
-    setLoading(true);
-    await loadPetugas(w.selectedLayananId);
-    setLoading(false);
     dispatch({ type: 'SET_STEP', step: 2 });
   };
 
   const handleNextToNama = () => {
-    if (!w.fotoDataUrl) { toast('Ambil foto terlebih dahulu', 'warning'); return; }
+    if (!w.foto) { toast('Ambil foto terlebih dahulu', 'warning'); return; }
     stopStream(); // hentikan kamera sebelum pindah ke step 3
     dispatch({ type: 'SET_STEP', step: 3 });
   };
@@ -158,60 +141,69 @@ export default function AbsensiWizardModal({
     }
   };
 
-  const capturePhoto = () => {
-    if (!videoRef.current || !canvasRef.current) return;
+  const setFoto = (blob: Blob | null) => {
+    if (w.foto) URL.revokeObjectURL(w.foto.url);
+    dispatch({ type: 'SET_FOTO', foto: blob ? { blob, url: URL.createObjectURL(blob) } : null });
+  };
+
+  const capturePhoto = async () => {
     const video = videoRef.current;
-    const canvas = canvasRef.current;
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.drawImage(video, 0, 0);
-    dispatch({ type: 'SET_FOTO', dataUrl: canvas.toDataURL('image/jpeg', 0.85) });
-    stopStream();
+    if (!video || !video.videoWidth) return;
+    try {
+      // Dikompres di browser: sisi terpanjang 1280 px, JPEG kualitas 0,82 (puluhan-ratusan KB, tetap tajam).
+      setFoto(await kompresKeJpeg(video, video.videoWidth, video.videoHeight));
+      stopStream();
+    } catch {
+      toast('Gagal mengambil foto. Coba lagi.', 'error');
+    }
+  };
+
+  const pilihBerkas = async (berkas: File | undefined) => {
+    if (!berkas) return;
+    if (!berkas.type.startsWith('image/')) { toast('Pilih berkas gambar', 'warning'); return; }
+    try {
+      setFoto(await kompresBerkas(berkas));
+      stopStream();
+    } catch {
+      toast('Gambar tidak dapat dibaca', 'error');
+    }
   };
 
   const retakePhoto = () => {
-    dispatch({ type: 'SET_FOTO', dataUrl: null });
+    setFoto(null);
     void startCamera();
   };
 
-  // ── Finalisasi ────────────────────────────────────────────────────────────
-  // decode data:image/...;base64 tanpa fetch (CSP connect-src memblok fetch ke data: URL)
-  const dataUrlToBlob = (dataUrl: string): Blob => {
-    const [meta, b64] = dataUrl.split(',');
-    const mime = meta.match(/data:(.*?);/)?.[1] ?? 'image/jpeg';
-    const bytes = atob(b64);
-    const arr = new Uint8Array(bytes.length);
-    for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
-    return new Blob([arr], { type: mime });
-  };
+  // Bersihkan URL pratinjau saat modal ditutup/dibongkar
+  useEffect(() => () => { if (w.foto) URL.revokeObjectURL(w.foto.url); }, [w.foto]);
 
+  // ── Finalisasi ────────────────────────────────────────────────────────────
   const handleSelesai = async () => {
-    if (!w.selectedPetugasId) { toast('Pilih nama petugas terlebih dahulu', 'warning'); return; }
-    if (!w.fotoDataUrl) { toast('Foto wajib diambil', 'warning'); return; }
+    const nama = w.nama.trim().replace(/\s+/g, ' ');
+    if (nama.length < 2) { toast('Ketik nama petugas (minimal 2 huruf)', 'warning'); return; }
+    if (!w.foto) { toast('Foto wajib diambil', 'warning'); return; }
 
     try {
       setSubmitting(true);
+      // Foto ke Cloudflare R2 (kunci: absensi-foto/<tanggal>/<layanan_id>_<ts>.jpg); DB hanya menyimpan path-nya.
+      const path = `${todayWIB()}/${w.selectedLayananId}_${Date.now()}.jpg`;
+      try {
+        await unggahKeR2('absensi-foto', path, w.foto.blob);
+      } catch (e) {
+        throw new Error(`Upload foto gagal: ${e instanceof Error ? e.message : 'coba lagi'}`);
+      }
+
       const supabase = createClient();
-
-      // fetch(dataURL) diblokir CSP connect-src di production — decode manual.
-      const blob = dataUrlToBlob(w.fotoDataUrl);
-      const filePath = `${todayWIB()}/${w.selectedPetugasId}_${Date.now()}.jpg`;
-      const { error: uploadError } = await supabase.storage
-        .from('absensi-foto')
-        .upload(filePath, blob, { contentType: 'image/jpeg', upsert: false });
-      if (uploadError) throw new Error(`Upload foto gagal: ${uploadError.message}`);
-
-      const { error: rpcError } = await supabase.rpc('catat_absensi', {
-        p_petugas_id:   w.selectedPetugasId,
-        p_sumber:       'fo',
-        p_dicatat_oleh: foId,
-        p_foto_url:     filePath,
+      const { error: rpcError } = await supabase.rpc('fo_catat_hadir_layanan', {
+        p_layanan_id: w.selectedLayananId,
+        p_nama: nama,
+        p_foto_path: path,
       });
-      if (rpcError) throw new Error(rpcError.message);
+      if (rpcError) {
+        throw new Error(rpcError.code === '23505' ? 'Petugas ini sudah tercatat hadir hari ini' : rpcError.message);
+      }
 
-      toast('Absensi berhasil dicatat', 'success');
+      toast(`Kehadiran ${nama} berhasil dicatat`, 'success');
       onSuccess();
       onClose();
     } catch (e) {
@@ -258,8 +250,8 @@ export default function AbsensiWizardModal({
             <p style={{ margin: '2px 0 0', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
               Langkah {w.step} dari 3 —&nbsp;
               {w.step === 1 && 'Pilih Layanan'}
-              {w.step === 2 && 'Foto dengan Webcam'}
-              {w.step === 3 && 'Konfirmasi Nama'}
+              {w.step === 2 && 'Foto Petugas'}
+              {w.step === 3 && 'Nama Petugas'}
             </p>
           </div>
           <button onClick={onClose} className="btn btn--ghost btn--sm"
@@ -275,7 +267,7 @@ export default function AbsensiWizardModal({
           {w.step === 1 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
               <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
-                Pilih layanan yang akan dicatat kehadirannya:
+                Pilih layanan tempat petugas bertugas:
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
                 {w.layananList.map(l => (
@@ -308,10 +300,10 @@ export default function AbsensiWizardModal({
           {/* ── Step 2: Webcam ── */}
           {w.step === 2 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', alignItems: 'center' }}>
-              {w.fotoDataUrl ? (
+              {w.foto ? (
                 <>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={w.fotoDataUrl} alt="Foto preview"
+                  <img src={w.foto.url} alt="Foto petugas"
                     style={{ width: '100%', maxWidth: 400, borderRadius: 'var(--radius-lg)',
                       border: '1px solid var(--border-default)' }} />
                   <button className="btn btn--ghost btn--sm" onClick={retakePhoto}>
@@ -337,48 +329,47 @@ export default function AbsensiWizardModal({
                       </div>
                     )}
                   </div>
-                  <canvas ref={canvasRef} style={{ display: 'none' }} />
+                  <input ref={berkasRef} type="file" accept="image/*" capture="user" hidden
+                    onChange={e => { void pilihBerkas(e.target.files?.[0]); e.target.value = ''; }} />
                   {!w.streaming ? (
                     <button className="btn btn--primary" onClick={() => void startCamera()}>
                       <Camera size={16} /> Aktifkan Kamera
                     </button>
                   ) : (
-                    <button className="btn btn--primary" onClick={capturePhoto}>
+                    <button className="btn btn--primary" onClick={() => void capturePhoto()}>
                       <Camera size={16} /> Ambil Foto
                     </button>
                   )}
+                  <button className="btn btn--ghost btn--sm" onClick={() => berkasRef.current?.click()}>
+                    <ImagePlus size={16} /> Pilih dari galeri / kamera ponsel
+                  </button>
                 </>
               )}
             </div>
           )}
 
-          {/* ── Step 3: Konfirmasi Nama ── */}
+          {/* ── Step 3: Nama manual ── */}
           {w.step === 3 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-              {w.fotoDataUrl && (
+              {w.foto && (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={w.fotoDataUrl} alt="Foto"
-                  style={{ width: 80, height: 80, borderRadius: '50%',
+                <img src={w.foto.url} alt="Foto petugas"
+                  style={{ width: 96, height: 96, borderRadius: '50%',
                     objectFit: 'cover', border: '2px solid var(--color-primary-300)',
                     alignSelf: 'center' }} />
               )}
+              <p style={{ margin: 0, textAlign: 'center', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                {w.layananList.find(l => l.id === w.selectedLayananId)?.nama}
+              </p>
               <label style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
                 <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>
                   Nama Petugas <span style={{ color: 'var(--color-error)' }}>*</span>
                 </span>
-                {w.petugasList.length > 0 ? (
-                  <select className="input" value={w.selectedPetugasId}
-                    onChange={e => dispatch({ type: 'SET_PETUGAS', id: e.target.value })}>
-                    <option value="">— Pilih petugas —</option>
-                    {w.petugasList.map(p => (
-                      <option key={p.id} value={p.id}>{p.nama}</option>
-                    ))}
-                  </select>
-                ) : (
-                  <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-warning-700)' }}>
-                    Tidak ada petugas aktif untuk layanan ini.
-                  </p>
-                )}
+                <input className="input" type="text" autoFocus autoComplete="off" maxLength={100}
+                  placeholder="Ketik nama lengkap petugas"
+                  value={w.nama}
+                  onChange={e => dispatch({ type: 'SET_NAMA', nama: e.target.value })}
+                  onKeyDown={e => { if (e.key === 'Enter') void handleSelesai(); }} />
               </label>
             </div>
           )}
@@ -399,20 +390,20 @@ export default function AbsensiWizardModal({
 
           {w.step === 1 && (
             <button className="btn btn--primary"
-              onClick={() => void handleNextToWebcam()}
-              disabled={loading || !w.selectedLayananId}>
-              {loading ? <Loader2 size={16} className="animate-spin" /> : <ChevronRight size={16} />}
+              onClick={handleNextToWebcam}
+              disabled={!w.selectedLayananId}>
+              <ChevronRight size={16} />
               Lanjut
             </button>
           )}
           {w.step === 2 && (
-            <button className="btn btn--primary" onClick={handleNextToNama} disabled={!w.fotoDataUrl}>
+            <button className="btn btn--primary" onClick={handleNextToNama} disabled={!w.foto}>
               <ChevronRight size={16} /> Lanjut
             </button>
           )}
           {w.step === 3 && (
             <button className="btn btn--primary" onClick={() => void handleSelesai()}
-              disabled={submitting || !w.selectedPetugasId}>
+              disabled={submitting || w.nama.trim().length < 2}>
               {submitting
                 ? <><Loader2 size={16} className="animate-spin" /> Menyimpan…</>
                 : <><CheckCircle2 size={16} /> Selesai</>}

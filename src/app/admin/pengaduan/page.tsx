@@ -5,6 +5,8 @@ import { Loader2, AlertTriangle, ShieldAlert, Clock } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import RoleNote from '@/components/admin/RoleNote';
 import { useToast } from '@/components/Toast';
+import TanggapanPengaduan, { type TanggapanRow } from '@/components/admin/TanggapanPengaduan';
+import { createClient } from '@/lib/supabase/client';
 
 // CMP-02/CMP-03/CMP-06: dashboard pengaduan untuk Admin & FO.
 // Jalur integritas hanya tampil untuk Admin (I-15); penanda warna mendekati batas SLA.
@@ -54,6 +56,9 @@ export default function AdminPengaduanPage() {
   const [error, setError] = useState('');
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
+  // Tanggapan + ketersediaan email pelapor per pengaduan (RLS: hanya admin/FO; petugas tidak membacanya).
+  const [tanggapanMap, setTanggapanMap] = useState<Record<string, TanggapanRow[]>>({});
+  const [bisaEmailMap, setBisaEmailMap] = useState<Record<string, boolean>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -66,8 +71,24 @@ export default function AdminPengaduanPage() {
         setRows([]);
         return;
       }
-      setRows(json.rows ?? []);
+      const baris = (json.rows ?? []) as Row[];
+      setRows(baris);
       setTotal(json.total ?? 0);
+      // Tanggapan/email: gagal (mis. migrasi belum diterapkan, atau petugas) -> daftar tetap tampil tanpa fitur tanggapan.
+      try {
+        const ids = baris.map((r) => r.id);
+        if (ids.length > 0) {
+          const supabase = createClient();
+          const [t, p] = await Promise.all([
+            supabase.from('pengaduan_tanggapan').select('id, pengaduan_id, isi, status_baru, created_at').in('pengaduan_id', ids).order('created_at', { ascending: true }),
+            supabase.from('pengaduan').select('id, anonim, pelapor_email').in('id', ids),
+          ]);
+          const peta: Record<string, TanggapanRow[]> = {};
+          for (const x of (t.data ?? []) as Array<TanggapanRow & { pengaduan_id: string }>) (peta[x.pengaduan_id] ??= []).push(x);
+          setTanggapanMap(peta);
+          setBisaEmailMap(Object.fromEntries(((p.data ?? []) as Array<{ id: string; anonim: boolean; pelapor_email: string | null }>).map((x) => [x.id, !x.anonim && !!x.pelapor_email])));
+        }
+      } catch { /* abaikan */ }
     } catch {
       setError('Gangguan jaringan.');
     } finally {
@@ -217,6 +238,16 @@ export default function AdminPengaduanPage() {
                   </>
                 )}
               </div>
+              {(isAdmin || (r.jalur === 'layanan' && userRole === 'front_office')) && (
+                <TanggapanPengaduan
+                  pengaduanId={r.id}
+                  bisaEmail={bisaEmailMap[r.id] === true}
+                  tanggapan={tanggapanMap[r.id] ?? []}
+                  statusSaatIni={r.status}
+                  onTerkirim={() => { toast('Tanggapan tersimpan', 'success'); void load(); }}
+                  onGalat={(pesan) => toast(pesan, 'error')}
+                />
+              )}
             </div>
           ))}
         </div>

@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import Image from 'next/image';
+import FotoUmkm from '@/components/umkm/FotoUmkm';
+import { unggahKeR2 } from '@/lib/storage/unggah';
+import { validasiUrlFoto } from '@/lib/umkm/foto-url';
 import {
   Store,
   Search,
@@ -121,6 +123,7 @@ export default function AdminUMKMPage() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
   const [uploadingPhotos, setUploadingPhotos] = useState(false);
+  const [tautanFoto, setTautanFoto] = useState('');
 
   const [viewingId, setViewingId] = useState<string | null>(null);
 
@@ -267,23 +270,13 @@ export default function AdminUMKMPage() {
 
     setUploadingPhotos(true);
     try {
-      const supabase = createClient();
       const newUrls: string[] = [];
 
       for (const file of validFiles) {
-        const ext = file.name.split('.').pop() || 'jpg';
-        const path = `${crypto.randomUUID()}.${ext}`;
-        const { error: uploadError } = await supabase.storage
-          .from('umkm-photos')
-          .upload(path, file);
-
-        if (uploadError) throw uploadError;
-
-        const { data: publicUrlData } = supabase.storage
-          .from('umkm-photos')
-          .getPublicUrl(path);
-
-        newUrls.push(publicUrlData.publicUrl);
+        const ext = (file.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
+        const hasil = await unggahKeR2('umkm-photos', `${crypto.randomUUID()}.${ext}`, file);
+        if (!hasil.url) throw new Error('URL foto tidak tersedia');
+        newUrls.push(hasil.url);
       }
 
       setForm(prev => ({
@@ -296,6 +289,24 @@ export default function AdminUMKMPage() {
     } finally {
       setUploadingPhotos(false);
     }
+  };
+
+  const handleTambahTautanFoto = () => {
+    const hasil = validasiUrlFoto(tautanFoto);
+    if (!hasil.ok) {
+      toast(hasil.alasan, 'warning');
+      return;
+    }
+    if (form.foto_produk.includes(hasil.url)) {
+      toast('Tautan itu sudah ada', 'warning');
+      return;
+    }
+    if (form.foto_produk.length >= 8) {
+      toast('Maksimal 8 foto', 'warning');
+      return;
+    }
+    setForm(prev => ({ ...prev, foto_produk: [...prev.foto_produk, hasil.url] }));
+    setTautanFoto('');
   };
 
   const handleRemovePhoto = (index: number) => {
@@ -813,6 +824,19 @@ export default function AdminUMKMPage() {
                 />
                 <span className="form-hint">Maksimal 8 foto, masing-masing maks 2MB</span>
 
+                <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
+                  <input
+                    type="url"
+                    className="form-input"
+                    placeholder="…atau tempel tautan foto https://…"
+                    value={tautanFoto}
+                    onChange={e => setTautanFoto(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleTambahTautanFoto(); } }}
+                    aria-label="Tautan foto"
+                  />
+                  <button type="button" className="btn btn--secondary btn--sm" onClick={handleTambahTautanFoto}>Tambah tautan</button>
+                </div>
+
                 {uploadingPhotos && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', color: 'var(--text-secondary)', fontSize: 'var(--text-sm)' }}>
                     <Loader2 size={16} className="animate-spin" />
@@ -824,13 +848,12 @@ export default function AdminUMKMPage() {
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
                     {form.foto_produk.map((url, index) => (
                       <div key={index} style={{ position: 'relative', width: 80, height: 80 }}>
-                        <Image
+                        <FotoUmkm
                           src={url}
                           alt={`Foto ${index + 1}`}
                           width={80}
                           height={80}
-                          style={{ objectFit: 'cover', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)' }}
-                          unoptimized
+                          style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)' }}
                         />
                         <button
                           type="button"
@@ -931,14 +954,13 @@ export default function AdminUMKMPage() {
                 <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-2)' }}>Foto Produk</div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 'var(--space-3)' }}>
                   {viewedItem.foto_produk.map((url, index) => (
-                    <Image
+                    <FotoUmkm
                       key={index}
                       src={url}
                       alt={`Foto produk ${index + 1}`}
                       width={200}
                       height={200}
-                      style={{ objectFit: 'cover', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)', width: '100%', height: 200 }}
-                      unoptimized
+                      style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)', width: '100%', height: 200 }}
                     />
                   ))}
                 </div>

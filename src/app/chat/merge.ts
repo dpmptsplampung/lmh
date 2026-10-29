@@ -13,6 +13,11 @@ export interface ChatMsg {
   client_uuid?: string | null;
   // Penanda pesan sistem tertentu, mis. 'penutup_survei' (ditulis RPC chat_selesai; tempat tautan survei).
   jenis_jawaban?: string | null;
+  // Lampiran foto (R2); gambar dibaca lewat /api/chat/lampiran/<id>. Kosong pada pesan biasa.
+  lampiran_kunci?: string | null;
+  lampiran_nama?: string | null;
+  lampiran_mime?: string | null;
+  lampiran_ukuran?: number | null;
   local?: 'pending' | 'failed' | 'notice';
   // notice sementara (mis. "masih diproses"): hilang otomatis saat pesan bot asli tiba.
   transient?: boolean;

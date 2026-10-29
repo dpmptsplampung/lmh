@@ -18,7 +18,7 @@ ON CONFLICT (nama) DO UPDATE SET
 
 INSERT INTO public.site_settings (key, value) VALUES
   ('foila_url', 'https://invest.lampungprov.go.id/'),
-  ('public_url', 'https://lmh.lampungprov.go.id'),
+  ('public_url', 'https://lmh.dpmptsp.web.id'),
   ('wa_default_message', 'Halo, saya ingin bertanya tentang layanan DPMPTSP Provinsi Lampung.')
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now();
 

@@ -99,6 +99,13 @@ export const FORWARD_MIGRATION_FILES = [
   '202611020002_survei_jawaban.sql',
   '202611020003_survei_rpc.sql',
   '202611020004_survei_notifikasi.sql',
+  '202611030001_pesan_perilaku_teks_wib.sql',
+  '202611030002_absensi_hadir_fo.sql',
+  '202611030003_saran_pengaduan_pesan_perilaku.sql',
+  '202611030004_umkm_foto_https.sql',
+  '202611030005_chat_lampiran.sql',
+  '202611030006_pengaduan_tanggapan.sql',
+  '202611030007_public_url_dpmptsp.sql',
 ] as const;
 
 export function listMigrationFiles(): string[] {

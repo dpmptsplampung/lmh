@@ -127,3 +127,7 @@ kini menempel pada `visit` (lihat baseline `202607140004_security_and_automation
   `update_role` petugas, retensi `chat_ai_log`)
 - Dashboard DPO: `/admin/data-governance`
 - Kebijakan terkait: `docs/KEBIJAKAN_AKUN_MITRA.md` (accountability akun mitra)
+
+## Retensi lampiran live chat
+
+Foto yang dilampirkan di live chat disimpan di Cloudflare R2 (bucket privat, area `chat-lampiran`) dan dihapus otomatis **90 hari** setelah pesan dikirim (`POST /api/chat/lampiran/bersihkan`, dipanggil cron dengan `CRON_SECRET`); teks pesan tetap. Hanya pemilik sesi dan staf dalam lingkup yang dapat membaca (404 seragam bagi pihak lain). Foto absensi petugas disimpan di area `absensi-foto` (hanya admin/front office).

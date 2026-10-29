@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import FotoUmkm from '@/components/umkm/FotoUmkm';
 import { useSearchParams } from 'next/navigation';
 import {
   Store,
@@ -618,12 +619,7 @@ export default function UMKMPage() {
                         <div key={listing.id} className={styles.listingCard}>
                           <div className={styles.listingImage}>
                             {listing.image ? (
-                              <Image
-                                src={listing.image}
-                                alt={listing.nama_umkm}
-                                fill
-                                style={{ objectFit: 'cover' }}
-                              />
+                              <FotoUmkm src={listing.image} alt={listing.nama_umkm} fill />
                             ) : (
                               <Store size={40} />
                             )}

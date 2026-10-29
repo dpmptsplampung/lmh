@@ -5,7 +5,7 @@
 export type AdminRole = 'admin' | 'petugas' | 'front_office';
 
 export type AdminNavGroupKey =
-  | 'frontOffice' | 'antrean' | 'layananOnline' | 'laporan'
+  | 'frontOffice' | 'antrean' | 'layananOnline' | 'pesanPerilaku' | 'laporan'
   | 'pengelolaan' | 'kemitraan' | 'konten' | 'sistem';
 
 export interface AdminNavGroup {
@@ -21,6 +21,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   { key: 'frontOffice', label: 'Front Office', iconKey: 'frontOffice' },
   { key: 'antrean', label: 'Antrean & Kehadiran', iconKey: 'antrean' },
   { key: 'layananOnline', label: 'Layanan Online', iconKey: 'layananOnline' },
+  { key: 'pesanPerilaku', label: 'Pesan Perilaku', iconKey: 'pesanPerilaku' },
   { key: 'laporan', label: 'Laporan & Evaluasi', iconKey: 'laporan' },
   { key: 'pengelolaan', label: 'Pengelolaan Layanan', iconKey: 'pengelolaan' },
   { key: 'kemitraan', label: 'Kemitraan & Investasi', iconKey: 'kemitraan' },
@@ -57,7 +58,7 @@ export interface AdminNavEntry {
     | 'faq' | 'umkm' | 'gallery' | 'leads' | 'skm' | 'aiLog' | 'governance'
     | 'petugas' | 'jadwal' | 'settings' | 'landing' | 'public' | 'pengaduan' | 'layar'
     | 'rekap' | 'dokumen' | 'profil' | 'kelolaLayanan' | 'bukuTamu' | 'riwayat' | 'ai'
-    | 'kotakMasuk' | 'penanganan' | 'daftarFo' | 'topik' | 'rekapFo' | 'performa';
+    | 'kotakMasuk' | 'penanganan' | 'daftarFo' | 'topik' | 'rekapFo' | 'performa' | 'saran';
   roles: AdminRole[];
   // Kelompok menu (dropdown). Tanpa `group` = tautan tunggal di luar kelompok.
   group?: AdminNavGroupKey;
@@ -97,7 +98,9 @@ export const ADMIN_NAV: AdminNavEntry[] = [
 
   // Layanan Online
   { label: 'Live Chat', href: '/admin/chat', iconKey: 'chat', roles: ['admin', 'petugas', 'front_office'], group: 'layananOnline', badgeKey: 'liveChat' },
-  { label: 'Pengaduan', href: '/admin/pengaduan', iconKey: 'pengaduan', roles: ['admin', 'petugas', 'front_office'], group: 'layananOnline', badgeKey: 'pengaduan' },
+  { label: 'Hasil Survei', href: '/admin/pesan-perilaku', iconKey: 'skm', roles: ['admin', 'petugas', 'front_office'], group: 'pesanPerilaku' },
+  { label: 'Saran', href: '/admin/saran', iconKey: 'saran', roles: ['admin', 'front_office'], group: 'pesanPerilaku' },
+  { label: 'Pengaduan', href: '/admin/pengaduan', iconKey: 'pengaduan', roles: ['admin', 'petugas', 'front_office'], group: 'pesanPerilaku', badgeKey: 'pengaduan' },
   // Front Office hanya mengelola FAQ umum (layanan_id NULL; RLS faq_fo_umum, lihat src/lib/faq-scope.ts).
   { label: 'Kelola FAQ', href: '/admin/chat/faq', iconKey: 'faq', roles: ['admin', 'petugas', 'front_office'], group: 'layananOnline' },
   { label: 'Log AI Chat', href: '/admin/chat/ai-log', iconKey: 'aiLog', roles: ['admin'], group: 'layananOnline' },
@@ -106,7 +109,8 @@ export const ADMIN_NAV: AdminNavEntry[] = [
   // halaman lama Rekap Front Office kini redirect ke Rekap (entri tersembunyi agar tetap lolos AdminGuard).
   { label: 'Rekap', href: '/admin/rekap', iconKey: 'rekap', roles: ['admin', 'petugas', 'front_office'], group: 'laporan' },
   { label: 'Rekap Front Office', href: '/admin/rekap-fo', iconKey: 'rekapFo', roles: ['admin', 'front_office'], group: 'laporan', hidden: true, tampilSebagai: '/admin/rekap' },
-  { label: 'Hasil SKM', href: '/admin/skm', iconKey: 'skm', roles: ['admin', 'petugas', 'front_office'], group: 'laporan' },
+  { label: 'Cetak Laporan Pesan Perilaku', href: '/admin/pesan-perilaku/cetak', iconKey: 'skm', roles: ['admin', 'front_office'], group: 'pesanPerilaku', hidden: true, tampilSebagai: '/admin/pesan-perilaku' },
+  { label: 'Hasil SKM', href: '/admin/skm', iconKey: 'skm', roles: ['admin', 'petugas', 'front_office'], group: 'pesanPerilaku', hidden: true, tampilSebagai: '/admin/pesan-perilaku' },
   { label: 'Performa Pelayanan', href: '/admin/performa', iconKey: 'performa', roles: ['admin'], group: 'laporan' },
 
   // Pengelolaan Layanan

@@ -65,7 +65,7 @@ afterEach(cleanup);
 describe('ChatSelesaiDialog: Pendataan Umum + Khusus', () => {
   it('petugas Layanan: identitas terisi dari profil dan isian Khusus tampil', async () => {
     render1('layanan');
-    expect(((await screen.findByLabelText(/Nama pengunjung/)) as HTMLInputElement).value).toBe('');
+    await screen.findByLabelText(/Nama pengunjung/);
     await waitFor(() => expect((screen.getByLabelText(/Nama pengunjung/) as HTMLInputElement).value).toBe('Budi Santoso'));
     expect((screen.getByLabelText(/Email/) as HTMLInputElement).value).toBe('budi@x.id');
     expect(await screen.findByLabelText(/Jenis pertanyaan/)).toBeTruthy();

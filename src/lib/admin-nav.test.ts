@@ -159,13 +159,13 @@ const ROLES_SEBELUM: Record<string, string[]> = {
   '/admin/layanan': [A, F], '/admin/layar': [A], '/admin/pengaduan': [A, P, F], '/admin/performa': [A],
   '/admin/petugas': [A], '/admin/profil': [A, P, F], '/admin/rekap': [A, P, F], '/admin/rekap-fo': [A, F],
   '/admin/riwayat': [A], '/admin/scan': [A, F], '/admin/settings': [A], '/admin/settings/ai': [A],
-  '/admin/settings/jadwal': [A, P, F], '/admin/settings/landing': [A], '/admin/skm': [A, P, F],
+  '/admin/settings/jadwal': [A, P, F], '/admin/settings/landing': [A], '/admin/pesan-perilaku': [A, P, F], '/admin/pesan-perilaku/cetak': [A, F], '/admin/skm': [A, P, F], '/admin/saran': [A, F],
   '/admin/topik': [A], '/admin/umkm': [A],
 };
 
 // Halaman lama yang digabung ke /admin/fo/registrasi: tersembunyi dari sidebar, tetap boleh dibuka.
 // Fase 3: /admin/rekap-fo kini redirect ke Rekap terpadu (tersembunyi, tetap admin + front_office).
-const HIDDEN = ['/admin/fo/daftar', '/admin/scan', '/admin/rekap-fo'];
+const HIDDEN = ['/admin/fo/daftar', '/admin/scan', '/admin/rekap-fo', '/admin/skm', '/admin/pesan-perilaku/cetak'];
 
 const urutanHref = (items: AdminNavTreeItem[]) =>
   items.flatMap((i) => (i.type === 'link' ? [i.entry.href] : i.children.map((c) => c.href)));
@@ -182,7 +182,7 @@ describe('pengelompokan menu: data', () => {
 
   it('urutan grup (atas ke bawah) sesuai prioritas pemakaian harian', () => {
     expect(ADMIN_NAV_GROUPS.map((g) => g.label)).toEqual([
-      'Front Office', 'Antrean & Kehadiran', 'Layanan Online', 'Laporan & Evaluasi',
+      'Front Office', 'Antrean & Kehadiran', 'Layanan Online', 'Pesan Perilaku', 'Laporan & Evaluasi',
       'Pengelolaan Layanan', 'Kemitraan & Investasi', 'Konten & Dokumen', 'Sistem & Keamanan',
     ]);
   });
@@ -191,8 +191,9 @@ describe('pengelompokan menu: data', () => {
     const anak = (key: string) => ADMIN_NAV.filter((e) => !e.hidden && e.group === key).map((e) => e.label);
     expect(anak('frontOffice')).toEqual(['Registrasi Pengunjung', 'Kotak Masuk FO', 'Penanganan']);
     expect(anak('antrean')).toEqual(['Antrian', 'Absensi', 'Kunjungan', 'Buku Tamu']);
-    expect(anak('layananOnline')).toEqual(['Live Chat', 'Pengaduan', 'Kelola FAQ', 'Log AI Chat']);
-    expect(anak('laporan')).toEqual(['Rekap', 'Hasil SKM', 'Performa Pelayanan']);
+    expect(anak('layananOnline')).toEqual(['Live Chat', 'Kelola FAQ', 'Log AI Chat']);
+    expect(anak('pesanPerilaku')).toEqual(['Hasil Survei', 'Saran', 'Pengaduan']);
+    expect(anak('laporan')).toEqual(['Rekap', 'Performa Pelayanan']);
     expect(anak('pengelolaan')).toEqual(['Jadwal Layanan', 'Kelola Layanan', 'Topik Penanganan', 'Kelola Layar']);
     expect(anak('kemitraan')).toEqual(['UMKM', 'Lead Investasi', 'Investment Gallery']);
     expect(anak('konten')).toEqual(['Dokumen Peraturan', 'Konten Landing']);
@@ -225,8 +226,9 @@ describe('buildNavTree', () => {
       '/admin',
       ['Front Office', '/admin/fo/registrasi', '/admin/fo/kotak-masuk', '/admin/fo/penanganan'],
       ['Antrean & Kehadiran', '/admin/antrian', '/admin/absensi', '/admin/kunjungan', '/admin/buku-tamu'],
-      ['Layanan Online', '/admin/chat', '/admin/pengaduan', '/admin/chat/faq'],
-      ['Laporan & Evaluasi', '/admin/rekap', '/admin/skm'],
+      ['Layanan Online', '/admin/chat', '/admin/chat/faq'],
+      ['Pesan Perilaku', '/admin/pesan-perilaku', '/admin/saran', '/admin/pengaduan'],
+      '/admin/rekap',
       ['Pengelolaan Layanan', '/admin/settings/jadwal', '/admin/layanan'],
       '/admin/profil',
       '/',
@@ -236,8 +238,9 @@ describe('buildNavTree', () => {
   it('petugas: tanpa Dashboard/Front Office; grup 1-entri menjadi tautan biasa', () => {
     expect(bentuk('petugas')).toEqual([
       ['Antrean & Kehadiran', '/admin/antrian', '/admin/absensi'],
-      ['Layanan Online', '/admin/chat', '/admin/pengaduan', '/admin/chat/faq'],
-      ['Laporan & Evaluasi', '/admin/rekap', '/admin/skm'],
+      ['Layanan Online', '/admin/chat', '/admin/chat/faq'],
+      ['Pesan Perilaku', '/admin/pesan-perilaku', '/admin/pengaduan'],
+      '/admin/rekap',
       '/admin/settings/jadwal', // Pengelolaan Layanan tinggal 1 entri -> tautan biasa
       '/admin/profil',
       '/',
@@ -347,7 +350,8 @@ describe('entri tersembunyi (halaman lama digabung ke Registrasi Pengunjung)', (
     for (const href of HIDDEN) {
       expect(canAccessAdminPath('admin', href)).toBe(true);
       expect(canAccessAdminPath('front_office', href)).toBe(true);
-      expect(canAccessAdminPath('petugas', href)).toBe(false);
+      // /admin/skm (pengalihan ke Pesan Perilaku) tetap terbuka untuk petugas seperti halaman tujuannya.
+      expect(canAccessAdminPath('petugas', href)).toBe(href === '/admin/skm');
     }
     expect(canAccessAdminPath('front_office', '/admin/fo/registrasi')).toBe(true);
     expect(canAccessAdminPath('admin', '/admin/fo/registrasi')).toBe(true);

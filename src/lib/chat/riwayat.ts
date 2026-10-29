@@ -12,7 +12,7 @@ export interface HasilRiwayat {
   sesiTerbukaId: string | null;
 }
 
-const KOLOM = 'id, sesi_id, pengirim, isi, created_at, client_uuid, jenis_jawaban';
+const KOLOM = 'id, sesi_id, pengirim, isi, created_at, client_uuid, jenis_jawaban, lampiran_kunci, lampiran_mime, lampiran_ukuran, lampiran_nama';
 
 export function batasRiwayat(raw: unknown): number {
   const n = Number(raw);

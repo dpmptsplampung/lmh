@@ -20,7 +20,7 @@ describe('Next security headers', () => {
     expect(csp).toBeDefined();
     expect(headers['Content-Security-Policy-Report-Only']).toBeUndefined();
     expect(csp).toContain("connect-src 'self' https://project-ref.supabase.co wss://project-ref.supabase.co");
-    expect(csp).toContain("img-src 'self' data: blob: https://project-ref.supabase.co");
+    expect(csp).toContain("img-src 'self' data: blob: https://project-ref.supabase.co https:");
     expect(csp).toContain("style-src 'self' 'unsafe-inline' https://fonts.googleapis.com");
     expect(csp).toContain("font-src 'self' data: https://fonts.gstatic.com");
     expect(csp).toContain("worker-src 'self' blob:");
@@ -44,5 +44,32 @@ describe('Next security headers', () => {
     expect(headers['X-Frame-Options']).toBe('DENY');
     expect(headers['Permissions-Policy']).toBe('camera=(self), microphone=(), geolocation=(), payment=(), usb=()');
     expect(headers['Strict-Transport-Security']).toBeUndefined();
+  });
+});
+
+describe('CSP R2', () => {
+  it('menambahkan endpoint R2 ke connect-src dan basis publik ke img-src', async () => {
+    const { buildContentSecurityPolicy } = await import('../../next.config');
+    const csp = buildContentSecurityPolicy('https://project-ref.supabase.co', false, {
+      endpoint: 'https://acc.r2.cloudflarestorage.com',
+      publikBase: 'https://pub.example.org',
+    });
+    expect(csp).toMatch(/connect-src [^;]*https:\/\/acc\.r2\.cloudflarestorage\.com/);
+    expect(csp).toMatch(/img-src [^;]*https:\/\/pub\.example\.org/);
+  });
+  it('img-src mengizinkan gambar https apa pun (foto UMKM tautan eksternal) tetapi tidak http dan tidak melonggarkan connect-src', async () => {
+    const { buildContentSecurityPolicy } = await import('../../next.config');
+    const csp = buildContentSecurityPolicy('https://project-ref.supabase.co');
+    const img = csp.split('; ').find((d) => d.startsWith('img-src '))!;
+    expect(img.split(' ')).toContain('https:');
+    expect(img).not.toMatch(/\shttp:(\s|$)/);
+    const connect = csp.split('; ').find((d) => d.startsWith('connect-src '))!;
+    expect(connect.split(' ')).not.toContain('https:');
+  });
+  it('tanpa r2 atau dengan http:// hasilnya tidak berubah', async () => {
+    const { buildContentSecurityPolicy } = await import('../../next.config');
+    const dasar = buildContentSecurityPolicy('https://project-ref.supabase.co');
+    expect(buildContentSecurityPolicy('https://project-ref.supabase.co', false, { endpoint: 'http://x', publikBase: 'http://y' })).toBe(dasar);
+    expect(dasar).not.toContain('undefined');
   });
 });

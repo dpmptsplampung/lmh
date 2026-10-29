@@ -7,6 +7,9 @@ import { catatMutasi } from '@/lib/observability/catat-mutasi';
 import { bolehAksesSesiStaf, bolehRiwayatPenuh } from '@/lib/chat/akses';
 import { objekBelumAda } from '@/lib/akses-data/galat';
 import { muatRiwayatPercakapan } from '@/lib/chat/riwayat';
+import { bersihkanNamaBerkas, kunciMilikSesi, MAKS_LAMPIRAN_BYTE, MIME_LAMPIRAN } from '@/lib/chat/lampiran';
+import { cocokMagicBytes } from '@/lib/storage/area';
+import { deleteObjects, getObjectRange, headObject, r2Tersedia } from '@/lib/storage/r2';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,14 +34,25 @@ const getQuerySchema = z.object({
 });
 
 // pengirim is derived server-side; body only carries sesi_id + isi.
+const lampiranSchema = z.object({
+  kunci: z.string().min(1).max(300),
+  mime: z.enum(MIME_LAMPIRAN),
+  ukuran: z.number().int().positive().max(MAKS_LAMPIRAN_BYTE),
+  nama: z.string().max(300),
+}).strict();
+
+const KOLOM_PESAN = 'id, pengirim, isi, created_at, client_uuid, jenis_jawaban, lampiran_kunci, lampiran_mime, lampiran_ukuran, lampiran_nama';
+
 const postBodySchema = z.object({
   sesi_id: z.string().uuid(),
-  isi: z.string().min(1).max(2000),
+  // Boleh kosong HANYA bila ada lampiran (pesan hanya-foto).
+  isi: z.string().max(2000),
+  lampiran: lampiranSchema.optional(),
   // Accepted for backward-compat with clients; ignored for authorization.
   pengirim: z.enum(['pengunjung', 'petugas', 'bot']).optional(),
   // Idempotency: client-generated UUID for optimistic-dedup across broadcast.
   client_uuid: z.string().uuid().optional(),
-});
+}).refine((b) => b.isi.trim().length > 0 || !!b.lampiran, { message: 'isi atau lampiran wajib', path: ['isi'] });
 
 type Actor =
   | { kind: 'staff'; role: 'admin' | 'petugas' | 'front_office'; layananId: string | null; petugasId?: string }
@@ -172,7 +186,7 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await adminClient
     .from('chat_pesan')
-    .select('id, pengirim, isi, created_at, client_uuid, jenis_jawaban')
+    .select(KOLOM_PESAN)
     .eq('sesi_id', parsed.data.sesi_id)
     .order('created_at', { ascending: true });
 
@@ -255,6 +269,28 @@ export async function POST(request: NextRequest) {
   // Force role — never trust client-supplied pengirim (impersonation vector).
   const pengirim = actor.kind === 'staff' ? 'petugas' : 'pengunjung';
 
+  // Lampiran: objek harus milik sesi ini, benar-benar ada di R2, berukuran sama, dan isinya gambar (magic bytes).
+  const lampiran = parsed.data.lampiran;
+  if (lampiran) {
+    if (!kunciMilikSesi(lampiran.kunci, parsed.data.sesi_id)) {
+      return NextResponse.json({ error: 'Lampiran tidak valid' }, { status: 400 });
+    }
+    if (!r2Tersedia()) return NextResponse.json({ error: 'Penyimpanan berkas belum dikonfigurasi' }, { status: 503 });
+    try {
+      const head = await headObject('private', lampiran.kunci);
+      if (!head) return NextResponse.json({ error: 'Lampiran tidak ditemukan' }, { status: 400 });
+      const awal = await getObjectRange('private', lampiran.kunci, 12);
+      const sah = head.size === lampiran.ukuran && head.contentType.split(';')[0].trim() === lampiran.mime && !!awal && cocokMagicBytes(lampiran.mime, awal);
+      if (!sah) {
+        await deleteObjects('private', [lampiran.kunci]).catch(() => undefined);
+        return NextResponse.json({ error: 'Lampiran tidak sesuai aturan' }, { status: 422 });
+      }
+    } catch (e) {
+      catatMutasi('error', 'chat.messages.lampiran', '/api/chat/messages', e);
+      return NextResponse.json({ error: 'Gagal memeriksa lampiran' }, { status: 500 });
+    }
+  }
+
   let data: Record<string, unknown> | undefined;
   try {
     [data] = await mutasiInsert<Record<string, unknown>>(
@@ -265,8 +301,11 @@ export async function POST(request: NextRequest) {
           pengirim,
           isi: parsed.data.isi.trim(),
           client_uuid: parsed.data.client_uuid ?? null,
+          ...(lampiran
+            ? { lampiran_kunci: lampiran.kunci, lampiran_mime: lampiran.mime, lampiran_ukuran: lampiran.ukuran, lampiran_nama: bersihkanNamaBerkas(lampiran.nama) }
+            : {}),
         })
-        .select('id, pengirim, isi, created_at, client_uuid, jenis_jawaban')
+        .select(KOLOM_PESAN)
         .single(),
     );
   } catch (e) {
@@ -276,7 +315,7 @@ export async function POST(request: NextRequest) {
     if (kodeDb === '23505' && parsed.data.client_uuid) {
       const existing = await adminClient
         .from('chat_pesan')
-        .select('id, pengirim, isi, created_at, client_uuid, jenis_jawaban')
+        .select(KOLOM_PESAN)
         .eq('sesi_id', parsed.data.sesi_id)
         .eq('client_uuid', parsed.data.client_uuid)
         .maybeSingle();

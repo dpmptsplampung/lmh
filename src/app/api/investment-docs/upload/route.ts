@@ -4,6 +4,9 @@ import { mutasiInsert, pesanMutasi } from '@/lib/supabase/mutate';
 import { z } from 'zod';
 import { catatMutasi } from '@/lib/observability/catat-mutasi';
 import crypto from 'node:crypto';
+import { logServerEvent } from '@/lib/observability/logger';
+import { kunciObjek } from '@/lib/storage/area';
+import { deleteObjects, putObject } from '@/lib/storage/r2';
 
 const MAX_PDF_BYTES = 50 * 1024 * 1024;
 const MAX_PDF_PAGES = 50;
@@ -31,12 +34,13 @@ function looksEncrypted(bytes: Uint8Array): boolean {
   return /\/Encrypt[\s\/<]/.test(head);
 }
 
-async function cleanupStorage(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  paths: string[],
-): Promise<void> {
+async function cleanupStorage(paths: string[]): Promise<void> {
   if (paths.length === 0) return;
-  await supabase.storage.from('investment-docs').remove(paths);
+  try {
+    await deleteObjects('private', paths.map((p) => kunciObjek('investment-docs', p)));
+  } catch (error) {
+    logServerEvent('warn', { operation: 'investment_docs.upload.cleanup', route: '/api/investment-docs/upload', nFile: paths.length, error });
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -113,13 +117,16 @@ export async function POST(request: NextRequest) {
   const rawPath = `_raw/${docId}.pdf`;
   const uploadedPaths: string[] = [];
 
-  const { error: rawUploadError } = await supabase.storage
-    .from('investment-docs')
-    .upload(rawPath, pdfBytes, { contentType: 'application/pdf', upsert: false });
+  let rawUploadError: unknown = null;
+  try {
+    await putObject('private', kunciObjek('investment-docs', rawPath), pdfBytes, 'application/pdf');
+  } catch (e) {
+    rawUploadError = e;
+  }
 
   if (rawUploadError) {
     return NextResponse.json(
-      { error: 'Failed to store raw PDF', details: String(rawUploadError) },
+      { error: 'Failed to store raw PDF', details: 'storage error' },
       { status: 500 },
     );
   }
@@ -129,7 +136,7 @@ export async function POST(request: NextRequest) {
   try {
     pngBuffers = await convertPdfToPngBuffers(pdfBytes);
   } catch (err) {
-    await cleanupStorage(supabase, uploadedPaths);
+    await cleanupStorage(uploadedPaths);
     const message = err instanceof Error ? err.message : String(err);
     if (
       (err && typeof err === 'object' && 'code' in err && (err as { code?: string }).code === 'PAGE_LIMIT') ||
@@ -147,7 +154,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (pngBuffers.length > MAX_PDF_PAGES) {
-    await cleanupStorage(supabase, uploadedPaths);
+    await cleanupStorage(uploadedPaths);
     return NextResponse.json(
       { error: `PDF melebihi batas ${MAX_PDF_PAGES} halaman` },
       { status: 400 },
@@ -157,14 +164,17 @@ export async function POST(request: NextRequest) {
   const halamanGambar: string[] = [];
   for (let i = 0; i < pngBuffers.length; i++) {
     const pagePath = `pages/${docId}/page-${i + 1}.png`;
-    const { error: pageUploadError } = await supabase.storage
-      .from('investment-docs')
-      .upload(pagePath, pngBuffers[i], { contentType: 'image/png', upsert: false });
+    let pageUploadError: unknown = null;
+    try {
+      await putObject('private', kunciObjek('investment-docs', pagePath), pngBuffers[i], 'image/png');
+    } catch (e) {
+      pageUploadError = e;
+    }
 
     if (pageUploadError) {
-      await cleanupStorage(supabase, uploadedPaths);
+      await cleanupStorage(uploadedPaths);
       return NextResponse.json(
-        { error: `Failed to store page ${i + 1} PNG`, details: String(pageUploadError) },
+        { error: `Failed to store page ${i + 1} PNG`, details: 'storage error' },
         { status: 500 },
       );
     }
@@ -190,7 +200,7 @@ export async function POST(request: NextRequest) {
     );
   } catch (e) {
     catatMutasi('error', 'investment_docs.upload.insert', '/api/investment-docs/upload', e, { docId });
-    await cleanupStorage(supabase, uploadedPaths);
+    await cleanupStorage(uploadedPaths);
     return NextResponse.json(
       { error: 'Failed to insert document row', details: pesanMutasi(e) },
       { status: 500 },

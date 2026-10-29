@@ -4,6 +4,8 @@ import { getServiceClient } from '@/lib/akun/server';
 import { logServerEvent } from '@/lib/observability/logger';
 import { mutasiInsert } from '@/lib/supabase/mutate';
 import { catatMutasi } from '@/lib/observability/catat-mutasi';
+import { kunciObjek } from '@/lib/storage/area';
+import { presignGet } from '@/lib/storage/r2';
 
 const ROUTE = '/api/investment-docs/signed-url';
 
@@ -62,14 +64,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: PESAN_AUDIT_GAGAL }, { status: 503 });
   }
 
-  const { data, error } = await supabase.storage
-    .from('investment-docs')
-    .createSignedUrl(filePath, 60);
-
-  if (error || !data) {
+  let signedUrl: string;
+  try {
+    signedUrl = await presignGet('private', kunciObjek('investment-docs', filePath), 60);
+  } catch (error) {
     logServerEvent('error', { operation: 'investment_docs.signed_url.create', route: ROUTE, error });
     return NextResponse.json({ error: 'Gagal membuat tautan unduhan.' }, { status: 500 });
   }
 
-  return NextResponse.json({ signedUrl: data.signedUrl });
+  return NextResponse.json({ signedUrl });
 }

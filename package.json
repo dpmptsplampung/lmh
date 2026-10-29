@@ -21,6 +21,8 @@
     "verify:baseline": "npm run deps:check && npm run audit:check && npm run lint && npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1158.0",
+    "@aws-sdk/s3-request-presigner": "^3.1158.0",
     "@chatscope/chat-ui-kit-react": "^2.1.1",
     "@chatscope/chat-ui-kit-styles": "^1.4.0",
     "@google/generative-ai": "^0.24.1",
