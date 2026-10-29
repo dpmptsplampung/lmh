@@ -9,6 +9,7 @@ vi.mock('@/components/QRCode', () => ({
 
 import { createClient } from '@/lib/supabase/client';
 import ReservasiPage from './page';
+import { todayWIB } from '@/lib/time';
 
 type RpcFn = (nama: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>;
 
@@ -22,13 +23,17 @@ describe('reservasi pengunjung (rpc reservasi_buat / reservasi_batalkan, daftar 
   let hariLiburError: { message: string } | null = null;
   const kunjunganEq = vi.fn();
 
+  // "Hari ini" mengikuti WIB seperti halaman (todayWIB), bukan new Date() lokal: di runner UTC pukul 17.00-24.00 tanggal WIB sudah
+  // sehari lebih maju sehingga tanggal uji jatuh sebelum batas minimal halaman. Pukul 12.00 lokal menjaga hari-dalam-pekan stabil.
+  const hariIniWIB = () => new Date(`${todayWIB()}T12:00:00`);
+
   // Format tanggal lokal (bukan toISOString yang bergeser karena timezone)
   const toLocalYmd = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
   // Hari kerja terdekat (Senin–Jumat) yang lolos validasi klien
   const nextWeekday = () => {
-    const d = new Date();
+    const d = hariIniWIB();
     for (let i = 0; i < 10; i++) {
       const day = d.getDay();
       if (day !== 0 && day !== 6) return toLocalYmd(d);
@@ -185,7 +190,7 @@ describe('reservasi pengunjung (rpc reservasi_buat / reservasi_batalkan, daftar 
   });
 
   const tanggalAkhirPekan = (hari: 0 | 6) => {
-    const d = new Date();
+    const d = hariIniWIB();
     while (d.getDay() !== hari) d.setDate(d.getDate() + 1);
     return toLocalYmd(d);
   };
@@ -264,7 +269,7 @@ describe('reservasi pengunjung (rpc reservasi_buat / reservasi_batalkan, daftar 
   it('menolak tanggal akhir pekan di klien tanpa memanggil rpc', async () => {
     render(<ReservasiPage />);
     await screen.findByText('Rencanakan Kedatangan');
-    const d = new Date();
+    const d = hariIniWIB();
     while (d.getDay() !== 6) d.setDate(d.getDate() + 1);
 
     fireEvent.click(screen.getByText('Bertemu Seseorang'));
@@ -280,7 +285,7 @@ describe('reservasi pengunjung (rpc reservasi_buat / reservasi_batalkan, daftar 
   it('menolak tanggal lebih dari 7 hari ke depan (QUE-05) tanpa memanggil rpc', async () => {
     render(<ReservasiPage />);
     await screen.findByText('Rencanakan Kedatangan');
-    const d = new Date();
+    const d = hariIniWIB();
     d.setDate(d.getDate() + 30);
 
     fireEvent.click(screen.getByText('Bertemu Seseorang'));
