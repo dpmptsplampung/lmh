@@ -163,10 +163,16 @@ Cron HTTP berjalan di **server sendiri** (`/etc/cron.d/lmh` -> `/usr/local/bin/l
 `Authorization: Bearer <CRON_SECRET>`; nilainya HARUS sama dengan env Vercel. Galat masuk syslog (`journalctl -t lmh-cron`).
 Matikan job lama di cron-job.org agar tidak dobel.
 
+**Kebijakan notifikasi: kirim SATU kali (keputusan pemilik, 2026-10-29).** Alamat email hasil pendataan FO/petugas bisa salah atau
+tidak aktif; kirim ulang hanya menambah pantulan (bounce) dan merusak reputasi domain `mail.dpmptsp.web.id`. `notif/send` hanya
+mengambil baris `pending`; yang gagal menjadi `failed` dan berhenti di situ. `notif/retry` adalah satu-satunya jalur kirim ulang
+(mengambil `failed`, hingga 5x), jadi JANGAN dijadwalkan dan jangan dipasang di cron-job.org. Baris `failed` dapat dilihat dengan
+`select status, error, count(*) from notifikasi where kanal='email' group by 1,2`.
+
 | Job | Jadwal | Panggilan (POST) |
 |---|---|---|
 | Kirim notifikasi | tiap 2 menit | `/api/notif/send` |
-| Ulang notifikasi gagal | tiap 5 menit | `/api/notif/retry` |
+| ~~Ulang notifikasi gagal~~ | **SENGAJA TIDAK DIJADWALKAN** | `/api/notif/retry` |
 | Embedding FAQ | tiap jam | `/api/admin/faq/embed` |
 | Retensi lampiran chat (90 hari, hapus objek R2) | harian 02:00 WIB | `/api/chat/lampiran/bersihkan` |
 
