@@ -5,6 +5,13 @@ vi.mock("resend", () => ({
   Resend: vi.fn(),
 }));
 
+// DNS tidak dipanggil di tes: status domain dikendalikan per tes (default 'ada').
+const emailMocks = vi.hoisted(() => ({ cekDomainEmail: vi.fn() }));
+vi.mock("@/lib/email-valid", async (importAsli) => ({
+  ...(await importAsli<typeof import("@/lib/email-valid")>()),
+  cekDomainEmail: emailMocks.cekDomainEmail,
+}));
+
 const wpMocks = vi.hoisted(() => ({
   sendNotification: vi.fn(),
   setVapidDetails: vi.fn(),
@@ -144,7 +151,7 @@ const sampleEmailRow: ClaimedRow = {
   id: "n1",
   claim_token: "tok-1",
   kanal: "email",
-  tujuan_email: "pengunjung@example.com",
+  tujuan_email: "pengunjung@gmail.com",
   tujuan_user_id: null,
   subjek: "Survei Kepuasan Masyarakat — DPMPTSP Lampung",
   body: "Layanan Anda telah selesai. Mohon isi survei: https://lmh.lampungprov.go.id/skm?token=abc",
@@ -165,6 +172,8 @@ const samplePushRow: ClaimedRow = {
 describe("POST /api/notif/send — CRON_SECRET auth", () => {
   beforeEach(() => {
     vi.resetModules();
+    emailMocks.cekDomainEmail.mockReset();
+    emailMocks.cekDomainEmail.mockResolvedValue("ada");
   });
 
   it("returns 401 when Authorization header missing", async () => {
@@ -292,6 +301,49 @@ describe("POST /api/notif/send — claim-before-send", () => {
       "complete_notifikasi",
       expect.objectContaining({ p_status: "skipped" }),
     );
+  });
+
+  it.each([
+    ["Tidak berlaku", "format"],
+    ["budi@gmial.com", "salah ketik"],
+    ["budi@example.com", "cadangan"],
+    ["  ", "kosong"],
+  ])("menyaring alamat tidak valid %j: tidak dikirim ke Resend, ditandai skipped (bukan failed)", async (alamat, alasan) => {
+    const sc = await mockServiceClient({ claimed: [{ ...sampleEmailRow, tujuan_email: alamat }] });
+    const resendInstance = await mockResendSuccess();
+    const { POST } = await import("./route");
+    const json = await (await POST(buildRequest("Bearer cron-secret"))).json();
+    expect(json).toMatchObject({ sent: 0, failed: 0, skipped: 1 });
+    expect(resendInstance.emails.send).not.toHaveBeenCalled();
+    expect(sc.rpc).toHaveBeenCalledWith(
+      "complete_notifikasi",
+      expect.objectContaining({ p_status: "skipped", p_error: expect.stringContaining(alasan) }),
+    );
+  });
+
+  it("domain tanpa MX/A: tidak dikirim, skipped", async () => {
+    emailMocks.cekDomainEmail.mockResolvedValue("tidak_ada");
+    const sc = await mockServiceClient({ claimed: [{ ...sampleEmailRow, tujuan_email: "budi@hantu-lmh.id" }] });
+    const resendInstance = await mockResendSuccess();
+    const { POST } = await import("./route");
+    const json = await (await POST(buildRequest("Bearer cron-secret"))).json();
+    expect(json).toMatchObject({ sent: 0, failed: 0, skipped: 1 });
+    expect(resendInstance.emails.send).not.toHaveBeenCalled();
+    expect(emailMocks.cekDomainEmail).toHaveBeenCalledWith("hantu-lmh.id");
+    expect(sc.rpc).toHaveBeenCalledWith(
+      "complete_notifikasi",
+      expect.objectContaining({ p_status: "skipped", p_error: expect.stringContaining("hantu-lmh.id") }),
+    );
+  });
+
+  it("DNS ragu (tidak_pasti) tidak memblokir: tetap dikirim, alamat dinormalkan", async () => {
+    emailMocks.cekDomainEmail.mockResolvedValue("tidak_pasti");
+    await mockServiceClient({ claimed: [{ ...sampleEmailRow, tujuan_email: "  Budi@Gmail.COM " }] });
+    const resendInstance = await mockResendSuccess();
+    const { POST } = await import("./route");
+    const json = await (await POST(buildRequest("Bearer cron-secret"))).json();
+    expect(json).toMatchObject({ sent: 1, failed: 0, skipped: 0 });
+    expect(resendInstance.emails.send).toHaveBeenCalledWith(expect.objectContaining({ to: "budi@gmail.com" }));
   });
 
   it("sends push and completes with claim_token", async () => {

@@ -4,6 +4,7 @@ import { Resend } from 'resend';
 import webpush from 'web-push';
 import crypto from 'node:crypto';
 import { bodyToEmailHtml } from '@/lib/email-html';
+import { cekDomainEmail, periksaAlamatEmail } from '@/lib/email-valid';
 import { MutasiError, mutasiInsert } from '@/lib/supabase/mutate';
 import { catatMutasi } from '@/lib/observability/catat-mutasi';
 
@@ -192,7 +193,19 @@ async function processPending(request: NextRequest) {
         failed++;
         continue;
       }
-      const result = await sendEmail(resend, row);
+      // Kebijakan kirim sekali: alamat yang PASTI tak terkirim disaring dulu dan ditandai 'skipped' (bukan 'failed') beserta alasannya.
+      const alamat = periksaAlamatEmail(row.tujuan_email);
+      if (!alamat.valid) {
+        await complete(row, 'skipped', `email tidak dikirim: ${alamat.alasan}`);
+        skipped++;
+        continue;
+      }
+      if ((await cekDomainEmail(alamat.domain)) === 'tidak_ada') {
+        await complete(row, 'skipped', `email tidak dikirim: domain ${alamat.domain} tidak menerima email (tanpa MX/A)`);
+        skipped++;
+        continue;
+      }
+      const result = await sendEmail(resend, { ...row, tujuan_email: alamat.email });
       if (result.ok) {
         await complete(row, 'sent');
         sent++;
