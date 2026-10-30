@@ -1305,3 +1305,12 @@ Terapkan SEBELUM merge/deploy PR storage R2 (kode membaca kolom `lampiran_*`). B
 | 202611030006 | `202611030006_pengaduan_tanggapan.sql` | `pengaduan.pelapor_email`; `kirim_pengaduan_survei` menyimpan email + email "diterima"; tabel `pengaduan_tanggapan`/`pengaduan_lampiran`; RPC `tanggapi_pengaduan`, `tanggapan_pengaduan_nomor`, `lampiran_pengaduan_nomor` | `docs/rollback-pengaduan-tanggapan-202611030006.sql` | **DITULIS, BELUM DITERAPKAN** (dry-run + uji perilaku rollback bersih) |
 
 Memerlukan 202611030003. Lampiran (JPG/PNG/WEBP/PDF, 5 MB, maks 3) di R2 area `pengaduan-bukti`; DOCX/XLSX belum didukung.
+
+## Pesan Perilaku publik: sapaan, saran, pengaduan anonim (202611030007-202611030008)
+
+| # | Berkas | Isi | Rollback | Status |
+|---|---|---|---|---|
+| 202611030007 | `202611030007_public_url_dpmptsp.sql` | `site_settings.public_url` = `https://lmh.dpmptsp.web.id` (hanya bila kosong/domain lama) | `docs/rollback-public-url-dpmptsp-202611030007.sql` | **DITERAPKAN ke produksi** |
+| 202611030008 | `202611030008_pesan_perilaku_publik.sql` | `get_survei_context` + `nama` (sapaan); `saran.sumber` boleh `publik` + RPC `kirim_saran_publik`; RPC `kirim_pengaduan_publik` (nomor laporan acak `P`+8, kontak dibuang bila anonim, `pengaduan.sumber='publik'`); `lacak_pengaduan_nomor`/`tanggapan_pengaduan_nomor`/`lampiran_pengaduan_nomor` melayani `wizard` dan `publik` | `docs/rollback-pesan-perilaku-publik-202611030008.sql` (menolak bila sudah ada data `publik`) | **DITULIS, BELUM DITERAPKAN** |
+
+Memerlukan 202611030003 dan 202611030006. Terapkan SEBELUM merge/deploy: tanpa migrasi, `/saran` menjawab galat, sapaan tanpa nama, dan `/api/pengaduan` jatuh ke jalur lama (`buat_pengaduan`, nomor tiket lama, pelacakan butuh kontak).

@@ -15,6 +15,7 @@ interface Saran {
   created_at: string;
   unit: string;
   pelapor_nama: string | null;
+  sumber?: string | null;
   layanan: { nama: string } | { nama: string }[] | null;
 }
 
@@ -41,7 +42,7 @@ export default function SaranPage() {
       const akhir = toWIBDateString(new Date(new Date(`${sampai}T00:00:00+07:00`).getTime() + 86_400_000));
       const { data, count, error } = await supabase
         .from('saran')
-        .select('id, isi, created_at, unit, pelapor_nama, layanan:layanan_id ( nama )', { count: 'exact' })
+        .select('id, isi, created_at, unit, pelapor_nama, sumber, layanan:layanan_id ( nama )', { count: 'exact' })
         .gte('created_at', `${dari}T00:00:00+07:00`)
         .lt('created_at', `${akhir}T00:00:00+07:00`)
         .order('created_at', { ascending: false })
@@ -64,7 +65,7 @@ export default function SaranPage() {
 
   return (
     <>
-      <PageHeader title="Saran" description="Saran pengunjung dari Pesan Perilaku" />
+      <PageHeader title="Saran" description="Saran pengunjung: dari Pesan Perilaku dan dari tautan publik /saran" />
       <div style={{ padding: 'var(--space-6)', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
         <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
           <label style={{ display: 'flex', flexDirection: 'column', fontSize: 'var(--text-xs)', gap: 4 }}>
@@ -93,7 +94,7 @@ export default function SaranPage() {
                   <p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{s.isi}</p>
                   <p style={{ margin: 'var(--space-2) 0 0', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
                     {new Date(s.created_at).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', dateStyle: 'medium', timeStyle: 'short' })} WIB ·{' '}
-                    {s.unit === 'fo' ? 'Front Office' : lay ?? 'Unit tidak diketahui'} · {s.pelapor_nama ?? 'Anonim'}
+                    {s.sumber === 'publik' ? 'Tautan publik' : s.unit === 'fo' ? 'Front Office' : lay ?? 'Unit tidak diketahui'} · {s.pelapor_nama ?? 'Anonim'}
                   </p>
                 </li>
               );

@@ -169,9 +169,11 @@ describe('survei_rpc: berkas, urutan, atomik, aditif', () => {
     expect(semuaLama).toMatch(/ADD CONSTRAINT\s+skm_respons_wizard_kunjungan_versi_check/);
     expect(semuaLama).toMatch(/CREATE TABLE IF NOT EXISTS public\.layanan|CREATE TABLE public\.layanan/);
     expect(semuaLama).not.toMatch(/\bkirim_survei\b|\bget_survei_context\b/);
-    // Hanya BERKAS ini yang mendefinisikan keduanya.
-    const pendefinisi = listMigrationFiles().filter((nama) => /CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+public\.(?:kirim_survei|get_survei_context)\b/i.test(stripSqlComments(baca(nama))));
-    expect(pendefinisi).toEqual([BERKAS]);
+    // Hanya BERKAS ini yang mendefinisikan kirim_survei; get_survei_context juga didefinisikan ulang 202611030008 (menambah `nama`).
+    const mendefinisikan = (fungsi: string) =>
+      listMigrationFiles().filter((nama) => new RegExp(String.raw`CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+public\.${fungsi}\b`, 'i').test(stripSqlComments(baca(nama))));
+    expect(mendefinisikan('kirim_survei')).toEqual([BERKAS]);
+    expect(mendefinisikan('get_survei_context')).toEqual([BERKAS, '202611030008_pesan_perilaku_publik.sql']);
   });
 });
 

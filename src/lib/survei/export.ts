@@ -2,14 +2,15 @@
 // Kolom identitas HANYA tanggal kunjungan, unit, kategori pengunjung, dan kode kunjungan; tanpa nama, HP, atau email
 // (kolom itu memang tidak dibaca dari database, jadi tidak mungkin bocor lewat berkas). Teks yang berasal dari database
 // (nama layanan, kategori) dinetralkan dari injeksi rumus lewat `amanSel`.
-// Ringkasan (IKM, rata-rata SPAK, response rate) datang dari RPC `ringkasan_*` yang HARUS dipanggil dengan klien sesi
-// pengguna (dijaga peran_saya(); kosong di bawah service role): pemanggil menyuplainya, modul ini tidak memanggil RPC.
+// Ringkasan (IKM, SPAK, response rate) bersifat GLOBAL (seluruh pelayanan digabung, tanpa pemecahan per unit; keputusan pemilik
+// 2026-11-03): IKM dan SPAK dihitung dari jawaban yang sama dengan sheet data (`ringkasan-global.ts`); response rate datang dari
+// RPC `ringkasan_response_rate` yang HARUS dipanggil dengan klien sesi pengguna (dijaga peran_saya()): pemanggil menyuplainya.
 import ExcelJS from 'exceljs';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { ikmQualityLabel } from '@/lib/ikm';
 import { fetchAllPages } from '@/lib/rekap/exportAll';
 import { awalHariBerikutnyaWIB, awalHariWIB, formatTanggalId } from '@/lib/rekap/format';
 import { PERTANYAAN_SPAK, SKALA_SKM, SKALA_SPAK, UNSUR_SKM } from './pertanyaan';
+import { hitungIkmGlobal, hitungSpakGlobal, persen as hitungPersen, type BarisMentah } from './ringkasan-global';
 
 /** Teks diawali = + - @ tab/CR diberi apostrof agar tidak dieksekusi Excel sebagai rumus (formula injection). */
 export function amanSel(v: string | null | undefined): string {
@@ -58,13 +59,7 @@ export interface BarisSkm extends BarisDasar {
   u11_integritas: number | null;
 }
 
-type Angka = number | string | null;
 
-export interface RingkasanIkmRow { layanan_id: string | null; unit: string; nama: string; ikm: Angka; responden: number }
-export interface RingkasanSpakRow {
-  layanan_id: string | null; unit: string; nama: string; responden: number;
-  p1: Angka; p2: Angka; p3: Angka; p4: Angka; p5: Angka;
-}
 export interface RingkasanRateRow { layanan_id: string | null; unit: string; nama: string; diundang: number; mengisi: number }
 
 export interface DataSurvei {
@@ -73,8 +68,6 @@ export interface DataSurvei {
   sampai: string;
   spak: BarisSpak[];
   skm: BarisSkm[];
-  ringkasanIkm: RingkasanIkmRow[];
-  ringkasanSpak: RingkasanSpakRow[];
   ringkasanRate: RingkasanRateRow[];
   /** Data jawaban melebihi batas baris ekspor dan dipotong (diberi catatan di sheet Ringkasan). */
   terpotong?: boolean;
@@ -127,17 +120,6 @@ function identitas(r: BarisDasar): (string | null)[] {
 
 const bulat1 = (n: number) => Math.round(n * 10) / 10;
 
-function angka(v: Angka | undefined): number | null {
-  if (v === null || v === undefined || v === '') return null;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
-}
-
-const angka1 = (v: Angka | undefined): number | string => {
-  const n = angka(v);
-  return n === null ? '—' : bulat1(n);
-};
-
 function gayaHeader(baris: ExcelJS.Row) {
   baris.font = { bold: true, color: { argb: 'FFFFFFFF' } };
   baris.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E40AF' } };
@@ -181,42 +163,59 @@ function buatSheetSkm(wb: ExcelJS.Workbook, rows: BarisSkm[]) {
 
 function buatSheetRingkasan(wb: ExcelJS.Workbook, d: DataSurvei) {
   const ws = wb.addWorksheet('Ringkasan');
-  [44, 14, 14, 22, 14, 14, 14].forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+  [44, 52, 14, 16, 18, 14, 14, 14, 10, 10, 10, 10, 10, 10].forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+  const periodeGlobal = { dari: d.dari, sampai: d.sampai };
+  const ikm = hitungIkmGlobal(d.skm as unknown as BarisMentah[], periodeGlobal);
+  const spak = hitungSpakGlobal(d.spak as unknown as BarisMentah[], periodeGlobal);
+  const pct = (v: number | null) => (v === null ? '—' : bulat1(v));
 
   const periode = ws.addRow(['Periode', `${formatTanggalId(d.dari)} s.d. ${formatTanggalId(d.sampai)}`]);
   periode.getCell(1).font = { bold: true };
+  ws.addRow(['Cakupan', 'Seluruh pelayanan digabung (tidak dipecah per Layanan)']);
   if (d.terpotong) {
     ws.addRow(['Catatan', 'Data jawaban terpotong pada batas baris ekspor; persempit periode agar lengkap.']).getCell(1).font = { bold: true };
   }
 
   ws.addRow([]);
-  judul(ws, 'IKM per Unit');
-  gayaHeader(ws.addRow(['Unit', 'IKM', 'Responden', 'Predikat']));
-  for (const r of d.ringkasanIkm) {
-    const ikm = angka(r.ikm);
-    ws.addRow([teks(r.nama), ikm === null ? '—' : bulat1(ikm), r.responden, ikmQualityLabel(ikm)]);
+  judul(ws, 'Ringkasan IKM (Indeks Kepuasan Masyarakat)');
+  gayaHeader(ws.addRow(['Indikator', 'Nilai']));
+  ws.addRow(['Responden', ikm.responden]);
+  ws.addRow(['IKM (skala 25-100)', pct(ikm.ikm)]);
+  ws.addRow(['Predikat', ikm.mutuLabel]);
+  ws.addRow([]);
+  judul(ws, 'IKM per Unsur');
+  gayaHeader(ws.addRow(['Unsur', 'Keterangan', 'Jawaban', 'Rata-rata (1-4)', 'Nilai IKM (25-100)']));
+  for (const u of ikm.unsur) {
+    ws.addRow([u.kunci.toUpperCase(), teks(u.teks), u.jawaban, u.rata === null ? '—' : Math.round(u.rata * 100) / 100, pct(u.nilai)]);
   }
 
   ws.addRow([]);
-  judul(ws, 'Rata-rata SPAK per Unit (skala 1-6)');
-  gayaHeader(ws.addRow(['Unit', 'Responden', 'P1', 'P2', 'P3', 'P4', 'P5']));
-  for (const r of d.ringkasanSpak) {
-    ws.addRow([teks(r.nama), r.responden, angka1(r.p1), angka1(r.p2), angka1(r.p3), angka1(r.p4), angka1(r.p5)]);
+  judul(ws, 'Ringkasan SPAK (Survey Persepsi Anti Korupsi)');
+  gayaHeader(ws.addRow(['Indikator', 'Nilai']));
+  ws.addRow(['Responden', spak.responden]);
+  ws.addRow(['Rata-rata (skala 1-6)', spak.rata === null ? '—' : Math.round(spak.rata * 100) / 100]);
+  ws.addRow(['Indeks SPAK (skala 0-100)', pct(spak.indeks)]);
+  ws.addRow(['Setuju (nilai 5-6), % jawaban', pct(spak.persenSetuju)]);
+  ws.addRow(['Netral (nilai 3-4), % jawaban', pct(spak.persenNetral)]);
+  ws.addRow(['Tidak setuju (nilai 1-2), % jawaban', pct(spak.persenTidakSetuju)]);
+  ws.addRow([]);
+  judul(ws, 'SPAK per Pernyataan');
+  gayaHeader(ws.addRow(['Pernyataan', 'Keterangan', 'Jawaban', 'Rata-rata (1-6)', 'Indeks (0-100)', 'Setuju (%)', 'Netral (%)', 'Tidak setuju (%)', 'Nilai 1', 'Nilai 2', 'Nilai 3', 'Nilai 4', 'Nilai 5', 'Nilai 6']));
+  for (const b of spak.butir) {
+    ws.addRow([
+      b.kunci.toUpperCase(), teks(b.teks), b.jawaban, b.rata === null ? '—' : Math.round(b.rata * 100) / 100,
+      pct(b.indeks), pct(b.persenSetuju), pct(b.persenNetral), pct(b.persenTidakSetuju), ...b.distribusi,
+    ]);
   }
 
   ws.addRow([]);
   judul(ws, 'Response Rate');
-  gayaHeader(ws.addRow(['Unit', 'Diundang', 'Mengisi', 'Persen (%)']));
-  const persen = (mengisi: number, diundang: number) => (diundang > 0 ? bulat1((mengisi / diundang) * 100) : '—');
-  let totalDiundang = 0;
-  let totalMengisi = 0;
-  for (const r of d.ringkasanRate) {
-    totalDiundang += r.diundang;
-    totalMengisi += r.mengisi;
-    ws.addRow([teks(r.nama), r.diundang, r.mengisi, persen(r.mengisi, r.diundang)]);
-  }
-  const total = ws.addRow(['Total', totalDiundang, totalMengisi, persen(totalMengisi, totalDiundang)]);
-  total.font = { bold: true };
+  gayaHeader(ws.addRow(['Indikator', 'Nilai']));
+  const diundang = d.ringkasanRate.reduce((s, r) => s + r.diundang, 0);
+  const mengisi = d.ringkasanRate.reduce((s, r) => s + r.mengisi, 0);
+  ws.addRow(['Diundang', diundang]);
+  ws.addRow(['Mengisi', mengisi]);
+  ws.addRow(['Persen (%)', pct(hitungPersen(mengisi, diundang))]);
 }
 
 function buatSheetLegenda(wb: ExcelJS.Workbook) {
@@ -236,7 +235,8 @@ function buatSheetLegenda(wb: ExcelJS.Workbook) {
   blok('Catatan', ['Istilah', 'Penjelasan'], [
     ['IKM', 'Rata-rata nilai unsur yang terisi dikali 25 (skala 25-100). Data lama memuat 9 unsur; unsur 10 dan 11 kosong.'],
     ['Predikat IKM', 'A (88-100) Sangat Baik; B (76-87,99) Baik; C (60-75,99) Kurang Baik; D (di bawah 60) Tidak Baik.'],
-    ['Unit', 'Nama layanan, Front Office, atau "Tidak terklasifikasi (data lama/impor)".'],
+    ['Unit (sheet data)', 'Nama layanan, Front Office, atau "Tidak terklasifikasi (data lama/impor)". Hanya ada di sheet data mentah; sheet Ringkasan selalu gabungan seluruh pelayanan.'],
+    ['Indeks SPAK', 'Rata-rata jawaban dibagi 6 dikali 100. Setuju = nilai 5-6, netral = 3-4, tidak setuju = 1-2.'],
     ['Kode Kunjungan', '8 karakter pertama id kunjungan; "—" bila tidak ada kunjungan (data impor). Berkas tidak memuat nama, HP, atau email.'],
     ['Response Rate', 'Mengisi dibagi diundang dikali 100; undangan dihitung menurut tanggal dibuat (WIB).'],
   ]);

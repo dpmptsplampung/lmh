@@ -67,10 +67,11 @@ describe('pertanyaan survei (golden Lampiran A)', () => {
     ]);
   });
 
-  it('judul, instruksi, dan judul bagian SPAK (dibiarkan seperti sumber), judul SKM', () => {
+  it('judul dan instruksi SPAK, judul SKM', () => {
     expect(SURVEI.spak.judul).toBe('Survey Persepsi Anti Korupsi');
     expect(SURVEI.spak.instruksi).toBe('Berikan penilaian Anda dari skala 1-6 dengan keterangan sebagai berikut');
-    expect(SURVEI.spak.bagian).toBe('A. PERTANYAAN TERKAIT SURVEY PERSEPSI KUALITAS PELAYANAN');
+    // Judul bagian "A. PERTANYAAN TERKAIT ..." dihapus atas permintaan pemilik (2026-11-03).
+    expect(SURVEI.spak).not.toHaveProperty('bagian');
     expect(SURVEI.skm.judul).toBe('Survey Kepuasan Masyarakat');
   });
 

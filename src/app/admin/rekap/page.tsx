@@ -30,6 +30,7 @@ import {
   type RingkasanHarian,
   type UnitRekap,
 } from '@/lib/rekap/terpadu';
+import TabelDataPelayanan, { type TampilanKolom } from './TabelDataPelayanan';
 import styles from './rekap.module.css';
 
 type Bagian = 'harian' | 'oss' | 'perizinan' | 'data' | 'kinerja';
@@ -85,6 +86,8 @@ function RekapTerpadu() {
   const [data, setData] = useState<{ rows: BarisPelayanan[]; total: number; form_type: FormPendataan | null; kolom_khusus?: FieldKhusus[] } | null>(null);
   const [kinerja, setKinerja] = useState<BarisKinerja[] | null>(null);
   const [halaman, setHalaman] = useState(0);
+  // Tampilan kolom Data Pelayanan: null = bawaan (Ringkas; tab Helpdesk OSS / Non OSS langsung Semua kolom agar kolom formulirnya tampil).
+  const [tampilanPilihan, setTampilan] = useState<TampilanKolom | null>(null);
   const permintaanTerakhir = useRef(0);
 
   // Tab Helpdesk OSS / Non OSS ada bila lingkup pengguna memuat Layanan berformulir itu (admin dan Koordinator FO:
@@ -212,9 +215,9 @@ function RekapTerpadu() {
     setter(v);
   };
 
+  const tampilan: TampilanKolom = tampilanPilihan ?? (tabForm ? 'semua' : 'ringkas');
   const kolom = kolomDataPelayanan(data?.form_type ?? null, kolomKhusus(data?.kolom_khusus ?? []));
   const pilihLayanan = !tabForm && layananLain.length > 0 && unit !== 'fo';
-  const labelTab = BAGIAN.find((b) => b.kunci === bagian)?.label ?? '';
   const pindahBagian = (kunci: Bagian) => {
     if (kunci === bagian) return;
     setHalaman(0);
@@ -311,21 +314,21 @@ function RekapTerpadu() {
                   <caption className={styles.caption}>Jumlah pelayanan dilayani per tanggal dan unit</caption>
                   <thead>
                     <tr>
-                      <th scope="col">Tanggal</th><th scope="col">Unit</th><th scope="col">Tatap muka</th>
-                      <th scope="col">Live Chat</th><th scope="col">Jumlah</th>
+                      <th scope="col">Tanggal</th><th scope="col">Unit</th><th scope="col" className="kol-angka">Tatap muka</th>
+                      <th scope="col" className="kol-angka">Live Chat</th><th scope="col" className="kol-angka">Jumlah</th>
                     </tr>
                   </thead>
                   <tbody>
                     {(harian?.rows ?? []).length === 0 ? (
-                      <tr><td colSpan={5} className={styles.kosong}>{memuat ? 'Memuat…' : 'Belum ada pelayanan dilayani pada rentang ini.'}</td></tr>
+                      <tr><td colSpan={5} className="kosong-sel">{memuat ? 'Memuat…' : 'Belum ada pelayanan dilayani pada rentang ini.'}</td></tr>
                     ) : (
                       harian!.rows.map((r) => (
                         <tr key={`${r.tanggal}-${r.unit}-${r.layanan_id ?? 'fo'}`}>
-                          <td className={styles.angka}>{formatTanggalId(r.tanggal)}</td>
-                          <td style={{ fontWeight: 600 }}>{namaUnit(r)}</td>
-                          <td className={styles.angka}>{r.tatap_muka}</td>
-                          <td className={styles.angka}>{r.live_chat}</td>
-                          <td className={styles.angka} style={{ fontWeight: 700 }}>{r.jumlah}</td>
+                          <td className="kol-waktu">{formatTanggalId(r.tanggal)}</td>
+                          <td className="kol-utama">{namaUnit(r)}</td>
+                          <td className="kol-angka">{r.tatap_muka}</td>
+                          <td className="kol-angka">{r.live_chat}</td>
+                          <td className="kol-angka" style={{ fontWeight: 600 }}>{r.jumlah}</td>
                         </tr>
                       ))
                     )}
@@ -341,33 +344,26 @@ function RekapTerpadu() {
                 <p className={styles.definisi}>Tidak termasuk Helpdesk OSS dan Non OSS; datanya ada di tab masing-masing.</p>
               )}
               <div className={styles.aksi}>
-                <span>{data ? `${data.total} pelayanan` : ''}{!tabForm && !(data?.kolom_khusus?.length) && ' · pilih satu Layanan untuk menampilkan kolom Pendataan Khusus-nya'}</span>
-                <button type="button" className="btn btn--primary btn--sm" onClick={unduh}
-                  disabled={memuat || mengekspor || status.jenis !== 'siap'}>
-                  {mengekspor ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Download size={14} aria-hidden="true" />}
-                  {' '}Unduh Excel
-                </button>
+                <span className={styles.definisi} style={{ margin: 0 }}>{data ? `${data.total} pelayanan` : ''}{!tabForm && !(data?.kolom_khusus?.length) && ' · pilih satu Layanan untuk menampilkan kolom Pendataan Khusus-nya'}</span>
+                <div className={styles.aksiKanan}>
+                  <div className={styles.segmen} role="group" aria-label="Tampilan kolom">
+                    <button type="button" aria-pressed={tampilan === 'ringkas'} onClick={() => setTampilan('ringkas')}>Ringkas</button>
+                    <button type="button" aria-pressed={tampilan === 'semua'} onClick={() => setTampilan('semua')}>Semua kolom</button>
+                  </div>
+                  <button type="button" className="btn btn--primary btn--sm" onClick={unduh}
+                    disabled={memuat || mengekspor || status.jenis !== 'siap'}>
+                    {mengekspor ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Download size={14} aria-hidden="true" />}
+                    {' '}Unduh Excel
+                  </button>
+                </div>
               </div>
               <div className="table-wrapper">
-                <table className="table">
-                  <caption className={styles.caption}>
-                    {tabForm ? `Data pelayanan ${labelTab}` : 'Data pelayanan'}, satu baris per pelayanan
-                  </caption>
-                  <thead>
-                    <tr>{kolom.map((k) => <th key={k.kunci} scope="col">{k.judul}</th>)}</tr>
-                  </thead>
-                  <tbody>
-                    {(data?.rows ?? []).length === 0 ? (
-                      <tr><td colSpan={kolom.length} className={styles.kosong}>{memuat ? 'Memuat…' : 'Belum ada pelayanan dilayani pada rentang ini.'}</td></tr>
-                    ) : (
-                      data!.rows.map((r) => (
-                        <tr key={r.pelayanan_id}>
-                          {kolom.map((k) => <td key={k.kunci} className={styles.selSempit}>{k.ambil(r) ?? '—'}</td>)}
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+                <TabelDataPelayanan
+                  rows={data?.rows ?? []}
+                  kolom={kolom}
+                  tampilan={tampilan}
+                  keadaan={memuat ? 'Memuat…' : 'Belum ada pelayanan dilayani pada rentang ini.'}
+                />
                 {data && <Pagination page={halaman} pageSize={UKURAN_HALAMAN} total={data.total} onPageChange={setHalaman} />}
               </div>
             </>
@@ -379,21 +375,21 @@ function RekapTerpadu() {
                 <caption className={styles.caption}>Kinerja petugas: jumlah pelayanan dilayani per petugas dan unit</caption>
                 <thead>
                   <tr>
-                    <th scope="col">Petugas</th><th scope="col">Unit</th><th scope="col">Dilayani</th>
-                    <th scope="col">Live Chat</th><th scope="col">Rata durasi</th>
+                    <th scope="col">Petugas</th><th scope="col">Unit</th><th scope="col" className="kol-angka">Dilayani</th>
+                    <th scope="col" className="kol-angka">Live Chat</th><th scope="col" className="kol-angka">Rata durasi</th>
                   </tr>
                 </thead>
                 <tbody>
                   {(kinerja ?? []).length === 0 ? (
-                    <tr><td colSpan={5} className={styles.kosong}>{memuat ? 'Memuat…' : 'Belum ada data kinerja pada rentang ini.'}</td></tr>
+                    <tr><td colSpan={5} className="kosong-sel">{memuat ? 'Memuat…' : 'Belum ada data kinerja pada rentang ini.'}</td></tr>
                   ) : (
                     kinerja!.map((r) => (
                       <tr key={`${r.penangan_id}-${r.unit}-${r.layanan_id ?? 'fo'}`}>
-                        <td style={{ fontWeight: 600 }}>{r.penangan_nama ?? '(tanpa nama)'}</td>
+                        <td className="kol-utama">{r.penangan_nama ?? '(tanpa nama)'}</td>
                         <td>{namaUnit(r)}</td>
-                        <td className={styles.angka}>{r.jumlah}</td>
-                        <td className={styles.angka}>{r.live_chat}</td>
-                        <td className={styles.angka}>{formatMenit(r.rata_durasi_menit)}</td>
+                        <td className="kol-angka">{r.jumlah}</td>
+                        <td className="kol-angka">{r.live_chat}</td>
+                        <td className="kol-angka">{formatMenit(r.rata_durasi_menit)}</td>
                       </tr>
                     ))
                   )}

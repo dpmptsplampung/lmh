@@ -25,6 +25,8 @@ function PengaduanForm() {
   const [phase, setPhase] = useState<Phase>('form');
   const [error, setError] = useState('');
   const [tiket, setTiket] = useState('');
+  const [lacakDenganNomor, setLacakDenganNomor] = useState(false);
+  const [disalin, setDisalin] = useState(false);
 
   useEffect(() => {
     const supabase = createClient();
@@ -44,7 +46,7 @@ function PengaduanForm() {
       return;
     }
     if (!anonim && !kontak.trim()) {
-      setError('Isi kontak (email/no. HP) untuk melacak status, atau centang "Kirim sebagai anonim".');
+      setError('Isi kontak (email/no. HP) agar kami dapat menghubungi Anda, atau centang "Kirim secara anonim".');
       return;
     }
     setPhase('submitting');
@@ -67,6 +69,7 @@ function PengaduanForm() {
         return;
       }
       setTiket(json.nomor_tiket ?? '');
+      setLacakDenganNomor(json.lacak_dengan_nomor === true);
       setPhase('done');
     } catch {
       setError('Gangguan jaringan. Coba lagi.');
@@ -79,11 +82,23 @@ function PengaduanForm() {
       <div className="card" style={{ textAlign: 'center', padding: 'var(--space-8)' }}>
         <CheckCircle2 size={48} style={{ color: 'var(--color-success-500, #16a34a)', margin: '0 auto' }} />
         <h2 style={{ marginTop: 'var(--space-4)' }}>Pengaduan Tercatat</h2>
-        <p>Nomor tiket Anda:</p>
+        <p>Nomor laporan Anda:</p>
         <p style={{ fontSize: '1.5rem', fontWeight: 700, letterSpacing: '0.05em', fontFamily: 'monospace' }}>{tiket}</p>
+        <button
+          type="button"
+          className="btn btn--ghost btn--sm"
+          onClick={() => {
+            void navigator.clipboard?.writeText(tiket).then(() => setDisalin(true), () => undefined);
+          }}
+        >
+          {disalin ? 'Nomor tersalin' : 'Salin nomor'}
+        </button>
         <p style={{ color: 'var(--color-neutral-500)', fontSize: 'var(--text-sm)' }}>
-          Simpan nomor tiket ini. Batas verifikasi 3 hari kerja, penanganan 14 hari kerja.
-          {anonim ? '' : ' Lacak status dengan nomor tiket + kontak Anda.'}
+          {anonim
+            ? 'Simpan nomor ini baik-baik: hanya nomor inilah kuncinya, kami tidak menyimpan identitas atau kontak Anda sehingga nomor yang hilang tidak dapat dipulihkan. '
+            : 'Simpan nomor laporan ini. '}
+          {lacakDenganNomor ? 'Status dan tanggapan dapat dipantau hanya dengan nomor ini. ' : 'Lacak status dengan nomor ini + kontak Anda. '}
+          Batas verifikasi 3 hari kerja, penanganan 14 hari kerja.
         </p>
         <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'center', marginTop: 'var(--space-4)' }}>
           <Link href="/pengaduan/lacak" className="btn btn--primary">Lacak Pengaduan</Link>
@@ -145,14 +160,26 @@ function PengaduanForm() {
       </div>
 
       <label style={{ ...rowStyle, alignItems: 'center' }}>
-        <input type="checkbox" checked={anonim} onChange={(e) => setAnonim(e.target.checked)} style={radioStyle} />
-        <span>Kirim sebagai anonim (tanpa kontak; status tidak bisa dilacak)</span>
+        <input
+          type="checkbox"
+          checked={anonim}
+          onChange={(e) => {
+            setAnonim(e.target.checked);
+            // Anonim = tidak ada kontak yang ikut terkirim, termasuk yang sudah terlanjur diketik.
+            if (e.target.checked) setKontak('');
+          }}
+          style={radioStyle}
+        />
+        <span>
+          <strong>Kirim secara anonim</strong> — nama, kontak, dan identitas Anda tidak disimpan. Status tetap bisa dipantau
+          dengan nomor laporan yang Anda terima.
+        </span>
       </label>
 
       {!anonim && (
         <div>
           <label htmlFor="kontak" style={{ fontWeight: 600, display: 'block', marginBottom: 'var(--space-2)' }}>
-            Kontak (email / no. HP) untuk melacak status <span style={{ color: 'red' }}>*</span>
+            Kontak (email / no. HP) agar kami dapat menghubungi Anda <span style={{ color: 'red' }}>*</span>
           </label>
           <input
             id="kontak"

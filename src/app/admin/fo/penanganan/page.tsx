@@ -497,7 +497,7 @@ export default function PenangananFoPage() {
                     const k = satu(r.kunjungan);
                     return (
                       <tr key={r.id}>
-                        <td>{formatJamWIB(r.mulai_at)}–{formatJamWIB(r.selesai_at)}</td>
+                        <td className={styles.kolWaktu}>{formatJamWIB(r.mulai_at)}–{formatJamWIB(r.selesai_at)}</td>
                         <td>
                           {k?.nama ?? '-'}
                           <br />
@@ -511,8 +511,8 @@ export default function PenangananFoPage() {
                         </td>
                         <td>{namaFo(r)}</td>
                         <td>{labelHasil(r)}</td>
-                        <td>{r.topik ?? '-'}</td>
-                        <td>{r.catatan ?? '-'}</td>
+                        <td className={styles.kolTeks} title={r.topik ?? undefined}>{r.topik ?? '-'}</td>
+                        <td className={styles.kolTeks} title={r.catatan ?? undefined}>{r.catatan ?? '-'}</td>
                       </tr>
                     );
                   })}

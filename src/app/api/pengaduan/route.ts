@@ -18,6 +18,8 @@ const bodySchema = z.object({
   anonim: z.boolean().optional(),
 });
 
+const POLA_NOMOR_LAPORAN = /^P[A-HJKMNP-Z2-9]{8}$/;
+
 const RATE_MAX = 5;
 const RATE_WINDOW_MS = 60_000;
 const rateBuckets = new Map<string, { start: number; count: number }>();
@@ -75,21 +77,39 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 });
   }
 
+  // Anonim sungguhan: kontak dibuang di server walau klien mengirimnya (mis. diketik lalu kotak anonim dicentang).
+  const kontakFinal = anonim ? null : (kontak?.trim() || null);
+
   let rows: { nomor_tiket?: string }[];
   try {
-    rows = await mutasiInsert<{ nomor_tiket?: string }>(
-      service.rpc('buat_pengaduan', {
-        p_jalur: jalur,
-        p_isi: isi,
-        p_kontak: kontak ?? null,
-        p_layanan_id: layanan_id ?? null,
-        p_anonim: anonim ?? false,
-        p_sesi_chat_id: null,
-      }),
-    );
+    try {
+      rows = await mutasiInsert<{ nomor_tiket?: string }>(
+        service.rpc('kirim_pengaduan_publik', {
+          p_jalur: jalur,
+          p_isi: isi,
+          p_layanan_id: layanan_id ?? null,
+          p_anonim: anonim ?? false,
+          p_kontak: kontakFinal,
+        }),
+      );
+    } catch (e) {
+      // Migrasi 202611030008 belum diterapkan: pakai jalur lama (nomor tiket lama, pelacakan butuh kontak) agar kanal tidak mati.
+      const asalLama = (e instanceof MutasiError ? e.asal : undefined) as { code?: string } | undefined;
+      if (asalLama?.code !== 'PGRST202' && asalLama?.code !== '42883') throw e;
+      rows = await mutasiInsert<{ nomor_tiket?: string }>(
+        service.rpc('buat_pengaduan', {
+          p_jalur: jalur,
+          p_isi: isi,
+          p_kontak: kontakFinal,
+          p_layanan_id: layanan_id ?? null,
+          p_anonim: anonim ?? false,
+          p_sesi_chat_id: null,
+        }),
+      );
+    }
   } catch (e) {
     const asal = (e instanceof MutasiError ? e.asal : undefined) as { code?: string; message?: string } | undefined;
-    // RAISE EXCEPTION di buat_pengaduan (P0001) = pesan validasi yang memang ditulis untuk pengguna (kontrak lama: 400).
+    // RAISE EXCEPTION di RPC (P0001) = pesan validasi yang memang ditulis untuk pengguna (kontrak lama: 400).
     if (asal?.code === 'P0001') {
       return NextResponse.json({ error: asal.message || 'Gagal menyimpan pengaduan' }, { status: 400 });
     }
@@ -108,11 +128,14 @@ export async function POST(request: NextRequest) {
     catatMutasi('error', 'pengaduan.buat', ROUTE, new MutasiError('tidak_ada_baris'));
     return NextResponse.json({ error: 'Gagal menyimpan pengaduan' }, { status: 500 });
   }
+  // Nomor laporan baru ('P' + 8 karakter acak) cukup untuk memantau tanpa kontak; nomor lama tetap perlu kontak.
+  const lacakDenganNomor = POLA_NOMOR_LAPORAN.test(row.nomor_tiket);
   return NextResponse.json(
     {
       nomor_tiket: row.nomor_tiket,
+      lacak_dengan_nomor: lacakDenganNomor,
       pesan:
-        'Pengaduan Anda tercatat. Simpan nomor tiket ini untuk melacak status. ' +
+        'Pengaduan Anda tercatat. Simpan nomor laporan ini untuk memantau status. ' +
         'Batas verifikasi 3 hari kerja, penanganan 14 hari kerja.',
     },
     { status: 201 },

@@ -1,0 +1,103 @@
+/* Edit langsung di tabel: sel teks yang bisa diklik dan baris tambah. Tanpa bayangan, blur, atau gradasi. */
+
+.sel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.tombol {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 100%;
+  margin: -3px -7px;
+  padding: 2px 6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: text;
+  transition: border-color var(--transition-fast), background-color var(--transition-fast);
+}
+
+.tombol:hover {
+  border-color: var(--border-default);
+  background: var(--color-neutral-0);
+}
+
+.teks {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.teksKosong {
+  color: var(--text-tertiary);
+  font-weight: 400;
+}
+
+.pensil {
+  flex: none;
+  color: var(--text-tertiary);
+  opacity: 0.55;
+}
+
+.tombol:hover .pensil,
+.tombol:focus-visible .pensil {
+  opacity: 1;
+}
+
+.input {
+  min-height: 34px;
+  padding-block: 4px;
+  width: 100%;
+  font-weight: 400;
+}
+
+.galat {
+  margin: 0;
+  font-size: var(--text-xs);
+  font-weight: 400;
+  color: var(--color-danger-600);
+}
+
+.barisTambah td {
+  vertical-align: top;
+  background: var(--color-neutral-50);
+}
+
+.barisTambah input[type='text'],
+.barisTambah input:not([type]),
+.barisTambah select {
+  min-height: 34px;
+  padding-block: 4px;
+}
+
+.barisTambah select {
+  min-width: 160px;
+}
+
+.kotak {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 34px;
+}
+
+.area {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.bantuan {
+  color: var(--text-tertiary);
+}
+
+.ketNonaktif {
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+}

@@ -1,0 +1,112 @@
+/* Topik Penanganan: daftar cakupan di kiri (select di layar sempit) + tabel sunting langsung. */
+
+.tata {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.cakupanDaftar ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cakupanItem {
+  display: flex;
+  width: 100%;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-left: 2px solid transparent;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+  transition: color var(--transition-fast), background-color var(--transition-fast);
+}
+
+.cakupanItem:hover {
+  color: var(--text-primary);
+  background: var(--color-neutral-50);
+}
+
+.cakupanAktif {
+  color: var(--text-primary);
+  font-weight: 600;
+  border-left-color: var(--color-primary-600);
+}
+
+.cakupanNama {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.cakupanJumlah {
+  flex: none;
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
+}
+
+.cakupanSelect {
+  display: none;
+  margin: 0;
+}
+
+.tabel {
+  min-width: 0;
+}
+
+.geser {
+  display: inline-flex;
+  gap: var(--space-1);
+}
+
+.geser button {
+  min-height: 32px;
+  min-width: 32px;
+  padding: var(--space-1);
+}
+
+.tabel :global(.table) td {
+  vertical-align: middle;
+}
+
+.saklarBaris {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+
+@media (max-width: 767px) {
+  .tata {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-4);
+  }
+
+  .cakupanDaftar {
+    display: none;
+  }
+
+  .cakupanSelect {
+    display: block;
+  }
+
+  .tabel :global(.table) th,
+  .tabel :global(.table) td {
+    padding-inline: var(--space-2);
+  }
+
+  .tabel :global(.table) .kol-utama {
+    min-width: 0;
+  }
+}

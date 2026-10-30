@@ -61,7 +61,45 @@ describe('POST /api/pengaduan', () => {
 
     expect(res.status).toBe(201);
     expect((await res.json()).nomor_tiket).toBe('PGD-2026-0001');
-    expect(rpc).toHaveBeenCalledWith('buat_pengaduan', expect.objectContaining({ p_jalur: 'layanan', p_kontak: '081234567890' }));
+    expect(rpc).toHaveBeenCalledWith(
+      'kirim_pengaduan_publik',
+      expect.objectContaining({ p_jalur: 'layanan', p_kontak: '081234567890', p_anonim: false }),
+    );
+  });
+
+  it('anonim sungguhan: kontak yang terlanjur terkirim dari klien DIBUANG sebelum ke RPC', async () => {
+    const { rpc } = await setup({ data: [{ id: 'p-1', nomor_tiket: 'PABCDEFGH' }], error: null });
+    const res = await (await import('./route')).POST(buildRequest({ ...VALID, anonim: true }));
+
+    expect(res.status).toBe(201);
+    expect(rpc).toHaveBeenCalledWith('kirim_pengaduan_publik', expect.objectContaining({ p_anonim: true, p_kontak: null }));
+    expect(JSON.stringify(rpc.mock.calls)).not.toContain('081234567890');
+  });
+
+  it('nomor laporan baru (P + 8 karakter) memberi tanda boleh dipantau hanya dengan nomor; nomor lama tidak', async () => {
+    await setup({ data: [{ id: 'p-1', nomor_tiket: 'PABCDEFGH' }], error: null });
+    expect((await (await (await import('./route')).POST(buildRequest(VALID))).json()).lacak_dengan_nomor).toBe(true);
+
+    vi.resetModules();
+    await setup({ data: [{ id: 'p-1', nomor_tiket: 'ABC123' }], error: null });
+    expect((await (await (await import('./route')).POST(buildRequest(VALID))).json()).lacak_dengan_nomor).toBe(false);
+  });
+
+  it.each(['PGRST202', '42883'])('migrasi 202611030008 belum ada (%s): jatuh ke buat_pengaduan, anonim tetap tanpa kontak', async (code) => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://supabase.local';
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-key';
+    const rpc = vi
+      .fn()
+      .mockResolvedValueOnce({ data: null, error: { message: 'function not found', code } })
+      .mockResolvedValueOnce({ data: [{ id: 'p-1', nomor_tiket: 'LAMA01' }], error: null });
+    const sb = await import('@supabase/supabase-js');
+    (sb.createClient as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ rpc });
+
+    const res = await (await import('./route')).POST(buildRequest({ ...VALID, anonim: true }));
+
+    expect(res.status).toBe(201);
+    expect(rpc.mock.calls.map((c) => c[0])).toEqual(['kirim_pengaduan_publik', 'buat_pengaduan']);
+    expect(rpc.mock.calls[1][1]).toMatchObject({ p_anonim: true, p_kontak: null });
   });
 
   it('validasi RPC (RAISE EXCEPTION, P0001): 400 dengan pesan validasi yang memang untuk pengguna', async () => {

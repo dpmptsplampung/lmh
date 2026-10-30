@@ -17,6 +17,7 @@ describe('ambilKonteks', () => {
         unit: 'layanan',
         layanan_nama: 'Konsultasi OSS',
         kedaluwarsa_pada: '2026-10-28T10:00:00+00:00',
+        nama: 'Budi Santoso',
       },
       error: null,
     });
@@ -26,6 +27,7 @@ describe('ambilKonteks', () => {
       unit: 'layanan',
       layananNama: 'Konsultasi OSS',
       kedaluwarsaPada: '2026-10-28T10:00:00+00:00',
+      nama: 'Budi Santoso',
     });
     expect(rpc).toHaveBeenCalledWith('get_survei_context', { p_token: TOKEN });
   });
@@ -49,7 +51,16 @@ describe('ambilKonteks', () => {
       unit: null,
       layananNama: null,
       kedaluwarsaPada: null,
+      nama: null,
     });
+  });
+
+  it('nama kosong (RPC lama tanpa kunci nama) menjadi null', async () => {
+    const rpc = vi.fn().mockResolvedValue({
+      data: { status: 'ok', unit: 'fo', layanan_nama: null, kedaluwarsa_pada: null },
+      error: null,
+    });
+    expect((await ambilKonteks(klienDengan(rpc), TOKEN)).nama).toBeNull();
   });
 
   it('unit di luar layanan/fo (mis. tidak_diketahui) menjadi null', async () => {

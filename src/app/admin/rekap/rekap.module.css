@@ -60,10 +60,6 @@
   padding: var(--space-8);
 }
 
-.angka {
-  font-variant-numeric: tabular-nums;
-}
-
 .caption {
   position: absolute;
   width: 1px;
@@ -73,13 +69,121 @@
   white-space: nowrap;
 }
 
-.selSempit {
-  max-width: 280px;
-  font-size: 12px;
+/* Pilihan tampilan kolom (Ringkas / Semua kolom) */
+.segmen {
+  display: inline-flex;
+  border: 1px solid var(--color-neutral-300);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.segmen button {
+  padding: var(--space-1) var(--space-3);
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  background: var(--color-neutral-0);
+  border: 0;
+  cursor: pointer;
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+.segmen button + button {
+  border-left: 1px solid var(--color-neutral-300);
+}
+
+.segmen button[aria-pressed='true'] {
+  background: var(--color-primary-50);
+  color: var(--color-primary-600);
+  font-weight: 600;
+}
+
+.segmen button:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: -2px;
+}
+
+.aksiKanan {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* Tabel Data Pelayanan: kolom pertama menempel saat digulir ke samping */
+.tabelData .barisData {
+  cursor: pointer;
+}
+
+.tabelData .kolPertama {
+  position: sticky;
+  left: 0;
+  background: var(--color-neutral-0);
+  border-right: 1px solid var(--color-neutral-100);
+}
+
+.tabelData th.kolPertama {
+  z-index: 3;
+}
+
+.tabelData tbody tr:hover td.kolPertama {
+  background: var(--color-neutral-50);
+}
+
+.tabelData .barisDetail td {
+  padding: var(--space-4) var(--space-4) var(--space-5);
+  background: var(--color-neutral-50);
+  white-space: normal;
+}
+
+.tabelData tbody .barisDetail:hover td {
+  background: var(--color-neutral-50);
+}
+
+.detail {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--space-3) var(--space-6);
+  margin: 0;
+}
+
+.detailItem dt {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.detailItem dd {
+  margin: 2px 0 0;
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 640px) {
   .wadah {
     padding: var(--space-4);
   }
+}
+
+/* Tabel Data Pelayanan (mode Ringkas): nama tidak membungkus, kontak satu baris, topik dipotong */
+.tabelData td.kolPengunjung {
+  min-width: 230px;
+}
+
+.tabelData td.kolPengunjung :global(.sub) {
+  max-width: 230px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tabelData td:global(.kol-teks) {
+  max-width: 200px;
+}
+
+.tabelData :global(.badge) {
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: inline-block;
 }
