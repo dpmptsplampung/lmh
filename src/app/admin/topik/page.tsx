@@ -5,20 +5,23 @@
 // layanan saat menyelesaikan tiket hasil eskalasi (topik milik layanannya). Admin menulis LANGSUNG lewat PostgREST
 // (RLS topik_penanganan_admin_tulis), tanpa RPC. Topik yang sudah terpakai TIDAK dihapus: nonaktifkan (aktif=false);
 // nama topik disalin ke baris penanganan saat ditutup, jadi mengganti nama / menonaktifkan tidak mengubah riwayat.
-import { useCallback, useEffect, useId, useMemo, useState } from 'react';
-import { Loader2, Plus, Pencil, Power } from 'lucide-react';
+// Penyuntingan langsung di tabel (tanpa dialog): nama diklik lalu diketik, urutan lewat tombol naik/turun, status lewat
+// saklar, topik baru lewat baris terakhir. "Lainnya" (urutan >= 99) tetap di bawah.
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { ArrowDown, ArrowUp, Loader2 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import RoleNote from '@/components/admin/RoleNote';
-import FormDialog from '@/components/admin/FormDialog';
+import { BarisTambah, SelTeksInline } from '@/components/admin/SuntingInline';
 import { useToast } from '@/components/Toast';
 import { createClient } from '@/lib/supabase/client';
 import { MutasiError, mutasiInsert, mutasiWajibBaris, pesanMutasi } from '@/lib/supabase/mutate';
 import { perluMuatUlang } from '@/components/admin/mutasi-ui';
+import { bisaGeser, hitungGeser, terkunci } from './urutan';
+import styles from './topik.module.css';
 
 const FO = '__fo__';
 const NAMA_MIN = 2;
 const NAMA_MAX = 100;
-const URUT_MAX = 9999;
 
 interface Topik {
   id: string;
@@ -33,8 +36,6 @@ interface LayananOpsi {
   nama: string;
 }
 
-type Dialog = { mode: 'tambah' } | { mode: 'ubah'; topik: Topik } | null;
-
 /** Pesan galat penyimpanan topik: bentrok nama (23505) dan pelanggaran CHECK panjang nama (23514) dijelaskan. */
 function pesanGalatSimpan(err: unknown): string {
   if (err instanceof MutasiError) {
@@ -45,123 +46,18 @@ function pesanGalatSimpan(err: unknown): string {
   return `Gagal menyimpan topik. ${pesanMutasi(err)}`;
 }
 
-function FormTopik({
-  dialog, cakupanNama, urutAwal, namaSudahAda, onClose, onSimpan,
-}: {
-  dialog: Exclude<Dialog, null>;
-  cakupanNama: string;
-  urutAwal: number;
-  /** true bila nama (tanpa beda huruf) sudah dipakai topik lain pada cakupan yang sama. */
-  namaSudahAda: (nama: string) => boolean;
-  onClose: () => void;
-  onSimpan: (nama: string, urut: number) => Promise<string | null>;
-}) {
-  const idDasar = useId();
-  const edit = dialog.mode === 'ubah' ? dialog.topik : null;
-  const [nama, setNama] = useState(edit?.nama ?? '');
-  const [urut, setUrut] = useState(String(edit?.urut ?? urutAwal));
-  const [mengirim, setMengirim] = useState(false);
-  const [galat, setGalat] = useState<string | null>(null);
-  const [galatNama, setGalatNama] = useState<string | null>(null);
-  const [galatUrut, setGalatUrut] = useState<string | null>(null);
-
-  const kirim = async () => {
-    const namaBersih = nama.trim();
-    const urutAngka = Number(urut);
-    const gNama = namaBersih.length < NAMA_MIN || namaBersih.length > NAMA_MAX
-      ? `Nama topik harus ${NAMA_MIN}-${NAMA_MAX} karakter.`
-      : namaSudahAda(namaBersih) ? 'Sudah ada topik dengan nama itu pada cakupan ini.' : null;
-    const gUrut = urut.trim() === '' || !Number.isInteger(urutAngka) || urutAngka < 0 || urutAngka > URUT_MAX
-      ? `Urutan harus bilangan bulat 0-${URUT_MAX}.`
-      : null;
-    setGalatNama(gNama);
-    setGalatUrut(gUrut);
-    if (gNama || gUrut) return;
-    setGalat(null);
-    setMengirim(true);
-    const hasil = await onSimpan(namaBersih, urutAngka);
-    setMengirim(false);
-    if (hasil) setGalat(hasil);
-  };
-
-  return (
-    <FormDialog
-      judul={dialog.mode === 'tambah' ? 'Tambah topik' : 'Ubah topik'}
-      deskripsi={`Cakupan: ${cakupanNama}.`}
-      labelKirim="Simpan"
-      mengirim={mengirim}
-      galat={galat}
-      onClose={onClose}
-      onSubmit={kirim}
-    >
-      {() => (
-        <>
-          <div className="form-group">
-            <label htmlFor={`${idDasar}-nama`} className="form-label form-label--required">Nama topik</label>
-            <input
-              id={`${idDasar}-nama`}
-              className="form-input"
-              value={nama}
-              maxLength={NAMA_MAX}
-              disabled={mengirim}
-              aria-required="true"
-              aria-invalid={galatNama ? true : undefined}
-              aria-describedby={galatNama ? `${idDasar}-nama-bantuan ${idDasar}-nama-galat` : `${idDasar}-nama-bantuan`}
-              onChange={(e) => { setNama(e.target.value); setGalatNama(null); setGalat(null); }}
-              data-autofocus
-            />
-            <small id={`${idDasar}-nama-bantuan`} style={{ color: 'var(--text-tertiary)' }}>
-              {NAMA_MIN}-{NAMA_MAX} karakter, unik pada cakupan ini.
-            </small>
-            {galatNama && (
-              <p id={`${idDasar}-nama-galat`} role="alert" style={{ color: 'var(--color-danger-600)', fontSize: 12, margin: '4px 0 0' }}>
-                {galatNama}
-              </p>
-            )}
-          </div>
-          <div className="form-group">
-            <label htmlFor={`${idDasar}-urut`} className="form-label form-label--required">Urutan tampil</label>
-            <input
-              id={`${idDasar}-urut`}
-              className="form-input"
-              type="number"
-              inputMode="numeric"
-              min={0}
-              max={URUT_MAX}
-              step={1}
-              value={urut}
-              disabled={mengirim}
-              aria-required="true"
-              aria-invalid={galatUrut ? true : undefined}
-              aria-describedby={galatUrut ? `${idDasar}-urut-bantuan ${idDasar}-urut-galat` : `${idDasar}-urut-bantuan`}
-              onChange={(e) => { setUrut(e.target.value); setGalatUrut(null); setGalat(null); }}
-            />
-            <small id={`${idDasar}-urut-bantuan`} style={{ color: 'var(--text-tertiary)' }}>
-              Angka kecil tampil lebih dulu. Topik &ldquo;Lainnya&rdquo; biasanya diberi urutan 99.
-            </small>
-            {galatUrut && (
-              <p id={`${idDasar}-urut-galat`} role="alert" style={{ color: 'var(--color-danger-600)', fontSize: 12, margin: '4px 0 0' }}>
-                {galatUrut}
-              </p>
-            )}
-          </div>
-        </>
-      )}
-    </FormDialog>
-  );
-}
-
 export default function KelolaTopikPage() {
   const { toast } = useToast();
-  const idPilih = useId();
+  const idDasar = useId();
   const [topik, setTopik] = useState<Topik[]>([]);
   const [layanan, setLayanan] = useState<LayananOpsi[]>([]);
   const [loading, setLoading] = useState(true);
   const [galatMuat, setGalatMuat] = useState<string | null>(null);
   const [cakupan, setCakupan] = useState<string>(FO);
-  const [dialog, setDialog] = useState<Dialog>(null);
   const [sibuk, setSibuk] = useState<ReadonlySet<string>>(new Set());
   const [pengumuman, setPengumuman] = useState('');
+  // Setelah menggeser, fokus dikembalikan ke tombol geser yang sama (atau lawannya bila tombol itu jadi nonaktif).
+  const fokusRef = useRef<{ id: string; arah: -1 | 1 } | null>(null);
 
   const muat = useCallback(async () => {
     try {
@@ -198,28 +94,41 @@ export default function KelolaTopikPage() {
     for (const t of topik) peta.set(t.layanan_id ?? FO, (peta.get(t.layanan_id ?? FO) ?? 0) + 1);
     return peta;
   }, [topik]);
+  const pilihanCakupan = useMemo(
+    () => [{ id: FO, nama: 'Front Office' }, ...layanan],
+    [layanan],
+  );
 
   const urutBerikut = useMemo(() => {
-    const biasa = daftar.filter((t) => t.urut < 99).map((t) => t.urut);
+    const biasa = daftar.filter((t) => !terkunci(t)).map((t) => t.urut);
     return biasa.length ? Math.min(98, Math.max(...biasa) + 1) : 1;
   }, [daftar]);
 
-  const simpan = async (nama: string, urut: number): Promise<string | null> => {
-    const supabase = createClient();
+  useEffect(() => {
+    const f = fokusRef.current;
+    if (!f) return;
+    fokusRef.current = null;
+    const utama = document.getElementById(`${idDasar}-${f.id}-${f.arah === -1 ? 'naik' : 'turun'}`) as HTMLButtonElement | null;
+    const lawan = document.getElementById(`${idDasar}-${f.id}-${f.arah === -1 ? 'turun' : 'naik'}`) as HTMLButtonElement | null;
+    (utama && !utama.disabled ? utama : lawan)?.focus();
+  }, [topik, idDasar]);
+
+  const namaSudahAda = (nama: string, kecuali?: string) =>
+    daftar.some((t) => t.nama.trim().toLowerCase() === nama.toLowerCase() && t.id !== kecuali);
+
+  const validasiNama = (nama: string, kecuali?: string): string | null => {
+    if (nama.length < NAMA_MIN || nama.length > NAMA_MAX) return `Nama topik harus ${NAMA_MIN}-${NAMA_MAX} karakter.`;
+    if (namaSudahAda(nama, kecuali)) return 'Sudah ada topik dengan nama itu pada cakupan ini.';
+    return null;
+  };
+
+  const ubahNama = async (t: Topik, nama: string): Promise<string | null> => {
     try {
-      if (dialog?.mode === 'ubah') {
-        const ubah = dialog.topik;
-        await mutasiWajibBaris(
-          supabase.from('topik_penanganan').update({ nama, urut }).eq('id', ubah.id).select('id'),
-        );
-        toast(`Topik "${nama}" diperbarui`, 'success');
-      } else {
-        await mutasiInsert(
-          supabase.from('topik_penanganan').insert({ layanan_id: layananId, nama, urut, aktif: true }).select('id'),
-        );
-        toast(`Topik "${nama}" ditambahkan`, 'success');
-      }
-      setDialog(null);
+      const supabase = createClient();
+      await mutasiWajibBaris(
+        supabase.from('topik_penanganan').update({ nama }).eq('id', t.id).select('id'),
+      );
+      toast(`Topik "${nama}" diperbarui`, 'success');
       await muat();
       return null;
     } catch (e) {
@@ -228,9 +137,37 @@ export default function KelolaTopikPage() {
     }
   };
 
+  const tambah = async (nilai: Record<string, string>): Promise<string | null> => {
+    const nama = (nilai.nama ?? '').trim();
+    const galat = validasiNama(nama);
+    if (galat) return galat;
+    try {
+      const supabase = createClient();
+      await mutasiInsert(
+        supabase.from('topik_penanganan').insert({ layanan_id: layananId, nama, urut: urutBerikut, aktif: true }).select('id'),
+      );
+      toast(`Topik "${nama}" ditambahkan`, 'success');
+      await muat();
+      return null;
+    } catch (e) {
+      if (perluMuatUlang(e)) await muat();
+      return pesanGalatSimpan(e);
+    }
+  };
+
+  const tandaiSibuk = (ids: string[], nyala: boolean) =>
+    setSibuk((s) => {
+      const n = new Set(s);
+      for (const id of ids) {
+        if (nyala) n.add(id);
+        else n.delete(id);
+      }
+      return n;
+    });
+
   const ubahAktif = async (t: Topik) => {
     if (sibuk.has(t.id)) return;
-    setSibuk((s) => new Set(s).add(t.id));
+    tandaiSibuk([t.id], true);
     setPengumuman(`${t.aktif ? 'Menonaktifkan' : 'Mengaktifkan'} topik ${t.nama}…`);
     try {
       const supabase = createClient();
@@ -243,12 +180,34 @@ export default function KelolaTopikPage() {
       toast(`Gagal mengubah status topik. ${pesanMutasi(e)}`, 'error');
       if (perluMuatUlang(e)) await muat();
     } finally {
-      setSibuk((s) => {
-        const n = new Set(s);
-        n.delete(t.id);
-        return n;
-      });
+      tandaiSibuk([t.id], false);
       setPengumuman('');
+    }
+  };
+
+  const geser = async (indeks: number, arah: -1 | 1) => {
+    const t = daftar[indeks];
+    const perubahan = hitungGeser(daftar, indeks, arah);
+    if (!t || perubahan.length === 0) return;
+    const ids = perubahan.map((p) => p.id);
+    if (ids.some((id) => sibuk.has(id))) return;
+    tandaiSibuk(ids, true);
+    fokusRef.current = { id: t.id, arah };
+    try {
+      const supabase = createClient();
+      await Promise.all(
+        perubahan.map((p) =>
+          mutasiWajibBaris(supabase.from('topik_penanganan').update({ urut: p.urut }).eq('id', p.id).select('id')),
+        ),
+      );
+      await muat();
+      setPengumuman(`Topik ${t.nama} dipindah ke posisi ${indeks + arah + 1} dari ${daftar.length}.`);
+    } catch (e) {
+      fokusRef.current = null;
+      toast(`Gagal mengubah urutan topik. ${pesanMutasi(e)}`, 'error');
+      await muat();
+    } finally {
+      tandaiSibuk(ids, false);
     }
   };
 
@@ -257,16 +216,7 @@ export default function KelolaTopikPage() {
       <PageHeader
         title="Topik Penanganan"
         description="Daftar topik yang dipilih Front Office dan petugas layanan saat menyelesaikan penanganan"
-      >
-        <button
-          type="button"
-          className="btn btn--primary btn--sm"
-          onClick={() => setDialog({ mode: 'tambah' })}
-          disabled={loading || galatMuat !== null}
-        >
-          <Plus size={14} aria-hidden="true" /> Tambah topik
-        </button>
-      </PageHeader>
+      />
 
       <div style={{ padding: 'clamp(var(--space-4), 4vw, var(--space-8))' }}>
         <RoleNote>
@@ -275,114 +225,137 @@ export default function KelolaTopikPage() {
           menonaktifkan tidak mengubah data lama.
         </RoleNote>
 
-        <div className="form-group" style={{ maxWidth: 420, marginBottom: 'var(--space-4)' }}>
-          <label htmlFor={idPilih} className="form-label">Cakupan topik</label>
-          <select
-            id={idPilih}
-            className="form-select"
-            value={cakupan}
-            onChange={(e) => setCakupan(e.target.value)}
-          >
-            <option value={FO}>Front Office ({jumlahPerCakupan.get(FO) ?? 0})</option>
-            {layanan.map((l) => (
-              <option key={l.id} value={l.id}>{l.nama} ({jumlahPerCakupan.get(l.id) ?? 0})</option>
-            ))}
-          </select>
-        </div>
+        <div className={styles.tata}>
+          <nav className={styles.cakupanDaftar} aria-label="Pilih cakupan topik">
+            <ul>
+              {pilihanCakupan.map((c) => (
+                <li key={c.id}>
+                  <button
+                    type="button"
+                    className={`${styles.cakupanItem} ${cakupan === c.id ? styles.cakupanAktif : ''}`}
+                    aria-current={cakupan === c.id ? 'true' : undefined}
+                    onClick={() => setCakupan(c.id)}
+                  >
+                    <span className={styles.cakupanNama}>{c.nama}</span>{' '}
+                    <span className={styles.cakupanJumlah}>{jumlahPerCakupan.get(c.id) ?? 0}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </nav>
 
-        <div className="table-wrapper">
-          {loading ? (
-            <div style={{ padding: 'var(--space-8)', textAlign: 'center' }} role="status" aria-label="Memuat">
-              <Loader2 size={24} className="animate-spin" style={{ margin: '0 auto' }} aria-hidden="true" />
-            </div>
-          ) : galatMuat ? (
-            <div style={{ padding: 'var(--space-8)', textAlign: 'center' }} role="alert" className="form-error">
-              {galatMuat}
-            </div>
-          ) : daftar.length === 0 ? (
-            <div style={{ padding: 'var(--space-8)', textAlign: 'center', color: 'var(--text-tertiary)' }}>
-              Belum ada topik untuk {namaCakupan}. Pilih &ldquo;Tambah topik&rdquo; untuk membuatnya.
-            </div>
-          ) : (
-            <table className="table">
-              <caption style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0,0,0,0)' }}>
-                Topik penanganan {namaCakupan}
-              </caption>
-              <thead>
-                <tr>
-                  <th scope="col">Topik</th>
-                  <th scope="col">Urutan</th>
-                  <th scope="col">Status</th>
-                  <th scope="col">Aksi</th>
-                </tr>
-              </thead>
-              <tbody>
-                {daftar.map((t) => {
-                  const sedang = sibuk.has(t.id);
-                  return (
-                    <tr key={t.id}>
-                      <td style={{ fontWeight: 600 }}>{t.nama}</td>
-                      <td>{t.urut}</td>
-                      <td>
-                        <span className={`badge ${t.aktif ? 'badge--aktif' : 'badge--nonaktif'}`}>
-                          {t.aktif ? 'Aktif' : 'Nonaktif'}
-                        </span>
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-                          <button
-                            type="button"
-                            className="btn btn--secondary btn--sm"
-                            aria-label={`Ubah topik ${t.nama}`}
-                            onClick={() => setDialog({ mode: 'ubah', topik: t })}
-                            disabled={sedang}
-                          >
-                            <Pencil size={14} aria-hidden="true" /> Ubah
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn--ghost btn--sm"
-                            aria-label={`${t.aktif ? 'Nonaktifkan' : 'Aktifkan'} topik ${t.nama}`}
-                            onClick={() => ubahAktif(t)}
-                            disabled={sedang}
-                            aria-busy={sedang}
-                          >
-                            <Power size={14} aria-hidden="true" /> {sedang ? 'Memproses…' : t.aktif ? 'Nonaktifkan' : 'Aktifkan'}
-                          </button>
-                        </div>
+          <div className={`form-group ${styles.cakupanSelect}`}>
+            <select
+              className="form-select"
+              aria-label="Cakupan topik"
+              value={cakupan}
+              onChange={(e) => setCakupan(e.target.value)}
+            >
+              {pilihanCakupan.map((c) => (
+                <option key={c.id} value={c.id}>{c.nama} ({jumlahPerCakupan.get(c.id) ?? 0})</option>
+              ))}
+            </select>
+          </div>
+
+          <div className={`table-wrapper ${styles.tabel}`}>
+            {loading ? (
+              <div style={{ padding: 'var(--space-8)', textAlign: 'center' }} role="status" aria-label="Memuat">
+                <Loader2 size={24} className="animate-spin" style={{ margin: '0 auto' }} aria-hidden="true" />
+              </div>
+            ) : galatMuat ? (
+              <div style={{ padding: 'var(--space-8)', textAlign: 'center' }} role="alert" className="form-error">
+                {galatMuat}
+              </div>
+            ) : (
+              <table className="table">
+                <caption className="sr-only">Topik penanganan {namaCakupan}</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Topik</th>
+                    <th scope="col">Urutan</th>
+                    <th scope="col">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {daftar.length === 0 && (
+                    <tr>
+                      <td colSpan={3} className="kosong-sel">
+                        Belum ada topik untuk {namaCakupan}. Tulis namanya di baris paling bawah untuk membuatnya.
                       </td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
+                  )}
+                  {daftar.map((t, i) => {
+                    const sedang = sibuk.has(t.id);
+                    return (
+                      <tr key={t.id}>
+                        <td className="kol-utama">
+                          <SelTeksInline
+                            nilai={t.nama}
+                            label={`nama topik ${t.nama}`}
+                            maxLength={NAMA_MAX}
+                            validasi={(baru) => validasiNama(baru, t.id)}
+                            onSimpan={(baru) => ubahNama(t, baru)}
+                          />
+                        </td>
+                        <td>
+                          <div className={styles.geser}>
+                            <button
+                              type="button"
+                              id={`${idDasar}-${t.id}-naik`}
+                              className="btn btn--ghost btn--sm"
+                              aria-label={`Naikkan ${t.nama}`}
+                              disabled={!bisaGeser(daftar, i, -1) || sedang}
+                              onClick={() => void geser(i, -1)}
+                            >
+                              <ArrowUp size={14} aria-hidden="true" />
+                            </button>
+                            <button
+                              type="button"
+                              id={`${idDasar}-${t.id}-turun`}
+                              className="btn btn--ghost btn--sm"
+                              aria-label={`Turunkan ${t.nama}`}
+                              disabled={!bisaGeser(daftar, i, 1) || sedang}
+                              onClick={() => void geser(i, 1)}
+                            >
+                              <ArrowDown size={14} aria-hidden="true" />
+                            </button>
+                          </div>
+                        </td>
+                        <td>
+                          <label className={styles.saklarBaris}>
+                            <input
+                              type="checkbox"
+                              role="switch"
+                              className="saklar"
+                              aria-label={`Aktif: ${t.nama}`}
+                              checked={t.aktif}
+                              disabled={sedang}
+                              aria-busy={sedang || undefined}
+                              onChange={() => void ubahAktif(t)}
+                            />
+                            <span>{t.aktif ? 'Aktif' : 'Nonaktif'}</span>
+                          </label>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  <BarisTambah
+                    kolom={3}
+                    labelTombol="Tambah"
+                    ariaTombol={`Tambah topik ${namaCakupan}`}
+                    bidang={[{ kunci: 'nama', label: 'Topik baru', placeholder: `+ Tambah topik ${namaCakupan}`, maxLength: NAMA_MAX }]}
+                    onTambah={tambah}
+                  />
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
       </div>
 
-      <p
-        role="status"
-        aria-live="polite"
-        style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0,0,0,0)', whiteSpace: 'nowrap' }}
-      >
+      <p role="status" aria-live="polite" className="sr-only">
         {pengumuman}
       </p>
-
-      {dialog && (
-        <FormTopik
-          key={dialog.mode === 'ubah' ? dialog.topik.id : 'tambah'}
-          dialog={dialog}
-          cakupanNama={namaCakupan}
-          urutAwal={urutBerikut}
-          namaSudahAda={(nama) =>
-            daftar.some(
-              (t) => t.nama.trim().toLowerCase() === nama.toLowerCase() && !(dialog.mode === 'ubah' && t.id === dialog.topik.id),
-            )
-          }
-          onClose={() => setDialog(null)}
-          onSimpan={simpan}
-        />
-      )}
     </>
   );
 }

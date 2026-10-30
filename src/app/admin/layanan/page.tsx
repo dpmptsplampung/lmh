@@ -12,11 +12,14 @@ import { AdminFetchError, adminFetch } from '@/components/admin/adminFetch';
 import LayananForm, {
   FORM_PENDATAAN_LABEL, STATUS_LABEL, type HasilForm, type LayananRow,
 } from '@/components/admin/layanan/LayananForm';
-import InstansiDialog from '@/components/admin/layanan/InstansiDialog';
+import { BarisTambah, SelTeksInline } from '@/components/admin/SuntingInline';
 import type { InstansiRow, LayananTautan } from '@/lib/layanan/schemas';
 import styles from '@/components/admin/layanan/KelolaLayanan.module.css';
 
 const ya = (v: boolean) => (v ? 'Ya' : 'Tidak');
+const NAMA_INSTANSI_MIN = 2;
+const NAMA_INSTANSI_MAKS = 150;
+const SINGKATAN_MAKS = 30;
 const PESAN_SUDAH_DIPAKAI = 'Layanan ini sudah pernah dipakai, jadi hanya bisa diarsipkan.';
 
 const tanggalArsip = (iso: string | null | undefined) => {
@@ -48,7 +51,7 @@ export default function KelolaLayananPage() {
   const [aksi, setAksi] = useState<Aksi | null>(null);
   const [aksiBusy, setAksiBusy] = useState(false);
   const [aksiError, setAksiError] = useState('');
-  const [instansiBuka, setInstansiBuka] = useState(false);
+  const [pengumuman, setPengumuman] = useState('');
 
   const load = useCallback(async (): Promise<LayananRow[]> => {
     try {
@@ -155,6 +158,39 @@ export default function KelolaLayananPage() {
     }
   };
 
+
+  const validasiInstansiNama = (v: string) =>
+    v.length < NAMA_INSTANSI_MIN || v.length > NAMA_INSTANSI_MAKS
+      ? `Nama instansi ${NAMA_INSTANSI_MIN} sampai ${NAMA_INSTANSI_MAKS} karakter.`
+      : null;
+  const validasiSingkatan = (v: string) => (v.length > SINGKATAN_MAKS ? `Singkatan maksimal ${SINGKATAN_MAKS} karakter.` : null);
+
+  const ubahInstansi = async (i: InstansiRow, bidang: 'nama' | 'singkatan', baru: string): Promise<string | null> => {
+    try {
+      await adminFetch(`/api/admin/instansi/${i.id}`, 'PATCH', { [bidang]: bidang === 'singkatan' ? baru || null : baru });
+      setPengumuman(`Instansi ${bidang === 'nama' ? baru : i.nama} diperbarui.`);
+      await load();
+      return null;
+    } catch (e) {
+      return e instanceof Error ? e.message : 'Gagal menyimpan instansi';
+    }
+  };
+
+  const tambahInstansi = async (nilai: Record<string, string>): Promise<string | null> => {
+    const nama = (nilai.nama ?? '').trim();
+    const singkatan = (nilai.singkatan ?? '').trim();
+    const galat = validasiInstansiNama(nama) ?? validasiSingkatan(singkatan);
+    if (galat) return galat;
+    try {
+      await adminFetch('/api/admin/instansi', 'POST', { nama, singkatan: singkatan || null });
+      setPengumuman(`Instansi ${nama} ditambahkan.`);
+      await load();
+      return null;
+    } catch (e) {
+      return e instanceof Error ? e.message : 'Gagal menyimpan instansi';
+    }
+  };
+
   const aktifkanLagi = async (row: LayananRow) => {
     try {
       await adminFetch(`/api/admin/layanan/${row.id}/arsip`, 'POST', { arsip: false });
@@ -187,9 +223,9 @@ export default function KelolaLayananPage() {
         )}
         {!loading && !loadError && bisaUbah && (
           <div className={styles.toolbar}>
-            <button type="button" className="btn btn--secondary" onClick={() => setInstansiBuka(true)}>
+            <a href="#instansi" className="btn btn--secondary">
               <Building2 size={16} aria-hidden="true" /> Kelola Instansi
-            </button>
+            </a>
             <button type="button" className="btn btn--primary" onClick={bukaBaru}>
               <Plus size={16} aria-hidden="true" /> Tambah layanan
             </button>
@@ -261,6 +297,51 @@ export default function KelolaLayananPage() {
           )}
         </div>
 
+        {!loading && !loadError && bisaUbah && (
+          <section id="instansi">
+            <h2 id="judulInstansi" className={styles.sectionTitle}>Instansi</h2>
+            <p className={styles.sectionHint}>
+              Instansi adalah pemilik layanan, misalnya dinas atau lembaga. Klik nama atau singkatan untuk mengubahnya;
+              layanan memilih instansinya di formulir layanan.
+            </p>
+            <div className="table-wrapper">
+              <table className="table">
+                <caption className="sr-only">Daftar instansi</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Nama</th><th scope="col">Singkatan</th>
+                    <th scope="col"><span className="sr-only">Aksi</span></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {instansi.map((i) => (
+                    <tr key={i.id}>
+                      <td className="kol-utama">
+                        <SelTeksInline nilai={i.nama} label={`nama instansi ${i.nama}`} maxLength={NAMA_INSTANSI_MAKS}
+                          validasi={validasiInstansiNama} onSimpan={(baru) => ubahInstansi(i, 'nama', baru)} />
+                      </td>
+                      <td colSpan={2}>
+                        <SelTeksInline nilai={i.singkatan ?? ''} label={`singkatan instansi ${i.nama}`} maxLength={SINGKATAN_MAKS}
+                          teksKosong="Tambah singkatan" validasi={validasiSingkatan}
+                          onSimpan={(baru) => ubahInstansi(i, 'singkatan', baru)} />
+                      </td>
+                    </tr>
+                  ))}
+                  <BarisTambah
+                    kolom={3}
+                    ariaTombol="Tambah instansi"
+                    bidang={[
+                      { kunci: 'nama', label: 'Nama instansi baru', placeholder: '+ Tambah instansi', maxLength: NAMA_INSTANSI_MAKS },
+                      { kunci: 'singkatan', label: 'Singkatan instansi baru', placeholder: 'Singkatan (opsional)', maxLength: SINGKATAN_MAKS },
+                    ]}
+                    onTambah={tambahInstansi}
+                  />
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
         {!loading && !loadError && arsip.length > 0 && (
           <section aria-labelledby="judulArsip">
             <h2 id="judulArsip" className={styles.sectionTitle}>Diarsipkan</h2>
@@ -329,7 +410,7 @@ export default function KelolaLayananPage() {
         </FormDialog>
       )}
 
-      <InstansiDialog open={instansiBuka} onClose={() => setInstansiBuka(false)} instansi={instansi} onSaved={async () => { await load(); }} />
+      <p role="status" aria-live="polite" className="sr-only">{pengumuman}</p>
     </>
   );
 }

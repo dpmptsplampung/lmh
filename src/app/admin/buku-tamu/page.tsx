@@ -82,11 +82,11 @@ export default function BukuTamuPage() {
                 <tbody>
                   {items.map((t) => (
                     <tr key={t.id}>
-                      <td>{jam(t.waktu_masuk)}</td>
+                      <td className="kol-waktu">{jam(t.waktu_masuk)}</td>
                       <td style={{ fontWeight: 600 }}>{t.nama}</td>
                       <td>{t.instansi ?? '—'}</td>
                       <td>{t.bertemu ?? '—'}</td>
-                      <td>{t.tujuan ?? '—'}</td>
+                      <td className="kol-teks" title={t.tujuan ?? undefined}>{t.tujuan ?? '—'}</td>
                       <td>{t.dicatat_nama ?? '—'}</td>
                     </tr>
                   ))}

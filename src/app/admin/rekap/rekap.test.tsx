@@ -75,8 +75,46 @@ describe('/admin/rekap (terpadu)', () => {
     const urlData = mockFetch.mock.calls.map((c) => String(c[0])).find((u) => u.includes('bagian=data'))!;
     expect(urlData).toContain('unit=fo');
     expect(screen.getByRole('button', { name: /Unduh Excel/ })).toBeInTheDocument();
+    // Ringkas (bawaan) tidak memuat kolom Kanal; Semua kolom memuatnya.
+    expect(screen.queryByRole('columnheader', { name: 'Kanal' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Semua kolom' }));
+    expect(screen.getByRole('columnheader', { name: 'Kanal' })).toBeInTheDocument();
     expect(screen.getByText('Live Chat')).toBeInTheDocument();
     expect((screen.getByLabelText('Unit') as HTMLSelectElement).value).toBe('fo');
+  });
+
+  it('Ringkas: sel dua baris (tanggal/jam, nama/kontak), badge hasil, dan detail lengkap lewat tombol Detail', async () => {
+    params.nilai = new URLSearchParams('bagian=data');
+    rute({
+      lingkup: { ...LINGKUP, unit_opsi: ['fo', 'layanan'], opsi_layanan: [{ id: 'L1', nama: 'BPJS', form_pendataan: null }] },
+      data: {
+        total: 1, form_type: null,
+        rows: [{
+          pelayanan_id: 'x1', sumber: 'penanganan', tanggal: '2026-10-20', unit: 'layanan', layanan_nama: 'BPJS', kanal: 'tatap_muka',
+          pengunjung_nama: 'Andi', pengunjung_hp: '0812', pengunjung_email: 'andi@x.id', hasil: 'selesai', topik: 'Kartu hilang',
+          keperluan: 'Mengurus kartu yang hilang di jalan', catatan: 'Sudah dibantu', penangan_nama: 'Sari',
+          mulai_at: '2026-10-20T02:10:00Z', selesai_at: '2026-10-20T02:25:00Z',
+        }],
+      },
+    });
+    render(<AdminRekapPage />);
+    expect(await screen.findByText('Andi')).toBeInTheDocument();
+    expect(screen.getAllByRole('columnheader').map((h) => h.textContent?.trim())).toEqual(
+      ['Tanggal', 'Pengunjung', 'Unit / Layanan', 'Topik', 'Hasil', 'Petugas', 'Aksi'],
+    );
+    expect(screen.getByText('09:10–09:25 · 15 mnt')).toBeInTheDocument();
+    expect(screen.getByText('0812 · andi@x.id')).toBeInTheDocument();
+    expect(screen.getByText('Selesai')).toHaveClass('badge');
+    expect(screen.queryByText('Mengurus kartu yang hilang di jalan')).not.toBeInTheDocument();
+    const tombol = screen.getByRole('button', { name: 'Detail pelayanan Andi' });
+    expect(tombol).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(tombol);
+    expect(tombol).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('Mengurus kartu yang hilang di jalan')).toBeInTheDocument();
+    expect(screen.getByText('Sudah dibantu')).toBeInTheDocument();
+    // Klik baris juga menutup.
+    fireEvent.click(screen.getAllByText('Sari')[0]);
+    expect(screen.queryByText('Mengurus kartu yang hilang di jalan')).not.toBeInTheDocument();
   });
 
   it('Fase 4: kolom Pendataan Khusus Layanan terpilih tampil di tabel (isian tersembunyi yang pernah diisi ikut)', async () => {
@@ -94,6 +132,7 @@ describe('/admin/rekap (terpadu)', () => {
     });
     render(<AdminRekapPage />);
     expect(await screen.findByText('Andi')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Semua kolom' }));
     expect(screen.getByRole('columnheader', { name: '[Khusus] Jenis kartu' })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: '[Khusus] Puas' })).toBeInTheDocument();
     expect(screen.getByRole('cell', { name: 'B' })).toBeInTheDocument();

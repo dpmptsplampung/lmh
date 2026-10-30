@@ -358,36 +358,55 @@ describe('kelola layanan', () => {
       expect(panggilan('DELETE', '/api/admin/layanan/l9')).toHaveLength(1);
     });
 
-    it('Kelola Instansi: tambah instansi baru lalu muncul di pilihan form', async () => {
+    it('Instansi: bagian di halaman (bukan dialog); tambah lewat baris terakhir lalu muncul di pilihan form', async () => {
       render(<KelolaLayananPage />);
-      fireEvent.click(await screen.findByRole('button', { name: 'Kelola Instansi' }));
-      expect(await screen.findByRole('dialog', { name: 'Kelola Instansi' })).toBeTruthy();
-      fireEvent.change(screen.getByLabelText('Nama instansi'), { target: { value: 'Bank Lampung' } });
-      fireEvent.change(screen.getByLabelText('Singkatan (opsional)'), { target: { value: 'BL' } });
+      const judul = await screen.findByRole('heading', { name: 'Instansi' });
+      expect(judul.closest('section')?.id).toBe('instansi');
+      expect(screen.getByRole('link', { name: 'Kelola Instansi' })).toHaveAttribute('href', '#instansi');
+      expect(screen.queryByRole('dialog')).toBeNull();
+      fireEvent.change(screen.getByLabelText('Nama instansi baru'), { target: { value: 'Bank Lampung' } });
+      fireEvent.change(screen.getByLabelText('Singkatan instansi baru'), { target: { value: 'BL' } });
       fireEvent.click(screen.getByRole('button', { name: 'Tambah instansi' }));
       await waitFor(() => expect(panggilan('POST', '/api/admin/instansi')).toHaveLength(1));
       expect(JSON.parse(panggilan('POST', '/api/admin/instansi')[0][1].body)).toEqual({ nama: 'Bank Lampung', singkatan: 'BL' });
-      fireEvent.click(screen.getByRole('button', { name: 'Tutup' }));
       fireEvent.click(await screen.findByRole('button', { name: 'Tambah layanan' }));
       const instansi = screen.getByLabelText('Instansi') as HTMLSelectElement;
       await waitFor(() => expect(Array.from(instansi.options).map((o) => o.textContent)).toContain('Bank Lampung (BL)'));
     });
 
-    it('Kelola Instansi: ubah instansi mengirim PATCH, bentrok nama tampil sebagai galat', async () => {
+    it('Instansi: nama terlalu pendek ditolak di klien tanpa POST', async () => {
+      render(<KelolaLayananPage />);
+      await screen.findByRole('heading', { name: 'Instansi' });
+      fireEvent.change(screen.getByLabelText('Nama instansi baru'), { target: { value: 'B' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Tambah instansi' }));
+      expect((await screen.findByRole('alert')).textContent).toMatch(/2 sampai 150 karakter/);
+      expect(panggilan('POST', '/api/admin/instansi')).toHaveLength(0);
+    });
+
+    it('Instansi: nama dan singkatan diedit langsung di sel (PATCH satu field); bentrok nama tampil sebagai galat di bawah input', async () => {
       const dasar = fetchMock.getMockImplementation() as (u: string, i?: unknown) => Promise<unknown>;
       fetchMock.mockImplementation((url: string, init?: { method?: string; body?: string }) => {
-        if (init?.method === 'PATCH' && url === '/api/admin/instansi/i1') {
+        if (init?.method === 'PATCH' && url === '/api/admin/instansi/i1' && JSON.parse(init.body ?? '{}').nama === 'Dinas Lain') {
           return resp(409, { error: 'Nama instansi sudah dipakai', kode: 'NAMA_BENTROK' });
         }
         return dasar(url, init);
       });
       render(<KelolaLayananPage />);
-      fireEvent.click(await screen.findByRole('button', { name: 'Kelola Instansi' }));
-      fireEvent.click(screen.getByRole('button', { name: 'Ubah instansi Dinas Penanaman Modal' }));
-      fireEvent.change(screen.getByLabelText('Nama instansi'), { target: { value: 'Dinas Lain' } });
-      fireEvent.click(screen.getByRole('button', { name: 'Simpan perubahan' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Ubah nama instansi Dinas Penanaman Modal' }));
+      const nama = screen.getByRole('textbox', { name: 'Nama instansi Dinas Penanaman Modal' });
+      fireEvent.change(nama, { target: { value: 'Dinas Lain' } });
+      fireEvent.keyDown(nama, { key: 'Enter' });
       expect(await screen.findByRole('alert')).toHaveTextContent('Nama instansi sudah dipakai');
-      expect(JSON.parse(patchCalls()[0][1].body)).toEqual({ nama: 'Dinas Lain', singkatan: 'DPMPTSP' });
+      expect(JSON.parse(patchCalls()[0][1].body)).toEqual({ nama: 'Dinas Lain' });
+
+      fireEvent.keyDown(nama, { key: 'Escape' });
+      fireEvent.click(screen.getByRole('button', { name: 'Ubah singkatan instansi Dinas Penanaman Modal' }));
+      const sing = screen.getByRole('textbox', { name: 'Singkatan instansi Dinas Penanaman Modal' });
+      fireEvent.change(sing, { target: { value: '' } });
+      fireEvent.keyDown(sing, { key: 'Enter' });
+      await waitFor(() => expect(patchCalls()).toHaveLength(2));
+      expect(patchCalls()[1][0]).toBe('/api/admin/instansi/i1');
+      expect(JSON.parse(patchCalls()[1][1].body)).toEqual({ singkatan: null });
     });
   });
 
