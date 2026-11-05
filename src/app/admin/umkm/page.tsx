@@ -1,29 +1,27 @@
 'use client';
 
+import Field from '@/components/ui/Field';
+
+import Tombol from '@/components/ui/Tombol';
+import Tabel from '@/components/ui/Tabel';
+import Kartu from '@/components/ui/Kartu';
+import KartuStatistik from '@/components/ui/KartuStatistik';
+import Lencana, { type NadaLencana } from '@/components/ui/Lencana';
+import Dialog from '@/components/ui/Dialog';
+import Skeleton from '@/components/ui/Skeleton';
+import StatusKosong from '@/components/ui/StatusKosong';
+import Galat from '@/components/ui/Galat';
+
+import tampilan from './page.dasbor.module.css';
+
 import { useState, useEffect, useCallback } from 'react';
 import FotoUmkm from '@/components/umkm/FotoUmkm';
 import { unggahKeR2 } from '@/lib/storage/unggah';
 import { validasiUrlFoto } from '@/lib/umkm/foto-url';
-import {
-  Store,
-  Search,
-  Eye,
-  CheckCircle2,
-  XCircle,
-  Clock,
-  RefreshCw,
-  Plus,
-  Edit2,
-  Trash2,
-  Loader2,
-  X,
-  Save,
-  Mail,
-  Link2,
-} from 'lucide-react';
+import { Store, Search, Eye, CheckCircle2, XCircle, Clock, RefreshCw, Plus, Edit2, Trash2, Loader2, X, Save, Mail, Link2 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import { KATEGORI_UMKM, type KategoriUMKM } from '@/lib/constants';
-import { cn, waLink } from '@/lib/utils';
+import { cn, waLink, formatTanggal, formatTanggalWaktu } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 import { mutasiInsert, mutasiWajibBaris, pesanMutasi } from '@/lib/supabase/mutate';
 import { perluMuatUlang } from '@/components/admin/mutasi-ui';
@@ -86,36 +84,13 @@ const emptyForm: FormData = {
   foto_produk: [],
 };
 
-const overlayStyle: React.CSSProperties = {
-  position: 'fixed',
-  inset: 0,
-  background: 'rgba(0,0,0,0.5)',
-  backdropFilter: 'blur(4px)',
-  WebkitBackdropFilter: 'blur(4px)',
-  zIndex: 1200,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  padding: '16px',
-};
-
-const modalCardStyle: React.CSSProperties = {
-  background: 'var(--color-neutral-0, #fff)',
-  borderRadius: 'var(--radius-xl, 16px)',
-  padding: 'var(--space-6, 24px)',
-  width: '100%',
-  maxWidth: 600,
-  maxHeight: 'calc(100dvh - 2rem)',
-  overflowY: 'auto',
-  boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
-};
-
 export default function AdminUMKMPage() {
   const { toast } = useToast();
   const [filterStatus, setFilterStatus] = useState<string>('semua');
   const [search, setSearch] = useState('');
   const [umkmList, setUmkmList] = useState<UMKMListing[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -151,7 +126,9 @@ export default function AdminUMKMPage() {
 
       if (ownerError) throw ownerError;
       setOwners((ownerData || []) as UmkmListingOwner[]);
+      setLoadError('');
     } catch {
+      setLoadError('Gagal memuat data UMKM. Silakan coba lagi.');
       toast('Gagal memuat data UMKM. Silakan coba lagi.', 'error');
     } finally {
       setLoading(false);
@@ -506,8 +483,8 @@ export default function AdminUMKMPage() {
   const pendingCount = umkmList.filter(l => l.status === 'pending_review').length;
   const viewedItem = viewingId ? umkmList.find(l => l.id === viewingId) : null;
 
-  const statusBadgeClass = (status: string) =>
-    `badge badge--${status === 'pending_review' ? 'pending' : status}`;
+  const statusNada = (status: string): NadaLencana =>
+    status === 'published' ? 'sukses' : status === 'pending_review' ? 'peringatan' : 'netral';
 
   const statusBadgeLabel = (status: string) =>
     STATUS_LABELS[status] || status;
@@ -516,217 +493,158 @@ export default function AdminUMKMPage() {
     <>
       <PageHeader
         title="Kelola UMKM"
-        description="Review dan kelola listing Matchmaking UMKM"
-      >
-        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-          <button className="btn btn--ghost btn--sm" onClick={loadData}>
+        meta="Waktu ditampilkan dalam WIB"
+        description="Review dan kelola listing Matchmaking UMKM">
+        <div className={tampilan.baris1}>
+          <Tombol varian="hantu" ukuran="kecil" type="button" onClick={loadData}>
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
             Refresh
-          </button>
-          <button className="btn btn--primary btn--sm" onClick={handleOpenCreate}>
+          </Tombol>
+          <Tombol varian="utama" ukuran="kecil" type="button" onClick={handleOpenCreate}>
             <Plus size={16} />
             Tambah UMKM
-          </button>
+          </Tombol>
         </div>
       </PageHeader>
 
-      <div style={{ padding: 'var(--space-8)' }}>
-        {pendingCount > 0 && (
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 'var(--space-3)',
-            padding: 'var(--space-4) var(--space-5)',
-            background: 'var(--color-accent-50)',
-            border: '1px solid var(--color-accent-200)',
-            borderRadius: 'var(--radius-lg)',
-            marginBottom: 'var(--space-6)',
-            fontSize: 'var(--text-sm)',
-          }}>
-            <Clock size={18} style={{ color: 'var(--color-accent-600)' }} />
+      <div className={tampilan.area2}>
+        {!loadError && <div className={tampilan.statistik}>
+          <KartuStatistik label="Total UMKM" nilai={umkmList.length} ikon={Store} memuat={loading} />
+          <KartuStatistik label="Menunggu review" nilai={pendingCount} ikon={Clock} memuat={loading} />
+          <KartuStatistik label="Published" nilai={umkmList.filter((l) => l.status === 'published').length} ikon={CheckCircle2} memuat={loading} />
+        </div>}
+        {!loading && !loadError && pendingCount > 0 && (
+          <div className={tampilan.baris3}>
+            <Clock size={18} className={tampilan.area4}  />
             <span><strong>{pendingCount}</strong> listing menunggu review Anda</span>
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: 'var(--space-4)', marginBottom: 'var(--space-6)', flexWrap: 'wrap' }}>
-          <div style={{ position: 'relative', flex: 1, minWidth: '240px' }}>
-            <Search size={18} style={{
-              position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)',
-              color: 'var(--text-tertiary)'
-            }} />
+        <div className={tampilan.baris5}>
+          <div className={tampilan.area6}>
+            <Search size={18} className={tampilan.area7}  />
             <input
               type="text"
-              className="form-input"
+              className={["form-input", tampilan.area8].filter(Boolean).join(' ')}
               placeholder="Cari nama UMKM..."
+              aria-label="Cari listing"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              style={{ paddingLeft: '40px' }}
+
             />
           </div>
 
-          <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+          <div className={tampilan.baris9}>
             {['semua', 'pending_review', 'published', 'draft', 'nonaktif'].map((s) => (
-              <button
+              <Tombol
                 key={s}
-                className={cn('btn btn--sm', filterStatus === s ? 'btn--primary' : 'btn--secondary')}
-                onClick={() => setFilterStatus(s)}
-              >
+                varian={filterStatus === s ? 'utama' : 'sekunder'} ukuran="kecil" className={cn('', filterStatus === s ? '' : '')}
+                aria-pressed={filterStatus === s}
+                onClick={() => setFilterStatus(s)}>
                 {s === 'semua' ? 'Semua' :
                   s === 'pending_review' ? `Pending (${pendingCount})` :
                     s.charAt(0).toUpperCase() + s.slice(1)}
-              </button>
+              </Tombol>
             ))}
           </div>
         </div>
 
-        {loading ? (
-          <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: 'var(--space-8)' }}>
-            Memuat data...
-          </p>
+        <Kartu judul="Daftar UMKM" padding="tanpa">
+        {loading ? <Skeleton bentuk="baris" jumlah={5} label="Memuat UMKM" /> : loadError ? (
+          <Galat pesan={loadError} onRetry={() => { void loadData(); }} />
         ) : filtered.length === 0 ? (
-          <p style={{ color: 'var(--text-tertiary)', textAlign: 'center', padding: 'var(--space-8)' }}>
-            Belum ada listing UMKM. Klik &quot;Tambah UMKM&quot; untuk menambahkan.
-          </p>
+          <StatusKosong ikon={Store} judul="Belum ada listing UMKM. Klik &quot;Tambah UMKM&quot; untuk menambahkan." />
         ) : (
-          <div className="table-wrapper">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>UMKM</th>
-                  <th>Kategori</th>
-                  <th>Kontak</th>
-                  <th>Pemilik (email)</th>
-                  <th>Tanggal</th>
-                  <th>Status</th>
-                  <th>Aksi</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((l) => (
-                  <tr key={l.id}>
-                    <td>
-                      <div>
-                        <div style={{ fontWeight: 600 }}>{l.nama_umkm}</div>
-                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '2px', maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <Tabel caption="Daftar UMKM" baris={filtered} kunciBaris="id" kolom={[
+{ kunci: 'kolom0', judul: "UMKM", judulBaris: true, render: (l) => (<><div>
+                        <div className={tampilan.area12} >{l.nama_umkm}</div>
+                        <div className={tampilan.area13}>
                           {l.deskripsi}
                         </div>
-                      </div>
-                    </td>
-                    <td>
-                      <span className="badge badge--draft">
+                      </div></>) },
+{ kunci: 'kolom1', judul: "Kategori", render: (l) => (<><Lencana nada="netral">
                         {KATEGORI_UMKM[l.kategori_kebutuhan] || l.kategori_kebutuhan}
-                      </span>
-                    </td>
-                    <td style={{ fontSize: 'var(--text-sm)' }}>{l.kontak_nama}</td>
-                    <td style={{ fontSize: 'var(--text-xs)' }}>
-                      {ownersFor(l.id).length === 0 ? (
-                        <span style={{ color: 'var(--text-tertiary)' }}>Belum ada</span>
+                      </Lencana></>) },
+{ kunci: 'kolom2', judul: "Kontak", render: (l) => (<div className={tampilan.sel14}>{l.kontak_nama}</div>) },
+{ kunci: 'kolom3', judul: "Pemilik (email)", render: (l) => (<div className={tampilan.sel15}>{ownersFor(l.id).length === 0 ? (
+                        <span className={tampilan.teks16} >Belum ada</span>
                       ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        <div className={tampilan.baris17}>
                           {ownersFor(l.id).map(o => (
-                            <span key={o.id} style={{ color: 'var(--text-secondary)' }}>{o.email}</span>
+                            <span key={o.id} className={tampilan.teks18} >{o.email}</span>
                           ))}
                         </div>
-                      )}
-                    </td>
-                    <td style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
-                      {new Date(l.created_at).toLocaleDateString('id-ID')}
-                    </td>
-                    <td>
-                      <span className={statusBadgeClass(l.status)}>
+                      )}</div>) },
+{ kunci: 'kolom4', judul: "Tanggal", render: (l) => (<div className={tampilan.sel19}>{formatTanggal(l.created_at, { month: 'short' })}</div>) },
+{ kunci: 'kolom5', judul: "Status", render: (l) => (<><Lencana nada={statusNada(l.status)}>
                         {statusBadgeLabel(l.status)}
-                      </span>
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-                        <button
-                          className="btn btn--ghost btn--sm"
+                      </Lencana></>) },
+{ kunci: 'kolom6', judul: "Aksi", render: (l) => (<><div className={tampilan.baris1}>
+                        <Tombol
+                          varian="hantu" ukuran="kecil" type="button"
                           title="Lihat"
-                          onClick={() => { setOwnerEmailInput(''); setViewingId(l.id); }}
-                        >
+                          onClick={() => { setOwnerEmailInput(''); setViewingId(l.id); }}>
                           <Eye size={14} />
-                        </button>
-                        <button
-                          className="btn btn--ghost btn--sm"
+                        </Tombol>
+                        <Tombol
+                          varian="hantu" ukuran="kecil" type="button"
                           title="Edit"
-                          onClick={() => handleOpenEdit(l)}
-                        >
+                          onClick={() => handleOpenEdit(l)}>
                           <Edit2 size={14} />
-                        </button>
+                        </Tombol>
                         {l.status === 'pending_review' && (
                           <>
-                            <button
-                              className="btn btn--primary btn--sm"
+                            <Tombol
+                              varian="utama" ukuran="kecil" type="button"
                               title="Approve"
-                              onClick={() => handleUpdateStatus(l.id, 'published')}
-                            >
+                              onClick={() => handleUpdateStatus(l.id, 'published')}>
                               <CheckCircle2 size={14} />
-                            </button>
-                            <button
-                              className="btn btn--ghost btn--sm"
+                            </Tombol>
+                            <Tombol
+                              varian="hantu" ukuran="kecil" className={["", tampilan.area20].filter(Boolean).join('')}
                               title="Tolak"
-                              style={{ color: 'var(--color-danger-500)' }}
-                              onClick={() => handleUpdateStatus(l.id, 'nonaktif')}
-                            >
+
+                              onClick={() => handleUpdateStatus(l.id, 'nonaktif')}>
                               <XCircle size={14} />
-                            </button>
+                            </Tombol>
                           </>
                         )}
                         {l.status === 'draft' && (
-                          <button
-                            className="btn btn--primary btn--sm"
+                          <Tombol
+                            varian="utama" ukuran="kecil" type="button"
                             title="Publish"
-                            onClick={() => handleUpdateStatus(l.id, 'published')}
-                          >
+                            onClick={() => handleUpdateStatus(l.id, 'published')}>
                             <CheckCircle2 size={14} /> Publish
-                          </button>
+                          </Tombol>
                         )}
                         {ownersFor(l.id).length > 0 && (
-                          <button
-                            className="btn btn--ghost btn--sm"
+                          <Tombol
+                            varian="hantu" ukuran="kecil" type="button"
                             title="Kirim Link Edit"
                             onClick={() => handleSendEditLink(l)}
-                            disabled={sendingLinkId === l.id}
-                          >
+                            disabled={sendingLinkId === l.id}>
                             {sendingLinkId === l.id
                               ? <Loader2 size={14} className="animate-spin" />
                               : <Mail size={14} />}
-                          </button>
+                          </Tombol>
                         )}
-                        <button
-                          className="btn btn--ghost btn--sm"
+                        <Tombol
+                          varian="hantu" ukuran="kecil" className={["", tampilan.area20].filter(Boolean).join('')}
                           title="Hapus"
-                          style={{ color: 'var(--color-danger-500)' }}
-                          onClick={() => handleDelete(l.id)}
-                        >
+
+                          onClick={() => handleDelete(l.id)}>
                           <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                        </Tombol>
+                      </div></>) }
+]} />
         )}
+        </Kartu>
       </div>
 
       {showForm && (
-        <div style={overlayStyle} onClick={(e) => { if (e.target === e.currentTarget) handleCloseForm(); }}>
-          <div style={modalCardStyle}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-5)' }}>
-              <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                <Store size={20} />
-                {editingId ? 'Edit UMKM' : 'Tambah UMKM'}
-              </h3>
-              <button className="btn btn--ghost btn--sm" onClick={handleCloseForm}>
-                <X size={18} />
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmitForm} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-              <div className="form-group">
-                <label className="form-label form-label--required" htmlFor="admin-umkm-nama">Nama UMKM</label>
+        <Dialog terbuka tutupDenganLatar judul={editingId ? 'Edit UMKM' : 'Tambah UMKM'} onTutup={handleCloseForm}>
+            <form onSubmit={handleSubmitForm} className={tampilan.baris23}>
+              <Field label="Nama UMKM" wajib>
                 <input
                   id="admin-umkm-nama"
                   className="form-input"
@@ -735,51 +653,46 @@ export default function AdminUMKMPage() {
                   placeholder="Masukkan nama UMKM"
                   required
                 />
-              </div>
+              </Field>
 
-              <div className="form-group">
-                <label className="form-label form-label--required" htmlFor="admin-umkm-kategori">Kategori Kebutuhan</label>
+              <Field label="Kategori Kebutuhan" wajib>
                 <select
                   id="admin-umkm-kategori"
                   className="form-input"
                   value={form.kategori_kebutuhan}
                   onChange={e => setForm(f => ({ ...f, kategori_kebutuhan: e.target.value as KategoriUMKM }))}
-                  required
-                >
+                  required>
                   <option value="">Pilih kategori...</option>
                   {Object.entries(KATEGORI_UMKM).map(([value, label]) => (
                     <option key={value} value={value}>{label}</option>
                   ))}
                 </select>
-              </div>
+              </Field>
 
-              <div className="form-group">
-                <label className="form-label form-label--required" htmlFor="admin-umkm-sisi">Sisi</label>
+              <Field label="Sisi" wajib>
                 <select
                   id="admin-umkm-sisi"
                   className="form-input"
                   value={form.sisi}
                   onChange={e => setForm(f => ({ ...f, sisi: e.target.value as 'kebutuhan' | 'penawaran' }))}
-                  required
-                >
+                  required>
                   <option value="kebutuhan">Kebutuhan</option>
                   <option value="penawaran">Penawaran</option>
                 </select>
-              </div>
+              </Field>
 
-              <div className="form-group">
-                <label className="form-label">Deskripsi</label>
+              <Field label="Deskripsi">
                 <textarea
+                  id="admin-umkm-deskripsi"
                   className="form-input"
                   rows={6}
                   value={form.deskripsi}
                   onChange={e => setForm(f => ({ ...f, deskripsi: e.target.value }))}
                   placeholder="Deskripsi kebutuhan UMKM..."
                 />
-              </div>
+              </Field>
 
-                <div className="form-group">
-                  <label className="form-label form-label--required" htmlFor="admin-umkm-kontak">Nama Kontak</label>
+                <Field label="Nama Kontak" wajib>
                   <input
                     id="admin-umkm-kontak"
                     className="form-input"
@@ -788,33 +701,34 @@ export default function AdminUMKMPage() {
                     placeholder="Nama orang yang bisa dihubungi"
                     required
                   />
-                </div>
+                </Field>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
-                <div className="form-group">
-                  <label className="form-label">No. HP / WhatsApp</label>
+              <div className={tampilan.kisi24}>
+                <Field label="No. HP / WhatsApp">
                   <input
+                    id="admin-umkm-hp"
                     className="form-input"
                     value={form.kontak_hp}
                     onChange={e => setForm(f => ({ ...f, kontak_hp: e.target.value }))}
                     placeholder="08xxxxxxxxxx"
                   />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Email</label>
+                </Field>
+                <Field label="Email">
                   <input
+                    id="admin-umkm-email"
                     className="form-input"
                     type="email"
                     value={form.kontak_email}
                     onChange={e => setForm(f => ({ ...f, kontak_email: e.target.value }))}
                     placeholder="email@contoh.com"
                   />
-                </div>
+                </Field>
               </div>
 
               <div className="form-group">
-                <label className="form-label">Foto Produk</label>
+                <label className="form-label" htmlFor="admin-umkm-foto">Foto Produk</label>
                 <input
+                  id="admin-umkm-foto"
                   type="file"
                   accept="image/*"
                   multiple
@@ -824,7 +738,7 @@ export default function AdminUMKMPage() {
                 />
                 <span className="form-hint">Maksimal 8 foto, masing-masing maks 2MB</span>
 
-                <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
+                <div className={tampilan.baris25}>
                   <input
                     type="url"
                     className="form-input"
@@ -834,48 +748,32 @@ export default function AdminUMKMPage() {
                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleTambahTautanFoto(); } }}
                     aria-label="Tautan foto"
                   />
-                  <button type="button" className="btn btn--secondary btn--sm" onClick={handleTambahTautanFoto}>Tambah tautan</button>
+                  <Tombol type="button" varian="sekunder" ukuran="kecil" onClick={handleTambahTautanFoto}>Tambah tautan</Tombol>
                 </div>
 
                 {uploadingPhotos && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', color: 'var(--text-secondary)', fontSize: 'var(--text-sm)' }}>
+                  <div className={tampilan.baris26}>
                     <Loader2 size={16} className="animate-spin" />
                     Mengunggah foto...
                   </div>
                 )}
 
                 {form.foto_produk.length > 0 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
+                  <div className={tampilan.baris27}>
                     {form.foto_produk.map((url, index) => (
-                      <div key={index} style={{ position: 'relative', width: 80, height: 80 }}>
+                      <div key={index} className={tampilan.area28}>
                         <FotoUmkm
                           src={url}
                           alt={`Foto ${index + 1}`}
                           width={80}
                           height={80}
-                          style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)' }}
+                          className={tampilan.area29}
                         />
                         <button
                           type="button"
                           onClick={() => handleRemovePhoto(index)}
-                          style={{
-                            position: 'absolute',
-                            top: '-6px',
-                            right: '-6px',
-                            width: 22,
-                            height: 22,
-                            borderRadius: '50%',
-                            background: 'var(--color-danger-500)',
-                            color: '#fff',
-                            border: 'none',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            padding: 0,
-                          }}
-                          aria-label="Hapus foto"
-                        >
+                          className={tampilan.baris30}
+                          aria-label="Hapus foto">
                           <X size={12} />
                         </button>
                       </div>
@@ -888,14 +786,13 @@ export default function AdminUMKMPage() {
                 <div className="form-group">
                   <label
                     htmlFor="admin-umkm-consent"
-                    style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)', fontSize: 'var(--text-sm)', cursor: 'pointer' }}
-                  >
+                    className={tampilan.baris31}>
                     <input
                       id="admin-umkm-consent"
                       type="checkbox"
                       checked={consentChecked}
                       onChange={e => setConsentChecked(e.target.checked)}
-                      style={{ marginTop: '2px' }}
+                      className={tampilan.area32}
                     />
                     <span>
                       Pemilik listing menyetujui nama &amp; kontaknya ditampilkan kepada publik di halaman Matchmaking UMKM.
@@ -906,53 +803,49 @@ export default function AdminUMKMPage() {
 
               {formError && <p className="form-error">{formError}</p>}
 
-              <div style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'flex-end' }}>
-                <button type="button" className="btn btn--ghost" onClick={handleCloseForm}>
+              <div className={tampilan.baris33}>
+                <Tombol type="button" varian="hantu" onClick={handleCloseForm}>
                   <X size={16} />
                   Batal
-                </button>
-                <button type="submit" className="btn btn--primary" disabled={saving || (!editingId && !consentChecked)}>
+                </Tombol>
+                <Tombol type="submit" varian="utama" disabled={saving || (!editingId && !consentChecked)}>
                   {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
                   {saving ? 'Menyimpan...' : 'Simpan'}
-                </button>
+                </Tombol>
               </div>
             </form>
-          </div>
-        </div>
+        </Dialog>
       )}
 
       {viewedItem && (
-        <div style={overlayStyle} onClick={(e) => { if (e.target === e.currentTarget) setViewingId(null); }}>
-          <div style={modalCardStyle}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'var(--space-4)' }}>
+        <Dialog terbuka tutupDenganLatar judul={viewedItem.nama_umkm} onTutup={() => setViewingId(null)}>
+            <div className={tampilan.baris34}>
               <div>
-                <h3 style={{ fontWeight: 700, fontSize: 'var(--text-xl)', marginBottom: 'var(--space-2)' }}>
+                <h3 className={tampilan.judul35}>
                   {viewedItem.nama_umkm}
                 </h3>
-                <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-                  <span className="badge badge--draft">
+                <div className={tampilan.baris9}>
+                  <Lencana nada="netral">
                     {KATEGORI_UMKM[viewedItem.kategori_kebutuhan] || viewedItem.kategori_kebutuhan}
-                  </span>
-                  <span className={statusBadgeClass(viewedItem.status)}>
+                  </Lencana>
+                  <Lencana nada={statusNada(viewedItem.status)}>
                     {statusBadgeLabel(viewedItem.status)}
-                  </span>
+                  </Lencana>
                 </div>
               </div>
-              <button className="btn btn--ghost btn--sm" onClick={() => setViewingId(null)}>
-                <X size={18} />
-              </button>
+
             </div>
 
             {viewedItem.deskripsi && (
-              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 'var(--space-4)' }}>
+              <p className={tampilan.teks36}>
                 {viewedItem.deskripsi}
               </p>
             )}
 
             {viewedItem.foto_produk && viewedItem.foto_produk.length > 0 && (
-              <div style={{ marginBottom: 'var(--space-4)' }}>
-                <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-2)' }}>Foto Produk</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 'var(--space-3)' }}>
+              <div className={tampilan.area37}>
+                <div className={tampilan.area38} >Foto Produk</div>
+                <div className={tampilan.kisi39}>
                   {viewedItem.foto_produk.map((url, index) => (
                     <FotoUmkm
                       key={index}
@@ -960,26 +853,21 @@ export default function AdminUMKMPage() {
                       alt={`Foto produk ${index + 1}`}
                       width={200}
                       height={200}
-                      style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)', width: '100%', height: 200 }}
+                      className={tampilan.area40}
                     />
                   ))}
                 </div>
               </div>
             )}
 
-            <div style={{
-              padding: 'var(--space-4)',
-              background: 'var(--color-neutral-50, #f9fafb)',
-              borderRadius: 'var(--radius-lg)',
-              marginBottom: 'var(--space-4)',
-            }}>
-              <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-3)' }}>Informasi Kontak</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', fontSize: 'var(--text-sm)' }}>
+            <div className={tampilan.area41}>
+              <div className={tampilan.area42} >Informasi Kontak</div>
+              <div className={tampilan.baris43}>
                 <div><strong>Nama:</strong> {viewedItem.kontak_nama}</div>
                 {viewedItem.kontak_hp && (
                   <div>
                     <strong>HP:</strong>{' '}
-                    <a href={waLink(viewedItem.kontak_hp)} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-primary-600)' }}>
+                    <a href={waLink(viewedItem.kontak_hp)} target="_blank" rel="noopener noreferrer" className={tampilan.area44}>
                       {viewedItem.kontak_hp} (WhatsApp)
                     </a>
                   </div>
@@ -987,7 +875,7 @@ export default function AdminUMKMPage() {
                 {viewedItem.kontak_email && (
                   <div>
                     <strong>Email:</strong>{' '}
-                    <a href={`mailto:${viewedItem.kontak_email}`} style={{ color: 'var(--color-primary-600)' }}>
+                    <a href={`mailto:${viewedItem.kontak_email}`} className={tampilan.area44}>
                       {viewedItem.kontak_email}
                     </a>
                   </div>
@@ -995,35 +883,29 @@ export default function AdminUMKMPage() {
               </div>
             </div>
 
-            <div style={{
-              padding: 'var(--space-4)',
-              background: 'var(--color-neutral-50, #f9fafb)',
-              borderRadius: 'var(--radius-lg)',
-              marginBottom: 'var(--space-4)',
-            }}>
-              <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-3)' }}>Pemilik Listing</div>
+            <div className={tampilan.area41}>
+              <div className={tampilan.area42} >Pemilik Listing</div>
               {ownersFor(viewedItem.id).length === 0 ? (
-                <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginBottom: 'var(--space-3)' }}>
+                <p className={tampilan.teks45}>
                   Belum ada pemilik tertaut. Tautkan email agar pemilik bisa mengedit listing dan menerima inquiry.
                 </p>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
+                <div className={tampilan.baris46}>
                   {ownersFor(viewedItem.id).map(o => (
-                    <div key={o.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-2)', fontSize: 'var(--text-sm)' }}>
+                    <div key={o.id} className={tampilan.baris47}>
                       <span>{o.email}</span>
-                      <button
-                        className="btn btn--ghost btn--sm"
+                      <Tombol
+                        varian="hantu" ukuran="kecil" className={["", tampilan.area20].filter(Boolean).join('')}
                         title="Hapus tautan pemilik"
-                        style={{ color: 'var(--color-danger-500)' }}
-                        onClick={() => handleRemoveOwner(o.id)}
-                      >
+
+                        onClick={() => handleRemoveOwner(o.id)}>
                         <Trash2 size={14} />
-                      </button>
+                      </Tombol>
                     </div>
                   ))}
                 </div>
               )}
-              <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+              <div className={tampilan.baris1}>
                 <input
                   className="form-input"
                   type="email"
@@ -1033,44 +915,36 @@ export default function AdminUMKMPage() {
                   onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddOwner(viewedItem.id); } }}
                   aria-label="Email pemilik"
                 />
-                <button
-                  className="btn btn--primary btn--sm"
+                <Tombol
+                  varian="utama" ukuran="kecil" type="button"
                   onClick={() => handleAddOwner(viewedItem.id)}
-                  disabled={ownerSaving || !ownerEmailInput.trim()}
-                >
+                  disabled={ownerSaving || !ownerEmailInput.trim()}>
                   {ownerSaving ? <Loader2 size={14} className="animate-spin" /> : <Link2 size={14} />}
                   Tautkan
-                </button>
+                </Tombol>
               </div>
               {ownersFor(viewedItem.id).length > 0 && (
-                <button
-                  className="btn btn--secondary btn--sm"
-                  style={{ marginTop: 'var(--space-3)' }}
+                <Tombol
+                  varian="sekunder" ukuran="kecil" className={["", tampilan.area48].filter(Boolean).join('')}
+
                   onClick={() => handleSendEditLink(viewedItem)}
-                  disabled={sendingLinkId === viewedItem.id}
-                >
+                  disabled={sendingLinkId === viewedItem.id}>
                   {sendingLinkId === viewedItem.id
                     ? <Loader2 size={14} className="animate-spin" />
                     : <Mail size={14} />}
                   Kirim Link Edit ke Pemilik
-                </button>
+                </Tombol>
               )}
             </div>
 
-            <div style={{
-              padding: 'var(--space-4)',
-              background: 'var(--color-neutral-50, #f9fafb)',
-              borderRadius: 'var(--radius-lg)',
-              marginBottom: 'var(--space-4)',
-            }}>
-              <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-3)' }}>Metadata</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', fontSize: 'var(--text-sm)' }}>
-                <div><strong>Dibuat:</strong> {new Date(viewedItem.created_at).toLocaleString('id-ID')}</div>
-                <div><strong>Diperbarui:</strong> {new Date(viewedItem.updated_at).toLocaleString('id-ID')}</div>
+            <div className={tampilan.area41}>
+              <div className={tampilan.area42} >Metadata</div>
+              <div className={tampilan.baris43}>
+                <div><strong>Dibuat:</strong> {formatTanggalWaktu(viewedItem.created_at)}</div>
+                <div><strong>Diperbarui:</strong> {formatTanggalWaktu(viewedItem.updated_at)}</div>
               </div>
             </div>
-          </div>
-        </div>
+        </Dialog>
       )}
     </>
   );

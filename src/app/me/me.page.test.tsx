@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { createClientMock, rpcMock, toastMock } = vi.hoisted(() => ({
@@ -117,5 +117,49 @@ describe('/me (dashboard pengunjung) membaca kunjungan, bukan visit', () => {
     render(<MeDashboard />);
     expect(await screen.findByText(/Belum ada reservasi aktif/)).toBeInTheDocument();
     expect(tabel).not.toContain('kunjungan');
+  });
+
+  it('pintasan lengkap: semua tautan lama tetap ada (termasuk Live Chat yang dulu tombol melayang)', async () => {
+    render(<MeDashboard />);
+    await screen.findByText(/Belum ada reservasi aktif/);
+    const href = (nama: RegExp) => screen.getByRole('link', { name: nama }).getAttribute('href');
+    expect(href(/^Buat Reservasi$/)).toBe('/me/reservasi');
+    expect(href(/^Live Chat$/)).toBe('/chat');
+    expect(href(/Chat WhatsApp/)).toMatch(/wa\.me|whatsapp/);
+    expect(href(/Lacak Pengaduan/)).toBe('/pengaduan/lacak');
+    expect(href(/Info Layanan/)).toBe('/standar-pelayanan');
+    expect(href(/Peta Potensi/)).toBe('/peta-potensi');
+    expect(href(/^Buat Pengaduan$/)).toBe('/pengaduan');
+    expect(href(/Buat Reservasi Sekarang/)).toBe('/me/reservasi');
+  });
+
+  it('gagal memuat: galat dengan Coba lagi (bukan keadaan kosong), lalu berhasil saat diulang', async () => {
+    let gagal = true;
+    createClientMock.mockReturnValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'auth-1', user_metadata: {} } } }) },
+      from: vi.fn((t: string) => {
+        if (t === 'pengunjung') {
+          const b = { select: vi.fn(() => b), eq: vi.fn(() => b), single: vi.fn(async () => ({ data: profil, error: null })) };
+          return b;
+        }
+        const b = {
+          select: vi.fn(() => b),
+          eq: vi.fn(() => b),
+          in: vi.fn(() => b),
+          order: vi.fn(async () => (gagal ? { data: null, error: { message: 'putus' } } : { data: [], error: null })),
+        };
+        return b;
+      }),
+      rpc: rpcMock,
+    });
+    render(<MeDashboard />);
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/belum bisa dimuat/);
+    expect(screen.queryByText(/Belum ada reservasi aktif/)).toBeNull();
+
+    gagal = false;
+    fireEvent.click(screen.getByRole('button', { name: /coba lagi/i }));
+    expect(await screen.findByText(/Belum ada reservasi aktif/)).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 });

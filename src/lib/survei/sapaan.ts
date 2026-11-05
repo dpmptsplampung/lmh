@@ -17,11 +17,19 @@ export function waktuSapaan(sekarang: Date): Waktu {
   return 'Malam';
 }
 
-/** Nama siap tampil, atau null bila kosong / penanda "tanpa nama". Dirapikan spasinya dan dipotong bila terlalu panjang. */
+// Nama yang diketik seluruhnya kecil ("tomi") atau seluruhnya besar ("BUDI SANTOSO") diberi kapital di awal tiap kata.
+// Nama berhuruf campur ("M. Rizki", "McDonald", "Budi bin Ahmad") dibiarkan: bisa jadi memang begitu penulisannya.
+function rapikanKapital(nama: string): string {
+  if (nama !== nama.toLowerCase() && nama !== nama.toUpperCase()) return nama;
+  return nama.toLowerCase().replace(/(^|[\s\-'])(\p{L})/gu, (_, awal: string, huruf: string) => awal + huruf.toUpperCase());
+}
+
+/** Nama siap tampil, atau null bila kosong / penanda "tanpa nama". Dirapikan spasi dan kapitalnya, dipotong bila terlalu panjang. */
 export function namaUntukSapaan(nama: string | null | undefined): string | null {
   const rapi = (nama ?? '').replace(/\s+/g, ' ').trim();
   if (rapi === '' || NAMA_TIDAK_DISAPA.test(rapi)) return null;
-  return rapi.length > BATAS_NAMA ? `${rapi.slice(0, BATAS_NAMA).trimEnd()}…` : rapi;
+  const hasil = rapikanKapital(rapi);
+  return hasil.length > BATAS_NAMA ? `${hasil.slice(0, BATAS_NAMA).trimEnd()}…` : hasil;
 }
 
 export function buatSapaan(nama: string | null | undefined, sekarang: Date = new Date()): string {

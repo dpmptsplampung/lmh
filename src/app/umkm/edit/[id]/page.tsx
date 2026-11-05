@@ -359,7 +359,7 @@ export default function UmkmEditPage() {
 
           {listing.foto_produk && listing.foto_produk.length > 0 && (
             <div className={styles.field}>
-              <label>Foto Produk (tidak dapat diubah di sini)</label>
+              <span className="form-label">Foto Produk (tidak dapat diubah di sini)</span>
               <p className={styles.hint}>
                 Foto produk dikelola admin. Hubungi admin jika perlu mengubah foto.
               </p>

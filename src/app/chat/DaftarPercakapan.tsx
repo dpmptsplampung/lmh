@@ -1,7 +1,11 @@
 'use client';
 
-import { Bot, CheckCircle2, Loader2, MessageSquare, Plus } from 'lucide-react';
-import ErrorRetry from '@/components/ErrorRetry';
+import { Bot, CheckCircle2, MessageSquare, Plus } from 'lucide-react';
+import Galat from '@/components/ui/Galat';
+import Lencana from '@/components/ui/Lencana';
+import Skeleton from '@/components/ui/Skeleton';
+import Tombol from '@/components/ui/Tombol';
+import { formatTanggalWaktu } from '@/lib/utils';
 import { belumDibaca, type PercakapanRingkas } from '@/lib/chat/percakapan';
 import styles from './daftar.module.css';
 
@@ -16,14 +20,7 @@ interface Props {
   onCobaLagi: () => void;
 }
 
-const tanggalPendek = (iso: string) =>
-  new Date(iso).toLocaleString('id-ID', {
-    timeZone: 'Asia/Jakarta',
-    day: 'numeric',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+const tanggalPendek = (iso: string) => formatTanggalWaktu(iso);
 
 function labelStatus(p: PercakapanRingkas): { teks: string; ikon: 'bot' | 'tunggu' | 'aktif' | 'selesai' } {
   if (!p.sesiTerbukaId) return { teks: 'Sesi selesai', ikon: 'selesai' };
@@ -37,16 +34,16 @@ export default function DaftarPercakapan({ items, dibaca, onBuka, onBaru, memuat
     <section className={styles.daftar} aria-labelledby="judul-daftar-percakapan">
       <div className={styles.kepala}>
         <h2 id="judul-daftar-percakapan" className={styles.judul}>Percakapan Anda</h2>
-        <button type="button" className="btn btn--primary btn--sm" onClick={onBaru}>
-          <Plus size={14} aria-hidden="true" /> Percakapan baru
-        </button>
+        <Tombol ukuran="kecil" ikon={Plus} onClick={onBaru}>
+          Percakapan baru
+        </Tombol>
       </div>
       <p className={styles.keterangan}>
         Satu percakapan untuk setiap layanan. Riwayat pesan Anda tersimpan dan dapat dibuka kembali kapan saja.
       </p>
 
       {galat && (
-        <ErrorRetry
+        <Galat
           judul="Daftar percakapan belum dapat dimuat"
           pesan="Periksa koneksi internet Anda lalu tekan Coba lagi."
           onRetry={onCobaLagi}
@@ -55,9 +52,9 @@ export default function DaftarPercakapan({ items, dibaca, onBuka, onBaru, memuat
       )}
 
       {memuat && items.length === 0 && !galat && (
-        <p role="status" className={styles.memuat}>
-          <Loader2 size={14} className="animate-pulse" aria-hidden="true" /> Memuat percakapan...
-        </p>
+        <div role="status">
+          <Skeleton bentuk="baris" jumlah={4} label="Memuat percakapan..." />
+        </div>
       )}
 
       <ul className={styles.list} aria-label="Daftar percakapan">
@@ -87,8 +84,8 @@ export default function DaftarPercakapan({ items, dibaca, onBuka, onBaru, memuat
                       {st.ikon === 'selesai' && <CheckCircle2 size={11} aria-hidden="true" />}
                       {st.teks}
                     </span>
-                    {baru && <span className={styles.titikBaru}>Belum dibaca</span>}
-                    {!p.layananAktif || !p.punyaChat ? <span className={styles.status}>Hanya baca</span> : null}
+                    {baru && <Lencana nada="primer">Belum dibaca</Lencana>}
+                    {!p.layananAktif || !p.punyaChat ? <Lencana nada="netral">Hanya baca</Lencana> : null}
                   </span>
                 </span>
               </button>

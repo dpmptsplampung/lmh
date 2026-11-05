@@ -107,6 +107,14 @@ export const FORWARD_MIGRATION_FILES = [
   '202611030006_pengaduan_tanggapan.sql',
   '202611030007_public_url_dpmptsp.sql',
   '202611030008_pesan_perilaku_publik.sql',
+  '202611030009_chat_identitas_google.sql',
+  '202611030010_anonimitas_saran_pengaduan.sql',
+  '202611030011_anonimitas_lanjutan.sql',
+  '202611030012_layar_tv.sql',
+  '202611030013_masukan_pengunjung.sql',
+  '202611030014_profil_ubah_nama.sql',
+  '202611030015_akses_fo_antrean.sql',
+  '202611040001_perbaikan_tinjauan_akhir.sql',
 ] as const;
 
 export function listMigrationFiles(): string[] {

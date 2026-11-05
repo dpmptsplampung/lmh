@@ -1,0 +1,19 @@
+.area1 {
+  list-style: none;
+}
+
+.area2 {
+  margin-top: var(--space-3);
+}
+
+.area3 {
+  flex: 1 1 220px;
+}
+
+.baris4 {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  cursor: pointer;
+  flex-wrap: wrap;
+}

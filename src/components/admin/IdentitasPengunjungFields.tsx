@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client';
 import {
   KATEGORI_PENGUNJUNG, KOLOM_IDENTITAS, LABEL_IDENTITAS, type IdentitasForm, type KolomIdentitas,
 } from '@/lib/pendataan-khusus/identitas';
+import styles from './FormAntrean.module.css';
 
 const KOSONG: IdentitasForm = { nama: '', kontak_hp: '', email: '', asal_instansi: '', kategori: '', keperluan: '' };
 
@@ -46,13 +47,12 @@ interface Props {
   disabled?: boolean;
 }
 
-const GAYA_GALAT: React.CSSProperties = { color: 'var(--color-danger-600)', fontSize: 12, margin: '4px 0 0' };
 
 export default function IdentitasPengunjungFields({ idDasar, nilai, onNilai, galat, disabled }: Props) {
   return (
-    <fieldset style={{ border: '1px solid var(--border-default)', borderRadius: 8, padding: 'var(--space-3) var(--space-4)', margin: 0 }}>
-      <legend style={{ fontWeight: 600, padding: '0 var(--space-2)' }}>Identitas pengunjung</legend>
-      <p style={{ margin: '0 0 var(--space-3)', fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
+    <fieldset className={styles.identitas}>
+      <legend className={styles.legenda}>Identitas pengunjung</legend>
+      <p className={styles.ringkas}>
         Terisi dari profil pengunjung. Lengkapi atau koreksi bila perlu; kolom yang dikosongkan tidak mengubah data.
       </p>
       {KOLOM_IDENTITAS.map((k) => {
@@ -84,7 +84,7 @@ export default function IdentitasPengunjungFields({ idDasar, nilai, onNilai, gal
                 onChange={(e) => onNilai(k, e.target.value)}
               />
             )}
-            {pesan && <p id={`${id}-galat`} role="alert" style={GAYA_GALAT}>{pesan}</p>}
+            {pesan && <p id={`${id}-galat`} role="alert" className={styles.galat}>{pesan}</p>}
           </div>
         );
       })}

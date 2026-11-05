@@ -1,28 +1,17 @@
+/* Performa Pelayanan gaya "Dasbor": kolom berlebar maksimum, kartu putih di atas kanvas, warna dari token tema. */
+.wadah {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-grid, 20px);
+  max-width: var(--content-max, 1440px);
+  margin: 0 auto;
+  padding: 0 var(--pad-page, 24px) var(--space-10, 40px);
+}
+
 .kartu {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: var(--space-4);
-  margin-bottom: var(--space-6);
-}
-
-.bagian {
-  margin-bottom: var(--space-8);
-}
-
-.judul {
-  font-size: var(--text-lg);
-  font-weight: 600;
-  margin: 0 0 var(--space-3);
-}
-
-.catatan {
-  font-size: var(--text-sm);
-  color: var(--text-secondary);
-  background: var(--color-primary-50, #eff6ff);
-  border: 1px solid var(--color-primary-100, #dbeafe);
-  border-radius: var(--radius-md, 8px);
-  padding: var(--space-3) var(--space-4);
-  margin: 0 0 var(--space-6);
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: var(--gap-grid, 20px);
 }
 
 .filter {
@@ -30,22 +19,40 @@
   flex-wrap: wrap;
   gap: var(--space-3);
   align-items: flex-end;
-  margin-bottom: var(--space-6);
+}
+
+.sel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 90px;
 }
 
 .batangLatar {
-  background: var(--color-primary-50, #eff6ff);
-  border-radius: 4px;
-  height: 10px;
+  background: var(--color-primary-50);
+  border-radius: var(--radius-full, 999px);
+  height: 8px;
   min-width: 80px;
 }
 
 .batang {
-  background: var(--color-primary-600, #2563eb);
-  border-radius: 4px;
-  height: 10px;
+  background: var(--chart-1, var(--color-primary-600));
+  border-radius: var(--radius-full, 999px);
+  height: 8px;
 }
 
 .angka {
   font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 640px) {
+  .wadah {
+    padding-left: var(--pad-page, 16px);
+    padding-right: var(--pad-page, 16px);
+  }
+
+  .kartu {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
 }

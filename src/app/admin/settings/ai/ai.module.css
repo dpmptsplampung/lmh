@@ -1,9 +1,11 @@
 .page {
   padding: var(--space-8);
   max-width: 960px;
-  animation: fadeIn 0.4s ease-out;
+
 }
 
 @media (max-width: 640px) {
   .page { padding: var(--space-4); }
 }
+
+.page { padding: 0 var(--pad-page) var(--pad-page); min-width: 0; }

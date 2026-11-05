@@ -103,6 +103,16 @@ kini menempel pada `visit` (lihat baseline `202607140004_security_and_automation
 - **Tidak termasuk**: profil akun pengunjung (`pengunjung`), pengaduan jalur integritas, log AI. Petugas layanan tetap terbatas pada layanannya.
 - **Audit akses per-baca**: TIDAK dicatat (pertimbangan; bukan fitur). Bila DPO/CEO menilainya perlu, opsi ringan: catat pembukaan rekap/riwayat lintas-FO di `audit_log`.
 
+### Pembaruan akses antar Front Office (keputusan pemilik 2026-11-03, migrasi `202611030015`, belum diterapkan)
+
+Bagian di atas (keputusan 2026-10-14) dibalik sebagian oleh keputusan berikut. Berlaku setelah `202611030015` diterapkan:
+
+- **Terbuka untuk semua Front Office**: daftar antrean dan kunjungan (nomor, layanan, status, jam, nama) lewat fungsi berkolom aman. Nomor HP, email, dan isian pendataan milik FO lain tidak tampil.
+- **Tertutup per orang** (Admin dan Koordinator melihat semua): topik/catatan tahap, isian Pendataan Pelayanan dan Pendataan Khusus, Data Non OSS, Helpdesk OSS, Data Pelayanan, Rekap Harian, Kinerja Petugas, dan lembar "Data responden" ekspor survei. Alasan: mencegah klaim pekerjaan yang tidak dikerjakan sendiri untuk e-kinerja.
+- **Angka total tanpa isi**: tabel tertutup menampilkan "dilayani saya / total (persen)" dari fungsi agregat yang hanya mengembalikan angka, serta kolom "FO yang melayani".
+- **Pengecualian pencarian pengunjung lama**: `fo_cari_pengunjung`/`fo_ambil_pengunjung` tetap dapat dipakai FO untuk mendaftarkan ulang pengunjung (hanya identitas, beraudit, dibatasi laju); tidak membuka data kerja.
+- **Petugas layanan** tidak membaca rekap, kinerja, atau data kerja FO maupun petugas lain. Perilaku lama tetap berlaku (keputusan pemilik 2026-11-04): untuk kunjungan yang dieskalasi ke layanannya, Petugas membaca identitas pengunjung dan catatan tahap FO yang menyertainya, karena diperlukan untuk melayani.
+
 ## DPO (Data Protection Officer)
 
 **[Placeholder — diisi oleh DPMPTSP]**

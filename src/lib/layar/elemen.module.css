@@ -1,0 +1,115 @@
+/* Elemen layar TV yang dipakai bersama: pita panggilan dan teks berjalan.
+   Warna mengikuti token tema Dasbor; kontras teks >= 4.5:1. */
+
+/* Pita panggilan: menempel di ATAS layar, di atas semua halaman, tanpa menggeser tata letak. */
+.pitaWadah {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.pita {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2em 0.6em;
+  padding: clamp(10px, 2.4vh, 28px) clamp(16px, 3vw, 48px);
+  background: var(--color-primary-700);
+  color: var(--text-on-primary);
+  font-size: clamp(1.5rem, 4.6vh, 3.5rem);
+  font-weight: 800;
+  line-height: 1.15;
+  text-align: center;
+  overflow-wrap: anywhere;
+  box-shadow: var(--shadow-panel);
+  animation: pitaMasuk 0.35s ease-out;
+}
+
+.pitaNomor {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border-radius: 0.4em;
+  padding: 0.05em 0.45em;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+@keyframes pitaMasuk {
+  from { transform: translateY(-100%); }
+  to   { transform: translateY(0); }
+}
+
+/* Teks berjalan: satu pengumuman bergulir sampai habis, jeda, lalu pengumuman berikutnya.
+   Tinggi bilah tetap (juga saat jeda) agar tata letak kartu tidak bergeser. */
+.bar {
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border-subtle);
+  padding: 8px 0;
+  overflow: hidden;
+  flex-shrink: 0;
+  min-height: calc(var(--tv-label, 1.25rem) * 1.5 + 16px);
+}
+
+.teks {
+  display: inline-block;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  font-size: var(--tv-label, 1.25rem);
+  font-weight: 500;
+  line-height: 1.5;
+  padding-right: 80px;
+  animation-name: gulir;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+  /* Sebelum diukur: tersembunyi agar tidak berkedip di posisi awal. */
+  visibility: hidden;
+}
+
+.teksJalan {
+  visibility: visible;
+}
+
+@keyframes gulir {
+  from { transform: translateX(var(--lebar-bar, 100vw)); }
+  to   { transform: translateX(-100%); }
+}
+
+
+/* "Kurangi gerakan": tanpa pita meluncur dan tanpa gulir; teks tampil diam di tengah. */
+@media (prefers-reduced-motion: reduce) {
+  .pita { animation: none; }
+  .teks {
+    animation: none;
+    display: block;
+    white-space: normal;
+    text-align: center;
+    padding: 0 32px;
+  }
+}
+
+/* Pita riwayat tidak menyusutkan lebar kisi layanan. */
+.terakhir {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 1.2vw;
+  margin: 0 clamp(12px, 2vw, 32px) 1vh;
+  padding: 1vh 1.2vw;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-card);
+  height: clamp(70px, 10vh, 104px);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.terakhirJudul { font-size: clamp(16px, 1.3vw, 24px); color: var(--text-secondary); max-width: 8em; flex: none; }
+.terakhirDaftar { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); flex: 1; min-width: 0; gap: 1.2vw; list-style: none; margin: 0; padding: 0; }
+.terakhirItem { min-width: 0; border-left: 2px solid var(--border-subtle); padding-left: 1.2vw; }
+.terakhirNomor { display: block; color: var(--text-primary); font-size: clamp(24px, 2.2vw, 42px); font-variant-numeric: tabular-nums; line-height: 1.1; white-space: nowrap; }
+.terakhirNama { display: block; color: var(--text-secondary); font-size: clamp(14px, 1.1vw, 21px); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

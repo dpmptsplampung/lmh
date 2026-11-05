@@ -107,16 +107,16 @@ export interface ReservasiKunjungan {
 export const KOLOM_RESERVASI =
   'id, tanggal, status, qr_token, tujuan, layanan_saran_id, jam_rencana, nama_yang_ditemui';
 
-export const STATUS_RESERVASI_LABEL: Record<string, { label: string; className: string }> = {
-  terjadwal: { label: 'Terjadwal', className: 'badge--menunggu' },
-  menunggu: { label: 'Menunggu', className: 'badge--aktif' },
-  dilayani: { label: 'Sedang Dilayani', className: 'badge--published' },
-  selesai: { label: 'Selesai', className: 'badge--selesai' },
-  batal: { label: 'Dibatalkan', className: 'badge--nonaktif' },
-  no_show: { label: 'Hangus — Tidak Hadir', className: 'badge--nonaktif' },
-  tidak_terlayani: { label: 'Tidak Terlayani', className: 'badge--nonaktif' },
+export const STATUS_RESERVASI_LABEL: Record<string, { label: string }> = {
+  terjadwal: { label: 'Terjadwal' },
+  menunggu: { label: 'Menunggu' },
+  dilayani: { label: 'Sedang Dilayani' },
+  selesai: { label: 'Selesai' },
+  batal: { label: 'Dibatalkan' },
+  no_show: { label: 'Hangus — Tidak Hadir' },
+  tidak_terlayani: { label: 'Tidak Terlayani' },
 };
 
-export function labelStatusReservasi(status: string): { label: string; className: string } {
-  return STATUS_RESERVASI_LABEL[status] ?? { label: status, className: 'badge--draft' };
+export function labelStatusReservasi(status: string): { label: string } {
+  return STATUS_RESERVASI_LABEL[status] ?? { label: status };
 }

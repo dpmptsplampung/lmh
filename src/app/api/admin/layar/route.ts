@@ -7,6 +7,12 @@ import { MutasiError, mutasiWajibBaris } from '@/lib/supabase/mutate';
 import { catatMutasiGagal, statusMutasi } from '@/app/api/admin/_mutasi';
 import { logServerEvent } from '@/lib/observability/logger';
 import { NextRequest, NextResponse } from 'next/server';
+import { randomInt } from 'node:crypto';
+
+// Token layar baru = 8 angka acak (diketik dengan remote TV). Token lama (32 karakter) tetap valid.
+const PANJANG_TOKEN_LAYAR = 8;
+const BATAS_ULANG_TOKEN = 8;
+const buatTokenLayar = () => String(randomInt(0, 10 ** PANJANG_TOKEN_LAYAR)).padStart(PANJANG_TOKEN_LAYAR, '0');
 
 interface BuatBody { aksi: 'buat'; nama: string }
 interface CabutBody { aksi: 'cabut'; id: string }
@@ -50,11 +56,17 @@ export async function POST(req: NextRequest) {
     if (!body.nama?.trim()) {
       return NextResponse.json({ error: 'Nama layar wajib diisi' }, { status: 400 });
     }
-    const { data, error } = await supabase
-      .from('layar_token')
-      .insert({ nama: body.nama.trim(), dibuat_oleh: petugas.id })
-      .select('id, token, nama, aktif, created_at')
-      .single();
+    // Ruang token kecil: bentrok unik (23505) diulang dengan token baru, batas wajar lalu galat umum.
+    let hasil: { data: unknown; error: { code?: string } | null } = { data: null, error: null };
+    for (let i = 0; i < BATAS_ULANG_TOKEN; i += 1) {
+      hasil = await supabase
+        .from('layar_token')
+        .insert({ nama: body.nama.trim(), dibuat_oleh: petugas.id, token: buatTokenLayar() })
+        .select('id, token, nama, aktif, created_at')
+        .single();
+      if (!hasil.error || hasil.error.code !== '23505') break;
+    }
+    const { data, error } = hasil;
     if (error) {
       logServerEvent('error', { operation: 'admin.layar.buat', route: '/api/admin/layar', asalCode: error.code || undefined });
       return NextResponse.json({ error: 'Gagal membuat token layar. Coba lagi.' }, { status: 500 });

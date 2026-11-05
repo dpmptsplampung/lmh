@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, waitFor, cleanup, within, fireEvent } from '@testing-library/react';
 
 vi.mock('@/lib/supabase/client', () => ({
   createClient: vi.fn(),
@@ -15,6 +15,8 @@ interface CountResult {
 }
 
 const buildMockSupabase = (opts: {
+  auditError?: boolean;
+  piiError?: boolean;
   auditToday?: number;
   audit7?: number;
   audit30?: number;
@@ -58,7 +60,7 @@ const buildMockSupabase = (opts: {
       } else if (table === 'consent_log') {
         result = { data: opts.consentRows ?? [], error: null };
       } else if (table === 'pengunjung') {
-        result = { count: opts.piiCount ?? 0, error: null };
+        result = { count: opts.piiCount ?? 0, error: opts.piiError ? { message: 'Jaringan terputus' } : null };
       }
       return Promise.resolve(result).then(resolve, reject);
     };
@@ -94,7 +96,7 @@ const buildMockSupabase = (opts: {
       else if (diffDays < 8) count = opts.audit7 ?? 0;
       else count = opts.audit30 ?? 0;
 
-      return Promise.resolve({ count, error: null }).then(resolve, reject);
+      return Promise.resolve({ count, error: opts.auditError ? { message: 'Jaringan terputus' } : null }).then(resolve, reject);
     };
     return self;
   };
@@ -242,7 +244,23 @@ describe('I8 DPO dashboard: data-governance page smoke test', () => {
     await waitFor(() => {
       expect(screen.getByText('Audit Log')).toBeInTheDocument();
     });
-    const backLink = screen.getByRole('link', { name: /kembali ke dashboard/i });
+    const backLink = screen.getByRole('link', { name: /kembali ke dasbor/i });
     expect(backLink).toHaveAttribute('href', '/admin');
   });
+  it.each([
+    { bagian: 'Audit Log', auditError: true, piiError: false, pesan: 'Gagal memuat statistik audit.' },
+    { bagian: 'PII Aktif', auditError: false, piiError: true, pesan: 'Gagal memuat jumlah data pribadi.' },
+  ])('$bagian tidak menampilkan galat hitung sebagai nol dan dapat dicoba lagi', async (opts) => {
+    buildMockSupabase(opts);
+    render(<DataGovernancePage />);
+    await screen.findByText(opts.pesan);
+    const bagian = screen.getByRole('region', { name: opts.bagian });
+    expect(within(bagian).queryByText('0')).toBeNull();
+    opts.auditError = false;
+    opts.piiError = false;
+    fireEvent.click(within(bagian).getByRole('button', { name: 'Coba lagi' }));
+    await waitFor(() => expect(screen.queryByText(opts.pesan)).toBeNull());
+    expect(within(screen.getByRole('region', { name: opts.bagian })).getAllByText('0').length).toBeGreaterThan(0);
+  });
+
 });

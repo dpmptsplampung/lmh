@@ -1,7 +1,9 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { Loader2, X } from 'lucide-react';
+import { useState } from 'react';
+import Dialog from '@/components/ui/Dialog';
+import Field from '@/components/ui/Field';
+import Tombol from '@/components/ui/Tombol';
 import styles from './AkunForm.module.css';
 
 export type AkunRole = 'admin' | 'petugas' | 'front_office';
@@ -22,6 +24,8 @@ export interface AkunRow {
   belum_pernah_login: boolean;
   /** Fase 3: penanda Koordinator (bukan role). Tidak ada sebelum migrasi 202610290001 diterapkan. */
   koordinator?: boolean;
+  /** Admin mengizinkan pemilik akun mengisi "operator harian" di Profil Saya. Tidak ada sebelum migrasi 202611030014. */
+  operator_aktif?: boolean;
 }
 
 export interface LayananOption {
@@ -29,29 +33,14 @@ export interface LayananOption {
   nama: string;
 }
 
-/** Dialog modal sederhana: Esc menutup, fokus awal ke dialog, klik latar menutup. */
+/** Dialog akun di atas komponen Dialog bersama (fokus terjebak, Esc menutup). `kaki` = baris tombol aksi. */
 export function AkunDialog({
-  title, onClose, children,
-}: { title: string; onClose: () => void; children: React.ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    ref.current?.focus();
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  title, onClose, children, kaki,
+}: { title: string; onClose: () => void; children: React.ReactNode; kaki?: React.ReactNode }) {
   return (
-    <div className={styles.overlay} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-label={title} className={styles.dialog}>
-        <div className={styles.dialogHead}>
-          <h2 className={styles.dialogTitle}>{title}</h2>
-          <button type="button" className="btn btn--ghost btn--sm" onClick={onClose} aria-label="Tutup">
-            <X size={16} />
-          </button>
-        </div>
-        {children}
-      </div>
-    </div>
+    <Dialog terbuka onTutup={onClose} judul={title} kaki={kaki} tutupDenganLatar>
+      {children}
+    </Dialog>
   );
 }
 
@@ -103,53 +92,41 @@ export default function AkunForm({
   const msg = localError || error;
   return (
     <form onSubmit={handle} className={styles.form}>
-      {msg && <p className="form-error" role="alert">{msg}</p>}
-      <div className="form-group">
-        <label className="form-label form-label--required" htmlFor="akunNama">Nama</label>
-        <input id="akunNama" className="form-input" value={nama} onChange={(e) => setNama(e.target.value)} required minLength={2} maxLength={200} />
-      </div>
-      <div className="form-group">
-        <label className="form-label" htmlFor="akunUsername">Nama pengguna</label>
-        <input id="akunUsername" className="form-input" value={username} onChange={(e) => setUsername(e.target.value)}
+      {msg && <p className={styles.galat} role="alert">{msg}</p>}
+      <Field label="Nama" wajib>
+        <input value={nama} onChange={(e) => setNama(e.target.value)} required minLength={2} maxLength={200} />
+      </Field>
+      <Field label="Nama pengguna" bantuan="Huruf kecil, angka, dan tanda minus (3 sampai 32 karakter). Mengubahnya mengeluarkan akun dari semua perangkat.">
+        <input value={username} onChange={(e) => setUsername(e.target.value)}
           autoCapitalize="none" spellCheck={false} placeholder="mis. helpdesk-oss" />
-        <p className={styles.hint}>Huruf kecil, angka, dan tanda minus (3-32). Mengubahnya mengeluarkan akun dari semua perangkat.</p>
-      </div>
-      <div className="form-group">
-        <label className="form-label" htmlFor="akunHp">Nomor HP</label>
-        <input id="akunHp" type="tel" className="form-input" value={noHp} onChange={(e) => setNoHp(e.target.value)} placeholder="08xxxxxxxxxx" />
-      </div>
-      <div className="form-group">
-        <label className="form-label" htmlFor="akunEmail">Email notifikasi</label>
-        <input id="akunEmail" type="email" className="form-input" value={email} onChange={(e) => setEmail(e.target.value)}
+      </Field>
+      <Field label="Nomor HP">
+        <input type="tel" value={noHp} onChange={(e) => setNoHp(e.target.value)} placeholder="08xxxxxxxxxx" />
+      </Field>
+      <Field
+        label="Email notifikasi"
+        bantuan={akun.email_notifikasi_tersamar
+          ? `Saat ini ${akun.email_notifikasi_tersamar} (${akun.email_notifikasi_terverifikasi ? 'terverifikasi' : 'belum terverifikasi'}). Kosongkan bila tidak diubah.`
+          : 'Belum diisi.'}>
+        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
           placeholder={akun.email_notifikasi_tersamar ?? 'nama@instansi.go.id'} />
-        <p className={styles.hint}>
-          {akun.email_notifikasi_tersamar
-            ? `Saat ini ${akun.email_notifikasi_tersamar} (${akun.email_notifikasi_terverifikasi ? 'terverifikasi' : 'belum terverifikasi'}). Kosongkan bila tidak diubah.`
-            : 'Belum diisi.'}
-        </p>
-      </div>
-      <div className="form-group">
-        <label className="form-label" htmlFor="akunRole">Role</label>
-        <select id="akunRole" className="form-input" value={role} disabled={isSelf}
-          onChange={(e) => setRole(e.target.value as AkunRole)}>
+      </Field>
+      <Field label="Role" bantuan={isSelf ? 'Anda tidak dapat mengubah role akun sendiri.' : undefined}>
+        <select value={role} disabled={isSelf} onChange={(e) => setRole(e.target.value as AkunRole)}>
           <option value="petugas">Petugas</option>
           <option value="admin">Admin</option>
           <option value="front_office">Front Office</option>
         </select>
-        {isSelf && <p className={styles.hint}>Anda tidak dapat mengubah role akun sendiri.</p>}
-      </div>
-      <div className="form-group">
-        <label className={`form-label ${role === 'petugas' ? 'form-label--required' : ''}`} htmlFor="akunLayanan">Layanan</label>
-        <select id="akunLayanan" className="form-input" value={layananId} onChange={(e) => setLayananId(e.target.value)}>
-          <option value="">{role === 'petugas' ? '— Pilih layanan —' : '— Tanpa layanan —'}</option>
+      </Field>
+      <Field label="Layanan" wajib={role === 'petugas'}>
+        <select value={layananId} onChange={(e) => setLayananId(e.target.value)}>
+          <option value="">{role === 'petugas' ? 'Pilih layanan' : 'Tanpa layanan'}</option>
           {layananList.map((l) => <option key={l.id} value={l.id}>{l.nama}</option>)}
         </select>
-      </div>
+      </Field>
       <div className={styles.actions}>
-        <button type="button" className="btn btn--ghost" onClick={onCancel}>Batal</button>
-        <button type="submit" className="btn btn--primary" disabled={saving}>
-          {saving ? <Loader2 size={16} className="animate-pulse" /> : null} Simpan
-        </button>
+        <Tombol varian="hantu" onClick={onCancel}>Batal</Tombol>
+        <Tombol type="submit" memuat={saving}>Simpan</Tombol>
       </div>
     </form>
   );

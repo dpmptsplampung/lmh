@@ -1,7 +1,9 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { X, CheckCircle, AlertCircle, AlertTriangle, Info } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import styles from './Toast.module.css';
 
 type ToastType = 'success' | 'error' | 'warning' | 'info';
 
@@ -17,42 +19,15 @@ interface ToastContextValue {
 
 const ToastContext = createContext<ToastContextValue | null>(null);
 
-const toastConfig: Record<ToastType, {
-  icon: React.ElementType;
-  bg: string;
-  border: string;
-  text: string;
-  iconColor: string;
-}> = {
-  success: {
-    icon: CheckCircle,
-    bg: 'var(--color-success-50)',
-    border: 'var(--color-success-500)',
-    text: 'var(--color-success-700)',
-    iconColor: 'var(--color-success-500)',
-  },
-  error: {
-    icon: AlertCircle,
-    bg: 'var(--color-danger-50)',
-    border: 'var(--color-danger-500)',
-    text: 'var(--color-danger-700)',
-    iconColor: 'var(--color-danger-500)',
-  },
-  warning: {
-    icon: AlertTriangle,
-    bg: 'var(--color-warning-50)',
-    border: 'var(--color-warning-500)',
-    text: 'var(--color-warning-600)',
-    iconColor: 'var(--color-warning-500)',
-  },
-  info: {
-    icon: Info,
-    bg: 'var(--color-primary-50)',
-    border: 'var(--color-primary-500)',
-    text: 'var(--color-primary-700)',
-    iconColor: 'var(--color-primary-500)',
-  },
+const ikonToast: Record<ToastType, React.ElementType> = {
+  success: CheckCircle,
+  error: AlertCircle,
+  warning: AlertTriangle,
+  info: Info,
 };
+
+/** Sukses, peringatan, dan info hilang sendiri; galat menetap sampai ditutup (A8). */
+export const DURASI_TOAST_MS = 4000;
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
@@ -63,41 +38,60 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   const toast = useCallback((message: string, type: ToastType = 'info') => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-    setToasts((prev) => [...prev, { id, message, type }]);
+    setToasts((prev) => {
+      // Galat menetap, jadi galat yang sama tidak ditumpuk berulang.
+      if (type === 'error' && prev.some((t) => t.type === 'error' && t.message === message)) return prev;
+      return [...prev, { id, message, type }];
+    });
   }, []);
 
   return (
     <ToastContext.Provider value={{ toast }}>
       {children}
-      <div
-        style={{
-          position: 'fixed',
-          bottom: '1.5rem',
-          right: '1.5rem',
-          zIndex: 'var(--z-toast, 1400)',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '0.75rem',
-          pointerEvents: 'none',
-        }}
-      >
+      <div className={styles.wadah} data-toast="wadah">
         {toasts.map((t) => (
-          <ToastCard key={t.id} toast={t} onClose={() => removeToast(t.id)} />
+          <ToastCard key={t.id} toast={t} onClose={removeToast} />
         ))}
       </div>
     </ToastContext.Provider>
   );
 }
 
-function ToastCard({ toast, onClose }: { toast: ToastItem; onClose: () => void }) {
+function ToastCard({ toast, onClose }: { toast: ToastItem; onClose: (id: string) => void }) {
+  const [dijeda, setDijeda] = useState(false);
+  const menetap = toast.type === 'error';
+  // Penjemput stabil: timer tidak diulang tiap provider dirender ulang.
+  const tutupRef = useRef(onClose);
   useEffect(() => {
-    const timer = setTimeout(onClose, 4000);
+    tutupRef.current = onClose;
+  });
+
+  useEffect(() => {
+    if (menetap || dijeda) return;
+    const timer = setTimeout(() => tutupRef.current(toast.id), DURASI_TOAST_MS);
     return () => clearTimeout(timer);
-  }, [toast.id, onClose]);
+  }, [toast.id, menetap, dijeda]);
 
-  const config = toastConfig[toast.type];
-  const Icon = config.icon;
+  // Jeda saat disorot atau difokus (WCAG 2.2.1). Listener asli: kartu hanya wadah pesan, bukan kontrol.
+  const kartu = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = kartu.current;
+    if (!el) return;
+    const jeda = () => setDijeda(true);
+    const lanjut = () => setDijeda(false);
+    el.addEventListener('mouseenter', jeda);
+    el.addEventListener('mouseleave', lanjut);
+    el.addEventListener('focusin', jeda);
+    el.addEventListener('focusout', lanjut);
+    return () => {
+      el.removeEventListener('mouseenter', jeda);
+      el.removeEventListener('mouseleave', lanjut);
+      el.removeEventListener('focusin', jeda);
+      el.removeEventListener('focusout', lanjut);
+    };
+  }, []);
 
+  const Icon = ikonToast[toast.type];
   const isError = toast.type === 'error';
 
   return (
@@ -105,48 +99,21 @@ function ToastCard({ toast, onClose }: { toast: ToastItem; onClose: () => void }
       role={isError ? 'alert' : 'status'}
       aria-live={isError ? 'assertive' : 'polite'}
       aria-atomic="true"
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '0.75rem',
-        background: config.bg,
-        borderLeft: `4px solid ${config.border}`,
-        borderRadius: '0.5rem',
-        padding: '1rem 1.25rem',
-        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-        maxWidth: '400px',
-        minWidth: '300px',
-        pointerEvents: 'auto',
-        animation: 'toastSlideIn 0.3s ease-out',
-      }}
+      data-toast="kartu"
+      data-varian={toast.type}
+      className={cn(styles.kartu, styles[toast.type])}
+      ref={kartu}
     >
-      <Icon size={20} color={config.iconColor} style={{ flexShrink: 0 }} aria-hidden />
-      <span
-        style={{
-          fontSize: '0.875rem',
-          color: config.text,
-          fontWeight: 500,
-          flex: 1,
-        }}
-      >
-        {toast.message}
-      </span>
+      <Icon size={20} className={styles.ikon} aria-hidden />
+      <span className={styles.pesan}>{toast.message}</span>
       <button
         type="button"
-        onClick={onClose}
-        style={{
-          background: 'none',
-          border: 'none',
-          cursor: 'pointer',
-          padding: '0.5rem',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: 'var(--color-neutral-400)',
-          flexShrink: 0,
-          minWidth: '44px',
-          minHeight: '44px',
+        onClick={() => onClose(toast.id)}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') onClose(toast.id);
         }}
+        className={styles.tutup}
+        style={{ minWidth: '44px', minHeight: '44px' }}
         aria-label="Tutup notifikasi"
       >
         <X size={16} aria-hidden />

@@ -33,7 +33,7 @@ function siapkanSupabase() {
     // Daftar sesi milik pengunjung (cadangan daftar percakapan bila RPC chat_percakapan_saya belum ada).
     sesiList: (): PromiseLike<Hasil> => Promise.resolve({ data: [], error: null }),
     getUser: (): PromiseLike<unknown> =>
-      Promise.resolve({ data: { user: { id: 'auth-user-1' } }, error: null }),
+      Promise.resolve({ data: { user: { id: 'auth-user-1', is_anonymous: false, identities: [{ provider: 'google' }] } }, error: null }),
   };
   const inserts: Sisipan[] = [];
   const filterFaq: string[] = [];
@@ -87,7 +87,7 @@ function siapkanSupabase() {
 
 async function pilihLayananDanSetuju() {
   await waitFor(() => expect(screen.getByRole('option', { name: 'Bank Lampung' })).toBeInTheDocument());
-  fireEvent.change(screen.getByLabelText('Layanan yang Ditanyakan'), { target: { value: LAYANAN_ID } });
+  fireEvent.change(screen.getByLabelText(/^Layanan yang Ditanyakan/), { target: { value: LAYANAN_ID } });
   fireEvent.click(screen.getByLabelText(/saya setuju data saya diproses/i));
 }
 
@@ -125,7 +125,7 @@ describe('chat pengunjung: daftar layanan gagal dimuat (T7)', () => {
     expect(screen.getByRole('button', { name: /coba lagi/i })).toBeEnabled();
 
     // Tidak ada daftar cadangan: dropdown hanya berisi placeholder, tak ada id/nama palsu.
-    const select = screen.getByLabelText('Layanan yang Ditanyakan') as HTMLSelectElement;
+    const select = screen.getByLabelText(/^Layanan yang Ditanyakan/) as HTMLSelectElement;
     expect(Array.from(select.options).map((o) => o.value)).toEqual(['']);
     expect(document.body.innerHTML).not.toContain('fallback-');
     expect(screen.queryByRole('option', { name: /halal|nib|bank lampung/i })).toBeNull();
@@ -362,7 +362,7 @@ describe('chat pengunjung: consent PDP memblokir (S1)', () => {
     expect(localStorage.getItem('lmh_chat_sesi_id')).toBeNull();
     // Tetap di formulir awal; tidak masuk ke ruang chat.
     expect(screen.queryByText('Mode Chatbot FAQ Aktif')).toBeNull();
-    expect(screen.getByLabelText('Layanan yang Ditanyakan')).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Layanan yang Ditanyakan/)).toBeInTheDocument();
   });
 
   it('consent_log promise menolak (jaringan) -> sesi TIDAK dibuat, pesan menyebut koneksi', async () => {
@@ -402,7 +402,7 @@ describe('chat pengunjung: consent PDP memblokir (S1)', () => {
     impl.getUser = () => {
       panggilan += 1;
       // Pertama (saat halaman dibuka) ada user; kedua (saat mulai sesi) sesi login sudah hilang.
-      return Promise.resolve({ data: { user: panggilan === 1 ? { id: 'auth-user-1' } : null }, error: null });
+      return Promise.resolve({ data: { user: panggilan === 1 ? { id: 'auth-user-1', is_anonymous: false, identities: [{ provider: 'google' }] } : null }, error: null });
     };
     // Tanpa baris pengunjung agar consentRef bergantung pada getUser saat mulai.
     const klien = (createClient as unknown as () => { from: (t: string) => Record<string, unknown> })();

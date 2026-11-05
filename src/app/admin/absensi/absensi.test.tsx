@@ -233,3 +233,55 @@ describe('admin absensi: absen pulang petugas (catat_pulang)', () => {
     expect(h.toast).not.toHaveBeenCalledWith('Absen pulang berhasil dicatat', 'success');
   });
 });
+
+describe('admin absensi: tampilan Dasbor (galat, pemilih tanggal, aksi tetap ada)', () => {
+  beforeEach(() => {
+    h.toast.mockClear();
+    h.rpc.mockClear();
+    h.state.role = 'front_office';
+    h.state.rows = [row()];
+    h.state.rpcError = null;
+    h.state.onRpcOk = null;
+    h.state.queryError = null;
+  });
+  afterEach(cleanup);
+
+  it('gagal memuat daftar: pesan galat + Coba lagi, BUKAN "Belum Ada Absensi"; Coba lagi memulihkan', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    h.state.rows = [];
+    h.state.queryError = { message: 'TypeError: Failed to fetch' };
+    render(<AbsensiPage />);
+    expect(await screen.findByText(/Daftar absensi tidak dapat dimuat/)).toBeInTheDocument();
+    expect(screen.queryByText('Belum Ada Absensi')).toBeNull();
+    // statistik tidak menampilkan angka nol palsu
+    expect(screen.queryByText('Hadir Hari Ini')).toBeNull();
+    h.state.queryError = null;
+    h.state.rows = [row()];
+    fireEvent.click(screen.getByRole('button', { name: 'Coba lagi' }));
+    expect(await screen.findByText('Budi')).toBeInTheDocument();
+    expect(screen.queryByText(/Daftar absensi tidak dapat dimuat/)).toBeNull();
+    spy.mockRestore();
+  });
+
+  it('daftar kosong yang sebenarnya menampilkan keadaan kosong, bukan galat', async () => {
+    h.state.rows = [];
+    render(<AbsensiPage />);
+    expect(await screen.findByText('Belum Ada Absensi')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('tanggal memakai pemilih tanggal; Front Office tetap punya tombol Catat Hadir; Setujui dan Tolak tetap di baris', async () => {
+    render(<AbsensiPage />);
+    expect(await screen.findByRole('button', { name: /^Tanggal absensi:/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Catat Hadir' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Setujui' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Tolak/ })).toBeInTheDocument();
+  });
+
+  it('jam ditulis dalam WIB (01.00 UTC = 08.00 WIB)', async () => {
+    render(<AbsensiPage />);
+    const baris = (await screen.findByText('Budi')).closest('tr')!;
+    expect(baris).toHaveTextContent('08.00');
+  });
+});
+

@@ -17,7 +17,8 @@ const thenable = (r: Hasil) => Object.assign(Promise.resolve(r), { range: vi.fn(
 const LINGKUP_BIASA = { petugas_id: 'p1', role: 'front_office', koordinator: false, layanan_id: null, layanan_nama: null };
 
 function pasang(opsi: { user?: unknown; rpc?: Record<string, Hasil>; layanan?: Hasil }) {
-  const rpc = vi.fn((nama: string, _args?: Record<string, unknown>) => thenable(opsi.rpc?.[nama] ?? { data: null, error: null }));
+  const rpc = vi.fn((nama: string, _args?: Record<string, unknown>) => thenable(opsi.rpc?.[nama]
+    ?? (nama === 'rekap_ringkasan_dilayani' ? { data: null, error: { code: 'PGRST202' } } : { data: null, error: null })));
   const eqLayanan = vi.fn();
   const pembangunLayanan = {
     order: vi.fn(() => pembangunLayanan),

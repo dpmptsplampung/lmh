@@ -54,13 +54,13 @@
 
 /* Section Panel */
 .sectionPanel {
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  border: 1px solid var(--glass-border);
+  background: var(--bg-surface);
+
+
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-xl);
   padding: var(--space-6);
-  animation: fadeIn 0.3s ease-out;
+
 }
 
 .sectionTitle {
@@ -97,7 +97,7 @@
 
 .serviceCard {
   background: transparent;
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
   padding: var(--space-5);
   transition: border-color var(--transition-fast);
@@ -150,10 +150,10 @@
   width: 32px;
   height: 32px;
   border-radius: var(--radius-md);
-  border: 1px solid var(--glass-border);
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+
+
   color: var(--text-secondary);
   cursor: pointer;
   transition: all var(--transition-fast);
@@ -208,9 +208,9 @@
   width: 18px;
   left: 3px;
   bottom: 3px;
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
+  background: var(--bg-surface);
+
+
   border-radius: 50%;
   transition: transform var(--transition-fast);
 }
@@ -270,3 +270,6 @@
     grid-template-columns: 1fr;
   }
 }
+
+.landingPage { padding: 0 var(--pad-page) var(--pad-page); min-width: 0; }
+@media (pointer: coarse) { .reorderBtn, .toggleSwitch { min-width: 44px; min-height: 44px; } }

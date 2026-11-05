@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const state = vi.hoisted(() => ({ callerId: 'auth-1' as string | null, anonim: false, rpc: vi.fn() }));
+const state = vi.hoisted(() => ({ callerId: 'auth-1' as string | null, anonim: false, provider: 'google', rpc: vi.fn() }));
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(async () => ({
-    auth: { getUser: vi.fn(async () => ({ data: { user: state.callerId ? { id: state.callerId, is_anonymous: state.anonim } : null }, error: null })) },
+    auth: { getUser: vi.fn(async () => ({ data: { user: state.callerId ? { id: state.callerId, is_anonymous: state.anonim, identities: [{ provider: state.provider }] } : null }, error: null })) },
     rpc: state.rpc,
     from: () => {
       throw new Error('route tidak boleh membaca/menulis tabel langsung');
@@ -34,6 +34,7 @@ describe('POST /api/chat/petugas', () => {
     vi.resetModules();
     state.callerId = 'auth-1';
     state.anonim = false;
+    state.provider = 'google';
     state.rpc.mockReset();
     serviceCreate.mockReset();
   });
@@ -74,6 +75,14 @@ describe('POST /api/chat/petugas', () => {
 
   it('A3: akun anonim ditolak di server (403 LOGIN_GOOGLE) tanpa memanggil RPC', async () => {
     state.anonim = true;
+    const res = await panggil({ sesi_id: SESI });
+    expect(res.status).toBe(403);
+    expect((await res.json()).kode).toBe('LOGIN_GOOGLE');
+    expect(state.rpc).not.toHaveBeenCalled();
+  });
+
+  it('R5: pengunjung nonanonim tanpa identitas Google (sandi) ditolak 403 LOGIN_GOOGLE tanpa memanggil RPC', async () => {
+    state.provider = 'email';
     const res = await panggil({ sesi_id: SESI });
     expect(res.status).toBe(403);
     expect((await res.json()).kode).toBe('LOGIN_GOOGLE');

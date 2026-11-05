@@ -10,7 +10,7 @@ import type { NextRequest } from 'next/server';
 
 const ME = {
   id: 'p-1', nama: 'Helpdesk', username: 'helpdesk-oss', role: 'petugas', layanan_id: 'l1', no_hp: null,
-  email_notifikasi: null, email_notifikasi_verified_at: null, operator_default: null, wajib_ganti_sandi: false,
+  email_notifikasi: null, email_notifikasi_verified_at: null, operator_default: null, operator_aktif: true, wajib_ganti_sandi: false,
   aktif: true, layanan: { nama: 'Helpdesk OSS' },
 };
 const req = (body?: unknown) =>

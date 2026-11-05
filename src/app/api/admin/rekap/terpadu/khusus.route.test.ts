@@ -34,6 +34,7 @@ function pasang(o: { fields?: Hasil; peta?: Hasil; baris?: unknown[] } = {}) {
       nama === 'lingkup_data_saya' ? { data: LINGKUP, error: null }
       : nama === 'rekap_data_pelayanan' ? { data: { total: (o.baris ?? []).length, rows: o.baris ?? [], berikut: null }, error: null }
       : nama === 'pendataan_khusus_peta' ? (o.peta ?? { data: {}, error: null })
+      : nama === 'rekap_ringkasan_dilayani' ? { data: null, error: { code: 'PGRST202' } }
       : { data: null, error: null };
     return Object.assign(Promise.resolve(r), {});
   });

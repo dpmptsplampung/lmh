@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { punyaIdentitasGoogle } from '@/lib/chat/gerbang-google';
 import { createClient as createServerClient } from '@/lib/supabase/server';
 import { KODE_MIGRASI_BELUM, objekBelumAda } from '@/lib/akses-data/galat';
 import { catatMutasi } from '@/lib/observability/catat-mutasi';
@@ -44,6 +45,10 @@ export async function POST(request: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   // B5 (A3): live chat hanya login Google. Akun anonim ditolak di server (DB menegakkan lagi lewat JWT is_anonymous).
   if ((user as { is_anonymous?: boolean }).is_anonymous === true) {
+    return NextResponse.json({ error: GALAT.LOGIN_GOOGLE.pesan, kode: 'LOGIN_GOOGLE' }, { status: 403 });
+  }
+  // R5: "minta petugas" adalah aksi pengunjung -> wajib identitas Google dari data Auth (staf tidak memakai jalur ini).
+  if (!punyaIdentitasGoogle(user)) {
     return NextResponse.json({ error: GALAT.LOGIN_GOOGLE.pesan, kode: 'LOGIN_GOOGLE' }, { status: 403 });
   }
 

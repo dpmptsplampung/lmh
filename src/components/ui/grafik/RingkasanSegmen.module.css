@@ -1,0 +1,47 @@
+.daftar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 16px 24px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.segmen {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.nilai {
+  margin: 0;
+  font-size: var(--fs-kpi);
+  font-weight: 600;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.label {
+  margin: 0;
+  font-size: var(--fs-body);
+  color: var(--text-secondary);
+}
+
+.jalur {
+  display: block;
+  height: 4px;
+  margin-top: 4px;
+  border-radius: var(--radius-full);
+  background: var(--chart-bar-muted);
+  overflow: hidden;
+}
+
+.garis {
+  display: block;
+  width: var(--lebar);
+  height: 100%;
+  min-width: 4px;
+  border-radius: var(--radius-full);
+  background: var(--warna);
+}

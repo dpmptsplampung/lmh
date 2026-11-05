@@ -5,12 +5,30 @@
 // B4 (migrasi 202610140004): tiket HASIL ESKALASI Front Office (penanganan_asal_id) menampilkan catatan FO, wajib topik +
 // catatan saat selesai, "Kembalikan ke FO" (pemilik) dan "Alihkan" (Admin).
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, cleanup, fireEvent, within } from '@testing-library/react';
+import { render, screen, waitFor, cleanup, fireEvent, within, act } from '@testing-library/react';
 
 const toastMock = vi.hoisted(() => vi.fn());
 
+// A13: tanggal/status/halaman ada di URL. Tes tabel memakai tab "Semua" (semua status tampil) kecuali dinyatakan lain.
+const nav = vi.hoisted(() => ({ query: 'status=semua', replace: vi.fn() }));
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ replace: nav.replace }),
+  usePathname: () => '/admin/antrian',
+  useSearchParams: () => new URLSearchParams(nav.query),
+}));
+
+// Panel Sekarang (A1/A3) diuji terpisah (PanelSekarang.test.tsx, antrian.panel.test.tsx): di sini dikosongkan agar nama
+// pengunjung dan tombol Panggil/Mulai/Selesai panel tidak bertabrakan dengan pencarian pada tabel.
+vi.mock('./PanelSekarang', () => ({ default: () => null }));
+
 vi.mock('@/lib/supabase/client', () => ({
   createClient: vi.fn(),
+}));
+
+// Tangkap fungsi muat ulang yang diberikan ke hook realtime (dipicu event/polling) agar bisa dipanggil dari tes.
+const realtime = vi.hoisted(() => ({ refetch: null as null | (() => Promise<void>) }));
+vi.mock('@/lib/hooks/useRealtimeRefetch', () => ({
+  useRealtimeRefetch: (fn: () => Promise<void>) => { realtime.refetch = fn; },
 }));
 
 vi.mock('@/components/Toast', () => ({
@@ -56,6 +74,8 @@ vi.mock('@/components/QRCode', () => ({
 
 import AntrianPage from './page';
 import { createClient } from '@/lib/supabase/client';
+import { addDaysWIB, todayWIB } from '@/lib/time';
+import { formatTanggal } from '@/lib/utils';
 
 type AntrianRow = {
   id: string;
@@ -87,7 +107,7 @@ function buildMock(opts: {
   layananId?: string | null;
   // Hasil RPC per nama; nilai bisa Promise (untuk menguji tombol terkunci selama request).
   rpc?: Partial<Record<
-    'panggil_tiket' | 'layanan_mulai' | 'layanan_selesai' | 'admin_ambil_alih' | 'layanan_kembalikan' | 'admin_alihkan'
+    'fo_antrean_daftar' | 'panggil_tiket' | 'layanan_mulai' | 'layanan_selesai' | 'admin_ambil_alih' | 'layanan_kembalikan' | 'admin_alihkan'
     | 'ambil_qr_survei',
     HasilRpc | Promise<HasilRpc>
   >>;
@@ -105,8 +125,12 @@ function buildMock(opts: {
   const layananId = opts.layananId === undefined ? (role === 'petugas' ? 'l-1' : null) : opts.layananId;
 
   const range = vi.fn().mockResolvedValue({ data: rows, count: rows.length });
-  const order = vi.fn().mockReturnValue({ range, eq: vi.fn().mockReturnValue({ range }) });
-  const statsEq = vi.fn().mockResolvedValue({ data: rows, count: rows.length });
+  const inStatus = vi.fn().mockReturnValue({ range, eq: vi.fn().mockReturnValue({ range }) });
+  const order = vi.fn().mockReturnValue({ range, in: inStatus, eq: vi.fn().mockReturnValue({ range }) });
+  // Kueri statistik: bisa di-await dan masih bisa disambung .eq('layanan_id', ...) (rantai Supabase asli).
+  const hasilStats = (): Promise<{ data: AntrianRow[]; count: number }> & { eq: () => unknown } =>
+    Object.assign(Promise.resolve({ data: rows, count: rows.length }), { eq: () => hasilStats() });
+  const statsEq = vi.fn(() => hasilStats());
   const eqTanggal = vi.fn().mockReturnValue({ order, eq: statsEq });
   const tiketSelect = vi.fn().mockReturnValue({ eq: eqTanggal });
 
@@ -124,6 +148,8 @@ function buildMock(opts: {
   const visitUpdate = vi.fn();
 
   const hasilDefault: Record<string, HasilRpc> = {
+    // RPC akses FO (migrasi 202611030015) belum ada: halaman memakai kueri lama (perilaku sebelum migrasi).
+    fo_antrean_daftar: { data: null, error: { code: 'PGRST202', message: 'fungsi tidak ada' } },
     panggil_tiket: { data: 'A-001', error: null },
     layanan_mulai: { data: { ok: true, sudah_milik_anda: false }, error: null },
     layanan_selesai: { data: { ok: true, is_locked: false }, error: null },
@@ -175,6 +201,8 @@ function buildMock(opts: {
     }),
     rpc,
     _visitUpdate: visitUpdate,
+    _range: range,
+    _inStatus: inStatus,
     _tiketSelect: tiketSelect,
     _penangananIn: penangananQ.inFn,
     _topikEq: topikQ.eq,
@@ -219,11 +247,34 @@ const jumlahMuat = (mock: ReturnType<typeof buildMock>) =>
 beforeEach(() => {
   vi.clearAllMocks();
   toastMock.mockClear();
+  realtime.refetch = null;
+  nav.query = 'status=semua';
 });
 
 afterEach(() => {
   cleanup();
 });
+
+// ── Pemilih tanggal (PemilihTanggal): chip membuka kisi kalender; hari berlabel "4 November 2026[, ...]" ──
+const labelHari = (iso: string) => formatTanggal(`${iso}T12:00:00+07:00`);
+const chipTanggal = () => screen.getByRole('button', { name: /^Tanggal antrean:/ });
+/** Dengan kisi terbuka: pindah bulan (maks 3) sampai hari yang dicari tampil, lalu kembalikan tombolnya. */
+async function bukaHari(iso: string): Promise<HTMLElement> {
+  const cari = () => screen.queryByRole('button', { name: new RegExp(`^${labelHari(iso)}`) });
+  for (let i = 0; i < 3 && !cari(); i++) {
+    const [y, m] = iso.split('-').map(Number);
+    const sekarang = new Date();
+    const lampau = y < sekarang.getFullYear() || (y === sekarang.getFullYear() && m < sekarang.getMonth() + 1);
+    fireEvent.click(screen.getByRole('button', { name: lampau ? 'Bulan sebelumnya' : 'Bulan berikutnya' }));
+  }
+  const hari = cari();
+  if (!hari) throw new Error(`hari ${iso} tidak ditemukan di kisi`);
+  return hari;
+}
+async function pilihHari(iso: string) {
+  fireEvent.click(chipTanggal());
+  fireEvent.click(await bukaHari(iso));
+}
 
 describe('Admin antrian: daftar', () => {
   it('memuat walk_in dan reservasi (tidak memfilter asal)', async () => {
@@ -478,7 +529,7 @@ describe('Admin antrian: Selesai hanya oleh pemilik (rpc layanan_selesai)', () =
     buildMock({ rows: [dilayaniSaya({ layanan: { nama: 'BPJS Kesehatan' } })], rpc: { layanan_selesai: { data: null, error: null } } });
     render(<AntrianPage />);
     fireEvent.click(await screen.findByRole('button', { name: /^selesai$/i }));
-    await waitFor(() => expect(toastMock).toHaveBeenCalledWith(expect.stringContaining('Gagal menyelesaikan antrian'), 'error'));
+    await waitFor(() => expect(toastMock).toHaveBeenCalledWith(expect.stringContaining('Gagal menyelesaikan antrean'), 'error'));
     expect(toastMock).not.toHaveBeenCalledWith('Kunjungan berhasil diselesaikan', 'success');
   });
 });
@@ -597,6 +648,38 @@ describe('Admin antrian: Panggil (panggil_tiket, tidak berubah)', () => {
     render(<AntrianPage />);
     fireEvent.click(await screen.findByRole('button', { name: /^panggil$/i }));
     await waitFor(() => expect(toastMock).toHaveBeenCalledWith(pesanDipanggil('A-001'), 'success'));
+  });
+
+  // Layar TV: tiap klik sukses = satu kejadian panggilan baru. Jeda hanya menahan klik ganda tak sengaja.
+  it('klik beruntun cepat hanya satu panggilan; setelah jeda tombol aktif lagi dan klik berikutnya memanggil ulang', async () => {
+    const mock = buildMock({ rows: [baseRow()] });
+    render(<AntrianPage />);
+    const tombol = await screen.findByRole('button', { name: /^panggil$/i });
+    fireEvent.click(tombol);
+    fireEvent.click(tombol);
+    fireEvent.click(tombol);
+    await waitFor(() => expect(toastMock).toHaveBeenCalledWith(pesanDipanggil('A-001'), 'success'));
+    const panggilan = () => mock.rpc.mock.calls.filter(([n]) => n === 'panggil_tiket').length;
+    expect(panggilan()).toBe(1);
+    // Umpan balik tampak pada tombol selama jeda.
+    expect(screen.getByRole('button', { name: /terpanggil/i })).toBeDisabled();
+
+    const lagi = await screen.findByRole('button', { name: /^panggil$/i }, { timeout: 4000 });
+    expect(lagi).toBeEnabled();
+    fireEvent.click(lagi);
+    await waitFor(() => expect(panggilan()).toBe(2));
+    await waitFor(() => expect(toastMock.mock.calls.filter(([m, t]) => m === 'Memanggil A-001…' && t === 'success')).toHaveLength(2));
+  });
+
+  it('panggilan gagal tidak menahan tombol: bisa dicoba lagi segera', async () => {
+    const mock = buildMock({ rows: [baseRow()], rpc: { panggil_tiket: { data: null, error: { message: 'x', code: '42501' } } } });
+    render(<AntrianPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /^panggil$/i }));
+    await waitFor(() => expect(toastMock).toHaveBeenCalledWith(expect.stringContaining('Gagal memanggil A-001'), 'error'));
+    const lagi = await screen.findByRole('button', { name: /^panggil$/i });
+    expect(lagi).toBeEnabled();
+    fireEvent.click(lagi);
+    await waitFor(() => expect(mock.rpc.mock.calls.filter(([n]) => n === 'panggil_tiket')).toHaveLength(2));
   });
 });
 
@@ -1027,7 +1110,8 @@ describe('Admin antrian B4: Alihkan (Admin, admin_alihkan)', () => {
     pemicu.focus();
     fireEvent.click(pemicu);
     await screen.findByRole('dialog');
-    expect(mock.rpc).not.toHaveBeenCalled();
+    // Membuka dialog tidak memanggil RPC mutasi apa pun (pemuatan daftar lewat fo_antrean_daftar tidak dihitung).
+    expect(mock.rpc.mock.calls.filter(([n]) => n !== 'fo_antrean_daftar')).toHaveLength(0);
     fireEvent.keyDown(document, { key: 'Escape' });
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(pemicu).toHaveFocus();
@@ -1205,6 +1289,306 @@ describe('Admin antrian: lencana status Pesan Perilaku pada tiket selesai', () =
     await waitFor(() => expect(spy).toHaveBeenCalled());
     expect(screen.queryByText('Pesan Perilaku')).toBeNull();
     expect(toastMock).not.toHaveBeenCalledWith('Gagal memuat data antrian', 'error');
+    spy.mockRestore();
+  });
+});
+
+describe('Admin antrian: B-01 muat ulang senyap + C-10 label filter', () => {
+  const tunda = <T,>() => {
+    let selesai!: (v: T) => void;
+    const p = new Promise<T>((r) => { selesai = r; });
+    return { p, selesai };
+  };
+
+  it('realtime/polling menyegarkan tanpa skeleton: baris dan tombol aksi tetap ada selama muat ulang', async () => {
+    const mock = buildMock({ rows: [baseRow({ nomor_display: 'A-001' })], role: 'admin' });
+    const { container } = render(<AntrianPage />);
+    await screen.findByText('Budi');
+    const gerbang = tunda<{ data: AntrianRow[]; count: number }>();
+    mock._range.mockReturnValueOnce(gerbang.p);
+
+    let selesai!: Promise<void>;
+    await waitFor(() => expect(realtime.refetch).not.toBeNull());
+    act(() => { selesai = realtime.refetch!(); });
+
+    // Sedang menunggu respons: tabel lama masih terpasang, skeleton tidak muncul.
+    expect(container.querySelector('.skeleton')).toBeNull();
+    expect(screen.getByText('Budi')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Panggil/ })).toBeInTheDocument();
+
+    gerbang.selesai({ data: [baseRow({ nomor_display: 'A-001' }), baseRow({ id: 't-2', nomor: 2, nomor_display: 'A-002', kunjungan: { nama: 'Siti', asal: 'walk_in', waktu_masuk: new Date().toISOString() } })], count: 2 });
+    await act(async () => { await selesai; });
+    expect(await screen.findByText('Siti')).toBeInTheDocument();
+    expect(container.querySelector('.skeleton')).toBeNull();
+  });
+
+  it('muat ulang senyap tidak membaca profil petugas lagi (getUser sekali)', async () => {
+    const mock = buildMock({ rows: [baseRow()], role: 'admin' });
+    render(<AntrianPage />);
+    await screen.findByText('Budi');
+    expect(mock.auth.getUser).toHaveBeenCalledTimes(1);
+    const sebelum = jumlahMuat(mock);
+    await act(async () => { await realtime.refetch!(); });
+    expect(jumlahMuat(mock)).toBeGreaterThan(sebelum); // data dimuat ulang
+    expect(mock.auth.getUser).toHaveBeenCalledTimes(1); // profil tidak
+  });
+
+  it('respons lama tidak menimpa respons yang lebih baru (nomor permintaan)', async () => {
+    const mock = buildMock({ rows: [baseRow()], role: 'admin' });
+    render(<AntrianPage />);
+    await screen.findByText('Budi');
+    const lama = tunda<{ data: AntrianRow[]; count: number }>();
+    const baru = tunda<{ data: AntrianRow[]; count: number }>();
+    mock._range.mockReturnValueOnce(lama.p).mockReturnValueOnce(baru.p);
+    let a!: Promise<void>;
+    let b!: Promise<void>;
+    act(() => { a = realtime.refetch!(); });
+    act(() => { b = realtime.refetch!(); });
+    const baris = (nama: string) => [baseRow({ kunjungan: { nama, asal: 'walk_in', waktu_masuk: new Date().toISOString() } })];
+    baru.selesai({ data: baris('Terbaru'), count: 1 });
+    await act(async () => { await b; });
+    lama.selesai({ data: baris('Basi'), count: 1 });
+    await act(async () => { await a; });
+    expect(screen.getByText('Terbaru')).toBeInTheDocument();
+    expect(screen.queryByText('Basi')).toBeNull();
+  });
+
+  it('muat awal gagal -> galat + Coba lagi (bukan "Belum Ada Antrean"); Coba lagi memulihkan', async () => {
+    const mock = buildMock({ rows: [baseRow()], role: 'admin' });
+    mock._range.mockResolvedValueOnce({ data: null, count: null, error: { message: 'TypeError: Failed to fetch' } });
+    render(<AntrianPage />);
+    expect(await screen.findByText(/Antrean tidak dapat dimuat/)).toBeInTheDocument();
+    expect(screen.queryByText('Belum Ada Antrean')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Coba lagi' }));
+    expect(await screen.findByText('Budi')).toBeInTheDocument();
+    expect(screen.queryByText(/Antrean tidak dapat dimuat/)).toBeNull();
+  });
+
+  it('muat ulang senyap gagal -> data lama tetap tampil + catatan pembaruan gagal (tanpa toast berulang)', async () => {
+    const mock = buildMock({ rows: [baseRow()], role: 'admin' });
+    render(<AntrianPage />);
+    await screen.findByText('Budi');
+    mock._range.mockResolvedValueOnce({ data: null, count: null, error: { message: 'TypeError: Failed to fetch' } });
+    await act(async () => { await realtime.refetch!(); });
+    expect(screen.getByText('Budi')).toBeInTheDocument();
+    expect(screen.getByText(/Pembaruan terakhir gagal/)).toBeInTheDocument();
+    expect(toastMock).not.toHaveBeenCalledWith(expect.stringContaining('Gagal memuat'), 'error');
+    // muat ulang berikutnya berhasil -> catatan hilang
+    await act(async () => { await realtime.refetch!(); });
+    expect(screen.queryByText(/Pembaruan terakhir gagal/)).toBeNull();
+  });
+
+  it('ganti tanggal tetap menampilkan skeleton (data tanggal lain tak boleh tampak seperti tanggal baru)', async () => {
+    const mock = buildMock({ rows: [baseRow()], role: 'admin' });
+    const { container } = render(<AntrianPage />);
+    await screen.findByText('Budi');
+    expect(container.querySelector('[aria-busy="true"]')).toBeNull();
+    const gerbang = tunda<{ data: AntrianRow[]; count: number }>();
+    mock._range.mockReturnValueOnce(gerbang.p);
+    await pilihHari(addDaysWIB(-1));
+    await waitFor(() => expect(container.querySelector('[aria-busy="true"]')).not.toBeNull());
+    gerbang.selesai({ data: [], count: 0 });
+    await waitFor(() => expect(container.querySelector('[aria-busy="true"]')).toBeNull());
+  });
+
+  it('C-10: pemilih tanggal punya nama aksesibel dan menampilkan tanggal yang dipilih', async () => {
+    buildMock({ rows: [baseRow()], role: 'admin' });
+    render(<AntrianPage />);
+    await screen.findByText('Budi');
+    expect(chipTanggal()).toHaveAccessibleName(`Tanggal antrean: ${formatTanggal(`${todayWIB()}T12:00:00+07:00`)}`);
+  });
+});
+
+describe('Admin antrian: A13 tanggal, status, dan halaman di URL', () => {
+  it('memilih tanggal menulis ?tanggal= lewat router.replace (tanpa riwayat) dan memuat tanggal itu', async () => {
+    const mock = buildMock({ rows: [baseRow()], role: 'admin' });
+    render(<AntrianPage />);
+    await screen.findByText('Budi');
+    await pilihHari(addDaysWIB(-1));
+    await waitFor(() => expect(nav.replace).toHaveBeenCalledWith(
+      `/admin/antrian?tanggal=${addDaysWIB(-1)}&status=semua`, { scroll: false },
+    ));
+    await waitFor(() => expect(mock._tiketSelect.mock.results[0].value.eq).toHaveBeenCalledWith('tanggal', addDaysWIB(-1)));
+  });
+
+  it('?tanggal= dari URL menjadi tanggal awal; tanggal rusak jatuh ke hari ini', async () => {
+    nav.query = `status=semua&tanggal=${addDaysWIB(-2)}`;
+    const mock = buildMock({ rows: [baseRow()], role: 'admin' });
+    render(<AntrianPage />);
+    await screen.findByText('Budi');
+    expect(mock._tiketSelect.mock.results[0].value.eq).toHaveBeenCalledWith('tanggal', addDaysWIB(-2));
+    expect(chipTanggal()).toHaveTextContent(/.+/);
+    cleanup();
+    nav.query = 'status=semua&tanggal=2026-02-30';
+    const mock2 = buildMock({ rows: [baseRow()], role: 'admin' });
+    render(<AntrianPage />);
+    await screen.findByText('Budi');
+    expect(mock2._tiketSelect.mock.results[0].value.eq).toHaveBeenCalledWith('tanggal', todayWIB());
+  });
+
+  it('bawaan = tab Aktif: kueri memakai .in(status, [menunggu, dilayani]); URL polos tidak ditulis ulang', async () => {
+    nav.query = '';
+    const mock = buildMock({ rows: [baseRow()], role: 'admin' });
+    render(<AntrianPage />);
+    await screen.findByText('Budi');
+    expect(mock._inStatus).toHaveBeenCalledWith('status', ['menunggu', 'dilayani']);
+    expect(screen.getByRole('tab', { name: 'Aktif' })).toHaveAttribute('aria-selected', 'true');
+    expect(nav.replace).not.toHaveBeenCalled();
+  });
+
+  it('tab Selesai: .in(status, [selesai]) dan ?status=selesai ditulis ke URL; tab Semua tanpa .in', async () => {
+    nav.query = '';
+    const mock = buildMock({ rows: [baseRow()], role: 'admin' });
+    render(<AntrianPage />);
+    await screen.findByText('Budi');
+    fireEvent.click(screen.getByRole('tab', { name: 'Selesai' }));
+    await waitFor(() => expect(mock._inStatus).toHaveBeenCalledWith('status', ['selesai']));
+    expect(nav.replace).toHaveBeenLastCalledWith('/admin/antrian?status=selesai', { scroll: false });
+    mock._inStatus.mockClear();
+    fireEvent.click(screen.getByRole('tab', { name: 'Semua' }));
+    await waitFor(() => expect(nav.replace).toHaveBeenLastCalledWith('/admin/antrian?status=semua', { scroll: false }));
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Semua' })).toHaveAttribute('aria-selected', 'true'));
+    // Tab Semua tidak menyaring tabel; satu .in hanya milik sumber panel aktif yang terpisah.
+    expect(mock._inStatus).toHaveBeenCalledTimes(1);
+    expect(mock._inStatus).toHaveBeenCalledWith('status', ['menunggu', 'dilayani']);
+    fireEvent.click(screen.getByRole('tab', { name: 'Aktif' }));
+    await waitFor(() => expect(nav.replace).toHaveBeenLastCalledWith('/admin/antrian', { scroll: false }));
+  });
+
+  it('?status=selesai dari URL membuka tab Selesai; tab kosong menjelaskan alasannya (bukan galat)', async () => {
+    nav.query = 'status=selesai';
+    buildMock({ rows: [], role: 'admin' });
+    render(<AntrianPage />);
+    expect(await screen.findByText('Belum ada tiket selesai')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Selesai' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('jalur RPC FO (tanpa p_status): saringan Aktif diterapkan sebelum paginasi tanpa catatan saringan parsial', async () => {
+    nav.query = '';
+    const { legacy_visit_id: _l, ...dasar } = baseRow() as AntrianRow;
+    void _l;
+    const aktif = { ...dasar, status: 'menunggu', fo_nama: 'Rina FO' };
+    const selesai = { ...dasar, id: 't-2', nomor: 2, nomor_display: 'A-002', status: 'selesai', fo_nama: 'Rina FO', kunjungan: { nama: 'Sari', asal: 'walk_in', waktu_masuk: null } };
+    buildMock({
+      role: 'front_office',
+      rpc: { fo_antrean_daftar: { data: { rows: [aktif, selesai], total: 2, statistik: { totalSelesai: 1, rataWaktuMenit: 3 } }, error: null } },
+    });
+    render(<AntrianPage />);
+    expect(await screen.findByText('Budi')).toBeInTheDocument();
+    expect(screen.queryByText('Sari')).toBeNull();
+    expect(screen.queryByText(/Saringan status berlaku pada halaman ini saja/)).toBeNull();
+    expect(screen.getByText('Total Tiket').parentElement!.parentElement).toHaveTextContent('2');
+  });
+});
+
+describe('Admin antrian: RPC fo_antrean_daftar (akses FO, migrasi 202611030015)', () => {
+  const barisRpc = (over: Record<string, unknown> = {}) => {
+    const { legacy_visit_id: _l, ...dasar } = baseRow() as AntrianRow;
+    void _l;
+    return { ...dasar, fo_nama: 'Rina FO', ...over };
+  };
+  const halaman = (rows: unknown[], over: Record<string, unknown> = {}) => ({
+    data: { rows, total: rows.length, statistik: { totalSelesai: 7, rataWaktuMenit: 9 }, ...over },
+    error: null,
+  });
+
+  it('Admin/FO membaca lewat RPC: tanggal, halaman, kolom Front Office dari fo_nama, statistik dari RPC; tanpa kueri tiket_antrean', async () => {
+    const mock = buildMock({
+      role: 'front_office',
+      rpc: { fo_antrean_daftar: halaman([barisRpc(), barisRpc({ id: 't-2', nomor: 2, nomor_display: 'A-002', fo_nama: null })]) },
+    });
+    render(<AntrianPage />);
+    expect(await screen.findByText('Rina FO')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Front Office' })).toBeInTheDocument();
+    const panggilan = (mock.rpc.mock.calls as unknown as Array<[string, Record<string, unknown>]>).find(([n]) => n === 'fo_antrean_daftar')!;
+    expect(panggilan[1]).toMatchObject({ p_batas: 25, p_lewati: 0, p_layanan_id: null });
+    expect(screen.getByText('7')).toBeInTheDocument();
+    expect(jumlahMuat(mock)).toBe(0);
+  });
+
+  it('fo_nama kosong ditulis tanda hubung; nomor, nama, dan status tetap tampil', async () => {
+    buildMock({ role: 'admin', rpc: { fo_antrean_daftar: halaman([barisRpc({ fo_nama: null })]) } });
+    render(<AntrianPage />);
+    const baris = (await screen.findByText('Budi')).closest('tr')!;
+    expect(within(baris).getByText('A-001')).toBeInTheDocument();
+    expect(within(baris).getAllByText('—').length).toBeGreaterThan(0);
+  });
+
+  it('Petugas tidak pernah memanggil RPC FO (kueri lama berlingkup Layanannya) dan tanpa kolom Front Office', async () => {
+    const mock = buildMock({ role: 'petugas', layananId: 'l-1', rows: [baseRow()] });
+    render(<AntrianPage />);
+    await screen.findByText('Budi');
+    expect(mock.rpc.mock.calls.some(([n]) => n === 'fo_antrean_daftar')).toBe(false);
+    expect(screen.queryByRole('columnheader', { name: 'Front Office' })).toBeNull();
+  });
+
+  it('RPC belum ada: kueri lama tetap jalan tanpa kolom Front Office', async () => {
+    const mock = buildMock({ role: 'admin', rows: [baseRow()] });
+    render(<AntrianPage />);
+    expect(await screen.findByText('Budi')).toBeInTheDocument();
+    expect(jumlahMuat(mock)).toBeGreaterThan(0);
+    expect(screen.queryByRole('columnheader', { name: 'Front Office' })).toBeNull();
+  });
+
+  it('RPC ditolak (FORBIDDEN): tampil gagal memuat, bukan antrean kosong dan bukan kueri lama', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const mock = buildMock({
+      role: 'front_office', rows: [baseRow()],
+      rpc: { fo_antrean_daftar: { data: null, error: { code: '42501', message: 'FORBIDDEN: bukan staf' } } },
+    });
+    render(<AntrianPage />);
+    expect(await screen.findByText(/tidak dapat dimuat/i)).toBeInTheDocument();
+    expect(screen.queryByText('Belum Ada Antrean')).toBeNull();
+    expect(jumlahMuat(mock)).toBe(0);
+    spy.mockRestore();
+  });
+});
+
+describe('Admin antrian: jendela tanggal Front Office non-Koordinator', () => {
+  const kosong = { data: { rows: [], total: 0, statistik: { totalSelesai: 0, rataWaktuMenit: 0 } }, error: null };
+  const panggilanFo = (mock: ReturnType<typeof buildMock>) =>
+    (mock.rpc.mock.calls as unknown as Array<[string, Record<string, unknown>]>).filter(([n]) => n === 'fo_antrean_daftar');
+
+  it('FO biasa: hari di luar hari ini-7 s.d. hari ini+1 tidak tersedia di pemilih; hari di dalam jendela memanggil server', async () => {
+    const mock = buildMock({ role: 'front_office', koordinator: false, rpc: { fo_antrean_daftar: kosong } });
+    render(<AntrianPage />);
+    await waitFor(() => expect(panggilanFo(mock).length).toBeGreaterThan(0));
+    // profil dibaca sebelum pemilih mendapat batas: tunggu sampai hari di luar jendela benar-benar nonaktif
+    fireEvent.click(chipTanggal());
+    const luar = await bukaHari(addDaysWIB(-30));
+    await waitFor(() => expect(luar).toHaveAttribute('aria-disabled', 'true'));
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    const awal = panggilanFo(mock).length;
+    await pilihHari(addDaysWIB(1));
+    await waitFor(() => expect(panggilanFo(mock).length).toBe(awal + 1));
+    expect(panggilanFo(mock)[awal][1]).toMatchObject({ p_tanggal: addDaysWIB(1) });
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('Admin, FO Koordinator, dan Petugas: tanggal bebas (hari lampau tersedia di pemilih)', async () => {
+    for (const opsi of [
+      { role: 'admin' }, { role: 'front_office', koordinator: true }, { role: 'petugas', layananId: 'l-1' },
+    ] as const) {
+      cleanup();
+      buildMock({ ...opsi, rows: [baseRow()], rpc: { fo_antrean_daftar: kosong } });
+      render(<AntrianPage />);
+      await waitFor(() => expect(chipTanggal()).toBeInTheDocument());
+      await new Promise((r) => setTimeout(r, 30));
+      fireEvent.click(chipTanggal());
+      const hari = await bukaHari(addDaysWIB(-30));
+      expect(hari).not.toHaveAttribute('aria-disabled', 'true');
+    }
+  });
+
+  it('galat TANGGAL_DILUAR_BATAS dari server tampil sebagai pesan jelas, bukan "periksa koneksi"', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    buildMock({
+      role: 'front_office',
+      rpc: { fo_antrean_daftar: { data: null, error: { code: '22023', message: 'TANGGAL_DILUAR_BATAS: x' } } },
+    });
+    render(<AntrianPage />);
+    expect(await screen.findByText(/7 hari ke belakang sampai besok/)).toBeInTheDocument();
+    expect(screen.queryByText(/Periksa koneksi/)).toBeNull();
     spy.mockRestore();
   });
 });

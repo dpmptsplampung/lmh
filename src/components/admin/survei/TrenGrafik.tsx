@@ -22,7 +22,7 @@ export default function TrenGrafik({ judul, namaNilai, tren, mode }: { judul: st
               <XAxis dataKey="label" fontSize={11} tickLine={false} />
               <YAxis domain={[0, 100]} fontSize={12} tickLine={false} axisLine={false} />
               <Tooltip formatter={(v, _n, p) => [`${fmt1(Number(v))} (${(p.payload as { responden: number }).responden} responden)`, namaNilai]} />
-              <Line type="monotone" dataKey="nilai" stroke={WARNA_GARIS} strokeWidth={2} dot={{ r: 4, strokeWidth: 2, fill: '#fff' }} activeDot={{ r: 6 }} />
+              <Line type="monotone" dataKey="nilai" stroke={WARNA_GARIS} strokeWidth={2} dot={{ r: 4, strokeWidth: 2, fill: 'var(--bg-surface, var(--color-neutral-0))' }} activeDot={{ r: 6 }} />
             </LineChart>
           </ResponsiveContainer>
         </div>

@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { todayWIB, addDaysWIB } from '@/lib/time';
-import RoleNote from './RoleNote';
+import CatatanKeadaan from '@/components/ui/CatatanKeadaan';
+import styles from './RoleNote.module.css';
 
 // Banner kalender read-only: libur hari ini/besok + pengingat layanan tutup 16.00 WIB.
 // Gagal memuat -> tetap tampilkan pengingat jam tutup saja (tidak pernah memblokir halaman).
@@ -33,11 +34,11 @@ export default function CalendarBanner() {
   return (
     <div data-testid="calendar-banner">
       {hariIni !== undefined ? (
-        <RoleNote>Hari ini libur ({hariIni}). Layanan tidak menerima antrean.</RoleNote>
+        <CatatanKeadaan jenis="libur" className={styles.catatan}>Hari ini libur ({hariIni}). Layanan tidak menerima antrean.</CatatanKeadaan>
       ) : (
-        <RoleNote>Hari ini layanan tutup pukul 16.00 WIB.</RoleNote>
+        <CatatanKeadaan jenis="info" className={styles.catatan}>Hari ini layanan tutup pukul 16.00 WIB.</CatatanKeadaan>
       )}
-      {besok !== undefined && <RoleNote>Besok libur ({besok}). Layanan tidak menerima antrean.</RoleNote>}
+      {besok !== undefined && <CatatanKeadaan jenis="libur" className={styles.catatan}>Besok libur ({besok}). Layanan tidak menerima antrean.</CatatanKeadaan>}
     </div>
   );
 }

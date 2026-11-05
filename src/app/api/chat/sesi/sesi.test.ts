@@ -7,6 +7,7 @@ import { NextRequest } from 'next/server';
 
 const state = vi.hoisted(() => ({
   callerId: 'auth-staff-1' as string | null,
+  anonim: false,
   rpc: vi.fn(),
 }));
 
@@ -14,7 +15,7 @@ vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(async () => ({
     auth: {
       getUser: vi.fn(async () => ({
-        data: { user: state.callerId ? { id: state.callerId } : null },
+        data: { user: state.callerId ? { id: state.callerId, is_anonymous: state.anonim } : null },
         error: null,
       })),
     },
@@ -53,6 +54,7 @@ describe('POST /api/chat/sesi (RPC chat)', () => {
   beforeEach(() => {
     vi.resetModules();
     state.callerId = 'auth-staff-1';
+    state.anonim = false;
     state.rpc.mockReset();
     serviceCreate.mockReset();
   });
@@ -61,6 +63,14 @@ describe('POST /api/chat/sesi (RPC chat)', () => {
     state.callerId = null;
     const res = await panggil({ sesi_id: SESI, aksi: 'takeover' });
     expect(res.status).toBe(401);
+    expect(state.rpc).not.toHaveBeenCalled();
+  });
+
+  it('akun anonim ditolak 403 LOGIN_GOOGLE tanpa memanggil RPC (chat wajib Google)', async () => {
+    state.anonim = true;
+    const res = await panggil({ sesi_id: SESI, aksi: 'takeover' });
+    expect(res.status).toBe(403);
+    expect((await res.json()).kode).toBe('LOGIN_GOOGLE');
     expect(state.rpc).not.toHaveBeenCalled();
   });
 

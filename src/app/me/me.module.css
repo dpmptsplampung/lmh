@@ -1,347 +1,262 @@
-.mePage {
-  min-height: 100vh;
-  background: transparent;
-}
-
-/* Navbar */
-.navbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space-4) var(--space-8);
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  border-bottom: 1px solid var(--border-default);
-  position: sticky;
-  top: 0;
-  z-index: var(--z-sticky);
-}
-
-.navBrand {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  text-decoration: none;
-  color: var(--text-primary);
-}
-
-.navBrandIcon {
-  width: 36px;
-  height: 36px;
-  border-radius: var(--radius-lg);
-  background: linear-gradient(135deg, var(--color-primary-600), var(--color-primary-700));
-  color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.navBrandText {
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: var(--text-lg);
-}
-
-.navUser {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-}
-
-.navUserInfo {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-
-.navAvatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  object-fit: cover;
-  border: 2px solid var(--color-primary-100);
-}
-
-.navAvatarFallback {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--color-primary-100), var(--color-primary-200));
-  color: var(--color-primary-700);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: var(--text-sm);
-}
-
-.navUserName {
-  font-weight: 600;
-  font-size: var(--text-sm);
-  color: var(--text-primary);
-}
-
-.navUserEmail {
-  font-size: var(--text-xs);
-  color: var(--text-tertiary);
-}
-
-/* Hero */
-.hero {
-  padding: var(--space-12) var(--space-8) var(--space-8);
-  text-align: center;
-  max-width: 800px;
-  margin: 0 auto;
-}
-
-.heroTitle {
-  font-family: var(--font-display);
-  font-size: var(--text-3xl);
-  font-weight: 800;
-  color: var(--text-primary);
-  margin-bottom: var(--space-2);
-}
-
-.heroSubtitle {
-  font-size: var(--text-base);
-  color: var(--text-secondary);
-  line-height: 1.6;
-}
-
-/* Actions Grid */
-.actionsSection {
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 0 var(--space-8) var(--space-8);
-}
-
-.actionsGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: var(--space-5);
-}
-
-.actionCard {
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-xl);
-  padding: var(--space-6);
+/* Beranda saya (/me): kartu datar gaya "Dasbor". Token dari tema-dasbor.css (dipasang cangkang). */
+.halaman {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
-  transition: all var(--transition-base);
-  cursor: pointer;
-  text-decoration: none;
-  color: inherit;
+  gap: var(--gap-grid, 20px);
+  min-width: 0;
 }
 
-.actionCard:hover {
-  transform: translateY(-4px);
-  box-shadow: var(--shadow-lg);
+/* Kartu "Kunjungan Anda Hari Ini": disorot dengan tepi biru tipis, bukan gradien. */
+.hariIni {
   border-color: var(--color-primary-200);
+  background: var(--status-info-bg);
 }
 
-.actionIconWrap {
-  width: 52px;
-  height: 52px;
-  border-radius: var(--radius-lg);
+.antrean {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: center;
+  gap: 16px 28px;
+  margin-bottom: 16px;
 }
 
-.actionIconWa {
-  background: linear-gradient(135deg, #25D366, #128C7E);
-  color: white;
-}
-
-.actionIconReservasi {
-  background: linear-gradient(135deg, var(--color-primary-500), var(--color-primary-700));
-  color: white;
-}
-
-.actionIconUmkm {
-  background: linear-gradient(135deg, var(--color-accent-400), var(--color-accent-600));
-  color: white;
-}
-
-.actionIconGallery {
-  background: linear-gradient(135deg, var(--color-success-500), var(--color-success-700));
-  color: white;
-}
-
-.actionIconWebsite {
-  background: linear-gradient(135deg, var(--color-neutral-500), var(--color-neutral-700));
-  color: white;
-}
-
-.floatingChat {
-  position: fixed;
-  bottom: var(--space-6);
-  right: var(--space-6);
-  z-index: var(--z-sticky);
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-5);
-  background: linear-gradient(135deg, var(--color-primary-600), var(--color-primary-700));
-  color: white;
-  border-radius: var(--radius-full);
-  box-shadow: var(--shadow-lg), 0 10px 25px rgba(99, 102, 241, 0.4);
-  text-decoration: none;
-  font-weight: 700;
-  font-size: var(--text-sm);
-  transition: transform var(--transition-base), box-shadow var(--transition-base);
-}
-
-.floatingChat:hover {
-  transform: translateY(-4px);
-  background: linear-gradient(135deg, var(--color-primary-500), var(--color-primary-600));
-}
-
-.actionTitle {
-  font-weight: 700;
-  font-size: var(--text-base);
-  color: var(--text-primary);
-}
-
-.actionDescription {
-  font-size: var(--text-sm);
-  color: var(--text-secondary);
-  line-height: 1.6;
-  flex: 1;
-}
-
-.actionArrow {
-  color: var(--text-tertiary);
-  transition: transform var(--transition-fast);
-}
-
-.actionCard:hover .actionArrow {
-  transform: translateX(4px);
-  color: var(--color-primary-500);
-}
-
-/* Reservasi Section */
-.reservasiSection {
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 0 var(--space-8) var(--space-12);
-}
-
-.sectionTitle {
-  font-family: var(--font-display);
-  font-size: var(--text-xl);
-  font-weight: 700;
-  margin-bottom: var(--space-5);
-  color: var(--text-primary);
-}
-
-.reservasiList {
+.angkaBox {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: 2px;
 }
 
-.reservasiCard {
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-xl);
-  padding: var(--space-6);
-  display: flex;
-  gap: var(--space-6);
-  align-items: flex-start;
-  animation: fadeIn 0.4s ease-out;
+.angka {
+  font-size: var(--text-4xl, 2.25rem);
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
 }
 
-.reservasiQr {
-  flex-shrink: 0;
-  width: 120px;
-  height: 120px;
-  border-radius: var(--radius-lg);
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  padding: var(--space-2);
-  border: 1px solid var(--glass-border);
+.angkaLabel {
+  font-size: var(--fs-small);
+  color: var(--text-secondary);
+}
+
+.catatan {
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 8px;
+  flex: 1 1 200px;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  font-size: var(--fs-body);
+  color: var(--text-secondary);
+}
+
+.catatan svg {
+  flex: none;
+  color: var(--color-primary-700);
+}
+
+.daftarQr {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.itemQr {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  padding: 12px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+}
+
+.qr {
+  flex: none;
+  line-height: 0;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+}
+
+.namaReservasi {
+  margin: 0;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.meta {
+  margin: 4px 0 0;
+  font-size: var(--fs-body);
+  color: var(--text-secondary);
+}
+
+/* Dua kolom di layar lebar: reservasi (lebar) + pintasan (sempit). */
+.dua {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--gap-grid, 20px);
+  align-items: start;
+}
+
+@media (min-width: 1200px) {
+  .dua {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 360px);
+  }
+}
+
+.daftarReservasi {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reservasi {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 14px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface-muted);
+  border: 1px solid var(--border-subtle);
 }
 
 .reservasiInfo {
-  flex: 1;
+  flex: 1 1 200px;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 6px;
 }
 
-.reservasiMeta {
+.judulBaris {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.metaBaris,
+.petunjuk {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  font-size: var(--text-sm);
+  gap: 8px;
+  margin: 0;
+  font-size: var(--fs-body);
   color: var(--text-secondary);
 }
 
-.reservasiMetaIcon {
+.metaBaris svg,
+.petunjuk svg {
+  flex: none;
   color: var(--text-tertiary);
-  flex-shrink: 0;
 }
 
-.emptyReservasi {
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-xl);
-  padding: var(--space-10);
-  text-align: center;
-  color: var(--text-secondary);
-}
-
-.emptyIcon {
+.petunjuk {
+  font-size: var(--fs-small);
   color: var(--text-tertiary);
-  margin-bottom: var(--space-3);
 }
 
-/* Responsive */
-@media (max-width: 768px) {
-  .navbar {
-    padding: var(--space-3) var(--space-4);
+/* Pintasan */
+.pintasan {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.itemPintasan {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: var(--target-sentuh, 44px);
+  height: 100%;
+  padding: 10px 12px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  text-decoration: none;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.itemPintasan:hover {
+  background: var(--bg-surface-hover);
+  border-color: var(--border-hover);
+}
+
+.itemPintasan:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.labelPintasan {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.ikonPintasan {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+}
+
+.nada_primer {
+  background: var(--status-info-bg);
+  color: var(--status-info-fg);
+}
+
+.nada_info {
+  background: var(--color-primary-100);
+  color: var(--color-primary-800);
+}
+
+.nada_sukses {
+  background: var(--status-success-bg);
+  color: var(--status-success-fg);
+}
+
+.nada_peringatan {
+  background: var(--status-warning-bg);
+  color: var(--status-warning-fg);
+}
+
+.nada_bahaya {
+  background: var(--status-danger-bg);
+  color: var(--status-danger-fg);
+}
+
+@media (max-width: 480px) {
+  .pintasan {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .hero {
-    padding: var(--space-8) var(--space-4) var(--space-4);
+  .itemQr {
+    flex-wrap: wrap;
   }
+}
 
-  .heroTitle {
-    font-size: var(--text-2xl);
-  }
-
-  .actionsSection,
-  .reservasiSection {
-    padding-left: var(--space-4);
-    padding-right: var(--space-4);
-  }
-
-  .actionsGrid {
-    grid-template-columns: 1fr;
-  }
-
-  .reservasiCard {
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-  }
-
-  .navUserName,
-  .navUserEmail {
-    display: none;
+@media (prefers-reduced-motion: reduce) {
+  .itemPintasan {
+    transition: none;
   }
 }

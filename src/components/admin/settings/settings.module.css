@@ -7,14 +7,14 @@
   padding: var(--space-3) var(--space-4);
   margin: 0 0 var(--space-4);
   border: 1px solid var(--border-default);
-  background: var(--color-primary-50, #eff6ff);
+  background: var(--status-info-bg);
 }
 .bannerWarn { background: var(--color-warning-50); border-color: var(--color-warning-600); }
 .bannerErr { background: var(--color-danger-50); border-color: var(--color-danger-600); color: var(--color-danger-700); }
 
 .card {
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-xl);
   padding: var(--space-5);
   margin-bottom: var(--space-4);
@@ -52,8 +52,8 @@
 .pre {
   margin: var(--space-2) 0 0;
   padding: var(--space-2) var(--space-3);
-  background: var(--color-neutral-900, #111827);
-  color: #f9fafb;
+  background: var(--bg-surface-muted);
+  color: var(--text-primary);
   border-radius: var(--radius-md);
   font-size: var(--text-xs);
   white-space: pre-wrap;

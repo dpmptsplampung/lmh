@@ -3,13 +3,16 @@ import { NextRequest } from 'next/server';
 
 const serverState = {
   callerId: 'auth-user-1' as string | null,
+  anonim: false,
+  /** Penyedia login akun uji: 'google' (bawaan) atau 'email' (sandi). */
+  provider: 'google' as 'google' | 'email',
 };
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(async () => ({
     auth: {
       getUser: vi.fn(async () => ({
-        data: { user: serverState.callerId ? { id: serverState.callerId } : null },
+        data: { user: serverState.callerId ? { id: serverState.callerId, is_anonymous: serverState.anonim, identities: [{ provider: serverState.provider }] } : null },
         error: null,
       })),
     },
@@ -216,6 +219,51 @@ describe('/api/chat/messages API Route', () => {
       buildRequest(`http://localhost/api/chat/messages?sesi_id=${SESI}`),
     );
     expect(res.status).toBe(403);
+  });
+
+  it('GET dan POST menolak akun anonim dengan 403 LOGIN_GOOGLE (chat wajib Google)', async () => {
+    serverState.anonim = true;
+    try {
+      const { GET, POST } = await import('./route');
+      const g = await GET(buildRequest(`http://localhost/api/chat/messages?sesi_id=${SESI}`));
+      expect(g.status).toBe(403);
+      const gj = await g.json();
+      expect(gj.kode).toBe('LOGIN_GOOGLE');
+      expect(gj.error).toMatch(/Google/);
+      const po = await POST(buildRequest('http://localhost/api/chat/messages', { method: 'POST', body: { sesi_id: SESI, isi: 'Halo' } }));
+      expect(po.status).toBe(403);
+      expect((await po.json()).kode).toBe('LOGIN_GOOGLE');
+    } finally {
+      serverState.anonim = false;
+    }
+  });
+
+  it('R5: pengunjung nonanonim tanpa identitas Google (sandi) ditolak 403 LOGIN_GOOGLE di GET dan POST', async () => {
+    serverState.provider = 'email';
+    try {
+      mockAdmin({ actor: { kind: 'pengunjung', id: PENGUNJUNG } });
+      const { GET, POST } = await import('./route');
+      const g = await GET(buildRequest(`http://localhost/api/chat/messages?sesi_id=${SESI}`));
+      expect(g.status).toBe(403);
+      expect((await g.json()).kode).toBe('LOGIN_GOOGLE');
+      const po = await POST(buildRequest('http://localhost/api/chat/messages', { method: 'POST', body: { sesi_id: SESI, isi: 'Halo' } }));
+      expect(po.status).toBe(403);
+      expect((await po.json()).kode).toBe('LOGIN_GOOGLE');
+    } finally {
+      serverState.provider = 'google';
+    }
+  });
+
+  it('R5: STAF sah (petugas aktif) dengan sandi tetap boleh membaca dan mengirim', async () => {
+    serverState.provider = 'email';
+    try {
+      mockAdmin({ actor: { kind: 'staff', role: 'admin', layanan_id: null }, messages: [] });
+      const { GET } = await import('./route');
+      const g = await GET(buildRequest(`http://localhost/api/chat/messages?sesi_id=${SESI}`));
+      expect(g.status).toBe(200);
+    } finally {
+      serverState.provider = 'google';
+    }
   });
 
   it('POST returns 401 when not authenticated', async () => {

@@ -13,12 +13,40 @@ import { todayWIB } from '@/lib/time';
 
 type RpcFn = (nama: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>;
 
+const NAMA_BULAN = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+
+// Tanggal dipilih lewat PemilihTanggal (kalender), bukan <input type="date">.
+function tombolHari(ymd: string): HTMLElement | null {
+  const [y, m, d] = ymd.split('-').map(Number);
+  return screen.queryByRole('button', { name: new RegExp(`^${d} ${NAMA_BULAN[m - 1]} ${y}(,|$)`) });
+}
+
+function bukaKalender() {
+  fireEvent.click(screen.getByRole('button', { name: /^Tanggal Kedatangan:/ }));
+}
+
+function carriHari(ymd: string): HTMLElement {
+  for (let i = 0; i < 3; i++) {
+    const hari = tombolHari(ymd);
+    if (hari) return hari;
+    fireEvent.click(screen.getByRole('button', { name: 'Bulan berikutnya' }));
+  }
+  throw new Error(`Hari ${ymd} tidak ada di kalender`);
+}
+
+function pilihTanggal(ymd: string) {
+  bukaKalender();
+  fireEvent.click(carriHari(ymd));
+}
+
 describe('reservasi pengunjung (rpc reservasi_buat / reservasi_batalkan, daftar dari kunjungan)', () => {
   const consentInsert = vi.fn();
   const rpc = vi.fn<RpcFn>();
   const tabelDiakses: string[] = [];
   let kunjunganRows: Record<string, unknown>[] = [];
   let layananRows: { id: string; nama: string }[] = [];
+  let layananError: { message: string } | null = null;
+  let antreanRow: { antre_count: number; estimasi_tunggu_total_menit: number } | null = null;
   let hariLiburTanggal: string[] = [];
   let hariLiburError: { message: string } | null = null;
   const kunjunganEq = vi.fn();
@@ -49,6 +77,8 @@ describe('reservasi pengunjung (rpc reservasi_buat / reservasi_batalkan, daftar 
     tabelDiakses.length = 0;
     kunjunganRows = [];
     layananRows = [];
+    layananError = null;
+    antreanRow = null;
     hariLiburTanggal = [];
     hariLiburError = null;
     consentInsert.mockResolvedValue({ error: null });
@@ -66,7 +96,7 @@ describe('reservasi pengunjung (rpc reservasi_buat / reservasi_batalkan, daftar 
         return b;
       }
       if (table === 'v_layanan_publik') {
-        const b = { select: vi.fn(() => b), neq: vi.fn(() => b), order: vi.fn(async () => ({ data: layananRows, error: null })) };
+        const b = { select: vi.fn(() => b), neq: vi.fn(() => b), order: vi.fn(async () => (layananError ? { data: null, error: layananError } : { data: layananRows, error: null })) };
         return b;
       }
       if (table === 'kunjungan') {
@@ -98,7 +128,7 @@ describe('reservasi pengunjung (rpc reservasi_buat / reservasi_batalkan, daftar 
       }
       if (table === 'consent_log') return { insert: consentInsert };
       if (table === 'v_antrian_loket') {
-        const b = { select: vi.fn(() => b), eq: vi.fn(() => b), maybeSingle: vi.fn(async () => ({ data: null, error: null })) };
+        const b = { select: vi.fn(() => b), eq: vi.fn(() => b), maybeSingle: vi.fn(async () => ({ data: antreanRow, error: null })) };
         return b;
       }
       return {};
@@ -115,8 +145,8 @@ describe('reservasi pengunjung (rpc reservasi_buat / reservasi_batalkan, daftar 
 
   const fillValidForm = () => {
     fireEvent.click(screen.getByText('Bertemu Seseorang'));
-    fireEvent.change(screen.getByLabelText('Nama yang Ingin Ditemui'), { target: { value: 'Kepala Bidang' } });
-    fireEvent.change(screen.getByLabelText('Tanggal Kedatangan'), { target: { value: nextWeekday() } });
+    fireEvent.change(screen.getByLabelText(/^Nama yang Ingin Ditemui/), { target: { value: 'Kepala Bidang' } });
+    pilihTanggal(nextWeekday());
     fireEvent.click(screen.getByLabelText(/saya setuju data saya diproses/i));
   };
   const kirim = () => fireEvent.click(screen.getByRole('button', { name: 'Buat Reservasi' }));
@@ -150,8 +180,8 @@ describe('reservasi pengunjung (rpc reservasi_buat / reservasi_batalkan, daftar 
     render(<ReservasiPage />);
     await screen.findByText('Rencanakan Kedatangan');
     fireEvent.click(screen.getByText('Menuju Loket Layanan'));
-    fireEvent.change(await screen.findByLabelText('Layanan Tujuan'), { target: { value: 'lay-1' } });
-    fireEvent.change(screen.getByLabelText('Tanggal Kedatangan'), { target: { value: nextWeekday() } });
+    fireEvent.change(await screen.findByLabelText(/^Layanan Tujuan/), { target: { value: 'lay-1' } });
+    pilihTanggal(nextWeekday());
     fireEvent.click(screen.getByLabelText(/saya setuju data saya diproses/i));
     kirim();
 
@@ -200,8 +230,8 @@ describe('reservasi pengunjung (rpc reservasi_buat / reservasi_batalkan, daftar 
     render(<ReservasiPage />);
     await screen.findByText('Rencanakan Kedatangan');
     fireEvent.click(screen.getByText('Menuju Loket Layanan'));
-    fireEvent.change(await screen.findByLabelText('Layanan Tujuan'), { target: { value: 'lay-1' } });
-    fireEvent.change(screen.getByLabelText('Tanggal Kedatangan'), { target: { value: tanggalAkhirPekan(6) } });
+    fireEvent.change(await screen.findByLabelText(/^Layanan Tujuan/), { target: { value: 'lay-1' } });
+    pilihTanggal(tanggalAkhirPekan(6));
     fireEvent.click(screen.getByLabelText(/saya setuju data saya diproses/i));
     kirim();
 
@@ -222,8 +252,8 @@ describe('reservasi pengunjung (rpc reservasi_buat / reservasi_batalkan, daftar 
     render(<ReservasiPage />);
     await screen.findByText('Rencanakan Kedatangan');
     fireEvent.click(screen.getByText('Menuju Loket Layanan'));
-    fireEvent.change(await screen.findByLabelText('Layanan Tujuan'), { target: { value: 'lay-1' } });
-    fireEvent.change(screen.getByLabelText('Tanggal Kedatangan'), { target: { value: nextWeekday() } });
+    fireEvent.change(await screen.findByLabelText(/^Layanan Tujuan/), { target: { value: 'lay-1' } });
+    pilihTanggal(nextWeekday());
     fireEvent.click(screen.getByLabelText(/saya setuju data saya diproses/i));
     kirim();
 
@@ -235,8 +265,8 @@ describe('reservasi pengunjung (rpc reservasi_buat / reservasi_batalkan, daftar 
     render(<ReservasiPage />);
     await screen.findByText('Rencanakan Kedatangan');
     fireEvent.click(screen.getByText('Bertemu Seseorang'));
-    fireEvent.change(screen.getByLabelText('Nama yang Ingin Ditemui'), { target: { value: 'Kepala Bidang' } });
-    fireEvent.change(screen.getByLabelText('Tanggal Kedatangan'), { target: { value: tanggalAkhirPekan(0) } });
+    fireEvent.change(screen.getByLabelText(/^Nama yang Ingin Ditemui/), { target: { value: 'Kepala Bidang' } });
+    pilihTanggal(tanggalAkhirPekan(0));
     fireEvent.click(screen.getByLabelText(/saya setuju data saya diproses/i));
     kirim();
 
@@ -273,8 +303,8 @@ describe('reservasi pengunjung (rpc reservasi_buat / reservasi_batalkan, daftar 
     while (d.getDay() !== 6) d.setDate(d.getDate() + 1);
 
     fireEvent.click(screen.getByText('Bertemu Seseorang'));
-    fireEvent.change(screen.getByLabelText('Nama yang Ingin Ditemui'), { target: { value: 'Kepala Bidang' } });
-    fireEvent.change(screen.getByLabelText('Tanggal Kedatangan'), { target: { value: toLocalYmd(d) } });
+    fireEvent.change(screen.getByLabelText(/^Nama yang Ingin Ditemui/), { target: { value: 'Kepala Bidang' } });
+    pilihTanggal(toLocalYmd(d));
     fireEvent.click(screen.getByLabelText(/saya setuju data saya diproses/i));
     kirim();
 
@@ -282,19 +312,29 @@ describe('reservasi pengunjung (rpc reservasi_buat / reservasi_batalkan, daftar 
     expect(panggilanRpc('reservasi_buat')).toHaveLength(0);
   });
 
-  it('menolak tanggal lebih dari 7 hari ke depan (QUE-05) tanpa memanggil rpc', async () => {
+  it('tanggal lebih dari 7 hari ke depan (QUE-05) tidak bisa dipilih di kalender dan tidak memanggil rpc', async () => {
     render(<ReservasiPage />);
     await screen.findByText('Rencanakan Kedatangan');
     const d = hariIniWIB();
-    d.setDate(d.getDate() + 30);
+    d.setDate(d.getDate() + 8);
 
     fireEvent.click(screen.getByText('Bertemu Seseorang'));
-    fireEvent.change(screen.getByLabelText('Nama yang Ingin Ditemui'), { target: { value: 'Kepala Bidang' } });
-    fireEvent.change(screen.getByLabelText('Tanggal Kedatangan'), { target: { value: toLocalYmd(d) } });
+    fireEvent.change(screen.getByLabelText(/^Nama yang Ingin Ditemui/), { target: { value: 'Kepala Bidang' } });
+    bukaKalender();
+    // Batas (dulu atribut max pada input date) kini dijaga PemilihTanggal: hari di luar batas aria-disabled,
+    // dan bulan di luar batas tidak bisa dibuka.
+    const hari = tombolHari(toLocalYmd(d));
+    if (hari) {
+      expect(hari).toHaveAttribute('aria-label', expect.stringMatching(/tidak tersedia/));
+      fireEvent.click(hari);
+    } else {
+      expect(screen.getByRole('button', { name: 'Bulan berikutnya' })).toHaveAttribute('aria-disabled', 'true');
+    }
+    expect(screen.getByRole('button', { name: /^Tanggal Kedatangan: belum dipilih/ })).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText(/saya setuju data saya diproses/i));
     kirim();
 
-    await screen.findByText(/maksimal 7 hari ke depan/i);
+    await screen.findByText('Pilih tanggal kedatangan');
     expect(panggilanRpc('reservasi_buat')).toHaveLength(0);
   });
 
@@ -445,6 +485,76 @@ describe('reservasi pengunjung (rpc reservasi_buat / reservasi_batalkan, daftar 
       const alert = await screen.findByRole('alert');
       expect(alert.textContent).toMatch(/sudah tidak dapat dibatalkan/);
       expect(screen.queryByText('Reservasi dibatalkan.')).toBeNull();
+    });
+  });
+
+  describe('perbaikan G1 (A-05, A-07, A-08/C2-01)', () => {
+    const mulaiLoket = async () => {
+      layananRows = [{ id: 'lay-1', nama: 'Helpdesk OSS' }];
+      render(<ReservasiPage />);
+      await screen.findByText('Rencanakan Kedatangan');
+      fireEvent.click(screen.getByText('Menuju Loket Layanan'));
+    };
+
+    it('A-05: petunjuk hari mengikuti tujuan; loket tidak mengklaim hanya Senin-Jumat', async () => {
+      layananRows = [{ id: 'lay-1', nama: 'Helpdesk OSS' }];
+      render(<ReservasiPage />);
+      await screen.findByText('Rencanakan Kedatangan');
+      // Belum memilih tujuan: netral.
+      expect(screen.queryByText(/hari kerja \(Senin–Jumat\)/)).toBeNull();
+      expect(screen.getByText(/mengikuti tujuan/i)).toBeInTheDocument();
+      fireEvent.click(screen.getByText('Menuju Loket Layanan'));
+      expect(screen.queryByText(/hari kerja \(Senin–Jumat\)/)).toBeNull();
+      expect(screen.getByText(/mengikuti jadwal layanan/i)).toBeInTheDocument();
+      fireEvent.click(screen.getByText('Bertemu Seseorang'));
+      expect(screen.getByText(/hanya hari kerja \(Senin–Jumat\)/i)).toBeInTheDocument();
+    });
+
+    it('A-07: estimasi antrean hanya untuk hari ini, berlabel "Antrean hari ini"', async () => {
+      antreanRow = { antre_count: 4, estimasi_tunggu_total_menit: 20 };
+      await mulaiLoket();
+      fireEvent.change(await screen.findByLabelText(/^Layanan Tujuan/), { target: { value: 'lay-1' } });
+      expect(await screen.findByText(/Antrean hari ini/)).toBeInTheDocument();
+      pilihTanggal(todayWIB());
+      expect(screen.getByText(/Antrean hari ini/)).toBeInTheDocument();
+      // Tanggal lain (H+1): estimasi hari ini menyesatkan -> disembunyikan.
+      const besok = new Date(`${todayWIB()}T12:00:00`);
+      besok.setDate(besok.getDate() + 1);
+      pilihTanggal(toLocalYmd(besok));
+      expect(screen.queryByText(/Antrean hari ini/)).toBeNull();
+    });
+
+    it('A-08: petunjuk tujuan tidak lagi menyebut contoh layanan yang ditulis tetap', async () => {
+      layananRows = [{ id: 'lay-1', nama: 'Helpdesk OSS' }];
+      render(<ReservasiPage />);
+      await screen.findByText('Rencanakan Kedatangan');
+      expect(screen.queryByText(/Sertifikasi Halal, CS BPJS/)).toBeNull();
+    });
+
+    it('C2-01: galat memuat layanan = ErrorRetry (bukan daftar kosong); Coba lagi memuat ulang', async () => {
+      layananError = { message: 'jaringan putus' };
+      layananRows = [{ id: 'lay-1', nama: 'Helpdesk OSS' }];
+      render(<ReservasiPage />);
+      await screen.findByText('Rencanakan Kedatangan');
+      fireEvent.click(screen.getByText('Menuju Loket Layanan'));
+      const alert = await screen.findByRole('alert');
+      expect(alert).toHaveTextContent(/layanan belum dapat dimuat/i);
+      expect(screen.queryByLabelText(/^Layanan Tujuan/)).toBeNull();
+
+      layananError = null;
+      fireEvent.click(within(alert).getByRole('button', { name: 'Coba lagi' }));
+      expect(await screen.findByLabelText(/^Layanan Tujuan/)).toBeInTheDocument();
+      expect(screen.queryByRole('alert')).toBeNull();
+    });
+
+    it('C2-01: daftar kosong yang sah = pesan biasa tanpa galat dan tanpa Coba lagi', async () => {
+      layananRows = [];
+      render(<ReservasiPage />);
+      await screen.findByText('Rencanakan Kedatangan');
+      fireEvent.click(screen.getByText('Menuju Loket Layanan'));
+      expect(await screen.findByText(/belum ada layanan/i)).toBeInTheDocument();
+      expect(screen.queryByRole('alert')).toBeNull();
+      expect(screen.queryByText(/Gagal memuat layanan/)).toBeNull();
     });
   });
 });

@@ -1,0 +1,149 @@
+/* Halaman Layar admin: urutan + nama tampil layanan dan pengumuman teks berjalan.
+   Hanya token desain yang sudah ada di globals.css. */
+
+.seksi {
+  padding: var(--space-6);
+  margin-bottom: var(--space-8);
+}
+
+.judul {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 700;
+  margin-bottom: var(--space-2);
+}
+
+.bantuan {
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+  margin-bottom: var(--space-4);
+}
+
+.peringatan {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+  border: 1px solid var(--color-warning-500);
+  border-radius: var(--radius-md);
+  background: var(--color-warning-50);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+}
+
+.peringatan svg {
+  flex: none;
+  color: var(--color-warning-600);
+}
+
+.peringatan p {
+  margin: 0;
+}
+
+.peringatan p + p {
+  margin-top: var(--space-1);
+}
+
+.daftar {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.kepala {
+  display: grid;
+  grid-template-columns: 2.5rem minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  padding: 0 var(--space-3);
+  margin-bottom: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.baris {
+  display: grid;
+  grid-template-columns: 2.5rem minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-primary);
+}
+
+.nomor {
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.namaLayanan {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.urut {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.aksi {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-top: var(--space-4);
+}
+
+.belumDisimpan {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.pengumuman {
+  display: grid;
+  gap: var(--space-4);
+  max-width: 48rem;
+}
+
+.hitung {
+  display: block;
+  margin-top: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  text-align: right;
+}
+
+@media (max-width: 640px) {
+  .kepala {
+    display: none;
+  }
+
+  .baris {
+    grid-template-columns: 2rem minmax(0, 1fr) auto;
+  }
+
+  .baris > .isian {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+
+.halaman { display: grid; gap: var(--gap-grid); padding: var(--pad-page); min-width: 0; }
+.halaman > * { min-width: 0; }
+.buatToken { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-3); }
+.namaToken { flex: 1; min-width: min(240px, 100%); }
+.petunjuk { color: var(--text-secondary); font-size: var(--text-sm); margin-top: var(--space-3); }
+.tabelWadah { overflow-x: auto; border-radius: var(--radius-md); }
+.tabelWadah:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+.tabel { width: 100%; }
+.aksiToken { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.tanggal { color: var(--text-secondary); font-size: var(--text-sm); }
+.dicabut { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
+.dicabut li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+@media (pointer: coarse) { .urut button { min-width: 44px; min-height: 44px; } }
+@media (max-width: 640px) { .tabel { min-width: 660px; } }

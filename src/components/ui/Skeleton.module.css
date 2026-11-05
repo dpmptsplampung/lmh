@@ -1,0 +1,53 @@
+.wadah {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+.wadah_angka {
+  gap: 8px;
+}
+
+.blok {
+  display: block;
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-hover);
+  animation: denyut 1.4s ease-in-out infinite;
+}
+
+.baris {
+  height: 16px;
+  width: 100%;
+}
+
+.baris:last-child:not(:only-child) {
+  width: 70%;
+}
+
+.kartu {
+  height: 120px;
+  border-radius: var(--radius-card);
+}
+
+.angka {
+  height: 32px;
+  width: 96px;
+  max-width: 60%;
+}
+
+@keyframes denyut {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .blok {
+    animation: none;
+  }
+}

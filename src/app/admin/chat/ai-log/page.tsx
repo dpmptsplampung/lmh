@@ -1,15 +1,18 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import Link from 'next/link';
-import {
-  ArrowLeft,
-  Loader2,
-  AlertCircle,
-  PlusCircle,
-  Filter,
-  Bot,
-} from 'lucide-react';
+import { ArrowLeft, PlusCircle, Bot, MessageSquare, ArrowUpRight, Search } from 'lucide-react';
+import CatatanKeadaan from '@/components/ui/CatatanKeadaan';
+import Field from '@/components/ui/Field';
+import Galat from '@/components/ui/Galat';
+import Kartu from '@/components/ui/Kartu';
+import KartuStatistik from '@/components/ui/KartuStatistik';
+import Lencana from '@/components/ui/Lencana';
+import Skeleton from '@/components/ui/Skeleton';
+import StatusKosong from '@/components/ui/StatusKosong';
+import Tabel, { type KolomTabel } from '@/components/ui/Tabel';
+import Tombol from '@/components/ui/Tombol';
+import { formatTanggal, formatWaktu } from '@/lib/utils';
 import PageHeader from '@/components/layout/PageHeader';
 import Pagination from '@/components/Pagination';
 import { createClient } from '@/lib/supabase/client';
@@ -69,8 +72,7 @@ export default function AdminAiLogPage() {
   }, [page]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    loadData();
+    void Promise.resolve().then(loadData);
   }, [loadData]);
 
   const filtered = rows.filter((r) => {
@@ -86,133 +88,56 @@ export default function AdminAiLogPage() {
     return s.length > n ? s.slice(0, n) + '…' : s;
   };
 
-  const fmtTime = (iso: string): string => {
-    try {
-      return new Date(iso).toLocaleString('id-ID', {
-        day: '2-digit',
-        month: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-    } catch {
-      return iso;
-    }
-  };
-
   const fmtSim = (v: number | null): string => {
     if (v === null) return '—';
     return v.toFixed(3);
   };
 
+  const kolom: KolomTabel<AiLogRow>[] = [
+    { kunci: 'waktu', judul: 'Waktu (WIB)', render: (row) => <time className={styles.waktu} dateTime={row.created_at}>{formatTanggal(row.created_at, { month: 'short' })}<span>{formatWaktu(row.created_at)} WIB</span></time> },
+    { kunci: 'pertanyaan', judul: 'Pertanyaan', judulBaris: true, render: (row) => <span className={styles.pertanyaan} title={row.pertanyaan}>{truncate(row.pertanyaan, 80)}</span> },
+    { kunci: 'jawaban', judul: 'Jawaban', render: (row) => <span className={styles.jawaban} title={row.jawaban ?? ''}>{row.eskalasi ? <em className={styles.redup}>{row.reason === 'no_match' ? 'Tidak ada match FAQ' : 'Error AI'}</em> : truncate(row.jawaban, 100)}</span> },
+    { kunci: 'similarity', judul: 'Similarity', angka: true, render: (row) => fmtSim(row.top_similarity) },
+    { kunci: 'status', judul: 'Status', render: (row) => <Lencana nada={row.eskalasi ? 'peringatan' : 'sukses'}>{row.eskalasi ? 'Eskalasi' : 'Terjawab'}</Lencana> },
+    { kunci: 'aksi', judul: 'Aksi', peran: 'aksi', render: (row) => <Tombol href={`/admin/chat/faq?prefill_pertanyaan=${encodeURIComponent(row.pertanyaan)}`} varian="sekunder" ukuran="kecil" ikon={PlusCircle} title="Tambahkan pertanyaan ini ke FAQ">Tambah ke FAQ</Tombol> },
+  ];
+
   return (
     <>
-      <PageHeader
-        title="Log Asisten AI"
-        description="Audit jawaban asisten AI ber-RAG — tinjau eskalasi & similarity rendah"
-      />
-
+      <PageHeader title="Log Asisten AI" description="Tinjau jawaban bot, eskalasi, dan kecocokan FAQ untuk memperbaiki informasi layanan.">
+        <Tombol href="/admin" varian="sekunder" ikon={ArrowLeft}>Kembali ke Dasbor</Tombol>
+      </PageHeader>
       <div className={styles.container}>
-        <div className={styles.toolbar}>
-          <Link href="/admin" className={styles.backLink}>
-            <ArrowLeft size={16} />
-            Kembali ke Dashboard
-          </Link>
-
-          <div className={styles.filterGroup}>
-            <Filter size={14} />
-            <select
-              className={styles.filterSelect}
-              value={filter}
-              onChange={(e) => setFilter(e.target.value as FilterMode)}
-            >
-              <option value="all">Semua ({totalCount})</option>
-              <option value="eskalasi">
-                Eskalasi saja ({rows.filter((r) => r.eskalasi).length})
-              </option>
-              <option value="low_similarity">
-                Similarity &lt; 0.8 ({rows.filter((r) => r.top_similarity !== null && r.top_similarity < 0.8).length})
-              </option>
-            </select>
+        <CatatanKeadaan jenis="lingkup">Filter eskalasi dan similarity berlaku pada halaman log yang sedang dimuat.</CatatanKeadaan>
+        {!error && (
+          <div className={styles.ringkasan}>
+            <KartuStatistik label="Jawaban pada halaman ini" nilai={rows.length} ikon={MessageSquare} memuat={loading} />
+            <KartuStatistik label="Eskalasi pada halaman ini" nilai={rows.filter((r) => r.eskalasi).length} ikon={ArrowUpRight} memuat={loading} />
+            <KartuStatistik label="Similarity di bawah 0.8" nilai={rows.filter((r) => r.top_similarity !== null && r.top_similarity < 0.8).length} ikon={Search} pembanding="Pada halaman yang dimuat" memuat={loading} />
           </div>
-        </div>
-
-        {loading ? (
-          <div className={styles.loadingState}>
-            <Loader2 size={24} className="animate-pulse" />
-            <span>Memuat log...</span>
-          </div>
-        ) : error ? (
-          <div className={styles.errorState}>
-            <AlertCircle size={20} />
-            <span>{error}</span>
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className={styles.emptyState}>
-            <Bot size={32} />
-            <p>Belum ada log asisten AI. Log akan muncul setelah pengunjung menggunakan mode chatbot.</p>
-          </div>
-        ) : (
-          <>
-          <div className="table-wrapper">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Waktu</th>
-                  <th>Pertanyaan</th>
-                  <th>Jawaban</th>
-                  <th>Similarity</th>
-                  <th>Status</th>
-                  <th>Aksi</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((row) => (
-                  <tr key={row.id}>
-                    <td style={{ whiteSpace: 'nowrap', fontSize: 'var(--text-xs)' }}>
-                      {fmtTime(row.created_at)}
-                    </td>
-                    <td style={{ maxWidth: 260 }}>
-                      <span title={row.pertanyaan}>{truncate(row.pertanyaan, 80)}</span>
-                    </td>
-                    <td style={{ maxWidth: 300 }}>
-                      <span title={row.jawaban ?? ''}>
-                        {row.eskalasi ? (
-                          <em style={{ color: 'var(--text-tertiary)' }}>
-                            {row.reason === 'no_match' ? 'Tidak ada match FAQ' : 'Error AI'}
-                          </em>
-                        ) : (
-                          truncate(row.jawaban, 100)
-                        )}
-                      </span>
-                    </td>
-                    <td style={{ fontFamily: 'monospace', fontSize: 'var(--text-xs)' }}>
-                      {fmtSim(row.top_similarity)}
-                    </td>
-                    <td>
-                      {row.eskalasi ? (
-                        <span className="badge badge--eskalasi">⚠ Eskalasi</span>
-                      ) : (
-                        <span className="badge badge--aktif">✓ Terjawab</span>
-                      )}
-                    </td>
-                    <td>
-                      <Link
-                        href={`/admin/chat/faq?prefill_pertanyaan=${encodeURIComponent(row.pertanyaan)}`}
-                        className={styles.addFaqBtn}
-                        title="Tambahkan pertanyaan ini ke FAQ"
-                      >
-                        <PlusCircle size={14} />
-                        Tambah ke FAQ
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <Pagination page={page} pageSize={PAGE_SIZE} total={totalCount} onPageChange={setPage} />
-          </>
         )}
+        <Kartu judul="Riwayat jawaban" aksi={
+          <Field label="Saring log">
+            <select className="form-select" value={filter} onChange={(e) => setFilter(e.target.value as FilterMode)}>
+              <option value="all">Semua{!loading && !error ? ` (${totalCount})` : ''}</option>
+              <option value="eskalasi">Eskalasi saja{!loading && !error ? ` (${rows.filter((r) => r.eskalasi).length})` : ''}</option>
+              <option value="low_similarity">Similarity &lt; 0.8{!loading && !error ? ` (${rows.filter((r) => r.top_similarity !== null && r.top_similarity < 0.8).length})` : ''}</option>
+            </select>
+          </Field>
+        }>
+          {loading ? (
+            <div role="status"><Skeleton bentuk="baris" jumlah={6} label="Memuat log…" /></div>
+          ) : error ? (
+            <Galat pesan={error} onRetry={() => void loadData()} />
+          ) : filtered.length === 0 ? (
+            <StatusKosong ikon={Bot} judul={rows.length === 0 ? 'Belum ada log asisten AI. Log akan muncul setelah pengunjung menggunakan mode chatbot.' : 'Tidak ada log yang cocok dengan filter ini.'} />
+          ) : (
+            <>
+              <Tabel caption="Log jawaban asisten AI" kolom={kolom} baris={filtered} kunciBaris="id" />
+              <Pagination page={page} pageSize={PAGE_SIZE} total={totalCount} onPageChange={setPage} />
+            </>
+          )}
+        </Kartu>
       </div>
     </>
   );

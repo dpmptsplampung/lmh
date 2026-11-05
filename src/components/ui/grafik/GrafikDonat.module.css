@@ -1,0 +1,74 @@
+.wadah {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px 24px;
+}
+
+.donat {
+  position: relative;
+  flex: none;
+}
+
+.tengah {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.tengahNilai {
+  font-size: var(--fs-kpi);
+  font-weight: 600;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.tengahLabel {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.legenda {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 160px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-body);
+}
+
+.baris {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sampel {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--warna);
+}
+
+.nama {
+  flex: 1;
+  color: var(--text-secondary);
+}
+
+.nilai {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.persen {
+  font-weight: 400;
+  color: var(--text-secondary);
+}

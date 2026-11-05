@@ -1,311 +1,233 @@
+/* Sidebar "Dasbor": panel putih melayang berjarak dari tepi (desktop) dan laci dari kiri (<=1024px).
+   Token dari tema dasbor (tema-dasbor.css) dengan nilai cadangan agar tetap benar sebelum tema terpasang.
+   Skala lapisan: AppBar 90 < sidebar 100 < overlay laci 140 < laci 150 < SEMUA modal halaman (>=200). */
 .sidebar {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: var(--sidebar-width);
-  height: 100vh;
-  height: 100dvh;
-  /* Tanpa backdrop-filter: di belakang sidebar hanya latar statis, dan blur di
-     atas kontainer yang berisi area scroll memicu kedip di Chrome. */
-  background: #fbfcff;
-  border-right: 1px solid var(--glass-border);
+  z-index: 100;
+  top: calc(var(--sidebar-gap, 12px) + var(--tinggi-banner-offline, 0px));
+  bottom: var(--sidebar-gap, 12px);
+  left: var(--sidebar-gap, 12px);
+  width: var(--sidebar-panel-width, 256px);
   display: flex;
   flex-direction: column;
-  /* Skala lapisan layout: header 90 < sidebar 100 < overlay/laci/tombol 140-160
-     < SEMUA modal halaman (>=200). Dulu sidebar 1100 menutupi modal ber-z 200/1000. */
-  z-index: 100;
-  transition: transform var(--transition-base), visibility 0s;
+  padding: 12px;
+  background: var(--bg-surface, #fff);
+  border-radius: var(--radius-panel, 20px);
+  box-shadow: var(--shadow-panel, 0 1px 3px rgba(15, 23, 42, 0.06), 0 8px 24px -12px rgba(15, 23, 42, 0.1));
   outline: none;
 }
 
 .brand {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-5);
-  border-bottom: 1px solid var(--border-default);
+  gap: 10px;
+  flex: none;
+  min-height: 48px;
+  padding: 0 4px;
 }
 
 .brandLogo {
-  max-width: 100%;
-  max-height: 120px;
-}
-
-.brandIcon {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius-lg);
-  background: linear-gradient(135deg, var(--color-primary-600), var(--color-primary-700));
-  color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.brandText {
-  display: flex;
-  flex-direction: column;
+  flex: none;
+  width: auto;
+  height: 36px;
 }
 
 .brandName {
-  font-family: var(--font-display);
-  font-size: var(--text-sm);
-  font-weight: 700;
-  color: var(--text-primary);
+  min-width: 0;
+  font-family: var(--font-display, inherit);
+  font-size: 1rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
   line-height: 1.2;
+  color: var(--text-primary, #0f172a);
 }
 
-.brandSub {
-  font-size: var(--text-xs);
-  color: var(--text-tertiary);
+.tutup {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: var(--target-sentuh, 44px);
+  height: var(--target-sentuh, 44px);
+  margin-left: auto;
+  border: 0;
+  border-radius: var(--radius-lg, 12px);
+  background: transparent;
+  color: var(--text-secondary, #475569);
+  cursor: pointer;
+}
+
+.tutup:hover {
+  background: var(--nav-bg-hover, #f1f5f9);
+}
+
+.tutup:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring, 0 0 0 2px #fff, 0 0 0 4px #2563eb);
+}
+
+/* Desktop: hanya menu yang menggulir; widget dan tautan bawah tetap di dasar panel. */
+.isi {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .nav {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  /* Akar bug "scroll error": tanpa ini, roda mouse di ujung menu menggulir
-     HALAMAN di belakangnya. Gutter stabil mencegah lebar item bergeser saat
-     scrollbar muncul begitu menu selesai dimuat. */
+  /* Tanpa ini roda mouse di ujung menu menggulir HALAMAN di belakangnya; gutter stabil mencegah
+     lebar item bergeser saat scrollbar muncul (kini scrollbar tipis). */
   overscroll-behavior: contain;
-  scrollbar-gutter: stable;
-  padding: var(--space-4) var(--space-3);
+  scrollbar-width: thin; /* pil menu tetap selebar widget saat tidak ada gulir (gutter tetap menyisakan ±15px di Windows) */
+  margin: 0 -6px;
+  padding: 0 6px;
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: 2px;
 }
 
-.navItem {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-lg);
-  min-height: 44px;
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-  font-weight: 500;
-  transition: background-color var(--transition-fast), color var(--transition-fast);
-  text-decoration: none;
-  position: relative;
-}
-
-.navItem:hover {
-  background: rgba(255, 255, 255, 0.55);
-  color: var(--text-primary);
-}
-
-.navItemActive {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.16), rgba(124, 58, 237, 0.12));
-  color: var(--color-primary-700);
-  font-weight: 600;
-  box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.18);
-}
-
-.navItemActive .navIcon {
-  color: var(--color-primary-600);
-}
-
-.navIcon {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-}
-
-.navLabel {
-  flex: 1;
-}
-
-.navArrow {
-  color: var(--color-primary-400);
-  flex-shrink: 0;
-}
-
-.footer {
-  padding: var(--space-4) var(--space-3);
-  padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
-  border-top: 1px solid var(--border-default);
-}
-
-.logoutBtn {
-  width: 100%;
-  justify-content: flex-start;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-}
-
-.logoutBtn:hover {
-  color: var(--color-danger-600);
-}
-
-.mobileToggle {
-  display: none;
-  position: fixed;
-  top: max(12px, env(safe-area-inset-top, 0px));
-  left: max(var(--space-4), env(safe-area-inset-left, 0px));
-  z-index: 160;
-  width: 44px;
-  height: 44px;
-  border-radius: var(--radius-lg);
-  background: var(--glass-bg-strong);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--glass-border);
-  box-shadow: var(--shadow-md);
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: var(--text-primary);
-}
-
-.overlay {
-  display: none;
-  position: fixed;
-  inset: 0;
-  background: var(--surface-overlay);
-  z-index: 140;
-}
-
-@media (max-width: 1024px) {
-  .sidebar {
-    transform: translateX(-100%);
-    /* Tertutup = keluar dari urutan Tab/pembaca layar (tanpa ini link di luar
-       layar tetap bisa difokus). Ditunda selesai animasi tutup. */
-    visibility: hidden;
-    transition: transform var(--transition-base), visibility 0s linear 250ms; /* literal: var() berisi durasi+easing sehingga deklarasi tidak valid */
-    padding-top: env(safe-area-inset-top, 0px);
-    padding-left: env(safe-area-inset-left, 0px);
-    z-index: 150;
-    /* --sidebar-width di-override jadi 0 di mobile untuk menghapus margin
-       konten; sidebar sendiri butuh lebar nyata agar terlihat saat dibuka. */
-    width: 280px;
-    max-width: 85vw;
-    box-shadow: var(--shadow-xl);
-  }
-
-  .sidebarOpen {
-    transform: translateX(0);
-    visibility: visible;
-    transition: transform var(--transition-base), visibility 0s;
-  }
-
-  .mobileToggle {
-    display: flex;
-  }
-
-  .overlay {
-    display: block;
-  }
-
-  .brandLogo {
-    max-height: 80px;
-  }
-}
-
-/* ===== Kelompok menu (dropdown accordion) ===== */
 .group {
-  display: flex;
-  flex-direction: column;
+  margin-top: 12px;
+}
+
+.group:first-child {
+  margin-top: 4px;
 }
 
 .groupHeader {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: 8px;
   width: 100%;
-  padding: var(--space-3) var(--space-4);
+  min-height: 28px;
+  padding: 0 10px;
   border: 0;
-  border-radius: var(--radius-lg);
-  min-height: 44px;
+  border-radius: var(--radius-md, 8px);
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--nav-group-label, #64748b);
   font: inherit;
-  font-size: var(--text-sm);
-  font-weight: 500;
-  text-align: left;
-  cursor: pointer;
-  position: relative;
-  transition: background-color var(--transition-fast), color var(--transition-fast);
-}
-
-.groupHeader:hover {
-  background: rgba(255, 255, 255, 0.55);
-  color: var(--text-primary);
-}
-
-/* Grup yang memuat halaman aktif: gaya ringan (tanpa latar penuh seperti anak aktif). */
-.groupHeaderActive {
-  color: var(--color-primary-700);
+  font-size: 0.6875rem;
   font-weight: 600;
+  letter-spacing: 0.06em;
+  text-align: left;
+  text-transform: uppercase;
+  cursor: pointer;
 }
 
-.groupHeaderActive .navIcon {
-  color: var(--color-primary-600);
+.groupHeader:hover,
+.groupHeaderActive {
+  color: var(--text-primary, #0f172a);
+}
+
+.groupHeader:focus-visible,
+.navItem:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring, 0 0 0 2px #fff, 0 0 0 4px #2563eb);
 }
 
 .groupChevron {
-  flex-shrink: 0;
-  color: var(--text-tertiary);
-  transition: transform var(--transition-fast);
+  flex: none;
+  transform: rotate(-90deg);
+  transition: transform 200ms ease;
 }
 
 .groupChevronOpen {
-  transform: rotate(180deg);
+  transform: none;
 }
 
-/* Daftar anak: indent halus dengan garis vertikal tipis. */
 .groupList {
+  display: grid;
+  gap: 2px;
+  margin: 2px 0 0;
+  padding: 0;
   list-style: none;
-  margin: var(--space-1) 0 var(--space-1) calc(var(--space-4) + 10px);
-  padding: 0 0 0 var(--space-2);
-  border-left: 1px solid var(--border-default);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  animation: groupBuka var(--transition-fast);
 }
 
 .groupList[hidden] {
   display: none;
 }
 
-@keyframes groupBuka {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.navItemNested {
-  padding: var(--space-2) var(--space-3);
-  min-height: 44px;
-}
-
-/* ===== Badge notifikasi ===== */
-.badge {
-  flex-shrink: 0;
-  display: inline-flex;
+.navItem {
+  display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 12px;
+  min-height: var(--target, 40px);
+  padding: 0 10px;
+  border-radius: var(--radius-lg, 12px);
+  color: var(--nav-fg, #475569);
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.navItem:hover {
+  background: var(--nav-bg-hover, #f1f5f9);
+  color: var(--nav-fg-hover, #0f172a);
+}
+
+.navItemActive,
+.navItemActive:hover {
+  background: var(--nav-active-bg, #0f131b);
+  color: var(--nav-active-fg, #fff);
+  font-weight: 600;
+}
+
+/* Di atas pil gelap: cincin fokus terang. */
+.navItemActive:focus-visible {
+  box-shadow: 0 0 0 2px var(--color-primary-300, #93c5fd);
+}
+
+.navIcon {
+  display: inline-flex;
+  flex: none;
+}
+
+.navLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.badge {
+  display: inline-block;
+  flex: none;
   min-width: 20px;
   height: 20px;
   padding: 0 6px;
-  border-radius: var(--radius-full);
-  /* danger-600 + putih = kontras 4.8:1 (danger-500 hanya 3.8:1). */
-  background: var(--color-danger-600);
-  color: var(--text-inverse);
-  font-size: var(--text-xs);
-  font-weight: 700;
-  line-height: 1;
+  border-radius: var(--radius-full, 9999px);
+  background: var(--nav-badge-bg, #6a4fe0);
+  color: var(--nav-badge-fg, #fff);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 20px;
+  text-align: center;
   font-variant-numeric: tabular-nums;
+}
+
+.keluarBtn {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.bawah {
+  flex: none;
+  display: grid;
+  gap: 2px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle, #e6eaf0);
+}
+
+.overlay {
+  display: none;
 }
 
 /* Teks untuk pembaca layar: tidak mengambil ruang, tidak menggeser layout. */
@@ -321,13 +243,63 @@
   border: 0;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .groupList {
-    animation: none;
+/* ---------- HP/tablet: laci ---------- */
+@media (max-width: 1024px) {
+  .sidebar {
+    z-index: 150;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: var(--drawer-width, min(300px, 86vw));
+    padding-top: calc(12px + env(safe-area-inset-top, 0px));
+    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    border-radius: 0 var(--radius-panel, 20px) var(--radius-panel, 20px) 0;
+    box-shadow: var(--shadow-overlay, 0 24px 48px -12px rgba(15, 23, 42, 0.18));
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition: transform 200ms ease, visibility 0s linear 200ms;
   }
 
-  .groupChevron,
+  .sidebarOpen {
+    transform: none;
+    visibility: visible;
+    transition: transform 200ms ease, visibility 0s;
+  }
+
+  .overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 140;
+    background: var(--surface-overlay, rgba(15, 23, 42, 0.45));
+  }
+
+  /* A11: widget tidak menempel menutupi menu; menu, widget, dan tautan bawah satu area gulir. */
+  .isi {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .nav {
+    flex: none;
+    overflow: visible;
+    margin: 0;
+    padding: 0;
+  }
+
+  .navItem {
+    min-height: var(--target-sentuh, 44px);
+  }
+
   .groupHeader {
+    min-height: 36px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar,
+  .sidebarOpen,
+  .groupChevron {
     transition: none;
   }
 }

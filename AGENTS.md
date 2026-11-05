@@ -1,7 +1,11 @@
 <!-- BEGIN:nextjs-agent-rules -->
-# This is NOT the Next.js you know
 
-This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
+## This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
 <!-- END:nextjs-agent-rules -->
 
 ## Akun Mitra
@@ -45,6 +49,15 @@ Berlaku untuk semua AI agent, di laptop maupun di server. Selama tahap develop a
 4. Jangan menghapus atau menimpa isi `/backup`, `backup2`, dan `/srv/data`.
 5. Jangan menghentikan, mengubah, atau merapikan `9router`, `9remote`, `hermes-gateway`, dan Tramo.
 6. Jika ragu apakah sebuah perintah merusak data tanpa bisa dibatalkan, berhenti dan tanya pemilik.
+
+## Jika kamu worker yang di-dispatch (Orca)
+
+Berlaku bila prompt-mu memuat preamble Orca atau `PERAN:`. Protokol umum (diskusi rekan, `ask`, `worker_done`, mencari `orca`) ada di `~/.claude/skills/tim/protokol-pekerja.md`; kartu perannya di `~/.claude/skills/tim/peran/`. Khusus project ini:
+
+- Peta kode, daftar tabel, dan aturan lintas-bagian ada di `CLAUDE.md` (Arsitektur, Peta file, Peta database); istilah domain di `GLOSSARY.md`, keputusan di `docs/adr/`. Baca hanya bagian yang relevan.
+- Jalankan test sempit (`npx vitest run --pool=vmForks <file>`). `npm run build` dan `npm run verify:baseline` hanya bila spec memintanya.
+- **Dilarang:** `git push`, commit (kecuali spec menyuruh), menyentuh remote GitHub, serta `node scripts/apply-migration.mjs`, `npm run test:rls`, `scripts/selftest-wp*.mjs`, `scripts/verify-wp*.mjs` (semuanya menyambung ke DB produksi lewat `.env.local`). Jangan membaca atau mencetak `.env*`.
+- Migrasi baru: file baru bertimestamp lebih besar (`YYYYMMDDNNNN_nama.sql`) beserta test kontrak. Jangan mengedit atau mengganti nama migrasi yang sudah ada.
 
 ## Remote safety
 

@@ -44,11 +44,42 @@
 }
 
 .closeBtn:hover {
-  background: rgba(0, 0, 0, 0.05);
+  background: var(--color-accent-200);
 }
 
 @media (max-width: 480px) {
   .text {
     font-size: var(--text-xs);
   }
+}
+
+.hitung {
+  font-weight: 700;
+}
+
+/* Online kembali tetapi masih ada antrean, atau baru terkirim (A10). Status memakai token dasbor dengan cadangan. */
+.bannerInfo,
+.bannerOk {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  width: 100%;
+  border-bottom: 1px solid;
+}
+
+.bannerInfo {
+  background: var(--status-info-bg, var(--color-primary-50));
+  border-color: var(--status-info-border, var(--color-primary-200));
+  color: var(--status-info-fg, var(--color-primary-700));
+}
+
+.bannerOk {
+  background: var(--status-success-bg, var(--color-success-50));
+  border-color: var(--status-success-border, var(--color-success-100));
+  color: var(--status-success-fg, var(--color-success-700));
+}
+
+.iconInfo,
+.iconOk {
+  flex-shrink: 0;
 }

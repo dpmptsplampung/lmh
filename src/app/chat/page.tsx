@@ -10,10 +10,15 @@ import {
   Loader2,
   CheckCircle2,
   AlertCircle,
+  LayoutDashboard,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { MutasiError, mutasiInsert, pesanMutasi } from '@/lib/supabase/mutate';
-import ErrorRetry from '@/components/ErrorRetry';
+import Field from '@/components/ui/Field';
+import Galat from '@/components/ui/Galat';
+import Skeleton from '@/components/ui/Skeleton';
+import Tombol from '@/components/ui/Tombol';
+import IkonGoogle from '@/components/chat/IkonGoogle';
 import styles from './chat.module.css';
 import ui from './chat-ui.module.css';
 import { JENIS_PENUTUP_SURVEI } from '@/lib/chat-staf';
@@ -27,6 +32,7 @@ import {
   type PercakapanRingkas,
 } from '@/lib/chat/percakapan';
 import { teksPetugasTidakTersedia, TEKS_MENUNGGU_PETUGAS, type StatusLayananChat } from '@/lib/chat/status-layanan';
+import { layakMemakaiChat, punyaIdentitasGoogle } from '@/lib/chat/identitas-google';
 import GambarLampiran from '@/components/chat/GambarLampiran';
 import { unggahLampiranChat } from '@/lib/chat/lampiran-klien';
 import { mergeMessages, petugasLabel, rtFromStatus, senderLabel, useFallbackPoll, useOnSubscribed, waktuLabel, type ChatMsg, type RtState } from './merge';
@@ -150,6 +156,14 @@ export default function PublicChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [riwayatAdaLebih, setRiwayatAdaLebih] = useState(false);
   const [riwayatMemuat, setRiwayatMemuat] = useState(false);
+  // C2-02: gagal memuat riwayat awal / pesan sebelumnya tampil sebagai galat + Coba lagi (bukan senyap).
+  const [riwayatGalat, setRiwayatGalat] = useState<'awal' | 'lama' | null>(null);
+  // C2-07: nomor permintaan + AbortController riwayat. Respons yang bukan milik percakapan aktif dibuang.
+  const riwayatTokenRef = useRef(0);
+  // R4: generasi percakapan. Naik tiap percakapan dibuka/ditinggalkan; respons sinkronisasi dari generasi lama dibuang.
+  const percakapanGenRef = useRef(0);
+  const riwayatAbortRef = useRef<AbortController | null>(null);
+  const percakapanAwalRef = useRef<PercakapanRingkas | null>(null);
   const [sesiStatus, setSesiStatus] = useState<StatusSesi>('bot');
   const [faqs, setFaqs] = useState<FAQ[]>([]);
   // S14: gagal memuat FAQ tidak boleh tampil sebagai daftar kosong senyap.
@@ -192,7 +206,9 @@ export default function PublicChatPage() {
         const supabase = createClient();
         const { data: { user } } = await supabase.auth.getUser();
 
-        if (user) {
+        // Chat WAJIB login Google untuk PENGUNJUNG (keputusan pemilik): sesi anonim dan akun tanpa identitas Google
+        // (bukti dari data Auth, bukan user_metadata) diperlakukan seperti belum masuk. STAF sah (role di JWT) tetap boleh.
+        if (user && layakMemakaiChat(user)) {
           setIsLoggedIn(true);
           // K2: ambil id + nama pengunjung. id dipakai untuk chat_sesi.pengunjung_id
           // agar RLS (pengunjung.auth_user_id = auth.uid()) dapat verifikasi kepemilikan.
@@ -203,21 +219,20 @@ export default function PublicChatPage() {
             .single();
 
           if (!profile) {
-            // Belum ada baris pengunjung (mis. anon sign-in baru diaktifkan).
+            // Belum ada baris pengunjung (mis. login Google pertama dan callback belum sempat membuatnya).
             // Buat baris pengunjung untuk user ini — policy pengunjung_self_insert
             // mengizinkan karena auth_user_id = auth.uid(). Lalu ambil id-nya.
             const fallbackName =
               user.user_metadata?.full_name ||
               user.email?.split('@')[0] ||
               'Pengunjung Anonim';
-            const provider = user.is_anonymous ? 'anonymous' : 'google';
             const { data: inserted, error: insertError } = await supabase
               .from('pengunjung')
               .insert({
                 auth_user_id: user.id,
                 nama: fallbackName,
                 email: user.email ?? null,
-                provider,
+                provider: punyaIdentitasGoogle(user) ? 'google' : 'email',
               })
               .select('id, nama')
               .single();
@@ -371,8 +386,38 @@ export default function PublicChatPage() {
     return dariBarisSesi((data ?? []) as BarisSesi[], nama, opsi);
   }, [pengunjungId, layananList]);
 
+  // Riwayat awal sebuah percakapan. Setiap pemanggilan membatalkan yang sebelumnya dan memegang nomor sendiri;
+  // respons dari percakapan yang sudah ditinggalkan (nomor tidak lagi aktif) tidak boleh menyentuh state.
+  const muatRiwayatAwal = useCallback(async (p: PercakapanRingkas) => {
+    riwayatAbortRef.current?.abort();
+    const ac = new AbortController();
+    riwayatAbortRef.current = ac;
+    const token = ++riwayatTokenRef.current;
+    percakapanAwalRef.current = p;
+    setRiwayatGalat(null);
+    setRiwayatMemuat(true);
+    try {
+      const res = await fetch(`/api/chat/messages?sesi_id=${p.sesiTerakhirId}&riwayat=1`, { signal: ac.signal });
+      if (token !== riwayatTokenRef.current) return;
+      if (!res.ok) {
+        setRiwayatGalat('awal');
+        return;
+      }
+      const data = await res.json();
+      if (token !== riwayatTokenRef.current) return;
+      setMessages((prev) => mergeMessages(prev, (data.messages ?? []) as Message[]));
+      setRiwayatAdaLebih(!!data.ada_lebih);
+      if (data.status && p.sesiTerbukaId) setSesiStatus(data.status as StatusSesi);
+    } catch {
+      if (token === riwayatTokenRef.current) setRiwayatGalat('awal');
+    } finally {
+      if (token === riwayatTokenRef.current) setRiwayatMemuat(false);
+    }
+  }, []);
+
   const bukaPercakapan = useCallback(
     (p: PercakapanRingkas) => {
+      percakapanGenRef.current++; // R4: invalidasi semua sinkronisasi percakapan sebelumnya
       setSelectedLayananId(p.layananId);
       setSesiLayananId(p.layananId);
       sesiIdRef.current = p.sesiTerbukaId;
@@ -385,20 +430,9 @@ export default function PublicChatPage() {
       setTampilan('percakapan');
       tulisDibaca(p.layananId, new Date().toISOString());
       void fetchFAQs(p.layananId);
-      void (async () => {
-        try {
-          const res = await fetch(`/api/chat/messages?sesi_id=${p.sesiTerakhirId}&riwayat=1`);
-          if (!res.ok) return;
-          const data = await res.json();
-          setMessages((prev) => mergeMessages(prev, (data.messages ?? []) as Message[]));
-          setRiwayatAdaLebih(!!data.ada_lebih);
-          if (data.status && p.sesiTerbukaId) setSesiStatus(data.status as StatusSesi);
-        } catch {
-          /* jaringan putus: poll berikutnya mengisi */
-        }
-      })();
+      void muatRiwayatAwal(p);
     },
-    [fetchFAQs],
+    [fetchFAQs, muatRiwayatAwal],
   );
 
   useEffect(() => {
@@ -439,6 +473,12 @@ export default function PublicChatPage() {
   }, [isCheckingAuth, loadingLayanan, isLoggedIn, daftarMuatKe, ambilDaftar, bukaPercakapan, cariLayananUrl, layananList]);
 
   const kembaliKeDaftar = () => {
+    // Percakapan ditinggalkan: batalkan riwayat yang masih berjalan dan buang responsnya (C2-07, R4).
+    riwayatTokenRef.current++;
+    percakapanGenRef.current++;
+    riwayatAbortRef.current?.abort();
+    setRiwayatMemuat(false);
+    setRiwayatGalat(null);
     if (selectedLayananId) tulisDibaca(selectedLayananId, new Date().toISOString());
     setDaftarMuatKe((n) => n + 1);
     setTampilan('daftar');
@@ -482,11 +522,15 @@ export default function PublicChatPage() {
   const syncMessages = useCallback(async () => {
     if (!sesiId) return;
     const seq = ++syncSeq.current;
+    const gen = percakapanGenRef.current;
+    // R4: respons hanya berlaku bila percakapan/sesi yang sama masih aktif setelah SETIAP await.
+    const masihAktif = () => seq === syncSeq.current && gen === percakapanGenRef.current && sesiIdRef.current === sesiId;
     try {
       const res = await fetch(`/api/chat/messages?sesi_id=${sesiId}`);
+      if (!masihAktif()) return;
       if (!res.ok) return;
       const data = await res.json();
-      if (seq !== syncSeq.current) return; // respons usang
+      if (!masihAktif()) return; // respons usang
       if (data.messages) setMessages((prev) => mergeMessages(prev, data.messages as Message[]));
       if (data.status) applyStatus(data.status);
     } catch {
@@ -503,12 +547,20 @@ export default function PublicChatPage() {
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'chat_pesan', filter: `sesi_id=eq.${sesiId}` },
-        (payload) => setMessages((prev) => mergeMessages(prev, [payload.new as Message])),
+        (payload) => {
+          const baru = payload.new as Message & { sesi_id?: string };
+          if (baru.sesi_id && baru.sesi_id !== sesiIdRef.current) return; // R4: bukan percakapan aktif
+          setMessages((prev) => mergeMessages(prev, [baru]));
+        },
       )
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'chat_sesi', filter: `id=eq.${sesiId}` },
-        (payload) => applyStatus((payload.new as { status: StatusSesi }).status),
+        (payload) => {
+          const baru = payload.new as { id?: string; status: StatusSesi };
+          if (baru.id && baru.id !== sesiIdRef.current) return; // R4: bukan percakapan aktif
+          applyStatus(baru.status);
+        },
       )
       .subscribe((status) => {
         if (active) setRt(rtFromStatus(status));
@@ -538,17 +590,27 @@ export default function PublicChatPage() {
     const anchor = sesiIdRef.current ?? daftar.find((d) => d.layananId === selectedLayananId)?.sesiTerakhirId;
     const tertua = messages.find((m) => !m.local)?.created_at;
     if (!anchor || !tertua || riwayatMemuat) return;
+    // Memakai nomor percakapan yang sedang aktif (tidak menaikkannya): bila pengguna pindah, respons dibuang.
+    const token = riwayatTokenRef.current;
+    setRiwayatGalat(null);
     setRiwayatMemuat(true);
     try {
-      const res = await fetch(`/api/chat/messages?sesi_id=${anchor}&riwayat=1&sebelum=${encodeURIComponent(tertua)}`);
-      if (!res.ok) return;
+      const res = await fetch(`/api/chat/messages?sesi_id=${anchor}&riwayat=1&sebelum=${encodeURIComponent(tertua)}`, {
+        signal: riwayatAbortRef.current?.signal,
+      });
+      if (token !== riwayatTokenRef.current) return;
+      if (!res.ok) {
+        setRiwayatGalat('lama');
+        return;
+      }
       const data = await res.json();
+      if (token !== riwayatTokenRef.current) return;
       setMessages((prev) => mergeMessages(prev, (data.messages ?? []) as Message[]));
       setRiwayatAdaLebih(!!data.ada_lebih);
     } catch {
-      /* tombol tetap ada: coba lagi */
+      if (token === riwayatTokenRef.current) setRiwayatGalat('lama');
     } finally {
-      setRiwayatMemuat(false);
+      if (token === riwayatTokenRef.current) setRiwayatMemuat(false);
     }
   };
 
@@ -865,35 +927,57 @@ export default function PublicChatPage() {
   // Bubble milik pengunjung terakhir yang sudah tersimpan -> status "Terkirim".
   const lastSentId = [...messages].reverse().find((m) => m.pengirim === 'pengunjung')?.id;
 
+  // A-10: layanan terpilih yang sudah punya percakapan dibuka langsung (tanpa centang persetujuan lagi).
+  const adaPercakapanTerpilih = !!selectedLayananId && daftar.some((d) => d.layananId === selectedLayananId);
+
+  // A-03: parameter ?layanan= mentah (id atau nama) diteruskan lewat `next` agar konteks tidak hilang saat login.
+  const layananUrlMentah =
+    typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('layanan');
+  const masukDenganGoogle = async () => {
+    const supabase = createClient();
+    const next = layananUrlMentah ? encodeURIComponent(`/chat?layanan=${encodeURIComponent(layananUrlMentah)}`) : '/chat';
+    await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: `${window.location.origin}/auth/callback?next=${next}` },
+    });
+  };
+
   const tampilanAktif: Exclude<Tampilan, 'awal'> | 'memuat' =
     tampilan === 'awal' ? (isCheckingAuth || (isLoggedIn && !daftarSiap) ? 'memuat' : 'baru') : tampilan;
 
   return (
-    <div className={styles.chatPage}>
-      {/* Navbar */}
+    <div className={styles.chatPage} data-tema="dasbor">
+      {/* Bilah atas: tanpa sidebar */}
       <header className={styles.chatHeader}>
-        <Link href="/" className={styles.brand} style={{ display: 'flex', alignItems: 'center' }}>
+        <Link href="/" className={styles.brand}>
           <Image
             src="/logo.png"
             alt="Lampung Maju Hub Logo"
             width={120}
             height={50}
-            style={{ objectFit: 'contain' }}
+            className={styles.brandLogo}
             priority
           />
         </Link>
-        <Link href="/" className={styles.backBtn}>
-          <ArrowLeft size={16} />
-          Kembali ke Web
-        </Link>
+        <h1 className={styles.judulBar}>Live Chat</h1>
+        <nav className={styles.aksiBar} aria-label="Navigasi chat">
+          <Link href="/me" className={styles.tautanBar}>
+            <LayoutDashboard size={16} strokeWidth={1.75} aria-hidden="true" />
+            <span className={styles.teksTautan}>Beranda saya</span>
+          </Link>
+          <Link href="/" className={styles.backBtn}>
+            <ArrowLeft size={16} strokeWidth={1.75} aria-hidden="true" />
+            <span className={styles.teksTautan}>Kembali ke Web</span>
+          </Link>
+        </nav>
       </header>
 
-      {/* Main Container */}
+      {/* Panel percakapan */}
       <div className={styles.chatContainer}>
         {tampilanAktif === 'memuat' && (
-          <p role="status" style={{ margin: 'auto', display: 'flex', alignItems: 'center', gap: 'var(--space-2)', color: 'var(--text-secondary)' }}>
-            <Loader2 size={16} className="animate-pulse" aria-hidden="true" /> Memuat percakapan...
-          </p>
+          <div role="status" className={styles.memuat}>
+            <Skeleton bentuk="baris" jumlah={3} label="Memuat percakapan..." />
+          </div>
         )}
 
         {tampilanAktif === 'daftar' && (
@@ -915,123 +999,91 @@ export default function PublicChatPage() {
           /* Setup / Formulir Percakapan Baru */
           <div className={styles.setupState}>
             {daftar.length > 0 && (
-              <button
-                type="button"
-                className="btn btn--secondary btn--sm"
-                style={{ alignSelf: 'flex-start' }}
+              <Tombol
+                varian="sekunder"
+                ukuran="kecil"
+                ikon={ArrowLeft}
+                className={styles.kembaliDaftar}
                 onClick={() => setTampilan('daftar')}
               >
-                <ArrowLeft size={14} aria-hidden="true" /> Daftar percakapan
-              </button>
+                Daftar percakapan
+              </Tombol>
             )}
-            <div style={{ textAlign: 'center' }}>
-              <div style={{
-                width: 64, height: 64, borderRadius: '50%', background: 'var(--color-primary-50)',
-                color: 'var(--color-primary-600)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                margin: '0 auto var(--space-4)', boxShadow: '0 8px 24px rgba(99, 102, 241, 0.15)'
-              }}>
-                <MessageSquare size={32} />
-              </div>
+            <div className={styles.setupKepala}>
+              <span className={styles.setupIkon}>
+                <MessageSquare size={28} strokeWidth={1.75} aria-hidden="true" />
+              </span>
               <h2 className={styles.setupTitle}>Mulai Konsultasi Online</h2>
               <p className={styles.setupDesc}>
                 Silakan isi data diri singkat dan pilih layanan tujuan Anda untuk memulai sesi chat dengan petugas atau bot FAQ.
               </p>
-              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', lineHeight: 1.5, margin: 0 }}>
-                {PII_DISCLAIMER}
-              </p>
+              <p className={styles.setupCatatan}>{PII_DISCLAIMER}</p>
             </div>
 
             {!isOnline && (
-              <div
-                role="alert"
-                className="form-error"
-                style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}
-              >
-                <AlertCircle size={16} />
+              <p role="alert" className={styles.galatBaris}>
+                <AlertCircle size={16} strokeWidth={1.75} aria-hidden="true" />
                 {OFFLINE_BANNER_TEXT}
-              </div>
+              </p>
             )}
             {setupError && (
-              <div
-                role="alert"
-                className="form-error"
-                style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}
-              >
-                <AlertCircle size={16} />
+              <p role="alert" className={styles.galatBaris}>
+                <AlertCircle size={16} strokeWidth={1.75} aria-hidden="true" />
                 {setupError}
-              </div>
+              </p>
             )}
 
-            <form onSubmit={handleStartSession} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-              <div className="form-group">
-                <label className="form-label form-label--required" htmlFor="chatName">Nama Anda</label>
-                {!isCheckingAuth && !isLoggedIn ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-                    <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
-                      Silakan login terlebih dahulu untuk menggunakan Live Chat.
-                    </p>
-                    <button
-                      type="button"
-                      className="btn btn--secondary"
-                      onClick={async () => {
-                        const supabase = createClient();
-                        await supabase.auth.signInWithOAuth({
-                          provider: 'google',
-                          options: {
-                            redirectTo: `${window.location.origin}/auth/callback?next=/chat`,
-                          },
-                        });
-                      }}
-                    >
-                      <svg viewBox="0 0 24 24" width="18" height="18" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
-                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
-                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
-                      </svg>
-                      Masuk dengan Google
-                    </button>
-                  </div>
-                ) : (
-                  <input
-                    id="chatName"
-                    type="text"
-                    className="form-input"
-                    placeholder={isCheckingAuth ? "Memuat data profil..." : "Masukkan nama lengkap..."}
-                    value={visitorName}
-                    onChange={(e) => setVisitorName(e.target.value)}
-                    required
-                    readOnly={isLoggedIn}
-                    style={{ background: isLoggedIn ? 'var(--surface-secondary)' : 'var(--surface-primary)', cursor: isLoggedIn ? 'not-allowed' : 'text' }}
-                  />
-                )}
-              </div>
-
-              <div className="form-group">
-                <label className="form-label form-label--required" htmlFor="chatLayanan">Layanan yang Ditanyakan</label>
-                <select
-                  id="chatLayanan"
-                  className="form-select"
-                  value={selectedLayananId}
-                  onChange={(e) => setSelectedLayananId(e.target.value)}
-                  disabled={loadingLayanan || layananError}
+            {!isCheckingAuth && !isLoggedIn ? (
+              /* A-03: chat wajib login Google. Ajakan masuk paling atas; kolom yang tak bisa dipakai tidak ditampilkan. */
+              <section aria-labelledby="chatAjakanMasuk" className={styles.ajakan}>
+                <h3 id="chatAjakanMasuk" className={styles.ajakanJudul}>Masuk untuk memakai live chat</h3>
+                <p className={styles.ajakanTeks}>
+                  Live chat hanya untuk pengunjung yang masuk dengan akun Google, supaya percakapan Anda tersimpan dan dapat dilanjutkan.
+                  Setelah masuk, Anda kembali ke halaman ini{layananUrlMentah ? ' dengan layanan yang sama' : ''}.
+                </p>
+                <Tombol onClick={masukDenganGoogle}>
+                  <IkonGoogle className={styles.ikonGoogle} />
+                  Masuk dengan Google
+                </Tombol>
+              </section>
+            ) : (
+            <form onSubmit={handleStartSession} className={styles.formSetup}>
+              <Field label="Nama Anda" wajib>
+                <input
+                  type="text"
+                  placeholder={isCheckingAuth ? "Memuat data profil..." : "Masukkan nama lengkap..."}
+                  value={visitorName}
+                  onChange={(e) => setVisitorName(e.target.value)}
                   required
-                >
-                  <option value="">{layananError ? '— Layanan belum dapat dimuat —' : '— Pilih layanan tujuan —'}</option>
-                  {layananList.map((layanan) => (
-                    <option
-                      key={layanan.id}
-                      value={layanan.id}
-                      disabled={layanan.status_tampilan === 'coming_soon'}
-                    >
-                      {layanan.nama}
-                      {layanan.status_tampilan === 'coming_soon' ? ' (Segera hadir)' : ''}
-                      {daftar.some((d) => d.layananId === layanan.id) ? ' (percakapan sudah ada)' : ''}
-                    </option>
-                  ))}
-                </select>
+                  readOnly={isLoggedIn}
+                  className={isLoggedIn ? styles.inputTerkunci : undefined}
+                />
+              </Field>
+
+              <div>
+                <Field label="Layanan yang Ditanyakan" wajib>
+                  <select
+                    value={selectedLayananId}
+                    onChange={(e) => setSelectedLayananId(e.target.value)}
+                    disabled={loadingLayanan || layananError}
+                    required
+                  >
+                    <option value="">{layananError ? '— Layanan belum dapat dimuat —' : '— Pilih layanan tujuan —'}</option>
+                    {layananList.map((layanan) => (
+                      <option
+                        key={layanan.id}
+                        value={layanan.id}
+                        disabled={layanan.status_tampilan === 'coming_soon'}
+                      >
+                        {layanan.nama}
+                        {layanan.status_tampilan === 'coming_soon' ? ' (Segera hadir)' : ''}
+                        {daftar.some((d) => d.layananId === layanan.id) ? ' (percakapan sudah ada)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
                 {layananError && (
-                  <ErrorRetry
+                  <Galat
                     judul="Daftar layanan belum dapat dimuat"
                     pesan="Anda belum dapat memilih layanan tujuan chat. Tekan Coba lagi untuk memuat ulang daftar layanan."
                     onRetry={handleRetryLayanan}
@@ -1040,35 +1092,36 @@ export default function PublicChatPage() {
                 )}
               </div>
 
-              {/* I8: PDP consent checkbox — required */}
-              <div className="form-group" style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)' }}>
-                <input
-                  id="chatConsent"
-                  type="checkbox"
-                  checked={consentGiven}
-                  onChange={(e) => {
-                    setConsentGiven(e.target.checked);
-                    setConsentError('');
-                  }}
-                  style={{ marginTop: '4px', width: '18px', height: '18px', cursor: 'pointer', flexShrink: 0 }}
-                  required
-                />
-                <label
-                  htmlFor="chatConsent"
-                  style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', cursor: 'pointer', lineHeight: 1.5 }}
-                >
-                  {CONSENT_TEXT}{' '}
-                  <Link
-                    href="/kebijakan-privasi"
-                    style={{ color: 'var(--color-primary-600)', textDecoration: 'underline' }}
-                  >
-                    Baca kebijakan
-                  </Link>
-                </label>
-              </div>
+              {/* A-10: percakapan yang sudah ada tidak meminta persetujuan lagi (sudah tercatat saat percakapan pertama). */}
+              {adaPercakapanTerpilih ? (
+                <p role="status" className={styles.catatanStatus}>
+                  Anda sudah punya percakapan dengan layanan ini. Persetujuan Anda sudah tercatat; percakapan akan dibuka.
+                </p>
+              ) : (
+                // I8: PDP consent checkbox — required
+                <div className={styles.consent}>
+                  <input
+                    id="chatConsent"
+                    type="checkbox"
+                    className={styles.consentKotak}
+                    checked={consentGiven}
+                    onChange={(e) => {
+                      setConsentGiven(e.target.checked);
+                      setConsentError('');
+                    }}
+                    required
+                  />
+                  <label htmlFor="chatConsent" className={styles.consentTeks}>
+                    {CONSENT_TEXT}{' '}
+                    <Link href="/kebijakan-privasi" className={styles.consentTautan}>
+                      Baca kebijakan
+                    </Link>
+                  </label>
+                </div>
+              )}
 
               {consentError && (
-                <ErrorRetry
+                <Galat
                   judul="Persetujuan belum tercatat"
                   pesan={consentError}
                   onRetry={() => void mulaiSesi()}
@@ -1076,19 +1129,16 @@ export default function PublicChatPage() {
                 />
               )}
 
-              <button
+              <Tombol
                 type="submit"
-                className="btn btn--primary btn--lg"
-                style={{ width: '100%', marginTop: 'var(--space-2)' }}
-                disabled={loadingSetup || loadingLayanan || layananError || !isLoggedIn || !consentGiven || !isOnline}
+                className={styles.kirimSetup}
+                memuat={loadingSetup}
+                disabled={loadingSetup || loadingLayanan || layananError || !isLoggedIn || !(adaPercakapanTerpilih || consentGiven) || !isOnline}
               >
-                {loadingSetup ? (
-                  <><Loader2 size={20} className="animate-pulse" /> Memulai Sesi...</>
-                ) : (
-                  !isLoggedIn && !isCheckingAuth ? 'Login untuk Memulai' : 'Mulai Sesi Chat'
-                )}
-              </button>
+                {loadingSetup ? 'Memulai Sesi...' : adaPercakapanTerpilih ? 'Buka percakapan' : 'Mulai Sesi Chat'}
+              </Tombol>
             </form>
+            )}
           </div>
         )}
 
@@ -1101,31 +1151,21 @@ export default function PublicChatPage() {
                 ? styles.statusBarBot
                 : (!hanyaBaca && sesiId && sesiStatus === 'eskalasi' ? styles.statusBarEskalasi : styles.statusBarAktif)
             }`}>
-              <button
-                type="button"
-                className="btn btn--secondary btn--sm"
-                style={{ padding: 'var(--space-1) var(--space-2)', fontSize: '10px' }}
-                onClick={kembaliKeDaftar}
-              >
-                <ArrowLeft size={12} aria-hidden="true" /> Daftar percakapan
-              </button>
+              <Tombol varian="sekunder" ukuran="kecil" ikon={ArrowLeft} onClick={kembaliKeDaftar}>
+                Daftar percakapan
+              </Tombol>
               {!hanyaBaca && sesiId && sesiStatus === 'bot' && (
                 <>
-                  <Bot size={14} />
+                  <Bot size={14} strokeWidth={1.75} aria-hidden="true" />
                   <span>{tutup ? 'Mode Chatbot FAQ — petugas sedang tidak tersedia' : 'Mode Chatbot FAQ Aktif'}</span>
-                  <button
-                    type="button"
-                    className="btn btn--secondary btn--sm"
-                    style={{ marginLeft: 'auto', padding: 'var(--space-1) var(--space-2)', fontSize: '10px' }}
-                    onClick={handleEscalateManual}
-                  >
+                  <Tombol varian="sekunder" ukuran="kecil" className={styles.statusAksi} onClick={handleEscalateManual}>
                     Hubungkan ke Petugas
-                  </button>
+                  </Tombol>
                 </>
               )}
               {!hanyaBaca && sesiId && sesiStatus === 'eskalasi' && tutup && (
                 <>
-                  <Bot size={14} />
+                  <Bot size={14} strokeWidth={1.75} aria-hidden="true" />
                   <span>
                     {botAktif
                       ? 'Menunggu petugas — petugas akan menjawab pada jam kerja. Sementara itu asisten virtual tetap menjawab.'
@@ -1135,19 +1175,19 @@ export default function PublicChatPage() {
               )}
               {!hanyaBaca && sesiId && sesiStatus === 'eskalasi' && !tutup && (
                 <>
-                  <Loader2 size={12} className="animate-pulse" />
+                  <Loader2 size={14} className="animate-pulse" aria-hidden="true" />
                   <span>Menghubungkan ke petugas operasional loket... Mohon tunggu.</span>
                 </>
               )}
               {!hanyaBaca && sesiId && sesiStatus === 'aktif' && (
                 <>
-                  <CheckCircle2 size={12} style={{ color: 'var(--color-success-500)' }} />
+                  <CheckCircle2 size={14} strokeWidth={1.75} className={styles.ikonSukses} aria-hidden="true" />
                   <span>Terhubung langsung dengan {petugasLabel(sesiLayananNama)}</span>
                 </>
               )}
               {(hanyaBaca || !sesiId || sesiStatus === 'selesai') && (
                 <>
-                  <CheckCircle2 size={12} style={{ color: 'var(--color-success-500)' }} />
+                  <CheckCircle2 size={14} strokeWidth={1.75} className={styles.ikonSukses} aria-hidden="true" />
                   <span>
                     {hanyaBaca
                       ? 'Layanan ini tidak lagi melayani chat — percakapan hanya dapat dibaca.'
@@ -1159,28 +1199,15 @@ export default function PublicChatPage() {
 
             {statusLayanan && !statusLayanan.buka && !hanyaBaca && (
               <div role="note" data-testid="chat-luar-jam" className={styles.hariTanpaLayananBar}>
-                <AlertCircle size={14} aria-hidden="true" style={{ flexShrink: 0, marginTop: 2 }} />
+                <AlertCircle size={14} strokeWidth={1.75} aria-hidden="true" />
                 <span>{teksPetugasTidakTersedia(sesiLayananNama ?? 'layanan ini', statusLayanan, { tanpaBot: !botAktif })}</span>
               </div>
             )}
 
             {/* Offline Banner */}
             {!isOnline && (
-              <div
-                role="alert"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 'var(--space-2)',
-                  padding: 'var(--space-2) var(--space-4)',
-                  fontSize: 'var(--text-xs)',
-                  fontWeight: 600,
-                  background: 'var(--color-danger-50)',
-                  color: 'var(--color-danger-700)',
-                  borderBottom: '1px solid var(--border-default)',
-                }}
-              >
-                <AlertCircle size={14} style={{ flexShrink: 0 }} />
+              <div role="alert" className={styles.offlineBar}>
+                <AlertCircle size={14} strokeWidth={1.75} aria-hidden="true" />
                 <span>{OFFLINE_BANNER_TEXT}</span>
               </div>
             )}
@@ -1192,19 +1219,32 @@ export default function PublicChatPage() {
                   <MessageList
                     typingIndicator={isBotTyping ? <TypingIndicator content="Bot FAQ sedang mengetik…" /> : undefined}
                   >
-                    <div style={{ textAlign: 'center', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', lineHeight: 1.5, padding: 'var(--space-2) var(--space-4)' }}>
-                      {PII_DISCLAIMER}
-                    </div>
+                    <div className={styles.catatanPii}>{PII_DISCLAIMER}</div>
+                    {riwayatGalat && (
+                      <Galat
+                        pesan={
+                          riwayatGalat === 'awal'
+                            ? 'Riwayat percakapan belum dapat dimuat. Pesan lama mungkin belum tampil.'
+                            : 'Pesan sebelumnya belum dapat dimuat.'
+                        }
+                        onRetry={() =>
+                          riwayatGalat === 'awal'
+                            ? percakapanAwalRef.current && void muatRiwayatAwal(percakapanAwalRef.current)
+                            : void muatRiwayatLebihLama()
+                        }
+                        memuat={riwayatMemuat}
+                      />
+                    )}
                     {riwayatAdaLebih && (
-                      <div style={{ textAlign: 'center', padding: 'var(--space-2)' }}>
-                        <button
-                          type="button"
-                          className="btn btn--secondary btn--sm"
+                      <div className={styles.muatLebih}>
+                        <Tombol
+                          varian="sekunder"
+                          ukuran="kecil"
                           onClick={() => void muatRiwayatLebihLama()}
                           disabled={riwayatMemuat}
                         >
                           {riwayatMemuat ? 'Memuat...' : 'Muat pesan sebelumnya'}
-                        </button>
+                        </Tombol>
                       </div>
                     )}
                     {messages.map((msg) => (
@@ -1239,9 +1279,9 @@ export default function PublicChatPage() {
                         {msg.local === 'failed' && (
                           <ChatMessage.Footer>
                             <span className={ui.msgStatusFailed}>Gagal terkirim. </span>
-                            <button type="button" className="btn btn--secondary btn--sm" onClick={() => handleRetry(msg)}>
+                            <Tombol varian="sekunder" ukuran="kecil" onClick={() => handleRetry(msg)}>
                               Kirim ulang
-                            </button>
+                            </Tombol>
                           </ChatMessage.Footer>
                         )}
                       </ChatMessage>
@@ -1251,7 +1291,7 @@ export default function PublicChatPage() {
                     {/* S14: FAQ gagal dimuat -> pesan jelas + Coba lagi (bukan daftar kosong senyap) */}
                     {modeBot(sesiStatus, tutup, botAktif) && !!sesiId && faqError && (
                       <div className={styles.faqError}>
-                        <ErrorRetry
+                        <Galat
                           judul="FAQ belum dapat dimuat"
                           pesan="Pertanyaan cepat tidak tersedia untuk sementara. Anda tetap dapat mengetik pertanyaan langsung."
                           onRetry={() => void fetchFAQs(sesiLayananId ?? selectedLayananId)}
@@ -1262,7 +1302,7 @@ export default function PublicChatPage() {
 
                     {/* Quick FAQ Chips embedded in MessageList as custom component if active */}
                     {modeBot(sesiStatus, tutup, botAktif) && !!sesiId && !faqError && faqs.length > 0 && (
-                      <div className={styles.quickFaqSection} style={{ marginTop: 'var(--space-4)', marginBottom: 'var(--space-2)' }}>
+                      <div className={styles.quickFaqSection}>
                         <span className={styles.quickFaqTitle}>FAQ Cepat:</span>
                         <div className={styles.quickFaqGrid}>
                           {faqs.map((faq) => (

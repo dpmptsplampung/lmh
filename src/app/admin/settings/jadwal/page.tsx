@@ -1,11 +1,24 @@
 'use client';
 
+import Tombol from '@/components/ui/Tombol';
+import Kartu from '@/components/ui/Kartu';
+import Tabel from '@/components/ui/Tabel';
+import Skeleton from '@/components/ui/Skeleton';
+import Galat from '@/components/ui/Galat';
+import CatatanKeadaan from '@/components/ui/CatatanKeadaan';
+import StatusKosong from '@/components/ui/StatusKosong';
+import PemilihTanggal from '@/components/ui/PemilihTanggal';
+import { formatTanggal as tanggalWIB } from '@/lib/utils';
+
+import tampilan from './page.dasbor.module.css';
+
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { CalendarDays, Plus, Trash2, Loader2, Save } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import { createClient } from '@/lib/supabase/client';
 import { mutasiWajibBaris, mutasiInsert, MutasiError, pesanMutasi } from '@/lib/supabase/mutate';
 import { perluMuatUlang } from '@/components/admin/mutasi-ui';
+import { objekBelumAda } from '@/lib/akses-data/galat';
 import { useToast } from '@/components/Toast';
 import { todayWIB } from '@/lib/time';
 
@@ -89,25 +102,60 @@ function pesanGalatJadwal(e: unknown): string {
   return pesanMutasi(e);
 }
 
-function formatTanggal(tanggal: string): string {
-  return new Date(`${tanggal}T00:00:00Z`).toLocaleDateString('id-ID', {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
-  });
+// Galat muat dibedakan (R7): objek DB belum ada (migrasi belum diterapkan; "Coba lagi" tidak membantu) vs gangguan koneksi/lainnya.
+type GalatMuat = { migrasi: boolean; pesan: string };
+
+const galatMuat = (bagian: string, err: unknown, bagianKoneksi: string = bagian): GalatMuat =>
+  objekBelumAda(err)
+    ? {
+        migrasi: true,
+        pesan: `${bagian} belum tersedia di database (migrasi belum diterapkan). Hubungi pengembang; mencoba lagi tidak akan membantu.`,
+      }
+    : { migrasi: false, pesan: `${bagianKoneksi} tidak dapat dimuat. Periksa koneksi Anda lalu coba lagi.` };
+
+// Daftar layanan. Kolom `aktif` datang dari migrasi 202610270001 (belum tentu sudah diterapkan): bila hanya kolom itu yang
+// belum ada, turun ke select lama; galat lain = GalatMuat (JANGAN dijadikan daftar kosong, itu akar C3-13).
+async function bacaDaftarLayanan(supabase: ReturnType<typeof createClient>): Promise<Layanan[] | GalatMuat> {
+  try {
+    const lengkap = await supabase.from('layanan').select('id, nama, is_ptsp, aktif').order('nama');
+    if (!lengkap.error) return (lengkap.data ?? []) as Layanan[];
+    if (!objekBelumAda(lengkap.error)) return galatMuat('Daftar layanan', lengkap.error);
+    const lama = await supabase.from('layanan').select('id, nama, is_ptsp').order('nama');
+    if (lama.error) return galatMuat('Layanan', lama.error);
+    return (lama.data ?? []) as Layanan[];
+  } catch (e) {
+    return galatMuat('Daftar layanan', e);
+  }
 }
+
+const formatTanggal = (tanggal: string) => tanggalWIB(tanggal, { weekday: 'long' });
 
 export default function AdminJadwalPage() {
   const { toast } = useToast();
   const [layananList, setLayananList] = useState<Layanan[]>([]);
   const [selectedLayananId, setSelectedLayananId] = useState('');
   const [jadwal, setJadwal] = useState<HariJadwal[] | null>(null);
+  // Salinan jadwal sebagaimana tersimpan di DB: pembanding "belum disimpan" (C3-11).
+  const [jadwalAwal, setJadwalAwal] = useState<HariJadwal[] | null>(null);
+  // Layanan tujuan yang ditahan karena jadwal yang sedang diedit belum disimpan.
+  const [pindahKe, setPindahKe] = useState<string | null>(null);
+  const [galatDaftar, setGalatDaftar] = useState<GalatMuat | null>(null);
+  const [memuatDaftar, setMemuatDaftar] = useState(false);
+  // Hari libur yang menunggu konfirmasi hapus (C3-03) + kunci agar klik ganda tidak menghapus dua kali.
+  const [hapusLibur, setHapusLibur] = useState<HariLibur | null>(null);
+  const [menghapus, setMenghapus] = useState(false);
+  const menghapusRef = useRef(false);
+  const pemicuHapusRef = useRef<HTMLElement | null>(null);
+  const batalHapusRef = useRef<HTMLButtonElement>(null);
+  const judulLiburRef = useRef<HTMLHeadingElement>(null);
   const [liburList, setLiburList] = useState<HariLibur[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [canEdit, setCanEdit] = useState(false);
   const [galatJadwal, setGalatJadwal] = useState<string | null>(null);
   // Gagal memuat (bukan gagal menyimpan): editor disembunyikan agar jadwal kosong palsu tak bisa disimpan.
-  const [galatMuatJadwal, setGalatMuatJadwal] = useState<string | null>(null);
-  const [galatMuatLibur, setGalatMuatLibur] = useState<string | null>(null);
+  const [galatMuatJadwal, setGalatMuatJadwal] = useState<GalatMuat | null>(null);
+  const [galatMuatLibur, setGalatMuatLibur] = useState<GalatMuat | null>(null);
 
   const [liburTanggal, setLiburTanggal] = useState('');
   const [liburKeterangan, setLiburKeterangan] = useState('');
@@ -120,32 +168,38 @@ export default function AdminJadwalPage() {
   const loadJadwal = useCallback(async (layananId: string) => {
     const muatan = ++muatanTerakhir.current;
     setJadwal(null);
+    setJadwalAwal(null);
     setGalatMuatJadwal(null);
     setGalatJadwal(null);
     let rows: JadwalStandbyRow[] | null = null;
+    let galat: unknown = null;
     try {
       const supabase = createClient();
       const { data, error } = await supabase
         .from('jadwal_standby')
         .select('hari, jam_mulai, jam_selesai, aktif')
         .eq('layanan_id', layananId);
-      if (!error) rows = (data ?? []) as JadwalStandbyRow[];
-    } catch {
-      rows = null;
+      if (error) galat = error;
+      else rows = (data ?? []) as JadwalStandbyRow[];
+    } catch (e) {
+      galat = e;
     }
     if (muatan !== muatanTerakhir.current) return;
     if (rows === null) {
       // Jangan render jadwal kosong (semua hari nonaktif): menyimpannya akan menutup layanan.
-      setGalatMuatJadwal('Jadwal layanan ini tidak dapat dimuat. Periksa koneksi Anda lalu coba lagi.');
+      setGalatMuatJadwal(galatMuat('Jadwal layanan ini', galat));
       return;
     }
-    setJadwal(dariBaris(rows));
+    const dimuat = dariBaris(rows);
+    setJadwal(dimuat);
+    setJadwalAwal(dimuat);
   }, []);
 
   // Hari libur nasional berlaku global; daftar dimulai dari hari ini (WIB).
   const loadLibur = useCallback(async () => {
     setGalatMuatLibur(null);
     let rows: HariLibur[] | null = null;
+    let galat: unknown = null;
     try {
       const supabase = createClient();
       const { data, error } = await supabase
@@ -153,20 +207,29 @@ export default function AdminJadwalPage() {
         .select('tanggal, keterangan')
         .gte('tanggal', todayWIB())
         .order('tanggal');
-      if (!error) rows = (data ?? []) as HariLibur[];
-    } catch {
-      rows = null;
+      if (error) galat = error;
+      else rows = (data ?? []) as HariLibur[];
+    } catch (e) {
+      galat = e;
     }
     if (rows === null) {
-      setGalatMuatLibur('Daftar hari libur tidak dapat dimuat. Periksa koneksi Anda lalu coba lagi.');
+      setGalatMuatLibur(galatMuat('Hari libur', galat, 'Daftar hari libur'));
       return;
     }
     setLiburList(rows);
   }, []);
 
-  useEffect(() => {
-    async function init() {
-      const supabase = createClient();
+  // Peran + daftar layanan + jadwal layanan pertama. Dipisah dari hari libur agar "Coba lagi" daftar tak memuat ulang libur.
+  const muatDaftar = useCallback(async () => {
+    setGalatDaftar(null);
+    let supabase: ReturnType<typeof createClient>;
+    try {
+      supabase = createClient();
+    } catch (e) {
+      setGalatDaftar(galatMuat('Daftar layanan', e));
+      return;
+    }
+    try {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         // RBAC Tahap 0: jadwal & libur dikelola Admin saja (FO & petugas hanya melihat).
@@ -177,26 +240,57 @@ export default function AdminJadwalPage() {
           .maybeSingle();
         setCanEdit(p?.role === 'admin');
       }
+    } catch {
+      // Peran tak terbaca = tidak boleh mengubah (aman); daftar layanan tetap dicoba di bawah.
+      setCanEdit(false);
+    }
 
-      const { data } = await supabase
-        .from('layanan')
-        .select('id, nama, is_ptsp, aktif')
-        .order('nama');
-      const list = (data ?? []) as Layanan[];
-      setLayananList(list);
-      await Promise.all([
-        list.length > 0 ? (setSelectedLayananId(list[0].id), loadJadwal(list[0].id)) : Promise.resolve(),
-        loadLibur(),
-      ]);
+    const list = await bacaDaftarLayanan(supabase);
+    if (!Array.isArray(list)) {
+      setGalatDaftar(list);
+      return;
+    }
+    setLayananList(list);
+    if (list.length > 0) {
+      setSelectedLayananId(list[0].id);
+      await loadJadwal(list[0].id);
+    }
+  }, [loadJadwal]);
+
+  useEffect(() => {
+    async function init() {
+      await Promise.all([muatDaftar(), loadLibur()]);
       setLoading(false);
     }
     init();
-  }, [loadJadwal, loadLibur]);
+  }, [muatDaftar, loadLibur]);
 
-  const handleSelectLayanan = async (id: string) => {
+  const cobaLagiDaftar = async () => {
+    setMemuatDaftar(true);
+    try {
+      await muatDaftar();
+    } finally {
+      setMemuatDaftar(false);
+    }
+  };
+
+  // C3-11: jadwal yang diedit berbeda dari yang tersimpan -> pindah layanan harus lewat konfirmasi.
+  const kotor = !!jadwal && !!jadwalAwal && JSON.stringify(jadwal) !== JSON.stringify(jadwalAwal);
+
+  const pindahLayanan = async (id: string) => {
     // Jadwal layanan sebelumnya langsung dikosongkan (di dalam loadJadwal) agar tak bisa tersimpan ke layanan baru.
+    setPindahKe(null);
     setSelectedLayananId(id);
     await loadJadwal(id);
+  };
+
+  const handleSelectLayanan = async (id: string) => {
+    if (id === selectedLayananId) return;
+    if (kotor) {
+      setPindahKe(id); // <select> terkendali: tetap di layanan lama sampai pengguna memilih
+      return;
+    }
+    await pindahLayanan(id);
   };
 
   const ubahHari = (hari: number, patch: Partial<HariJadwal>) => {
@@ -213,12 +307,18 @@ export default function AdminJadwalPage() {
       toast(galat, 'error');
       return;
     }
+    // R6: simpan bisa selesai setelah admin pindah layanan. Hasilnya hanya boleh menyentuh layar bila generasi muat
+    // (dinaikkan setiap loadJadwal) masih yang sama; kalau tidak, cukup toast bernama layanan yang disimpan.
+    const muatanSaatSimpan = muatanTerakhir.current;
+    const layananDisimpan = selectedLayananId;
+    const namaLayanan = layananList.find((l) => l.id === layananDisimpan)?.nama ?? 'layanan';
+    const masihDiLayar = () => muatanSaatSimpan === muatanTerakhir.current;
     setSaving(true);
     setGalatJadwal(null);
     try {
       const supabase = createClient();
       const rows = jadwal.map((h) => ({
-        layanan_id: selectedLayananId,
+        layanan_id: layananDisimpan,
         hari: h.hari,
         jam_mulai: `${h.jam_mulai}:00`,
         jam_selesai: `${h.jam_selesai}:00`,
@@ -228,10 +328,16 @@ export default function AdminJadwalPage() {
       await mutasiWajibBaris(
         supabase.from('jadwal_standby').upsert(rows, { onConflict: 'layanan_id,hari' }).select('hari'),
       );
-      toast('Jadwal layanan disimpan.', 'success');
+      if (masihDiLayar()) {
+        setJadwalAwal(jadwal);
+        setPindahKe(null);
+        toast('Jadwal layanan disimpan.', 'success');
+      } else {
+        toast(`Jadwal layanan ${namaLayanan} disimpan.`, 'success');
+      }
     } catch (e) {
-      const pesan = `Gagal menyimpan jadwal. ${pesanGalatJadwal(e)}`;
-      setGalatJadwal(pesan);
+      const pesan = `Gagal menyimpan jadwal${masihDiLayar() ? '' : ` ${namaLayanan}`}. ${pesanGalatJadwal(e)}`;
+      if (masihDiLayar()) setGalatJadwal(pesan);
       toast(pesan, 'error');
     } finally {
       setSaving(false);
@@ -276,8 +382,27 @@ export default function AdminJadwalPage() {
     }
   };
 
-  const handleDeleteLibur = async (tanggal: string) => {
+  const mintaHapusLibur = (lb: HariLibur, pemicu: HTMLElement) => {
     if (!canEdit) return;
+    pemicuHapusRef.current = pemicu;
+    setHapusLibur(lb);
+  };
+
+  const batalHapus = () => {
+    if (menghapusRef.current) return;
+    setHapusLibur(null);
+    pemicuHapusRef.current?.focus();
+  };
+
+  // Fokus ke "Batal" saat konfirmasi muncul (pilihan aman bila Enter tertekan tak sengaja).
+  useEffect(() => {
+    if (hapusLibur) batalHapusRef.current?.focus();
+  }, [hapusLibur]);
+
+  const handleDeleteLibur = async (tanggal: string) => {
+    if (!canEdit || menghapusRef.current) return;
+    menghapusRef.current = true;
+    setMenghapus(true);
     try {
       const supabase = createClient();
       // .select + mutasiWajibBaris: DELETE yang ditolak RLS = 0 baris tanpa error -> bukan sukses.
@@ -288,6 +413,12 @@ export default function AdminJadwalPage() {
       toast(`Gagal menghapus hari libur. ${pesanMutasi(e)}`, 'error');
       // Ditolak/0 baris: daftar di layar kemungkinan basi -> muat ulang.
       if (perluMuatUlang(e)) await loadLibur();
+    } finally {
+      menghapusRef.current = false;
+      setMenghapus(false);
+      setHapusLibur(null);
+      // Barisnya mungkin sudah hilang: pindahkan fokus ke judul bagian agar tidak jatuh ke awal halaman.
+      judulLiburRef.current?.focus();
     }
   };
 
@@ -295,8 +426,8 @@ export default function AdminJadwalPage() {
     return (
       <>
         <PageHeader title="Jadwal Layanan" description="Jadwal mingguan per layanan dan hari libur nasional" />
-        <div style={{ padding: 'var(--space-8)', textAlign: 'center' }}>
-          <Loader2 size={24} className="animate-pulse" style={{ margin: '0 auto' }} aria-label="Memuat jadwal" role="img" />
+        <div className={tampilan.area1}>
+          <Skeleton bentuk="kartu" jumlah={2} label="Memuat jadwal" />
         </div>
       </>
     );
@@ -309,169 +440,128 @@ export default function AdminJadwalPage() {
         description="Atur jam layanan per hari untuk setiap layanan, dan hari libur nasional."
       />
 
-      <div style={{ padding: 'var(--space-8)', maxWidth: '860px' }}>
-        <p style={{ marginBottom: 'var(--space-4)', color: 'var(--text-secondary)', fontSize: 'var(--text-sm)' }}>
-          Antrian (walk-in dan reservasi) ditutup di luar jadwal dan pada hari libur. Live chat tetap bisa dipakai; di luar jadwal, bot yang menjawab.
+      <div className={tampilan.area3}>
+        <p className={tampilan.teks4}>
+          Antrean (walk-in dan reservasi) ditutup di luar jadwal dan pada hari libur. Live chat tetap bisa dipakai; di luar jadwal, bot yang menjawab.
         </p>
 
         {!canEdit && (
           <div
             role="status"
-            style={{
-              marginBottom: 'var(--space-4)',
-              padding: 'var(--space-3) var(--space-4)',
-              borderRadius: 'var(--radius-lg)',
-              borderLeft: '4px solid var(--color-primary-500)',
-              background: 'var(--color-primary-50)',
-              color: 'var(--color-primary-700)',
-              fontSize: 'var(--text-sm)',
-            }}
-          >
+            className={tampilan.area5}>
             Jadwal ini ditetapkan Admin sesuai SOP dan jadwal resmi. Anda hanya dapat melihatnya. Hubungi Admin bila ada perubahan.
           </div>
         )}
 
-        <div className="form-group" style={{ maxWidth: '420px' }}>
-          <label className="form-label" htmlFor="jadwalLayanan">Layanan</label>
-          <select
-            id="jadwalLayanan"
-            className="form-input"
-            value={selectedLayananId}
-            onChange={(e) => handleSelectLayanan(e.target.value)}
-          >
-            {layananList.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.nama}{l.is_ptsp ? ' (PTSP)' : ''}{l.aktif === false ? ' (diarsipkan)' : ''}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {!jadwal && !galatMuatJadwal && selectedLayananId && (
-          <p role="status" style={{ marginTop: 'var(--space-4)', color: 'var(--text-tertiary)', fontSize: 'var(--text-sm)' }}>
-            Memuat jadwal...
+        {galatDaftar ? (
+          galatDaftar.migrasi ? <CatatanKeadaan jenis="menunggu-migrasi">{galatDaftar.pesan}</CatatanKeadaan> :
+          <Galat pesan={galatDaftar.pesan} onRetry={cobaLagiDaftar} memuat={memuatDaftar} />
+        ) : layananList.length === 0 ? (
+          <p role="status" className={tampilan.teks6}>
+            Belum ada layanan. Tambahkan layanan di menu Kelola Layanan.
           </p>
-        )}
-
-        {galatMuatJadwal && (
-          <div
-            role="alert"
-            style={{
-              marginTop: 'var(--space-4)',
-              padding: 'var(--space-3) var(--space-4)',
-              borderRadius: 'var(--radius-lg)',
-              borderLeft: '4px solid var(--color-error-500, #b91c1c)',
-              color: 'var(--color-error-700, #991b1b)',
-              fontSize: 'var(--text-sm)',
-            }}
-          >
-            <p style={{ marginBottom: 'var(--space-2)' }}>{galatMuatJadwal}</p>
-            <button type="button" className="btn btn--secondary btn--sm" onClick={() => loadJadwal(selectedLayananId)}>
-              Coba lagi
-            </button>
+        ) : (
+          <div className={["form-group", tampilan.area7].filter(Boolean).join(' ')}>
+            <label className="form-label" htmlFor="jadwalLayanan">Layanan</label>
+            <select
+              id="jadwalLayanan"
+              className="form-input"
+              value={selectedLayananId}
+              onChange={(e) => handleSelectLayanan(e.target.value)}>
+              {layananList.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.nama}{l.is_ptsp ? ' (PTSP)' : ''}{l.aktif === false ? ' (diarsipkan)' : ''}
+                </option>
+              ))}
+            </select>
           </div>
         )}
 
+        {pindahKe && (
+          <div
+            role="alert"
+            aria-label="Perubahan jadwal belum disimpan"
+            className={tampilan.area8}>
+            <p className={tampilan.teks9}>
+              Perubahan jadwal layanan ini belum disimpan. Jika pindah ke{' '}
+              {layananList.find((l) => l.id === pindahKe)?.nama ?? 'layanan lain'}, perubahan itu hilang.
+            </p>
+            <div className={tampilan.baris10}>
+              <Tombol type="button" varian="sekunder" ukuran="kecil" onClick={() => setPindahKe(null)}>
+                Tetap di sini
+              </Tombol>
+              <Tombol type="button" varian="hantu" ukuran="kecil" onClick={() => pindahLayanan(pindahKe)}>
+                Buang perubahan dan pindah
+              </Tombol>
+            </div>
+          </div>
+        )}
+
+        {!jadwal && !galatMuatJadwal && selectedLayananId && (
+          <Skeleton bentuk="baris" jumlah={7} label="Memuat jadwal" />
+        )}
+
+        {galatMuatJadwal && (
+          <>{galatMuatJadwal.migrasi ? <CatatanKeadaan jenis="menunggu-migrasi">{galatMuatJadwal.pesan}</CatatanKeadaan> : <Galat pesan={galatMuatJadwal.pesan} onRetry={() => { void loadJadwal(selectedLayananId); }} />}</>
+        )}
+
         {jadwal && (
-          <section
-            className="table-wrapper"
-            aria-labelledby="judulJadwal"
-            style={{ padding: 'var(--space-6)', marginTop: 'var(--space-4)' }}
-          >
-            <h3 id="judulJadwal" style={{ marginBottom: 'var(--space-2)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+          <Kartu className={tampilan.area13}>
+            <h3 id="judulJadwal" className={tampilan.judul14}>
               <CalendarDays size={18} aria-hidden="true" /> Jadwal mingguan
             </h3>
-            <p style={{ marginBottom: 'var(--space-4)', color: 'var(--text-tertiary)', fontSize: 'var(--text-sm)' }}>
+            <p className={tampilan.teks15}>
               Centang hari layanan buka. Jam tutup paling lambat pukul {JAM_TUTUP_MAKS} WIB.
             </p>
 
-            <table className="table">
-              <thead>
-                <tr><th scope="col">Hari</th><th scope="col">Jam buka</th><th scope="col">Jam tutup</th></tr>
-              </thead>
-              <tbody>
-                {jadwal.map((h) => {
-                  const nama = NAMA_HARI[h.hari - 1];
-                  const bisaUbahJam = canEdit && h.aktif;
-                  return (
-                    <tr key={h.hari}>
-                      <th scope="row" style={{ fontWeight: 'inherit', textAlign: 'left' }}>
-                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)', minHeight: '44px' }}>
-                          <input
-                            type="checkbox"
-                            checked={h.aktif}
-                            disabled={!canEdit}
-                            onChange={(e) => ubahHari(h.hari, { aktif: e.target.checked })}
-                          />
-                          {nama}
-                        </label>
-                      </th>
-                      <td>
-                        <input
-                          type="time" className="form-input" aria-label={`Jam buka ${nama}`}
-                          value={h.jam_mulai} disabled={!bisaUbahJam}
-                          onChange={(e) => ubahHari(h.hari, { jam_mulai: e.target.value })}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          type="time" className="form-input" aria-label={`Jam tutup ${nama}`}
-                          value={h.jam_selesai} max={JAM_TUTUP_MAKS} disabled={!bisaUbahJam}
-                          onChange={(e) => ubahHari(h.hari, { jam_selesai: e.target.value })}
-                        />
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <Tabel caption="Jadwal mingguan (WIB)" baris={jadwal} kunciBaris="hari" kolom={[
+              { kunci: 'hari', judul: 'Hari', judulBaris: true, render: (h) => (
+                <label className={tampilan.area17}>
+                  <input type="checkbox" checked={h.aktif} disabled={!canEdit}
+                    onChange={(e) => ubahHari(h.hari, { aktif: e.target.checked })} />
+                  {NAMA_HARI[h.hari - 1]}
+                </label>
+              ) },
+              { kunci: 'buka', judul: 'Jam buka', render: (h) => <input type="time" className="form-input"
+                aria-label={`Jam buka ${NAMA_HARI[h.hari - 1]}`} value={h.jam_mulai} disabled={!canEdit || !h.aktif}
+                onChange={(e) => ubahHari(h.hari, { jam_mulai: e.target.value })} /> },
+              { kunci: 'tutup', judul: 'Jam tutup', render: (h) => <input type="time" className="form-input"
+                aria-label={`Jam tutup ${NAMA_HARI[h.hari - 1]}`} value={h.jam_selesai} max={JAM_TUTUP_MAKS} disabled={!canEdit || !h.aktif}
+                onChange={(e) => ubahHari(h.hari, { jam_selesai: e.target.value })} /> },
+            ]} />
 
             {galatJadwal && (
               <p
                 role="alert"
-                style={{
-                  marginTop: 'var(--space-4)',
-                  padding: 'var(--space-3) var(--space-4)',
-                  borderRadius: 'var(--radius-lg)',
-                  borderLeft: '4px solid var(--color-error-500, #b91c1c)',
-                  color: 'var(--color-error-700, #991b1b)',
-                  fontSize: 'var(--text-sm)',
-                }}
-              >
+                className={tampilan.area12}>
                 {galatJadwal}
               </p>
             )}
 
             {canEdit && (
-              <div style={{ marginTop: 'var(--space-4)' }}>
-                <button type="button" className="btn btn--primary" onClick={handleSaveJadwal} disabled={saving}>
+              <div className={tampilan.area18}>
+                <Tombol type="button" varian="utama" onClick={handleSaveJadwal} disabled={saving}>
                   {saving ? <Loader2 size={16} className="animate-pulse" aria-hidden="true" /> : <Save size={16} aria-hidden="true" />} Simpan jadwal
-                </button>
+                </Tombol>
               </div>
             )}
-          </section>
+          </Kartu>
         )}
 
-        <section
-          className="table-wrapper"
-          aria-labelledby="judulLibur"
-          style={{ padding: 'var(--space-6)', marginTop: 'var(--space-6)' }}
-        >
-          <h3 id="judulLibur" style={{ marginBottom: 'var(--space-2)' }}>Hari libur nasional</h3>
-          <p style={{ marginBottom: 'var(--space-4)', color: 'var(--text-tertiary)', fontSize: 'var(--text-sm)' }}>
-            Berlaku untuk semua layanan. Antrian ditutup pada tanggal ini. Daftar dimulai dari hari ini.
+        <Kartu className={tampilan.area19}>
+          <h3 id="judulLibur" ref={judulLiburRef} tabIndex={-1} className={tampilan.teks9} >Hari libur nasional</h3>
+          <p className={tampilan.teks15}>
+            Berlaku untuk semua layanan. Antrean ditutup pada tanggal ini. Daftar dimulai dari hari ini.
           </p>
 
           {canEdit && (
-            <form onSubmit={handleAddLibur} noValidate style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 'var(--space-4)' }}>
-              <div className="form-group" style={{ marginBottom: 0 }}>
+            <form onSubmit={handleAddLibur} noValidate className={tampilan.baris20}>
+              <div className={["form-group", tampilan.area21].filter(Boolean).join(' ')}>
                 <label className="form-label" htmlFor="liburTanggal">Tanggal</label>
-                <input
-                  id="liburTanggal" type="date" className="form-input" required min={todayWIB()}
-                  value={liburTanggal} onChange={(e) => { setLiburTanggal(e.target.value); setGalatLiburForm(null); }}
-                />
+                <PemilihTanggal id="liburTanggal" label="Tanggal" min={todayWIB()}
+                  nilai={liburTanggal} onUbah={(nilai) => { setLiburTanggal(nilai); setGalatLiburForm(null); }} />
               </div>
-              <div className="form-group" style={{ marginBottom: 0, flex: 1, minWidth: '200px' }}>
+              <div className={["form-group", tampilan.area22].filter(Boolean).join(' ')}>
                 <label className="form-label" htmlFor="liburKeterangan">Keterangan (wajib)</label>
                 <input
                   id="liburKeterangan" type="text" className="form-input" maxLength={120} required
@@ -482,62 +572,61 @@ export default function AdminJadwalPage() {
                   value={liburKeterangan} onChange={(e) => { setLiburKeterangan(e.target.value); setGalatLiburForm(null); }}
                 />
               </div>
-              <button type="submit" className="btn btn--primary" disabled={adding}>
+              <Tombol type="submit" varian="utama" disabled={adding}>
                 <Plus size={16} aria-hidden="true" /> Tambah
-              </button>
+              </Tombol>
               {galatLiburForm && (
                 <p
                   id="galatLiburForm" role="alert"
-                  style={{ flexBasis: '100%', margin: 0, color: 'var(--color-error-700, #991b1b)', fontSize: 'var(--text-sm)' }}
-                >
+                  className={tampilan.teks23}>
                   {galatLiburForm}
                 </p>
               )}
             </form>
           )}
 
-          {galatMuatLibur ? (
-            <div role="alert" style={{ color: 'var(--color-error-700, #991b1b)', fontSize: 'var(--text-sm)' }}>
-              <p style={{ marginBottom: 'var(--space-2)' }}>{galatMuatLibur}</p>
-              <button type="button" className="btn btn--secondary btn--sm" onClick={() => loadLibur()}>
-                Coba lagi
-              </button>
+          {hapusLibur && (
+            <div
+              role="alertdialog"
+              aria-labelledby="judulHapusLibur"
+              aria-describedby="isiHapusLibur"
+              className={tampilan.area24}>
+              <p id="judulHapusLibur" className={tampilan.teks25}>
+                Hapus hari libur {formatTanggal(hapusLibur.tanggal)}?
+              </p>
+              <p id="isiHapusLibur" className={tampilan.teks26}>
+                {hapusLibur.keterangan ? `“${hapusLibur.keterangan}”. ` : ''}
+                Berlaku untuk semua layanan: setelah dihapus, antrean dan chat layanan dibuka lagi pada tanggal itu menurut jadwal mingguan.
+              </p>
+              <div className={tampilan.baris10}>
+                <Tombol type="button" ref={batalHapusRef} varian="sekunder" ukuran="kecil" onClick={batalHapus} disabled={menghapus}>
+                  Batal
+                </Tombol>
+                <Tombol
+                  type="button" varian="utama" ukuran="kecil"
+                  onClick={() => handleDeleteLibur(hapusLibur.tanggal)} disabled={menghapus}>
+                  {menghapus ? <Loader2 size={14} className="animate-pulse" aria-hidden="true" /> : <Trash2 size={14} aria-hidden="true" />}
+                  Ya, hapus
+                </Tombol>
+              </div>
             </div>
-          ) : liburList.length === 0 ? (
-            <p style={{ color: 'var(--text-tertiary)', fontSize: 'var(--text-sm)' }}>
-              Belum ada hari libur nasional yang akan datang.{canEdit ? ' Tambahkan tanggalnya di atas.' : ''}
-            </p>
-          ) : (
-            <table className="table">
-              <thead>
-                <tr>
-                  <th scope="col">Tanggal</th>
-                  <th scope="col">Keterangan</th>
-                  {canEdit && <th scope="col">Aksi</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {liburList.map((lb) => (
-                  <tr key={lb.tanggal}>
-                    <td>{formatTanggal(lb.tanggal)}</td>
-                    <td>{lb.keterangan || '—'}</td>
-                    {canEdit && (
-                      <td>
-                        <button
-                          type="button" className="btn btn--ghost btn--sm"
-                          onClick={() => handleDeleteLibur(lb.tanggal)}
-                          aria-label={`Hapus hari libur ${formatTanggal(lb.tanggal)}`}
-                        >
-                          <Trash2 size={14} aria-hidden="true" />
-                        </button>
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           )}
-        </section>
+
+          {galatMuatLibur ? (
+            <>{galatMuatLibur.migrasi ? <CatatanKeadaan jenis="menunggu-migrasi">{galatMuatLibur.pesan}</CatatanKeadaan> : <Galat pesan={galatMuatLibur.pesan} onRetry={() => { void loadLibur(); }} />}</>
+          ) : liburList.length === 0 ? (
+            <StatusKosong ikon={CalendarDays} judul="Belum ada hari libur nasional yang akan datang." isi={canEdit ? 'Tambahkan tanggalnya di atas.' : undefined} />
+          ) : (
+            <Tabel caption="Hari libur nasional" baris={liburList} kunciBaris="tanggal" kolom={[
+              { kunci: 'tanggal', judul: 'Tanggal', judulBaris: true, render: (lb) => formatTanggal(lb.tanggal) },
+              { kunci: 'keterangan', judul: 'Keterangan', render: (lb) => lb.keterangan || '—' },
+              ...(canEdit ? [{ kunci: 'aksi', judul: 'Aksi', render: (lb: HariLibur) => (
+                <Tombol varian="hantu" ukuran="kecil" onClick={(e) => mintaHapusLibur(lb, e.currentTarget)}
+                  aria-label={`Hapus hari libur ${formatTanggal(lb.tanggal)}`}><Trash2 size={14} aria-hidden="true" /></Tombol>
+              ) }] : []),
+            ]} />
+          )}
+        </Kartu>
       </div>
     </>
   );

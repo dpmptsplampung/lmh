@@ -1,0 +1,147 @@
+.halaman {
+  min-width: 0;
+}
+
+.isi {
+  display: grid;
+  gap: var(--gap-grid);
+  padding: 0 var(--pad-page) var(--pad-page);
+  min-width: 0;
+}
+
+/* Ringkasan = saringan. Kartu kecil: label kiri atas, angka besar, aktif bergaris biru. */
+.ringkasan {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--gap-grid);
+  margin: 0;
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 88px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-card);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.tile:hover {
+  border-color: var(--border-hover);
+  box-shadow: var(--shadow-card-hover);
+}
+
+.tile:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.tileAktif {
+  border-color: var(--color-primary-600);
+  background: var(--color-primary-50);
+}
+
+.tileLabel {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.angka {
+  font-size: var(--fs-kpi);
+  font-weight: 600;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.angkaMendekati {
+  color: var(--status-warning-fg);
+}
+
+.angkaTerlambat {
+  color: var(--status-danger-fg);
+}
+
+.keterangan {
+  margin: 0;
+  font-size: var(--fs-body);
+  color: var(--text-secondary);
+}
+
+.tautanNomor {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  background: none;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--color-primary-700);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.tautanNomor:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.mati {
+  color: var(--text-tertiary);
+}
+
+.sub {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.waktu {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ringkas {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-width: 200px;
+  overflow-wrap: anywhere;
+}
+
+.penangan {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pagination {
+  padding-top: 12px;
+}
+
+@media (max-width: 640px) {
+  .ringkasan {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+}
+
+@media (pointer: coarse) { .tautanNomor { min-height: 44px; } }
+@media (prefers-reduced-motion: reduce) { .tile { transition: none; } }

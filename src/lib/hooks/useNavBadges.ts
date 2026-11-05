@@ -4,8 +4,9 @@
 // tanpa mengunduh baris) dan dibatasi RLS; tidak ada migrasi. Satu instance di Sidebar.
 //
 // Pembaruan: realtime (tabel penanganan, chat_sesi, tiket_antrean — semuanya ada di publikasi supabase_realtime;
-// pengaduan TIDAK ada, jadi hanya terbarui lewat polling) + polling cadangan 30 dtk yang hanya bekerja saat tab terlihat
-// + refetch saat tab kembali terlihat/fokus. Galat ditelan: badge terakhir dipertahankan (atau tidak tampil).
+// pengaduan dan saran TIDAK ada, jadi hanya terbarui lewat polling atau segarkanBadge()) + polling cadangan 30 dtk yang hanya bekerja saat tab terlihat
+// + refetch saat tab kembali terlihat/fokus. Galat ditelan: badge terakhir dipertahankan, kecuali Saran
+// yang dihapus agar skema belum tersedia atau galat kueri tidak menyisakan angka basi.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/client';
@@ -30,7 +31,13 @@ export interface PenggunaBadge {
 
 const POLL_MS = 30_000;
 
-type Hitungan = number | null; // null = gagal dihitung (pertahankan nilai lama)
+/** Halaman yang mengubah data berlencana (mis. Saran ditandai ditinjau) memanggil ini agar lencana segera diperbarui. */
+export const SEGARKAN_BADGE_EVENT = 'lmh:segarkan-badge';
+export function segarkanBadge(): void {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(SEGARKAN_BADGE_EVENT));
+}
+
+type Hitungan = number | null; // null = gagal dihitung (kunci tidak dimasukkan ke hasil)
 
 async function hitung(q: PromiseLike<{ count: number | null; error: unknown }>): Promise<Hitungan> {
   try {
@@ -117,6 +124,12 @@ export async function hitungBadge(
       const semua = supabase.from('pengaduan').select('id', head).eq('status', 'baru');
       const q = adalahFo ? semua.eq('jalur', 'layanan') : semua; // FO tidak pernah melihat jalur integritas
       tugas.push(hitung(q).then((n) => set(k, n, (c) => `${c} pengaduan baru belum ditangani`)));
+    } else if (k === 'saran') {
+      // Kolom ditinjau_pada (migrasi 202611030013) belum tentu ada: galat dihitung null = badge tidak tampil.
+      tugas.push(
+        hitung(supabase.from('saran').select('id', head).is('ditinjau_pada', null))
+          .then((n) => set(k, n, (c) => `${c} saran belum ditinjau`)),
+      );
     }
   }
   await Promise.all(tugas);
@@ -173,11 +186,12 @@ export function useNavBadges(who: PenggunaBadge | null): NavBadges {
         }
         const baru = await hitungBadge(supabase, w, { tanggal, hariTanpaLayanan: !!hariRef.current?.libur });
         if (hidup.current && mine === seq.current && whoRef.current?.role === w.role) {
-          // Gagal dihitung (kunci hilang dari hasil) = pertahankan nilai lama.
+          // Saran gagal dihitung: hapus badge, termasuk dari jumlah judul tab.
+          // Badge lain mempertahankan perilaku lama saat kueri gagal.
           setBadges((lama) => {
             const gabung: NavBadges = {};
             for (const k of badgeKeysForRole(w.role)) {
-              const v = baru[k] ?? lama[k];
+              const v = baru[k] ?? (k === 'saran' ? undefined : lama[k]);
               if (v) gabung[k] = v;
             }
             return gabung;
@@ -216,9 +230,11 @@ export function useNavBadges(who: PenggunaBadge | null): NavBadges {
     const onFocus = () => void muat();
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('focus', onFocus);
+    window.addEventListener(SEGARKAN_BADGE_EVENT, onFocus);
     return () => {
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('focus', onFocus);
+      window.removeEventListener(SEGARKAN_BADGE_EVENT, onFocus);
     };
   }, [role, petugasId, layananId, muat]);
 

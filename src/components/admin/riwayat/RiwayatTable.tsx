@@ -1,3 +1,7 @@
+import Tabel from '@/components/ui/Tabel';
+import Lencana from '@/components/ui/Lencana';
+import { formatTanggalWaktu } from '@/lib/utils';
+import tampilan from './RiwayatTable.dasbor.module.css';
 export interface RiwayatItem {
   id: string;
   actor_id: string | null;
@@ -29,33 +33,16 @@ export function ringkasPerubahan(lama: RiwayatItem['nilai_lama'], baru: RiwayatI
   });
 }
 
-const waktu = (iso: string) =>
-  new Date(iso).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Jakarta' });
-
 export default function RiwayatTable({ items }: { items: RiwayatItem[] }) {
-  return (
-    <table className="table">
-      <thead>
-        <tr><th>Waktu</th><th>Pelaku</th><th>Jenis</th><th>Aksi</th><th>Perubahan</th></tr>
-      </thead>
-      <tbody>
-        {items.map((r) => {
-          const baris = ringkasPerubahan(r.nilai_lama, r.nilai_baru);
-          return (
-            <tr key={r.id}>
-              <td>{waktu(r.created_at)}</td>
-              <td>{r.pelaku?.nama ?? (r.actor_role ? `Sistem (${r.actor_role})` : 'Sistem')}</td>
-              <td>{r.entitas}</td>
-              <td>{r.aksi}</td>
-              <td>
-                {baris.length === 0
-                  ? <span style={{ color: 'var(--text-tertiary)' }}>—</span>
-                  : <ul style={{ margin: 0, paddingLeft: 'var(--space-4)' }}>{baris.map((b) => <li key={b}>{b}</li>)}</ul>}
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
-  );
+  return <Tabel caption="Daftar riwayat perubahan (WIB)" baris={items} kunciBaris="id" kolom={[
+    { kunci: 'waktu', judul: 'Waktu', render: (r) => formatTanggalWaktu(r.created_at) },
+    { kunci: 'pelaku', judul: 'Pelaku', judulBaris: true,
+      render: (r) => r.pelaku?.nama ?? (r.actor_role ? `Sistem (${r.actor_role})` : 'Sistem') },
+    { kunci: 'entitas', judul: 'Jenis' },
+    { kunci: 'aksi', judul: 'Aksi', render: (r) => <Lencana>{r.aksi}</Lencana> },
+    { kunci: 'perubahan', judul: 'Perubahan', render: (r) => {
+      const baris = ringkasPerubahan(r.nilai_lama, r.nilai_baru);
+      return baris.length === 0 ? '—' : <ul className={tampilan.daftar}>{baris.map((b) => <li key={b}>{b}</li>)}</ul>;
+    } },
+  ]} />;
 }

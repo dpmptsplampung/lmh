@@ -19,7 +19,7 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className={styles.adminLayout}>
+    <div className={styles.adminLayout} data-tema="dasbor">
       <Sidebar />
       <div className={styles.adminContent}>
         <SesiStafGuard />

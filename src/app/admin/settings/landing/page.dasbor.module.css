@@ -1,0 +1,7 @@
+.area1 {
+  margin: 0;
+}
+
+.area2 {
+  padding: 0 var(--space-2);
+}

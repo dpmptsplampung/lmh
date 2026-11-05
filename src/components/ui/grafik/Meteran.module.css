@@ -1,0 +1,86 @@
+.wadah {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.meter {
+  position: relative;
+  width: 100%;
+  max-width: 240px;
+}
+
+.svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.jalur,
+.nilai {
+  fill: none;
+  stroke-width: 12;
+  stroke-linecap: round;
+}
+
+.jalur {
+  stroke: var(--chart-bar-muted);
+}
+
+.nilai {
+  transition: stroke-dashoffset 0.6s ease;
+}
+
+.tanpaGerak {
+  transition: none;
+}
+
+.primer {
+  stroke: var(--chart-1);
+}
+
+.sukses {
+  stroke: var(--chart-3);
+}
+
+.peringatan {
+  stroke: var(--chart-4);
+}
+
+.target {
+  stroke: var(--chart-target);
+  stroke-width: 1.5;
+  stroke-dasharray: 2 2;
+}
+
+.angka {
+  position: absolute;
+  inset: auto 0 0;
+  margin: 0;
+  text-align: center;
+  font-size: var(--fs-kpi);
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.satuan {
+  margin-left: 2px;
+  font-size: var(--fs-body);
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.teks {
+  margin: 0;
+  font-size: var(--fs-body);
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nilai {
+    transition: none;
+  }
+}

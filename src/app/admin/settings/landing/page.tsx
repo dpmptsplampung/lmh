@@ -1,5 +1,9 @@
 'use client';
 
+import Tombol from '@/components/ui/Tombol';
+
+import tampilan from './page.dasbor.module.css';
+
 // Editor blok homepage (Fase 2): admin menyalakan/mematikan, mengurutkan, dan mengubah teks tiap blok berjenis
 // tetap (bukan page builder). Kartu layanan TIDAK diatur di sini: terisi otomatis dari Kelola Layanan.
 // Blok mati tidak tampil di homepage (tanpa teks cadangan). Isian kosong = teks bawaan (tampil sebagai placeholder).
@@ -7,18 +11,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, ChevronDown, ChevronUp, Loader2, Save } from 'lucide-react';
+import Skeleton from '@/components/ui/Skeleton';
+import Galat from '@/components/ui/Galat';
+import CatatanKeadaan from '@/components/ui/CatatanKeadaan';
 import PageHeader from '@/components/layout/PageHeader';
 import { createClient } from '@/lib/supabase/client';
 import { mutasiWajibBaris, pesanMutasi } from '@/lib/supabase/mutate';
 import { useToast } from '@/components/Toast';
-import {
-  DEFINISI_BLOK,
-  JENIS_BLOK,
-  gabungkanBlok,
-  linkAman,
-  type BarisBlok,
-  type JenisBlok,
-} from '@/lib/homepage/blok';
+import { DEFINISI_BLOK, JENIS_BLOK, gabungkanBlok, linkAman, type BarisBlok, type JenisBlok } from '@/lib/homepage/blok';
 import styles from './landing.module.css';
 
 type TeksEdit = Record<string, string>;
@@ -156,10 +156,7 @@ export default function EditorBlokHomepagePage() {
       <>
         <PageHeader title={judul} description={deskripsi} />
         <div className={styles.landingPage}>
-          <div className={styles.loadingState}>
-            <Loader2 size={20} className="animate-spin" />
-            Memuat blok…
-          </div>
+          <Skeleton bentuk="kartu" jumlah={3} label="Memuat blok" />
         </div>
       </>
     );
@@ -168,8 +165,8 @@ export default function EditorBlokHomepagePage() {
   const kartuBlok = (jenis: JenisBlok, indeks: number | null) => {
     const def = DEFINISI_BLOK[jenis];
     return (
-      <fieldset key={jenis} className={styles.serviceCard} style={{ margin: 0 }}>
-        <legend className={styles.sectionTitle} style={{ padding: '0 var(--space-2)' }}>{def.label}</legend>
+      <fieldset key={jenis} className={[styles.serviceCard, tampilan.area1].filter(Boolean).join(' ')}>
+        <legend className={[styles.sectionTitle, tampilan.area2].filter(Boolean).join(' ')} >{def.label}</legend>
 
         {def.catatan && <p className="form-hint">{def.catatan}</p>}
 
@@ -193,8 +190,7 @@ export default function EditorBlokHomepagePage() {
                 className={styles.reorderBtn}
                 onClick={() => pindah(indeks, -1)}
                 disabled={indeks === 0}
-                aria-label={`Naikkan blok ${def.label}`}
-              >
+                aria-label={`Naikkan blok ${def.label}`}>
                 <ChevronUp size={16} aria-hidden="true" />
               </button>
               <button
@@ -202,8 +198,7 @@ export default function EditorBlokHomepagePage() {
                 className={styles.reorderBtn}
                 onClick={() => pindah(indeks, 1)}
                 disabled={indeks === urutan.length - 1}
-                aria-label={`Turunkan blok ${def.label}`}
-              >
+                aria-label={`Turunkan blok ${def.label}`}>
                 <ChevronDown size={16} aria-hidden="true" />
               </button>
             </div>
@@ -263,20 +258,11 @@ export default function EditorBlokHomepagePage() {
           Kembali ke Pengaturan
         </Link>
 
-        {galatMuat && (
-          <div className="form-error" role="alert">
-            <p>Gagal memuat blok homepage. Perubahan belum bisa disimpan agar data yang ada tidak tertimpa; coba muat ulang.</p>
-            <button type="button" className="btn btn--secondary btn--sm" onClick={() => void muat()}>
-              Coba lagi
-            </button>
-          </div>
-        )}
-        {tabelBelumAda && (
-          <p className="form-error" role="alert">
-            Tabel blok homepage belum tersedia. Terapkan migrasi 202610280001 lebih dulu; sementara itu homepage memakai
-            pengaturan bawaan dan perubahan di sini belum bisa disimpan.
-          </p>
-        )}
+        {galatMuat && <Galat pesan="Gagal memuat blok homepage. Perubahan belum bisa disimpan agar data yang ada tidak tertimpa; coba muat ulang." onRetry={() => { void muat(); }} />}
+        {tabelBelumAda && <CatatanKeadaan jenis="menunggu-migrasi">
+          Tabel blok homepage belum tersedia. Terapkan migrasi 202610280001 lebih dulu; sementara itu homepage memakai
+          pengaturan bawaan dan perubahan di sini belum bisa disimpan.
+        </CatatanKeadaan>}
         <p className="form-hint">
           Kartu layanan terisi otomatis dari <Link href="/admin/layanan">Kelola Layanan</Link>. Isian yang dikosongkan memakai
           teks bawaan (ditampilkan abu-abu). Blok yang dimatikan tidak tampil sama sekali.
@@ -288,13 +274,12 @@ export default function EditorBlokHomepagePage() {
         </div>
 
         <div className={styles.saveBar}>
-          <button
+          <Tombol
             type="button"
-            className="btn btn--primary"
+            varian="utama"
             onClick={simpan}
             disabled={menyimpan || tabelBelumAda || galatMuat}
-            aria-busy={menyimpan}
-          >
+            aria-busy={menyimpan}>
             {menyimpan ? (
               <>
                 <Loader2 size={16} className="animate-spin" />
@@ -306,7 +291,7 @@ export default function EditorBlokHomepagePage() {
                 Simpan Perubahan
               </>
             )}
-          </button>
+          </Tombol>
         </div>
       </div>
     </>

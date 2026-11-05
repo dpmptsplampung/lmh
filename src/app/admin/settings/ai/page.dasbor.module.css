@@ -1,0 +1,37 @@
+.area2 {
+  flex-shrink: 0;
+}
+
+.area3 {
+  padding: 0;
+}
+
+.area4 {
+  margin-bottom: var(--space-6);
+}
+
+.area5 {
+  margin: 0;
+}
+
+.area6 {
+  max-width: 320px;
+}
+
+.baris7 {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  cursor: pointer;
+  margin: var(--space-2) 0;
+  flex-wrap: wrap;
+}
+
+.area8 {
+  margin-top: var(--space-3);
+}
+
+.area9 {
+  margin-top: var(--space-3);
+  flex-direction: column;
+}

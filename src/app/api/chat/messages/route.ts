@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { tolakAkunAnonim, tolakBukanGoogle } from '@/lib/chat/gerbang-google';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { createClient as createServerClient } from '@/lib/supabase/server';
@@ -131,6 +132,8 @@ export async function GET(request: NextRequest) {
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  const anonim = tolakAkunAnonim(user);
+  if (anonim) return anonim;
 
   const adminClient = getServiceClient();
   if (!adminClient) {
@@ -141,6 +144,9 @@ export async function GET(request: NextRequest) {
   if (!actor) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
+  // R5: pengunjung wajib identitas Google (dari data Auth); staf aktif boleh dengan sandi. Tanpa query tambahan.
+  const bukanGoogle = tolakBukanGoogle(user, actor.kind === 'staff');
+  if (bukanGoogle) return bukanGoogle;
 
   const { data: sesiData, error: sesiErr } = await adminClient
     .from('chat_sesi')
@@ -224,6 +230,8 @@ export async function POST(request: NextRequest) {
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  const anonim = tolakAkunAnonim(user);
+  if (anonim) return anonim;
 
   const adminClient = getServiceClient();
   if (!adminClient) {
@@ -234,6 +242,9 @@ export async function POST(request: NextRequest) {
   if (!actor) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
+  // R5: pengunjung wajib identitas Google (dari data Auth); staf aktif boleh dengan sandi. Tanpa query tambahan.
+  const bukanGoogle = tolakBukanGoogle(user, actor.kind === 'staff');
+  if (bukanGoogle) return bukanGoogle;
 
   const { data: sesiData, error: sesiErr } = await adminClient
     .from('chat_sesi')

@@ -1,0 +1,51 @@
+.kartu {
+  min-width: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  color: var(--text-primary);
+  list-style: none;
+}
+
+.normal {
+  padding: var(--pad-card);
+}
+
+.rapat {
+  padding: 12px;
+}
+
+.tanpa {
+  padding: 0;
+  overflow: hidden;
+}
+
+.kepala {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.kepalaTanpa {
+  margin: 0;
+  padding: var(--pad-card) var(--pad-card) 12px;
+}
+
+.judul {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--fs-card-title);
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text-primary);
+}
+
+.aksi {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}

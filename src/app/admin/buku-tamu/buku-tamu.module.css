@@ -1,0 +1,22 @@
+.isi {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-grid);
+  padding: 0 var(--pad-page) var(--pad-page);
+  max-width: var(--content-max);
+  min-width: 0;
+}
+.daftar { min-width: 0; }
+.filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+.filter .cari { flex: 1 1 240px; min-width: 0; }
+.ringkas { margin: 0 0 var(--space-4); font-size: var(--text-sm); color: var(--text-secondary); }
+.waktu { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.sub { display: block; font-size: var(--text-xs); color: var(--text-secondary); }
+.tujuan { display: block; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 640px) { .filter > * { width: 100%; } }

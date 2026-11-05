@@ -1,0 +1,78 @@
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.label {
+  font-size: var(--fs-body);
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.wajib {
+  color: var(--status-danger-fg);
+}
+
+.field :is(input, select, textarea) {
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: var(--fs-body);
+  line-height: 1.4;
+}
+
+.field textarea {
+  min-height: 88px;
+  resize: vertical;
+}
+
+.field :is(input, select, textarea):hover:not(:disabled) {
+  border-color: var(--border-hover);
+}
+
+.field :is(input, select, textarea):focus-visible {
+  outline: none;
+  border-color: var(--border-focus);
+  box-shadow: var(--focus-ring);
+}
+
+.field :is(input, select, textarea):disabled {
+  background: var(--bg-surface-muted);
+  color: var(--text-secondary);
+  cursor: not-allowed;
+}
+
+.field :is(input, select, textarea)::placeholder {
+  color: var(--text-tertiary);
+}
+
+.bergalat :is(input, select, textarea) {
+  border-color: var(--status-danger-fg);
+}
+
+.bantuan {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.galat {
+  margin: 0;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--status-danger-fg);
+}
+
+@media (pointer: coarse), (max-width: 640px) {
+  .field :is(input, select, textarea) {
+    min-height: 44px;
+    font-size: 16px;
+  }
+}

@@ -86,9 +86,59 @@ async function bangun(sebagian: Partial<Parameters<typeof buildSurveiWorkbook>[0
 }
 
 describe('buildSurveiWorkbook', () => {
-  it('memuat empat sheet dengan urutan SPAK, SKM, Ringkasan, Legenda', async () => {
+  it('memuat lembar Data responden setelah empat lembar hasil survei', async () => {
     const wb = await bangun();
-    expect(wb.worksheets.map((w) => w.name)).toEqual(['SPAK', 'SKM', 'Ringkasan', 'Legenda']);
+    expect(wb.worksheets.map((w) => w.name)).toEqual(['SPAK', 'SKM', 'Ringkasan', 'Legenda', 'Data responden']);
+  });
+
+  it('Data responden menghubungkan setiap jawaban dengan identitas FO dan tanggal WIB', async () => {
+    const kunjungan = {
+      tanggal: '2026-10-12', kategori: 'UMKM', nama: 'Tomi', asal_instansi: 'PT Lampung',
+      email: 'tomi@contoh.id', kontak_hp: '081234567890', keperluan: 'Mengurus izin usaha',
+      tujuan: 'layanan', nama_yang_ditemui: null, asal: 'walk_in',
+    };
+    const wb = await bangun({
+      spak: [spak({ kunjungan, jenis_kelamin: 'Laki-laki', pendidikan: 'SMA', created_at: '2026-10-12T20:00:00Z' })],
+      skm: [skm({ kunjungan })],
+    });
+    const rows = baris(wb.getWorksheet('Data responden')!);
+    expect(rows).toHaveLength(3);
+    const row = Object.fromEntries(rows[0].map((h, i) => [h, rows[1][i] ?? null]));
+    expect(row).toMatchObject({
+      'Jenis survei': 'SPAK', 'ID jawaban': 's-1', 'ID kunjungan': KJ1,
+      'Tanggal kunjungan (WIB)': '12/10/2026', 'Tanggal jawaban (WIB)': '13/10/2026',
+      'Unit': 'Helpdesk OSS', 'Nama pengunjung': 'Tomi', 'Asal instansi': 'PT Lampung',
+      'Email': 'tomi@contoh.id', 'Nomor HP': '081234567890', 'Kategori': 'UMKM',
+      'Keperluan': 'Mengurus izin usaha', 'Tujuan': 'layanan', 'Asal kunjungan': 'walk_in',
+      'Jenis kelamin': 'Laki-laki', 'Pendidikan': 'SMA',
+    });
+    expect(rows[2][0]).toBe('SKM');
+  });
+
+  it('Data responden mengamankan teks identitas dan mengosongkan data anonim, impor, atau tersembunyi RLS', async () => {
+    const wb = await bangun({
+      spak: [spak({ kunjungan: {
+        tanggal: '2026-10-12', kategori: 'Instansi', nama: ' =HYPERLINK("jahat")',
+        asal_instansi: '@SUM(1)', kontak_hp: '+6281234567890', email: '-rumus@contoh.id',
+        keperluan: '\n=CMD()', nama_yang_ditemui: '\t=CMD()', tujuan: ' \t+CMD()',
+      } })],
+      skm: [
+        skm({ id: 'anon', kunjungan: { tanggal: '2026-10-12', kategori: 'Umum', nama: '[anonim]', email: 'lama@contoh.id', kontak_hp: '081111111111', asal_instansi: 'Instansi lama', keperluan: 'Rahasia' } }),
+        skm({ id: 'impor', kunjungan_id: null, kunjungan: null }),
+        skm({ id: 'rls', kunjungan: null }),
+      ],
+    });
+    const rows = baris(wb.getWorksheet('Data responden')!);
+    expect(rows).toHaveLength(5);
+    for (const i of [6, 7, 8, 9, 11, 12, 13]) expect(rows[1][i]).toMatch(/^'/);
+    expect(rows[2][6]).toBe('[anonim]');
+    for (const row of rows.slice(2)) {
+      for (const i of [7, 8, 9, 11, 12, 13]) expect(row[i] ?? null).toBeNull();
+    }
+    const legenda = baris(wb.getWorksheet('Legenda')!).flat().join(' ');
+    expect(legenda).toContain('hak akses akun pengunduh');
+    expect(legenda).not.toContain('hanya yang diizinkan RLS');
+    expect(legenda).toContain('akses dibatasi');
   });
 
   it('header SPAK: empat kolom identitas lalu kalimat pernyataan lengkap', async () => {
@@ -145,7 +195,7 @@ describe('buildSurveiWorkbook', () => {
     expect(rows[2][3]).toBe('A1B2C3D4');
   });
 
-  it('tidak ada kolom atau nilai nama, HP, atau email, walau data masukan membawa kolom itu', async () => {
+  it('mengabaikan identitas dan saran di luar relasi kunjungan yang diizinkan', async () => {
     const bocor = {
       nama: 'Budi Rahasia',
       nama_pengunjung: 'Budi Rahasia',
@@ -258,20 +308,28 @@ describe('buildSurveiWorkbook', () => {
 });
 
 // Klien palsu: from(tabel).select().gte().lt().order().order().range() dengan batas baris server (meniru max-rows).
-function klienPalsu(data: { skm_respons: unknown[]; spak_respons: unknown[] }, serverCap = 1000) {
-  const log: { tabel: string; select: string; gte: unknown[][]; lt: unknown[][]; range: number[][] }[] = [];
-  const from = vi.fn((tabel: 'skm_respons' | 'spak_respons') => {
-    const entri = { tabel, select: '', gte: [] as unknown[][], lt: [] as unknown[][], range: [] as number[][] };
+function klienPalsu(
+  data: { skm_respons: unknown[]; spak_respons: unknown[]; [tabel: string]: unknown[] },
+  serverCap = 1000,
+  galat: Record<string, unknown> = {},
+) {
+  const log: { tabel: string; select: string; gte: unknown[][]; lt: unknown[][]; range: number[][]; filters: unknown[][] }[] = [];
+  const from = vi.fn((tabel: string) => {
+    const entri = { tabel, select: '', gte: [] as unknown[][], lt: [] as unknown[][], range: [] as number[][], filters: [] as unknown[][] };
     log.push(entri);
     const b: Record<string, unknown> = {};
     b.select = (s: string) => { entri.select = s; return b; };
     b.gte = (...a: unknown[]) => { entri.gte.push(a); return b; };
     b.lt = (...a: unknown[]) => { entri.lt.push(a); return b; };
     b.order = () => b;
+    b.in = (...a: unknown[]) => { entri.filters.push(['in', ...a]); return b; };
+    b.eq = (...a: unknown[]) => { entri.filters.push(['eq', ...a]); return b; };
+    b.or = () => b;
     b.range = (dari: number, sampai: number) => {
       entri.range.push([dari, sampai]);
+      if (galat[tabel]) return Promise.resolve({ data: null, error: galat[tabel] });
       const potong = Math.min(sampai - dari + 1, serverCap);
-      return Promise.resolve({ data: data[tabel].slice(dari, dari + potong), error: null });
+      return Promise.resolve({ data: (data[tabel] ?? []).slice(dari, dari + potong), error: null });
     };
     return b;
   });
@@ -279,6 +337,97 @@ function klienPalsu(data: { skm_respons: unknown[]; spak_respons: unknown[] }, s
 }
 
 describe('muatDataSurvei', () => {
+  it('mengambil identitas FO dan mengisi email kosong dari formulir selesai terbaru yang valid tanpa backfill', async () => {
+    const { klien, log } = klienPalsu({
+      skm_respons: [skm({ kunjungan: { tanggal: '2026-10-12', kategori: 'UMKM', nama: 'Tomi', email: '' } })],
+      spak_respons: [],
+      pelayanan_oss: [{ id: 'o-1', kunjungan_id: KJ1, email: 'Tidak berlaku', updated_at: '2026-10-14T00:00:00Z' },
+        { id: 'o-2', kunjungan_id: KJ1, email: 'oss@contoh.id', updated_at: '2026-10-12T00:00:00Z' }],
+      pelayanan_perizinan: [{ id: 'z-1', kunjungan_id: KJ1, email: ' Izin@Contoh.id ', updated_at: '2026-10-13T00:00:00Z' }],
+    }, 1);
+    const hasil = await muatDataSurvei(klien, { dari: '2026-10-12', sampai: '2026-10-14' });
+    expect(hasil.skm[0].kunjungan).toMatchObject({ nama: 'Tomi', email: 'izin@contoh.id' });
+    expect(hasil.terpotong).toBe(false);
+    for (const l of log.filter((l) => /_respons$/.test(l.tabel))) {
+      expect(l.select).toContain('nama');
+      expect(l.select).toContain('kontak_hp');
+      expect(l.select).toContain('asal_instansi');
+      expect(l.select).toContain('email');
+      expect(l.select).not.toContain('*');
+    }
+    expect(log.filter((l) => l.tabel === 'pelayanan_perizinan').flatMap((l) => l.range)).toEqual([[0, 999], [1, 1000]]);
+    for (const l of log.filter((l) => /^pelayanan_/.test(l.tabel))) {
+      expect(l.filters).toContainEqual(['in', 'kunjungan_id', [KJ1]]);
+      expect(l.filters).toContainEqual(['eq', 'status_draft', 'selesai']);
+    }
+    const khusus = log.find((l) => l.tabel === 'pendataan_khusus_jawaban')!;
+    expect(khusus.filters).toContainEqual(['in', 'penanganan.kunjungan_id', [KJ1]]);
+    expect(khusus.filters).toContainEqual(['eq', 'penanganan.status', 'selesai']);
+  });
+
+  it('email utama menang; cadangan khusus hanya label email dan nilai valid, lalu akun atau kontak chat', async () => {
+    const k = (nama: string, email: string | null = null) => ({ tanggal: '2026-10-12', kategori: 'Umum', nama, email });
+    const { klien } = klienPalsu({
+      skm_respons: [
+        skm({ id: 'utama', kunjungan_id: 'utama', kunjungan: k('Utama', ' FO@Contoh.id ') }),
+        skm({ id: 'khusus', kunjungan_id: 'khusus', kunjungan: { ...k('Khusus'), pengunjung: { email: 'akun@contoh.id' } } }),
+        skm({ id: 'akun', kunjungan_id: 'akun', kunjungan: { ...k('Akun'), pengunjung: [{ email: 'akun@contoh.id' }] } }),
+        skm({ id: 'chat', kunjungan_id: 'chat', kunjungan: { ...k('Chat'), chat: { kontak_pengunjung: 'chat@contoh.id' } } }),
+        skm({ id: 'chat-akun', kunjungan_id: 'chat-akun', kunjungan: { ...k('Chat akun'), chat: { kontak_pengunjung: '081234567890', pengunjung: { email: 'google@contoh.id' } } } }),
+        skm({ id: 'kosong', kunjungan_id: 'kosong', kunjungan: k('Kosong', 'Tidak berlaku') }),
+      ],
+      spak_respons: [],
+      pelayanan_oss: [{ id: 'o', kunjungan_id: 'utama', email: 'form@contoh.id', updated_at: '2026-10-13T00:00:00Z' }],
+      pendataan_khusus_jawaban: [
+        { id: 'x', label_snapshot: 'Catatan', nilai: 'salah@contoh.id', created_at: '2026-10-15T00:00:00Z', penanganan: { kunjungan_id: 'khusus' } },
+        { id: 'y', label_snapshot: 'Email', nilai: 'Tidak berlaku', created_at: '2026-10-14T00:00:00Z', penanganan: { kunjungan_id: 'khusus' } },
+        { id: 'z', label_snapshot: 'Alamat email', nilai: ' Khusus@Contoh.id ', created_at: '2026-10-13T00:00:00Z', penanganan: [{ kunjungan_id: 'khusus' }] },
+        { id: 'array', label_snapshot: 'Email', nilai: ['bukan-teks@contoh.id'], created_at: '2026-10-13T00:00:00Z', penanganan: { kunjungan_id: 'kosong' } },
+      ],
+    });
+    const hasil = await muatDataSurvei(klien, { dari: '2026-10-12', sampai: '2026-10-14' });
+    expect(hasil.skm.map((r) => (r.kunjungan as { email?: string }).email ?? null)).toEqual([
+      'fo@contoh.id', 'khusus@contoh.id', 'akun@contoh.id', 'chat@contoh.id', 'google@contoh.id', null,
+    ]);
+  });
+
+  it('tidak mencari cadangan untuk identitas teranonimkan, impor, atau kunjungan tersembunyi RLS', async () => {
+    const { klien, log } = klienPalsu({
+      skm_respons: [
+        skm({ kunjungan: { tanggal: '2026-10-12', kategori: 'Umum', nama: '[anonim]', email: null, pengunjung: { email: 'lama@contoh.id' } } }),
+        skm({ id: 'rls', kunjungan_id: 'tersembunyi', kunjungan: null }),
+        skm({ id: 'impor', kunjungan_id: null, kunjungan: null }),
+      ],
+      spak_respons: [],
+    });
+    const hasil = await muatDataSurvei(klien, { dari: '2026-10-12', sampai: '2026-10-14' });
+    expect(log.every((l) => /_respons$/.test(l.tabel))).toBe(true);
+    expect((hasil.skm[0].kunjungan as { email: string | null }).email).toBeNull();
+    expect(hasil.skm[1].kunjungan).toBeNull();
+    expect(hasil.skm[2].kunjungan).toBeNull();
+  });
+
+  it('menandai ekspor terpotong bila jawaban melampaui 50.000 baris', async () => {
+    const { klien } = klienPalsu({
+      skm_respons: Array.from({ length: 50001 }, (_, i) => skm({ id: `k-${i}`, kunjungan_id: null, kunjungan: null })),
+      spak_respons: [],
+    });
+    const hasil = await muatDataSurvei(klien, { dari: '2026-10-12', sampai: '2026-10-14' });
+    expect(hasil.skm).toHaveLength(50000);
+    expect(hasil.terpotong).toBe(true);
+  });
+
+  it('menandai ekspor terpotong bila data cadangan email melampaui batas dan tetap mengambil email nyata', async () => {
+    const { klien } = klienPalsu({
+      skm_respons: [skm({ kunjungan: { tanggal: '2026-10-12', kategori: 'Umum', nama: 'Tomi' } })],
+      spak_respons: [],
+      pelayanan_oss: Array.from({ length: 50001 }, (_, i) => ({ id: `o-${i}`, kunjungan_id: KJ1, email: 'tomi@contoh.id', updated_at: '2026-10-13T00:00:00Z' })),
+    });
+    const hasil = await muatDataSurvei(klien, { dari: '2026-10-12', sampai: '2026-10-14' });
+    expect(hasil.skm[0].kunjungan).toMatchObject({ email: 'tomi@contoh.id' });
+    expect(hasil.terpotong).toBe(true);
+  });
+
   it('mengambil 2.500 baris lengkap lewat paginasi (1000/1000/500) dan tidak terpotong', async () => {
     const dataSkm = Array.from({ length: 2500 }, (_, i) => skm({ id: `k-${i}` }));
     const dataSpak = Array.from({ length: 1200 }, (_, i) => spak({ id: `s-${i}` }));
@@ -308,9 +457,63 @@ describe('muatDataSurvei', () => {
     for (const l of log) {
       expect(l.gte).toEqual([['created_at', '2026-10-11T17:00:00.000Z']]);
       expect(l.lt).toEqual([['created_at', '2026-10-14T17:00:00.000Z']]);
-      expect(l.select).toContain('kunjungan:kunjungan_id(tanggal, kategori)');
+      expect(l.select).toContain('kunjungan:kunjungan_id(tanggal, kategori, nama');
       expect(l.select).toContain('layanan:layanan_id(nama)');
     }
+  });
+
+  it('cadangan Pendataan Khusus belum ada (tabel belum diterapkan): lewati sumber itu, cadangan lain tetap jalan, ditandai', async () => {
+    const { klien, log } = klienPalsu({
+      skm_respons: [skm({ kunjungan: { tanggal: '2026-10-12', kategori: 'Umum', nama: 'Tomi', email: null } })],
+      spak_respons: [],
+      pelayanan_oss: [{ id: 'o', kunjungan_id: KJ1, email: 'form@contoh.id', updated_at: '2026-10-13T00:00:00Z' }],
+    }, 1000, { pendataan_khusus_jawaban: { code: 'PGRST205', message: 'relation does not exist' } });
+    const hasil = await muatDataSurvei(klien, { dari: '2026-10-12', sampai: '2026-10-14' });
+    expect(hasil.skm[0].kunjungan).toMatchObject({ nama: 'Tomi', email: 'form@contoh.id' });
+    expect(hasil.cadanganKhususTidakTersedia).toBe(true);
+    expect(hasil.terpotong).toBe(false);
+    expect(log.some((l) => l.tabel === 'pendataan_khusus_jawaban')).toBe(true);
+  });
+
+  it.each(['PGRST200', '42P01', '42703'])('kode %s pada cadangan Khusus: relasi/tabel/kolom belum ada, tidak menggagalkan ekspor', async (code) => {
+    const { klien } = klienPalsu({
+      skm_respons: [skm({ kunjungan: { tanggal: '2026-10-12', kategori: 'Umum', nama: 'Tomi', email: null } })],
+      spak_respons: [],
+    }, 1000, { pendataan_khusus_jawaban: { code, message: 'x' } });
+    const hasil = await muatDataSurvei(klien, { dari: '2026-10-12', sampai: '2026-10-14' });
+    expect(hasil.cadanganKhususTidakTersedia).toBe(true);
+  });
+
+  it('cadangan Khusus tersedia: tidak ditandai tidak tersedia', async () => {
+    const { klien } = klienPalsu({ skm_respons: [skm()], spak_respons: [] });
+    const hasil = await muatDataSurvei(klien, { dari: '2026-10-12', sampai: '2026-10-14' });
+    expect(hasil.cadanganKhususTidakTersedia).toBe(false);
+  });
+
+  it('galat lain pada cadangan Khusus (bukan objek belum ada) tetap menggagalkan ekspor', async () => {
+    const { klien } = klienPalsu({
+      skm_respons: [skm({ kunjungan: { tanggal: '2026-10-12', kategori: 'Umum', nama: 'Tomi', email: null } })],
+      spak_respons: [],
+    }, 1000, { pendataan_khusus_jawaban: { code: '57014', message: 'timeout' } });
+    await expect(muatDataSurvei(klien, { dari: '2026-10-12', sampai: '2026-10-14' })).rejects.toMatchObject({ code: '57014' });
+  });
+
+  it('tabel jawaban belum ada: galat diteruskan apa adanya agar route bisa menjawab 409', async () => {
+    const { klien } = klienPalsu({ skm_respons: [], spak_respons: [] }, 1000, { spak_respons: { code: 'PGRST205', message: 'x' } });
+    await expect(muatDataSurvei(klien, { dari: '2026-10-12', sampai: '2026-10-14' })).rejects.toMatchObject({ code: 'PGRST205' });
+  });
+
+  it('Ringkasan dan Legenda mencatat cadangan email Khusus tidak tersedia; Legenda tidak mengklaim pembatasan RLS', async () => {
+    const wb = await muat(await buildSurveiWorkbook({
+      dari: '2026-10-12', sampai: '2026-10-14', spak: [], skm: [], ringkasanRate, cadanganKhususTidakTersedia: true,
+    }));
+    const teksSheet = (nama: string) => { const t: string[] = []; wb.getWorksheet(nama)!.eachRow((r) => r.eachCell((c) => t.push(c.text))); return t.join(' | '); };
+    expect(teksSheet('Ringkasan')).toMatch(/Pendataan Khusus belum tersedia/);
+    expect(teksSheet('Legenda')).not.toMatch(/hanya yang diizinkan RLS/);
+    expect(teksSheet('Legenda')).toMatch(/hak akses akun pengunduh/);
+    const tanpa = await muat(await buildSurveiWorkbook({ dari: '2026-10-12', sampai: '2026-10-14', spak: [], skm: [], ringkasanRate }));
+    const t2: string[] = []; tanpa.getWorksheet('Ringkasan')!.eachRow((r) => r.eachCell((c) => t2.push(c.text)));
+    expect(t2.join(' | ')).not.toMatch(/Pendataan Khusus belum tersedia/);
   });
 
   it('meneruskan galat database', async () => {

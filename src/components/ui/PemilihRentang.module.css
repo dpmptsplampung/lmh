@@ -1,0 +1,119 @@
+.isi {
+  display: flex;
+  gap: 16px;
+  max-width: 100%;
+}
+
+.cepat {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 4px;
+  width: 148px;
+  padding-right: 16px;
+  border-right: 1px solid var(--border-subtle);
+}
+
+.pilihan {
+  display: flex;
+  align-items: center;
+  min-height: var(--target);
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: var(--fs-body);
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.pilihan:hover:not([aria-disabled='true']) {
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+}
+
+.pilihan:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* Pilihan yang sedang berlaku: tebal dan bertanda, bukan hanya warna. */
+.pilihan[aria-pressed='true'] {
+  background: var(--color-primary-50);
+  color: var(--color-primary-800);
+  font-weight: 600;
+}
+
+.pilihan[aria-disabled='true'] {
+  color: var(--text-tertiary);
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.utama {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 296px;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.ringkasan {
+  margin: 0;
+  min-height: 1.5em;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+  font-size: var(--fs-small);
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.kaki {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.kaki .aksi.aksi {
+  min-height: var(--target);
+}
+
+@media (pointer: coarse) {
+  .kaki .aksi.aksi,
+  .pilihan {
+    min-height: var(--target-sentuh);
+  }
+}
+
+@media (max-width: 640px) {
+  .isi {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .cepat {
+    flex-direction: row;
+    width: auto;
+    padding: 0 0 8px;
+    margin: 0 -16px;
+    padding-inline: 16px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border-subtle);
+    overflow-x: auto;
+  }
+
+  .pilihan {
+    flex: none;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-full);
+  }
+
+  .utama {
+    width: 100%;
+  }
+}

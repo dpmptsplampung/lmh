@@ -13,6 +13,7 @@ vi.mock('@/lib/offline/replay', () => ({ replayQueue: replayMock }));
 vi.mock('@/components/Toast', () => ({ useToast: () => ({ toast: toastMock }) }));
 
 import OfflineReplayer from './OfflineReplayer';
+import { EVENT_REPLAY_OFFLINE } from '@/lib/hooks/useAntreanOffline';
 
 describe('OfflineReplayer (replay antrean offline FO)', () => {
   let swListeners: Record<string, (e: unknown) => void>;
@@ -98,5 +99,14 @@ describe('OfflineReplayer (replay antrean offline FO)', () => {
     await new Promise((r) => setTimeout(r, 20));
     expect(port.postMessage).not.toHaveBeenCalled();
     expect(replayMock).toHaveBeenCalledTimes(1);
+  });
+  it('menyiarkan hasil replay agar penghitung offline diperbarui (A10)', async () => {
+    const diterima: unknown[] = [];
+    const dengar = (e: Event) => diterima.push((e as CustomEvent).detail);
+    window.addEventListener(EVENT_REPLAY_OFFLINE, dengar);
+    replayMock.mockResolvedValueOnce({ synced: 2, failed: 1 });
+    render(<OfflineReplayer />);
+    await waitFor(() => expect(diterima).toEqual([{ synced: 2, failed: 1 }]));
+    window.removeEventListener(EVENT_REPLAY_OFFLINE, dengar);
   });
 });

@@ -1,6 +1,6 @@
 .container {
   padding: var(--space-8);
-  animation: fadeIn 0.4s ease-out;
+
 }
 
 .header {
@@ -21,10 +21,10 @@
   text-decoration: none;
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-md);
-  border: 1px solid var(--glass-border);
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+
+
   transition: all var(--transition-base);
 }
 
@@ -35,7 +35,7 @@
 }
 
 .title {
-  font-family: var(--font-display);
+  font-family: var(--font-sans);
   font-size: var(--text-2xl);
   font-weight: 800;
   color: var(--text-primary);
@@ -58,10 +58,10 @@
   flex-wrap: wrap;
   margin-bottom: var(--space-6);
   padding: var(--space-4);
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  border: 1px solid var(--glass-border);
+  background: var(--bg-surface);
+
+
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
 }
 
@@ -81,7 +81,7 @@
 
 .filterSelect {
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
   background: transparent;
@@ -109,7 +109,7 @@
 
 .searchInput {
   padding: var(--space-2) var(--space-3) var(--space-2) var(--space-8);
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
   background: transparent;
@@ -124,10 +124,10 @@
 }
 
 .tableSection {
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  border: 1px solid var(--glass-border);
+  background: var(--bg-surface);
+
+
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-xl);
   padding: var(--space-5);
 }
@@ -209,7 +209,7 @@
 
 .actionSelect {
   padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   font-size: var(--text-xs);
   background: transparent;
@@ -249,3 +249,10 @@
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+.container { padding: 0 var(--pad-page) var(--pad-page); min-width: 0; }
+.title { font-size: var(--text-lg); font-weight: 600; }
+.searchInput { width: 100%; min-width: 0; }
+.filterGroup { min-width: 0; max-width: 100%; flex: 1 1 200px; }
+.backLink:focus-visible, .filterSelect:focus-visible, .actionSelect:focus-visible, .searchInput:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+@media (pointer: coarse) { .backLink, .filterSelect, .actionSelect, .searchInput { min-height: 44px; } }

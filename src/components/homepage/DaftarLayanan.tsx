@@ -5,6 +5,7 @@
 // membuka popup; tidak ada kartu cadangan: daftar kosong hanya menampilkan keterangan.
 import { useId, useMemo, useState, type ElementType } from 'react';
 import { Building2, ClipboardCheck, FileText, HeartHandshake, Search, Shield, Sparkles, Store } from 'lucide-react';
+import ErrorRetry from '@/components/ErrorRetry';
 import { judulLayanan } from '@/lib/homepage/blok';
 import { ikonKartu, type LayananEtalase, type StatusHariIni } from '@/lib/homepage/data';
 import { ringkasStatus } from '@/lib/homepage/status';
@@ -19,12 +20,18 @@ interface Props {
   teks: Record<string, string>;
   /** Dipanggil dengan slug layanan saat kartu diklik. */
   onBuka: (slug: string) => void;
+  /** True bila daftar layanan GAGAL dimuat (beda dari kosong yang sah): tampil galat + Coba lagi. */
+  galat?: boolean;
+  /** Muat ulang daftar (tombol Coba lagi pada galat). */
+  onCobaLagi?: () => void;
+  /** True saat percobaan ulang berjalan. */
+  memuatUlang?: boolean;
 }
 
 const cocok = (l: LayananEtalase, q: string): boolean =>
   [l.nama, l.instansi ?? '', l.instansiSingkatan ?? '', l.deskripsi ?? ''].some((t) => t.toLowerCase().includes(q));
 
-export default function DaftarLayanan({ layanan, status, teks, onBuka }: Props) {
+export default function DaftarLayanan({ layanan, status, teks, onBuka, galat = false, onCobaLagi, memuatUlang = false }: Props) {
   const [kueri, setKueri] = useState('');
   const idCari = useId();
   const q = kueri.trim().toLowerCase();
@@ -38,7 +45,7 @@ export default function DaftarLayanan({ layanan, status, teks, onBuka }: Props) 
         {teks.description && <p className={landing.sectionDescription}>{teks.description}</p>}
       </div>
 
-      {layanan.length > 0 && (
+      {!galat && layanan.length > 0 && (
         <div className={styles.cari}>
           <label htmlFor={idCari} className={styles.cariLabel}>Cari layanan</label>
           <div className={styles.cariKotak}>
@@ -56,7 +63,14 @@ export default function DaftarLayanan({ layanan, status, teks, onBuka }: Props) 
         </div>
       )}
 
-      {layanan.length === 0 ? (
+      {galat ? (
+        <ErrorRetry
+          judul="Daftar layanan belum dapat dimuat"
+          pesan="Koneksi terputus atau server sedang lambat. Daftar layanan tidak kosong; tekan Coba lagi untuk memuat ulang."
+          onRetry={onCobaLagi}
+          memuat={memuatUlang}
+        />
+      ) : layanan.length === 0 ? (
         <p className={styles.kosong}>Daftar layanan sedang disiapkan. Silakan kembali lagi nanti.</p>
       ) : tampil.length === 0 ? (
         <p className={styles.kosong} role="status">Tidak ada layanan yang cocok dengan “{kueri.trim()}”.</p>

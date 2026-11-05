@@ -1,0 +1,89 @@
+.wadah {
+  position: relative;
+  display: inline-flex;
+}
+
+.tombol {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.tombol:hover {
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+}
+
+.tombol:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.tombol[aria-expanded='true'] {
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+  padding: 6px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-overlay);
+}
+
+.rataKiri {
+  right: auto;
+  left: 0;
+}
+
+.butir {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: var(--fs-body);
+  text-align: left;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.butir:hover,
+.butir:focus-visible {
+  outline: none;
+  background: var(--bg-surface-hover);
+}
+
+.butir:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--color-primary-600);
+}
+
+.butir[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.bahaya {
+  color: var(--status-danger-fg);
+}

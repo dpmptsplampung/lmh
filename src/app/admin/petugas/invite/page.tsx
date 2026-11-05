@@ -1,9 +1,14 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { Loader2, Check, UserPlus, ArrowLeft } from 'lucide-react';
-import Link from 'next/link';
+import { Check, UserPlus, ArrowLeft } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
+import Kartu from '@/components/ui/Kartu';
+import Field from '@/components/ui/Field';
+import Tombol from '@/components/ui/Tombol';
+import Skeleton from '@/components/ui/Skeleton';
+import Galat from '@/components/ui/Galat';
+import CatatanKeadaan from '@/components/ui/CatatanKeadaan';
 import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/components/Toast';
 import styles from './invite.module.css';
@@ -23,6 +28,7 @@ export default function InvitePetugasPage() {
   const [role, setRole] = useState<Role>('petugas');
   const [layananList, setLayananList] = useState<LayananOption[]>([]);
   const [loadingLayanan, setLoadingLayanan] = useState(true);
+  const [galatLayanan, setGalatLayanan] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
@@ -36,7 +42,9 @@ export default function InvitePetugasPage() {
         .order('nama');
       if (error) throw error;
       setLayananList((data ?? []) as LayananOption[]);
+      setGalatLayanan('');
     } catch {
+      setGalatLayanan('Gagal memuat daftar layanan.');
       toast('Gagal memuat daftar layanan.', 'error');
       setLayananList([]);
     } finally {
@@ -86,151 +94,103 @@ export default function InvitePetugasPage() {
     setIsSuccess(false);
   };
 
+  const tanpaLayanan = role !== 'petugas';
+  const ROLE_PILIHAN: { nilai: Role; label: string }[] = [
+    { nilai: 'petugas', label: 'Petugas' },
+    { nilai: 'admin', label: 'Admin' },
+    { nilai: 'front_office', label: 'Front Office' },
+  ];
+
   return (
     <>
       <PageHeader
         title="Tambah Petugas"
         description="Buat akun petugas baru. Tautan pengaturan kata sandi akan dikirim ke email petugas."
-      >
-        <Link href="/admin/petugas" className="btn btn--ghost btn--sm">
-          <ArrowLeft size={14} /> Daftar Petugas
-        </Link>
+        kembali={{ href: '/admin/petugas', label: 'Daftar Petugas' }}>
+        <Tombol varian="hantu" href="/admin/petugas" ikon={ArrowLeft}>Daftar Petugas</Tombol>
       </PageHeader>
 
       <div className={styles.container}>
         {isSuccess ? (
-          <div className={styles.successCard}>
+          <Kartu className={styles.successCard}>
             <div className={styles.successIcon}>
-              <Check size={28} />
+              <Check size={28} aria-hidden="true" />
             </div>
             <h2 className={styles.successTitle}>Akun Berhasil Dibuat</h2>
             <p className={styles.successText}>
               Tautan pengaturan kata sandi dikirim ke email petugas.
               Petugas dapat mengatur kata sandi melalui tautan tersebut lalu masuk.
             </p>
-            
-            <button
-              type="button"
-              className="btn btn--primary"
-              onClick={handleReset}
-              style={{ marginTop: 'var(--space-6)' }}
-            >
-              <UserPlus size={16} /> Tambah Petugas Lain
-            </button>
-          </div>
+            <Tombol ikon={UserPlus} onClick={handleReset}>Tambah Petugas Lain</Tombol>
+          </Kartu>
         ) : (
-          <form className={styles.formCard} onSubmit={handleSubmit}>
-            <div className="form-group">
-              <label className="form-label form-label--required" htmlFor="inviteEmail">
-                Email Petugas
-              </label>
-              <input
-                id="inviteEmail"
-                type="email"
-                className="form-input"
-                placeholder="nama@lmh.go.id"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                autoComplete="off"
-                required
-              />
-            </div>
+          <Kartu judul="Data petugas">
+            <form className={styles.form} onSubmit={handleSubmit}>
+              <Field label="Email Petugas" wajib>
+                <input
+                  type="email"
+                  placeholder="nama@lmh.go.id"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="off"
+                  required
+                />
+              </Field>
 
-            <div className="form-group">
-              <label className="form-label form-label--required" htmlFor="inviteNama">
-                Nama Petugas
-              </label>
-              <input
-                id="inviteNama"
-                type="text"
-                className="form-input"
-                placeholder="Contoh: Petugas OSS"
-                value={nama}
-                onChange={(e) => setNama(e.target.value)}
-                autoComplete="off"
-                required
-                minLength={2}
-              />
-            </div>
+              <Field label="Nama Petugas" wajib>
+                <input
+                  type="text"
+                  placeholder="Contoh: Petugas OSS"
+                  value={nama}
+                  onChange={(e) => setNama(e.target.value)}
+                  autoComplete="off"
+                  required
+                  minLength={2}
+                />
+              </Field>
 
-            <div className="form-group">
-              <label className={`form-label ${role === 'petugas' ? 'form-label--required' : ''}`} htmlFor="inviteLayanan">
-                Layanan {(role === 'admin' || role === 'front_office') && <span style={{ fontWeight: 400, color: 'var(--text-tertiary)' }}>(tidak dipakai untuk {role === 'admin' ? 'admin' : 'front office'})</span>}
-              </label>
               {loadingLayanan ? (
-                <div className={styles.loadingRow}>
-                  <Loader2 size={16} className="animate-pulse" /> Memuat layanan...
-                </div>
+                <Skeleton bentuk="baris" label="Memuat layanan" />
+              ) : galatLayanan ? (
+                <Galat pesan={galatLayanan} onRetry={() => { void loadLayanan(); }} />
               ) : layananList.length === 0 ? (
-                <p className="form-error">Tidak ada layanan tersedia.</p>
+                <CatatanKeadaan jenis="tanpa-layanan">Tidak ada layanan tersedia.</CatatanKeadaan>
               ) : (
-                <select
-                  id="inviteLayanan"
-                  className="form-input"
-                  value={layananId}
-                  onChange={(e) => setLayananId(e.target.value)}
-                  required={role === 'petugas'}
-                >
-                  <option value="">{role === 'petugas' ? '— Pilih Layanan —' : '— Tanpa layanan —'}</option>
-                  {layananList.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.nama}
-                    </option>
-                  ))}
-                </select>
+                <Field
+                  label={tanpaLayanan ? `Layanan (tidak dipakai untuk ${role === 'admin' ? 'admin' : 'front office'})` : 'Layanan'}
+                  wajib={!tanpaLayanan}>
+                  <select value={layananId} onChange={(e) => setLayananId(e.target.value)} required={role === 'petugas'}>
+                    <option value="">{role === 'petugas' ? 'Pilih layanan' : 'Tanpa layanan'}</option>
+                    {layananList.map((l) => (
+                      <option key={l.id} value={l.id}>{l.nama}</option>
+                    ))}
+                  </select>
+                </Field>
               )}
-            </div>
 
-            <div className="form-group">
-              <label className="form-label">Role</label>
-              <div className={styles.roleRow}>
-                <label className={`${styles.roleOption} ${role === 'petugas' ? styles.roleOptionActive : ''}`}>
-                  <input
-                    type="radio"
-                    name="role"
-                    value="petugas"
-                    checked={role === 'petugas'}
-                    onChange={() => setRole('petugas')}
-                  />
-                  <span>Petugas</span>
-                </label>
-                <label className={`${styles.roleOption} ${role === 'admin' ? styles.roleOptionActive : ''}`}>
-                  <input
-                    type="radio"
-                    name="role"
-                    value="admin"
-                    checked={role === 'admin'}
-                    onChange={() => setRole('admin')}
-                  />
-                  <span>Admin</span>
-                </label>
-                <label className={`${styles.roleOption} ${role === 'front_office' ? styles.roleOptionActive : ''}`}>
-                  <input
-                    type="radio"
-                    name="role"
-                    value="front_office"
-                    checked={role === 'front_office'}
-                    onChange={() => setRole('front_office')}
-                  />
-                  <span>Front Office</span>
-                </label>
+              <div className={styles.roleBlok}>
+                <span className={styles.roleLabel} id="invite-role-label">Role</span>
+                <div className={styles.roleRow} role="radiogroup" aria-labelledby="invite-role-label">
+                  {ROLE_PILIHAN.map((r) => (
+                    <label key={r.nilai} className={`${styles.roleOption} ${role === r.nilai ? styles.roleOptionActive : ''}`}>
+                      <input type="radio" name="role" value={r.nilai} checked={role === r.nilai} onChange={() => setRole(r.nilai)} />
+                      <span>{r.label}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
-            </div>
 
-            <div className={styles.actions}>
-              <button
-                type="submit"
-                className="btn btn--primary"
-                disabled={submitting || loadingLayanan || (role === 'petugas' && layananList.length === 0)}
-              >
-                {submitting ? (
-                  <><Loader2 size={16} className="animate-pulse" /> Memproses...</>
-                ) : (
-                  <><UserPlus size={16} /> Tambah Petugas</>
-                )}
-              </button>
-            </div>
-          </form>
+              <div className={styles.actions}>
+                <Tombol
+                  type="submit"
+                  ikon={UserPlus}
+                  memuat={submitting}
+                  disabled={loadingLayanan || (role === 'petugas' && layananList.length === 0)}>
+                  {submitting ? 'Memproses...' : 'Tambah Petugas'}
+                </Tombol>
+              </div>
+            </form>
+          </Kartu>
         )}
       </div>
     </>

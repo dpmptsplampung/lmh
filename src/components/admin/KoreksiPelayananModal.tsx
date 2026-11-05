@@ -3,8 +3,14 @@
 // Koreksi data pelayanan yang sudah terkunci (Admin + Front Office).
 // PUT /api/admin/pelayanan/[tiketId] { perubahan, alasan } — kontrak: docs/RBAC_TAHAP1_KONTRAK.md §1.
 import { useEffect, useState } from 'react';
-import { X, Loader2, Lock } from 'lucide-react';
+import { Lock } from 'lucide-react';
 import { useToast } from '@/components/Toast';
+import Dialog from '@/components/ui/Dialog';
+import FieldUi from '@/components/ui/Field';
+import Tombol from '@/components/ui/Tombol';
+import Skeleton from '@/components/ui/Skeleton';
+import CatatanKeadaan from '@/components/ui/CatatanKeadaan';
+import styles from './KoreksiPelayananModal.module.css';
 import {
   SKALA_USAHA_OPTIONS,
   TIPE_PELAKU_USAHA_OPTIONS,
@@ -109,13 +115,6 @@ export default function KoreksiPelayananModal({ isOpen, tiketId, onClose, onSucc
     };
   }, [isOpen, tiketId]);
 
-  useEffect(() => {
-    if (!isOpen) return;
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [isOpen, onClose]);
-
   if (!isOpen) return null;
 
   const fields = data ? FIELDS[data.form_type] : [];
@@ -161,105 +160,70 @@ export default function KoreksiPelayananModal({ isOpen, tiketId, onClose, onSucc
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="kp-title"
-      style={{
-        position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.45)', zIndex: 1000,
-        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-4)',
-      }}
+    <Dialog
+      terbuka
+      onTutup={onClose}
+      dikunci={saving}
+      judul={(
+        <>
+          <Lock size={16} aria-hidden="true" /> Koreksi Data{data ? ` — ${data.nomor_display}` : ''}
+        </>
+      )}
+      deskripsi="Data sudah dikunci. Setiap koreksi wajib beralasan dan tercatat di riwayat (nilai lama dan baru)."
+      kaki={!loading && !loadError ? (
+        <>
+          <span className={styles.ringkas}>
+            {jumlahUbah > 0 ? `${jumlahUbah} kolom diubah` : 'Belum ada perubahan'}
+          </span>
+          <Tombol varian="hantu" ukuran="kecil" onClick={onClose} disabled={saving}>Batal</Tombol>
+          <Tombol varian="utama" ukuran="kecil" disabled={saving} memuat={saving} onClick={() => void submit()}>
+            {saving ? 'Menyimpan…' : 'Simpan Koreksi'}
+          </Tombol>
+        </>
+      ) : undefined}
     >
-      <div
-        style={{
-          background: '#ffffff', borderRadius: 'var(--radius-2xl, 16px)', width: '100%', maxWidth: '720px',
-          maxHeight: 'calc(100dvh - 2rem)', display: 'flex', flexDirection: 'column', overflow: 'hidden',
-          border: '1px solid var(--border-default, #e2e8f0)',
-        }}
-      >
-        <div style={{ padding: 'var(--space-5) var(--space-6)', borderBottom: '1px solid var(--border-default, #e2e8f0)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <h2 id="kp-title" style={{ fontSize: 'var(--text-lg)', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Lock size={16} /> Koreksi Data{data ? ` — ${data.nomor_display}` : ''}
-            </h2>
-            <p style={{ margin: '2px 0 0', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-              Data sudah dikunci. Setiap koreksi wajib beralasan dan tercatat di riwayat (nilai lama dan baru).
-            </p>
-          </div>
-          <button type="button" className="btn btn--ghost btn--sm" onClick={onClose} aria-label="Tutup">
-            <X size={18} />
-          </button>
-        </div>
+      {loading ? (
+        <Skeleton bentuk="baris" jumlah={4} label="Memuat data…" />
+      ) : loadError ? (
+        <CatatanKeadaan jenis="galat">{loadError}</CatatanKeadaan>
+      ) : (
+        <form className={styles.form} onSubmit={(e) => { e.preventDefault(); void submit(); }}>
+          {fields.map((f) => {
+            const cur = values[f.key] ?? '';
+            const set = (v: string) => setValues((s) => ({ ...s, [f.key]: v }));
+            const changed = f.key in perubahan;
+            return (
+              <FieldUi key={f.key} label={changed ? `${f.label} (diubah)` : f.label}>
+                {f.kind === 'select' ? (
+                  <select className="form-input" value={cur} onChange={(e) => set(e.target.value)}>
+                    <option value="">—</option>
+                    {cur && !f.options?.includes(cur) && <option value={cur}>{cur}</option>}
+                    {f.options?.map((o) => (
+                      <option key={o} value={o}>{f.labels?.[o] ?? o}</option>
+                    ))}
+                  </select>
+                ) : f.kind === 'textarea' ? (
+                  <textarea className="form-input" rows={3} value={cur} onChange={(e) => set(e.target.value)} />
+                ) : (
+                  <input type="text" className="form-input" value={cur} onChange={(e) => set(e.target.value)} />
+                )}
+              </FieldUi>
+            );
+          })}
 
-        <div style={{ padding: 'var(--space-6)', overflowY: 'auto', flex: 1 }}>
-          {loading ? (
-            <p style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
-              <Loader2 size={24} className="animate-spin" style={{ display: 'block', margin: '0 auto 8px' }} />
-              Memuat data…
-            </p>
-          ) : loadError ? (
-            <p role="alert" style={{ color: 'var(--color-danger-700, #b91c1c)' }}>{loadError}</p>
-          ) : (
-            <form onSubmit={(e) => { e.preventDefault(); void submit(); }} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-              {fields.map((f) => {
-                const id = `kp-${f.key}`;
-                const cur = values[f.key] ?? '';
-                const set = (v: string) => setValues((s) => ({ ...s, [f.key]: v }));
-                const changed = f.key in perubahan;
-                return (
-                  <div className="form-group" key={f.key}>
-                    <label className="form-label" htmlFor={id}>
-                      {f.label}{changed && <em style={{ marginLeft: 6, fontWeight: 400, color: 'var(--color-primary-700)' }}>(diubah)</em>}
-                    </label>
-                    {f.kind === 'select' ? (
-                      <select id={id} className="form-input" value={cur} onChange={(e) => set(e.target.value)}>
-                        <option value="">—</option>
-                        {cur && !f.options?.includes(cur) && <option value={cur}>{cur}</option>}
-                        {f.options?.map((o) => (
-                          <option key={o} value={o}>{f.labels?.[o] ?? o}</option>
-                        ))}
-                      </select>
-                    ) : f.kind === 'textarea' ? (
-                      <textarea id={id} className="form-input" rows={3} value={cur} onChange={(e) => set(e.target.value)} />
-                    ) : (
-                      <input id={id} type="text" className="form-input" value={cur} onChange={(e) => set(e.target.value)} />
-                    )}
-                  </div>
-                );
-              })}
+          <FieldUi label="Alasan Koreksi" wajib>
+            <textarea
+              className="form-input"
+              rows={2}
+              value={alasan}
+              onChange={(e) => setAlasan(e.target.value)}
+              placeholder="Mis. salah ketik nama usaha (min. 5 huruf)"
+            />
+          </FieldUi>
 
-              <div className="form-group">
-                <label className="form-label form-label--required" htmlFor="kp-alasan">Alasan Koreksi</label>
-                <textarea
-                  id="kp-alasan"
-                  className="form-input"
-                  rows={2}
-                  value={alasan}
-                  onChange={(e) => setAlasan(e.target.value)}
-                  placeholder="Mis. salah ketik nama usaha (min. 5 huruf)"
-                  aria-required="true"
-                />
-              </div>
-
-              {error && <p role="alert" style={{ color: 'var(--color-danger-700, #b91c1c)', margin: 0 }}>{error}</p>}
-            </form>
-          )}
-        </div>
-
-        {!loading && !loadError && (
-          <div style={{ padding: 'var(--space-4) var(--space-6)', borderTop: '1px solid var(--border-default, #e2e8f0)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-              {jumlahUbah > 0 ? `${jumlahUbah} kolom diubah` : 'Belum ada perubahan'}
-            </span>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button type="button" className="btn btn--ghost btn--sm" onClick={onClose}>Batal</button>
-              <button type="button" className="btn btn--primary btn--sm" disabled={saving} onClick={() => void submit()}>
-                {saving ? 'Menyimpan…' : 'Simpan Koreksi'}
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+          {error && <CatatanKeadaan jenis="galat">{error}</CatatanKeadaan>}
+        </form>
+      )}
+    </Dialog>
   );
 }

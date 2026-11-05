@@ -1,0 +1,7 @@
+.teks1 {
+  margin: 0;
+}
+
+.teks2 {
+  margin-left: var(--space-2);
+}

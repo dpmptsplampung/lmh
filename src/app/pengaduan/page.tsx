@@ -46,7 +46,7 @@ function PengaduanForm() {
       return;
     }
     if (!anonim && !kontak.trim()) {
-      setError('Isi kontak (email/no. HP) agar kami dapat menghubungi Anda, atau centang "Kirim secara anonim".');
+      setError('Isi kontak (email/no. HP) agar kami dapat menghubungi Anda, atau pilih "Laporkan dengan anonim".');
       return;
     }
     setPhase('submitting');
@@ -97,7 +97,7 @@ function PengaduanForm() {
           {anonim
             ? 'Simpan nomor ini baik-baik: hanya nomor inilah kuncinya, kami tidak menyimpan identitas atau kontak Anda sehingga nomor yang hilang tidak dapat dipulihkan. '
             : 'Simpan nomor laporan ini. '}
-          {lacakDenganNomor ? 'Status dan tanggapan dapat dipantau hanya dengan nomor ini. ' : 'Lacak status dengan nomor ini + kontak Anda. '}
+          {lacakDenganNomor ? 'Status dan tanggapan dapat dipantau hanya dengan nomor ini. ' : 'Lacak status dengan nomor ini dan kontak Anda. '}
           Batas verifikasi 3 hari kerja, penanganan 14 hari kerja.
         </p>
         <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'center', marginTop: 'var(--space-4)' }}>
@@ -111,19 +111,19 @@ function PengaduanForm() {
   return (
     <form onSubmit={handleSubmit} className="card" style={{ display: 'grid', gap: 'var(--space-4)' }}>
       <div>
-        <label style={{ fontWeight: 600, display: 'block', marginBottom: 'var(--space-2)' }}>Jenis Pengaduan</label>
-        <div style={{ display: 'grid', gap: 'var(--space-2)' }}>
+        <span id="jenis-pengaduan-label" style={{ fontWeight: 600, display: 'block', marginBottom: 'var(--space-2)' }}>Jenis Pengaduan</span>
+        <div role="radiogroup" aria-labelledby="jenis-pengaduan-label" style={{ display: 'grid', gap: 'var(--space-2)' }}>
           <label style={rowStyle}>
             <input type="radio" name="jalur" checked={jalur === 'layanan'} onChange={() => setJalur('layanan')} style={radioStyle} />
             <span>
-              <strong>Pengaduan Layanan</strong> — antrean lama, informasi tidak jelas, sistem error.
+              <strong>Pengaduan Layanan:</strong> antrean lama, informasi tidak jelas, sistem error.
               Dapat diteruskan ke layanan terkait.
             </span>
           </label>
           <label style={rowStyle}>
             <input type="radio" name="jalur" checked={jalur === 'integritas'} onChange={() => setJalur('integritas')} style={radioStyle} />
             <span style={{ color: 'var(--color-danger-600, #dc2626)' }}>
-              <strong>Pengaduan Perilaku / Integritas / Pungli</strong> — petugas minta uang, perilaku tidak pantas.
+              <strong>Pengaduan Perilaku / Integritas / Pungli:</strong> petugas minta uang, perilaku tidak pantas.
               <em> Dirahasiakan: hanya dibaca pimpinan, tidak oleh petugas.</em>
             </span>
           </label>
@@ -136,7 +136,7 @@ function PengaduanForm() {
             Layanan terkait (opsional)
           </label>
           <select id="layanan" className="input" value={layananId} onChange={(e) => setLayananId(e.target.value)}>
-            <option value="">— Umum / tidak spesifik —</option>
+            <option value="">Umum / tidak spesifik</option>
             {layananOptions.map((l) => (
               <option key={l.id} value={l.id}>{l.nama}</option>
             ))}
@@ -171,8 +171,8 @@ function PengaduanForm() {
           style={radioStyle}
         />
         <span>
-          <strong>Kirim secara anonim</strong> — nama, kontak, dan identitas Anda tidak disimpan. Status tetap bisa dipantau
-          dengan nomor laporan yang Anda terima.
+          <strong>Laporkan dengan anonim.</strong> DPMPTSP tidak akan tahu siapa Anda yang melaporkan. Status tetap dapat
+          dipantau dengan nomor laporan yang Anda terima.
         </span>
       </label>
 

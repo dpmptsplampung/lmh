@@ -64,23 +64,29 @@ afterEach(() => {
 });
 
 describe('Sidebar: struktur per role', () => {
-  it('admin: Dashboard di atas, sembilan grup berurutan, Profil dan Tampilan Publik di bawah', async () => {
+  it('admin: Dasbor di atas, sembilan grup berurutan, Profil dan Tampilan Publik di bawah', async () => {
     await renderSidebar('admin', '/admin');
     const nav = screen.getByRole('navigation', { name: 'Menu admin' });
     const top = Array.from(nav.children).map((el) =>
       el.tagName === 'A' ? `link:${el.textContent}` : `grup:${el.querySelector('button')?.textContent}`,
     );
     expect(top).toEqual([
-      'link:Dashboard',
+      'link:Dasbor',
       'grup:Front Office', 'grup:Antrean & Kehadiran', 'grup:Layanan Online', 'grup:Pesan Perilaku', 'grup:Laporan & Evaluasi',
       'grup:Pengelolaan Layanan', 'grup:Kemitraan & Investasi', 'grup:Konten & Dokumen', 'grup:Sistem & Keamanan',
-      'link:Profil Saya', 'link:Tampilan Publik',
     ]);
+    // Gaya Dasbor: Profil Saya dan Tampilan Publik berada di dasar panel (di bawah widget), bukan di dalam <nav>.
+    const bawah = document.querySelector('[class*="bawah"]')!;
+    expect(Array.from(bawah.querySelectorAll('a')).map((a) => a.textContent)).toEqual(['Profil Saya', 'Tampilan Publik']);
   });
 
   it('semua href lama muncul tepat sekali (admin)', async () => {
     await renderSidebar('admin', '/admin');
-    const hrefs = screen.getAllByRole('link', { hidden: true }).map((a) => a.getAttribute('href'));
+    // Widget sidebar punya tombol tautan sendiri (mis. "Buka dashboard"); yang dihitung hanya menu.
+    const hrefs = screen
+      .getAllByRole('link', { hidden: true })
+      .filter((a) => !a.closest('[data-widget]'))
+      .map((a) => a.getAttribute('href'));
     // 33 href lama - 3 tersembunyi (Daftar FO, Scan QR, Rekap Front Office) + 1 Registrasi Pengunjung
     // + 1 Saran (Pesan Perilaku; Hasil SKM lama menjadi Hasil Survei, alamat pengalihan tersembunyi).
     expect(hrefs).toHaveLength(32);
@@ -100,9 +106,9 @@ describe('Sidebar: struktur per role', () => {
     expect(within(list).getAllByRole('link', { hidden: true }).map((a) => a.textContent)).toEqual(['Jadwal Layanan', 'Kelola Layanan']);
   });
 
-  it('petugas: tanpa Dashboard dan grup Front Office; grup 1-entri jadi tautan biasa', async () => {
+  it('petugas: tanpa Dasbor dan grup Front Office; grup 1-entri jadi tautan biasa', async () => {
     await renderSidebar('petugas', '/admin/antrian');
-    expect(screen.queryByRole('link', { name: 'Dashboard' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Dasbor' })).toBeNull();
     expect(screen.queryByRole('button', { name: /Front Office/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /Pengelolaan Layanan/ })).toBeNull();
     const nav = screen.getByRole('navigation', { name: 'Menu admin' });
@@ -130,10 +136,11 @@ describe('Sidebar: dropdown accordion', () => {
     expect(navAktif()).toEqual(['Live Chat']);
   });
 
-  it('Dashboard aktif hanya pada /admin (bukan semua halaman admin); semua grup tertutup', async () => {
+  it('Dasbor aktif hanya pada /admin (bukan semua halaman admin); semua grup tertutup', async () => {
     await renderSidebar('admin', '/admin');
-    expect(navAktif()).toEqual(['Dashboard']);
-    expect(document.querySelectorAll('[aria-expanded="true"]').length).toBe(0);
+    expect(navAktif()).toEqual(['Dasbor']);
+    // Hanya header grup (widget sidebar punya tombol ciut sendiri yang aria-expanded true).
+    expect(document.querySelectorAll('button[aria-controls^="sidebar-grup-"][aria-expanded="true"]').length).toBe(0);
     cleanup();
     await renderSidebar('admin', '/admin/rekap-fo');
     expect(navAktif()).toEqual(['Rekap']);
@@ -293,6 +300,14 @@ describe('Sidebar: badge notifikasi', () => {
     expect(within(screen.getByRole('link', { name: /Pengaduan/ })).getByText('2')).toBeInTheDocument();
   });
 
+  it('menu Saran menampilkan lencana saran belum ditinjau', async () => {
+    badges({ saran: { count: 4, label: '4 saran belum ditinjau' } });
+    await renderSidebar('front_office', '/admin/saran');
+    const link = screen.getByRole('link', { name: /Saran/ });
+    expect(link).toHaveAccessibleName('Saran: 4 saran belum ditinjau');
+    expect(within(link).getByText('4')).toHaveAttribute('aria-hidden', 'true');
+  });
+
   it("menampilkan '99+' bila lebih dari 99; tepat 99 tetap angka", async () => {
     badges({ liveChat: { count: 150, label: '150 chat menunggu diambil' }, antrian: { count: 99, label: '99 tiket menunggu hari ini' } });
     await renderSidebar('admin', '/admin');
@@ -309,9 +324,12 @@ describe('Sidebar: badge notifikasi', () => {
     expect(link).toHaveAccessibleName('Live Chat');
   });
 
-  it('badge pada tautan tunggal (grup 1-entri): petugas, Antrian di grup 2-entri tertutup menampilkan jumlah', async () => {
+  it('petugas (semua grup terbuka bawaan, P1): lencana Antrean ada di anak; dilipat = jumlah pindah ke header', async () => {
     badges({ antrian: { count: 7, label: '7 tiket menunggu atau dipanggil hari ini' } });
     await renderSidebar('petugas', '/admin/chat');
+    expect(terbuka('Antrean & Kehadiran')).toBe(true);
+    expect(within(screen.getByRole('link', { name: /Antrean/ })).getByText('7')).toBeInTheDocument();
+    fireEvent.click(header('Antrean & Kehadiran'));
     expect(within(header('Antrean & Kehadiran')).getByText('7')).toBeInTheDocument();
   });
 
@@ -326,16 +344,152 @@ describe('Sidebar: badge notifikasi', () => {
   });
 });
 
-describe('Sidebar: drawer mobile', () => {
-  it('mengetuk anak menutup drawer; mengetuk header grup tidak', async () => {
-    vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} }));
-    await renderSidebar('admin', '/admin');
-    const toggle = screen.getByRole('button', { name: 'Buka menu' });
-    fireEvent.click(toggle);
-    expect(screen.getByRole('button', { name: 'Tutup menu' })).toHaveAttribute('aria-expanded', 'true');
+describe('Sidebar: P1 kelompok terbuka per peran', () => {
+  it('front_office dan petugas: semua kelompok terbuka bawaan dan bisa dilipat satu per satu', async () => {
+    await renderSidebar('front_office', '/admin');
+    const grup = screen.getAllByRole('button').filter((b) => b.getAttribute('aria-controls')?.startsWith('sidebar-grup-'));
+    expect(grup.length).toBeGreaterThan(1);
+    expect(grup.every((b) => b.getAttribute('aria-expanded') === 'true')).toBe(true);
     fireEvent.click(header('Front Office'));
-    expect(screen.getByRole('button', { name: 'Tutup menu' })).toHaveAttribute('aria-expanded', 'true');
+    expect(terbuka('Front Office')).toBe(false);
+    expect(terbuka('Layanan Online')).toBe(true); // bukan akordeon
+  });
+
+  it('admin tetap akordeon: satu kelompok terbuka', async () => {
+    await renderSidebar('admin', '/admin');
+    fireEvent.click(header('Front Office'));
+    fireEvent.click(header('Layanan Online'));
+    expect(terbuka('Front Office')).toBe(false);
+    expect(terbuka('Layanan Online')).toBe(true);
+  });
+});
+
+describe('Sidebar: kartu identitas dan keluar', () => {
+  it('menampilkan nama dan peran; menu berisi Profil Saya dan Keluar yang memanggil keluarDariSesi', async () => {
+    const { keluarDariSesi } = await import('@/lib/sesi-staf');
+    await renderSidebar('front_office', '/admin');
+    const kartu = screen.getByRole('button', { name: /Budi/ });
+    expect(kartu).toHaveAttribute('aria-haspopup', 'menu');
+    expect(kartu).toHaveTextContent('Front Office');
+    fireEvent.click(kartu);
+    expect(screen.getByRole('menuitem', { name: 'Profil Saya' })).toHaveAttribute('href', '/admin/profil');
+    // window.location.href dipakai setelah keluar; jsdom tidak menavigasi, cukup pastikan keluarDariSesi dipanggil.
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Keluar' }));
+    await vi.waitFor(() => expect(keluarDariSesi).toHaveBeenCalled());
+  });
+});
+
+describe('Sidebar: tombol Keluar terlihat langsung', () => {
+  it('semua peran punya tombol Keluar di dasar sidebar (tanpa membuka menu) yang memanggil keluarDariSesi', async () => {
+    const { keluarDariSesi } = await import('@/lib/sesi-staf');
+    for (const role of ['admin', 'front_office', 'petugas'] as const) {
+      vi.mocked(keluarDariSesi).mockClear();
+      const { unmount } = await renderSidebar(role, '/admin');
+      fireEvent.click(screen.getByRole('button', { name: 'Keluar' }));
+      await vi.waitFor(() => expect(keluarDariSesi).toHaveBeenCalled());
+      unmount();
+    }
+  });
+});
+
+describe('Sidebar: laci HP/tablet', () => {
+  function stubMq() {
+    vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} }));
+  }
+  const tombolBuka = () => screen.getByRole('button', { name: 'Buka menu' });
+
+  it('tombol di bilah atas: aria-expanded, aria-controls ke aside#sidebar; laci punya tombol Tutup menu', async () => {
+    stubMq();
+    await renderSidebar('admin', '/admin');
+    const aside = document.getElementById('sidebar')!;
+    expect(aside.tagName).toBe('ASIDE');
+    expect(tombolBuka()).toHaveAttribute('aria-controls', 'sidebar');
+    expect(tombolBuka()).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('button', { name: 'Tutup menu' })).toBeNull();
+    fireEvent.click(tombolBuka());
+    expect(tombolBuka()).toHaveAttribute('aria-expanded', 'true');
+    expect(aside).toHaveAttribute('role', 'dialog');
+    expect(aside).toHaveAttribute('aria-modal', 'true');
+    expect(screen.getByRole('button', { name: 'Tutup menu' })).toBeInTheDocument();
+  });
+
+  it('mengetuk anak menutup laci; mengetuk header grup tidak', async () => {
+    stubMq();
+    await renderSidebar('admin', '/admin');
+    fireEvent.click(tombolBuka());
+    fireEvent.click(header('Front Office'));
+    expect(tombolBuka()).toHaveAttribute('aria-expanded', 'true');
     fireEvent.click(screen.getByRole('link', { name: 'Registrasi Pengunjung' }));
-    expect(screen.getByRole('button', { name: 'Buka menu' })).toHaveAttribute('aria-expanded', 'false');
+    expect(tombolBuka()).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('terbuka: fokus pindah ke laci, gulir body terkunci, konten lain (AppBar, konten utama) inert', async () => {
+    stubMq();
+    const u = await renderSidebar('admin', '/admin');
+    const aside = document.getElementById('sidebar')!;
+    const bilah = document.querySelector('[data-appbar]')!;
+    fireEvent.click(tombolBuka());
+    expect(document.activeElement).toBe(aside);
+    expect(document.body.style.overflow).toBe('hidden');
+    expect(bilah).toHaveAttribute('inert');
+    expect(aside).not.toHaveAttribute('inert');
+    expect(document.querySelector('[data-sidebar-overlay]')).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Tutup menu' }));
+    expect(document.body.style.overflow).not.toBe('hidden');
+    expect(bilah).not.toHaveAttribute('inert');
+    u.unmount();
+  });
+
+  it('Esc menutup laci dan fokus kembali ke tombol menu', async () => {
+    stubMq();
+    await renderSidebar('admin', '/admin');
+    fireEvent.click(tombolBuka());
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(tombolBuka()).toHaveAttribute('aria-expanded', 'false');
+    expect(document.activeElement).toBe(tombolBuka());
+  });
+
+  it('klik latar menutup laci dan fokus kembali ke tombol menu', async () => {
+    stubMq();
+    await renderSidebar('admin', '/admin');
+    fireEvent.click(tombolBuka());
+    fireEvent.click(document.querySelector('[data-sidebar-overlay]')!);
+    expect(tombolBuka()).toHaveAttribute('aria-expanded', 'false');
+    expect(document.querySelector('[data-sidebar-overlay]')).toBeNull();
+    expect(document.activeElement).toBe(tombolBuka());
+  });
+
+  it('tutup otomatis saat pindah rute', async () => {
+    stubMq();
+    const u = await renderSidebar('admin', '/admin');
+    fireEvent.click(tombolBuka());
+    expect(tombolBuka()).toHaveAttribute('aria-expanded', 'true');
+    ubahPath(u, '/admin/chat');
+    expect(tombolBuka()).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('layar melebar jadi desktop menutup laci', async () => {
+    let onChange: (() => void) | undefined;
+    const mq = { matches: false, addEventListener: (_: string, fn: () => void) => { onChange = fn; }, removeEventListener: () => {} };
+    vi.stubGlobal('matchMedia', () => mq);
+    await renderSidebar('admin', '/admin');
+    fireEvent.click(tombolBuka());
+    mq.matches = true;
+    act(() => onChange?.());
+    expect(tombolBuka()).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('widget ikut area gulir yang sama dengan menu (urutan DOM: menu, widget, tautan bawah)', async () => {
+    await renderSidebar('admin', '/admin');
+    const isi = screen.getByRole('navigation', { name: 'Menu admin' }).parentElement!;
+    const anak = Array.from(isi.children);
+    expect(anak[0].tagName).toBe('NAV');
+    expect(anak[1]).toHaveAttribute('data-widget');
+    expect(anak[2].className).toMatch(/bawah/);
+  });
+
+  it('judul bilah atas = entri menu aktif', async () => {
+    await renderSidebar('admin', '/admin/chat/faq');
+    expect(document.querySelector('[data-appbar]')).toHaveTextContent('Kelola FAQ');
   });
 });

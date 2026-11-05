@@ -12,10 +12,10 @@
   margin: 0;
   padding: 4px;
   list-style: none;
-  background: var(--glass-bg-strong, #fff);
+  background: var(--bg-surface);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-lg);
-  box-shadow: var(--glass-shadow);
+  box-shadow: var(--shadow-card);
   max-height: 20rem;
   overflow-y: auto;
 }

@@ -480,7 +480,7 @@ describe('Panel Walk-in (/admin/fo/registrasi?tab=walkin, pendaftaran walk-in ol
         kirim();
 
         const alert = await screen.findByRole('alert');
-        expect(alert).toHaveFocus();
+        await waitFor(() => expect(alert).toHaveFocus());
         expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith(expect.objectContaining({ block: 'center' }));
         // di dalam formulir, SEBELUM tombol kirim (bukan di atas halaman)
         const tombol = screen.getByRole('button', { name: /Daftarkan & Mulai Layani/ });
@@ -500,7 +500,7 @@ describe('Panel Walk-in (/admin/fo/registrasi?tab=walkin, pendaftaran walk-in ol
         const alert = await screen.findByRole('alert');
         expect(alert).toHaveTextContent(/Isian Email ditolak server/);
         expect(field(/^Email/)).toHaveAttribute('aria-invalid', 'true');
-        expect(field(/^Email/)).toHaveFocus();
+        await waitFor(() => expect(field(/^Email/)).toHaveFocus());
         expect(screen.getAllByText(/Ditolak server: Email wajib/).length).toBeGreaterThan(0);
         expect(field(/Nama Lengkap/)).not.toHaveAttribute('aria-invalid');
         // tanda hilang saat isian itu diubah

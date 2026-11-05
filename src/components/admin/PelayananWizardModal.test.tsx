@@ -242,7 +242,7 @@ describe('PelayananWizardModal component', () => {
       expect(screen.getByRole('status')).toHaveTextContent(/sedang dilayani Petugas Dua/i);
       expect(screen.queryByRole('button', { name: /^Simpan$/i })).not.toBeInTheDocument();
       fireEvent.click(screen.getByRole('button', { name: /3\. Tindakan & Solusi/i }));
-      expect(screen.queryByRole('button', { name: /Selesaikan Antrian/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Selesaikan Antrean/i })).not.toBeInTheDocument();
 
       fireEvent.click(screen.getByRole('button', { name: /^Tutup$/i }));
       await new Promise((r) => setTimeout(r, 50));
@@ -258,7 +258,7 @@ describe('PelayananWizardModal component', () => {
       expect(await screen.findByDisplayValue('Rina')).not.toBeDisabled();
       expect(screen.getByRole('status')).toHaveTextContent(/diambil alih Koord Satu/);
       fireEvent.click(screen.getByRole('button', { name: /3\. Tindakan & Solusi/i }));
-      expect(screen.queryByRole('button', { name: /Selesaikan Antrian/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Selesaikan Antrean/i })).not.toBeInTheDocument();
     });
 
     it('tiket belum dimulai (menunggu): baca-saja dengan pesan mulai layanan dulu', async () => {
@@ -285,12 +285,12 @@ describe('PelayananWizardModal component', () => {
       );
       expect(await screen.findByDisplayValue('Rina')).not.toBeDisabled();
       fireEvent.click(screen.getByRole('button', { name: /3\. Tindakan & Solusi/i }));
-      fireEvent.click(screen.getByRole('button', { name: /Selesaikan Antrian/i }));
+      fireEvent.click(screen.getByRole('button', { name: /Selesaikan Antrean/i }));
 
       await waitFor(() => expect(toastMock).toHaveBeenCalledWith('Tiket ini sedang dilayani petugas lain.', 'error'));
       expect(onDataBasi).toHaveBeenCalled();
       expect(onSuccess).not.toHaveBeenCalled();
-      expect(screen.queryByRole('button', { name: /Selesaikan Antrian/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Selesaikan Antrean/i })).not.toBeInTheDocument();
       expect(screen.getByText(/Baca saja/i)).toBeInTheDocument();
     });
 
@@ -305,7 +305,7 @@ describe('PelayananWizardModal component', () => {
       render(<PelayananWizardModal isOpen={true} tiketId="t-301" onClose={vi.fn()} onDataBasi={onDataBasi} />);
       await screen.findByDisplayValue('Rina');
       fireEvent.click(screen.getByRole('button', { name: /3\. Tindakan & Solusi/i }));
-      fireEvent.click(screen.getByRole('button', { name: /Selesaikan Antrian/i }));
+      fireEvent.click(screen.getByRole('button', { name: /Selesaikan Antrean/i }));
       await waitFor(() => expect(onDataBasi).toHaveBeenCalled());
       expect(toastMock).not.toHaveBeenCalledWith(expect.stringContaining('Pelayanan selesai'), 'success');
     });
@@ -472,10 +472,9 @@ describe('PelayananWizardModal component', () => {
       fireEvent.change(await screen.findByLabelText('Nama Pemohon'), { target: { value: 'Rina S' } });
       fireEvent.keyDown(document, { key: 'Escape' });
       fireEvent.click(await screen.findByRole('button', { name: /Simpan draf/ }));
-      expect(onClose).toHaveBeenCalledTimes(1);
-      await waitFor(() =>
-        expect(mockFetch.mock.calls.some((c) => (c[1] as RequestInit | undefined)?.method === 'PATCH')).toBe(true),
-      );
+      // C3-10: menutup menunggu hasil simpan, jadi onClose menyusul setelah PATCH diterima.
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+      expect(mockFetch.mock.calls.some((c) => (c[1] as RequestInit | undefined)?.method === 'PATCH')).toBe(true);
     });
 
     it('mode baca-saja: Escape langsung menutup', async () => {
@@ -494,7 +493,7 @@ describe('PelayananWizardModal component', () => {
       render(<PelayananWizardModal isOpen tiketId="t-401" onClose={vi.fn()} />);
       await screen.findByLabelText('Nama Pemohon');
       langkah(3);
-      fireEvent.click(screen.getByRole('button', { name: /Selesaikan Antrian/i }));
+      fireEvent.click(screen.getByRole('button', { name: /Selesaikan Antrean/i }));
       // Galat pertama ada di langkah 1 (nama pemohon): wizard pindah ke sana.
       const alert = await screen.findByRole('alert');
       expect(alert).toHaveTextContent('Nama pemohon wajib diisi');
@@ -540,7 +539,7 @@ describe('PelayananWizardModal component', () => {
       render(<PelayananWizardModal isOpen tiketId="t-401" onClose={vi.fn()} />);
       await screen.findByLabelText('Nama Pemohon');
       langkah(3);
-      fireEvent.click(screen.getByRole('button', { name: /Selesaikan Antrian/i }));
+      fireEvent.click(screen.getByRole('button', { name: /Selesaikan Antrean/i }));
       // galat pertama: lokasi usaha / skala usaha (langkah 2)
       const alerts = await screen.findAllByRole('alert');
       expect(alerts.map((a) => a.textContent).join(' ')).toMatch(/Lokasi usaha wajib diisi/);
@@ -586,7 +585,7 @@ describe('PelayananWizardModal component', () => {
       langkah(3);
       fireEvent.click(screen.getByRole('button', { name: 'Tidak ada catatan' }));
       expect(screen.getByLabelText(/Catatan Tambahan Internal/)).toHaveValue('-');
-      fireEvent.click(screen.getByRole('button', { name: /Selesaikan Antrian/i }));
+      fireEvent.click(screen.getByRole('button', { name: /Selesaikan Antrean/i }));
 
       await waitFor(() => expect(posts()).toHaveLength(1));
       const body = JSON.parse((posts()[0][1] as RequestInit).body as string);
@@ -629,7 +628,7 @@ describe('PelayananWizardModal component', () => {
       expect(screen.queryByRole('group', { name: /eskalasi/i })).not.toBeInTheDocument();
       expect(screen.queryByLabelText(/Topik penanganan/)).not.toBeInTheDocument();
       expect(screen.queryByLabelText(/Catatan penanganan/)).not.toBeInTheDocument();
-      fireEvent.click(screen.getByRole('button', { name: /Selesaikan Antrian/i }));
+      fireEvent.click(screen.getByRole('button', { name: /Selesaikan Antrean/i }));
       await waitFor(() => expect(posts()).toHaveLength(1));
       const body = JSON.parse((posts()[0][1] as RequestInit).body as string);
       expect(body).toMatchObject({ nama_usaha: 'Toko Rina', uraian_solusi: 'NIB dibantu terbit.' });
@@ -646,7 +645,7 @@ describe('PelayananWizardModal component', () => {
       render(<PelayananWizardModal isOpen tiketId="t-401" onClose={vi.fn()} />);
       await screen.findByDisplayValue('Rina');
       langkah(3);
-      const tombol = screen.getByRole('button', { name: /Selesaikan Antrian/i });
+      const tombol = screen.getByRole('button', { name: /Selesaikan Antrean/i });
       fireEvent.click(tombol);
       const sibuk = await screen.findByRole('button', { name: /Menyelesaikan/i });
       expect(sibuk).toBeDisabled();

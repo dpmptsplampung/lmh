@@ -11,7 +11,7 @@ export default function SesiStafGuard() {
   if (sisaTutupDetik === null) return null;
 
   return (
-    <div className={styles.banner}>
+    <div className={styles.banner} data-cetak="sembunyi">
       <div className={styles.content}>
         <Clock size={18} aria-hidden="true" />
         {/* Teks alert statis: hitung mundur tidak ikut dibacakan ulang tiap detik oleh pembaca layar. */}

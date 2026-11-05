@@ -1,0 +1,7 @@
+.galat > [role='alert'] {
+  border-color: var(--status-danger-border);
+  background: var(--status-danger-bg);
+  color: var(--status-danger-fg);
+  border-radius: var(--radius-card);
+  padding: var(--pad-card);
+}

@@ -1,0 +1,61 @@
+.catatan {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-lg);
+  font-size: var(--fs-body);
+  line-height: 1.5;
+}
+
+.catatan > svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.netral {
+  color: var(--status-neutral-fg);
+  background: var(--status-neutral-bg);
+  border-color: var(--status-neutral-border);
+}
+
+.info {
+  color: var(--status-info-fg);
+  background: var(--status-info-bg);
+  border-color: var(--status-info-border);
+}
+
+.bahaya {
+  color: var(--status-danger-fg);
+  background: var(--status-danger-bg);
+  border-color: var(--status-danger-border);
+}
+
+.isi {
+  flex: 1;
+  min-width: 0;
+}
+
+.judul {
+  margin: 0 0 2px;
+  font-weight: 600;
+}
+
+.teks {
+  overflow-wrap: anywhere;
+}
+
+.aksi {
+  flex: none;
+}
+
+@media (max-width: 640px) {
+  .catatan {
+    flex-wrap: wrap;
+  }
+
+  .aksi {
+    width: 100%;
+  }
+}

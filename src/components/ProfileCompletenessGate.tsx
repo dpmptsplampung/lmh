@@ -11,6 +11,7 @@ import {
 } from '@/lib/pernyataan-kebenaran';
 import { isPhoneValid, profilLengkap, profilPengunjungSchema, validasiProfil } from '@/lib/profil-pengunjung';
 import { AlertCircle, CheckCircle2, HelpCircle, Loader2, Lock, Sparkles } from 'lucide-react';
+import Tombol from '@/components/ui/Tombol';
 import styles from './profile-gate.module.css';
 
 interface ProfileCompletenessGateProps {
@@ -203,9 +204,9 @@ export default function ProfileCompletenessGate({ children }: ProfileCompletenes
 
   if (loading) {
     return (
-      <div className={styles.overlay}>
+      <div className={styles.overlay} data-tema="dasbor">
         <div className={styles.loaderOverlay}>
-          <Loader2 className="animate-spin" size={32} style={{ color: 'var(--color-primary-500)' }} />
+          <Loader2 className={`animate-spin ${styles.spinner}`} size={32} aria-hidden="true" />
           <span>Memeriksa kelengkapan profil...</span>
         </div>
       </div>
@@ -214,12 +215,12 @@ export default function ProfileCompletenessGate({ children }: ProfileCompletenes
 
   if (dbError) {
     return (
-      <div className={styles.overlay}>
-        <div className={styles.loaderOverlay}>
+      <div className={styles.overlay} data-tema="dasbor">
+        <div className={styles.loaderOverlay} role="alert">
           <p>Gagal memverifikasi profil. Coba refresh halaman.</p>
-          <button className="btn btn--primary" onClick={() => window.location.reload()}>
+          <Tombol onClick={() => window.location.reload()}>
             Coba Lagi
-          </button>
+          </Tombol>
         </div>
       </div>
     );
@@ -227,12 +228,12 @@ export default function ProfileCompletenessGate({ children }: ProfileCompletenes
 
   if (!complete) {
     return (
-      <div className={styles.overlay}>
+      <div className={styles.overlay} data-tema="dasbor">
         <div className={styles.card}>
           <div className={styles.header}>
-            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '8px' }}>
-              <div style={{ padding: '12px', borderRadius: '16px', background: 'var(--color-primary-50)', color: 'var(--color-primary-600)' }}>
-                <Sparkles size={24} />
+            <div className={styles.ikonWrap}>
+              <div className={styles.ikonKotak}>
+                <Sparkles size={24} strokeWidth={1.75} aria-hidden="true" />
               </div>
             </div>
             <h2 className={styles.title}>Lengkapi Profil Anda</h2>
@@ -271,7 +272,7 @@ export default function ProfileCompletenessGate({ children }: ProfileCompletenes
               />
               {namaTerkunci ? (
                 <div id="nama-catatan" className={styles.lockNote}>
-                  <Lock size={12} style={{ display: 'inline', verticalAlign: '-1px', marginRight: 4 }} />
+                  <Lock size={12} strokeWidth={1.75} className={styles.ikonKunci} aria-hidden="true" />
                   Nama Lengkap terkunci. Untuk mengubah nama, hubungi Front Office.
                 </div>
               ) : (
@@ -399,9 +400,9 @@ export default function ProfileCompletenessGate({ children }: ProfileCompletenes
               <span className={styles.consentText}>{PERNYATAAN_KEBENARAN_TEKS}</span>
             </label>
 
-            <button type="submit" className={styles.submitBtn} disabled={saving || !formSetuju}>
+            <Tombol type="submit" className={styles.submitBtn} disabled={saving || !formSetuju}>
               Simpan & Lanjutkan
-            </button>
+            </Tombol>
           </form>
         </div>
 
@@ -410,9 +411,9 @@ export default function ProfileCompletenessGate({ children }: ProfileCompletenes
           <div className={styles.modalOverlay} role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title">
             <div className={styles.modalCard}>
               <div className={styles.modalHeader}>
-                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '4px' }}>
-                  <div style={{ padding: '10px', borderRadius: '50%', background: 'var(--color-primary-50, #eef2ff)', color: 'var(--color-primary-600, #4f46e5)' }}>
-                    <HelpCircle size={24} />
+                <div className={styles.ikonWrap}>
+                  <div className={`${styles.ikonKotak} ${styles.ikonBulat}`}>
+                    <HelpCircle size={24} strokeWidth={1.75} aria-hidden="true" />
                   </div>
                 </div>
                 <h3 id="confirm-modal-title" className={styles.modalTitle}>Konfirmasi Data Anda</h3>
@@ -448,29 +449,22 @@ export default function ProfileCompletenessGate({ children }: ProfileCompletenes
               </div>
 
               <div className={styles.modalActions}>
-                <button
-                  type="button"
+                <Tombol
+                  varian="sekunder"
                   className={styles.cancelBtn}
                   onClick={() => setShowConfirmModal(false)}
                   disabled={saving}
                 >
                   Periksa Kembali
-                </button>
-                <button
-                  type="button"
+                </Tombol>
+                <Tombol
                   className={styles.confirmBtn}
                   onClick={handleConfirmSave}
+                  memuat={saving}
                   disabled={saving}
                 >
-                  {saving ? (
-                    <>
-                      <Loader2 className="animate-spin" size={16} />
-                      Menyimpan...
-                    </>
-                  ) : (
-                    'Ya, Sudah Benar'
-                  )}
-                </button>
+                  {saving ? 'Menyimpan...' : 'Ya, Sudah Benar'}
+                </Tombol>
               </div>
             </div>
           </div>

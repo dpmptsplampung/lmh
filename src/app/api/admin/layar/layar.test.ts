@@ -16,9 +16,11 @@ const req = (body: unknown) =>
 
 type Hasil = { data?: unknown; error?: { code?: string; message: string } | null };
 
-async function setup(o: { role?: string; user?: { id: string } | null; update?: Hasil; insert?: Hasil; select?: Hasil } = {}) {
+async function setup(o: { role?: string; user?: { id: string } | null; update?: Hasil; insert?: Hasil | Hasil[]; select?: Hasil } = {}) {
   const user = o.user === undefined ? { id: 'auth-1' } : o.user;
   const dipanggil: string[] = [];
+  const payloadInsert: Array<Record<string, unknown>> = [];
+  let panggilanInsert = 0;
   const updateSelect = vi.fn(async () => ({ data: [{ id: ID }], error: null, ...o.update }));
   const supabase = {
     auth: { getUser: async () => ({ data: { user } }) },
@@ -28,9 +30,12 @@ async function setup(o: { role?: string; user?: { id: string } | null; update?: 
       }
       return {
         select: () => ({ order: async () => ({ data: [], error: null, ...o.select }) }),
-        insert: () => {
+        insert: (v: Record<string, unknown>) => {
           dipanggil.push('insert');
-          return { select: () => ({ single: async () => ({ data: { id: ID, nama: 'Lobi' }, error: null, ...o.insert }) }) };
+          payloadInsert.push(v);
+          const ke = panggilanInsert++;
+          const hasil = Array.isArray(o.insert) ? (o.insert[Math.min(ke, o.insert.length - 1)] ?? {}) : (o.insert ?? {});
+          return { select: () => ({ single: async () => ({ data: { id: ID, nama: 'Lobi' }, error: null, ...hasil }) }) };
         },
         update: (v: unknown) => {
           dipanggil.push(`update:${JSON.stringify(v)}`);
@@ -44,7 +49,7 @@ async function setup(o: { role?: string; user?: { id: string } | null; update?: 
   const logger = await import('@/lib/observability/logger');
   const log = vi.mocked(logger.logServerEvent);
   log.mockClear();
-  return { dipanggil, updateSelect, log };
+  return { dipanggil, payloadInsert, updateSelect, log };
 }
 
 describe('POST /api/admin/layar', () => {
@@ -63,6 +68,45 @@ describe('POST /api/admin/layar', () => {
     const res = await (await import('./route')).POST(req({ aksi: 'buat', nama: ' Lobi ' }));
     expect(res.status).toBe(201);
     expect((await res.json()).data.id).toBe(ID);
+  });
+
+  it('buat token: 8 angka acak dikirim eksplisit di insert (nol di depan boleh)', async () => {
+    const s = await setup();
+    await (await import('./route')).POST(req({ aksi: 'buat', nama: 'Lobi' }));
+    expect(s.payloadInsert).toHaveLength(1);
+    expect(s.payloadInsert[0].token).toMatch(/^\d{8}$/);
+    expect(s.payloadInsert[0].nama).toBe('Lobi');
+  });
+
+  it('buat token memakai crypto.randomInt dan memadatkan nol di depan', async () => {
+    vi.doMock('node:crypto', async (orig) => ({ ...(await orig<typeof import('node:crypto')>()), randomInt: () => 4205 }));
+    const s = await setup();
+    await (await import('./route')).POST(req({ aksi: 'buat', nama: 'Lobi' }));
+    expect(s.payloadInsert[0].token).toBe('00004205');
+    vi.doUnmock('node:crypto');
+  });
+
+  it('bentrok token (23505) diulang dengan token baru sampai berhasil', async () => {
+    const s = await setup({ insert: [{ data: null, error: { code: '23505', message: 'dup' } }, { data: null, error: { code: '23505', message: 'dup' } }, {}] });
+    const res = await (await import('./route')).POST(req({ aksi: 'buat', nama: 'Lobi' }));
+    expect(res.status).toBe(201);
+    expect(s.payloadInsert).toHaveLength(3);
+  });
+
+  it('bentrok terus-menerus: berhenti di batas ulang, 500 pesan baku', async () => {
+    const s = await setup({ insert: { data: null, error: { code: '23505', message: 'dup secret-xyz' } } });
+    const res = await (await import('./route')).POST(req({ aksi: 'buat', nama: 'Lobi' }));
+    expect(res.status).toBe(500);
+    expect(s.payloadInsert.length).toBeGreaterThan(1);
+    expect(s.payloadInsert.length).toBeLessThanOrEqual(10);
+    expect(JSON.stringify(await res.json())).not.toContain('secret-xyz');
+  });
+
+  it('galat insert selain bentrok tidak diulang', async () => {
+    const s = await setup({ insert: { data: null, error: { code: '42501', message: 'x' } } });
+    const res = await (await import('./route')).POST(req({ aksi: 'buat', nama: 'Lobi' }));
+    expect(res.status).toBe(500);
+    expect(s.payloadInsert).toHaveLength(1);
   });
 
   it('cabut berhasil (1 baris) -> ok, memakai aktif=false', async () => {

@@ -8,19 +8,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Inbox, Loader2, MessageSquare, RotateCcw, UserCheck } from 'lucide-react';
+import { Inbox, Loader2, MessageSquare, UserCheck } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
+import Galat from '@/components/ui/Galat';
+import KartuStatistik from '@/components/ui/KartuStatistik';
+import Lencana from '@/components/ui/Lencana';
+import Skeleton from '@/components/ui/Skeleton';
+import StatusKosong from '@/components/ui/StatusKosong';
 import { useToast } from '@/components/Toast';
 import { createClient } from '@/lib/supabase/client';
 import { useRealtimeRefetch } from '@/lib/hooks/useRealtimeRefetch';
 import { urlLoginAlasan } from '@/lib/sesi-staf';
 import {
   foAmbilDariKotakMasuk,
+  formatJamWIB,
   galatPerluMuatUlang,
   galatSesiTidakSah,
   kodeGalatFo,
   labelSaluran,
-  formatJamWIB,
   formatLama,
   pesanGalatFo,
   satu,
@@ -211,24 +216,27 @@ export default function KotakMasukFoPage() {
         </div>
 
         {galatMuat && (
-          <p role="alert" className={styles.galatMuat}>
-            <span>{galatMuat}</span>
-            <button type="button" className="btn btn--secondary btn--sm" onClick={() => { setMemuat(true); void muat(); }}>
-              <RotateCcw size={14} aria-hidden="true" /> Coba lagi
-            </button>
-          </p>
+          <Galat pesan={galatMuat} onRetry={() => { setMemuat(true); void muat(); }} memuat={memuat} />
+        )}
+
+        {(!galatMuat || baris.length > 0) && (
+          <div className={styles.statistik} aria-label="Ringkasan kotak masuk">
+            <KartuStatistik label="Menunggu Front Office" nilai={baris.length} memuat={memuat} pembanding="Seluruh kanal masuk" />
+            <KartuStatistik label="Pengunjung langsung" nilai={baris.filter((b) => b.saluran !== 'chat').length} memuat={memuat} pembanding="Ambil untuk mulai melayani" />
+            <KartuStatistik label="Melalui Live Chat" nilai={baris.filter((b) => b.saluran === 'chat').length} memuat={memuat} pembanding="Buka percakapan untuk menanggapi" />
+          </div>
         )}
 
         <section className={styles.seksi} aria-labelledby="judul-kotak-masuk">
           <h2 id="judul-kotak-masuk" className={styles.judulSeksi}>
             <Inbox size={18} aria-hidden="true" /> Menunggu diambil
-            <span className={styles.jumlah}>{baris.length}</span>
+            {!memuat && !galatMuat && <Lencana nada="netral">{baris.length}</Lencana>}
           </h2>
 
           {memuat ? (
-            <p role="status" className={styles.kosong}>Memuat kotak masuk…</p>
+            <Skeleton bentuk="kartu" jumlah={2} label="Memuat kotak masuk…" />
           ) : baris.length === 0 && !galatMuat ? (
-            <p className={styles.kosong}>Kotak masuk kosong. Tidak ada pengunjung yang menunggu Front Office.</p>
+            <StatusKosong ikon={Inbox} judul="Kotak masuk kosong." isi="Tidak ada pengunjung yang menunggu Front Office." />
           ) : (
             <ul className={styles.daftar}>
               {baris.map((b) => {
@@ -245,7 +253,7 @@ export default function KotakMasukFoPage() {
                         </p>
                       </div>
                       <div>
-                        <span className={styles.lencana}>{labelSaluran(b.saluran)}</span>
+                        <Lencana nada={b.saluran === 'chat' ? 'info' : 'netral'}>{labelSaluran(b.saluran)}</Lencana>
                         <p className={styles.meta}>
                           Menunggu {formatLama(b.created_at)} (sejak {formatJamWIB(b.created_at)} WIB)
                         </p>

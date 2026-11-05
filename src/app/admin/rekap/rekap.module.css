@@ -1,5 +1,24 @@
+/* Rekap Pelayanan gaya "Dasbor": kolom berlebar maksimum, kartu putih di atas kanvas, semua warna dari token tema. */
 .wadah {
-  padding: var(--space-8);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-grid, 20px);
+  /* Batasi kolom ke induknya; tab dan tabel lebar tetap bergulir di wadah masing-masing. */
+  width: 100%;
+  min-width: 0;
+  max-width: var(--content-max, 1440px);
+  margin: 0 auto;
+  padding: 0 var(--pad-page, 24px) var(--space-10, 40px);
+}
+
+.definisi {
+  margin: 0;
+  font-size: var(--fs-small, 12px);
+  color: var(--text-tertiary);
+}
+
+.kartuFilter {
+  min-width: 0;
 }
 
 .filter {
@@ -7,42 +26,39 @@
   flex-wrap: wrap;
   gap: var(--space-3);
   align-items: flex-end;
-  margin-bottom: var(--space-6);
 }
 
-.filter :global(.form-group) {
-  margin-bottom: 0;
+.filter > * {
+  min-width: 0;
 }
 
-.tab {
+.filterSelect {
+  min-width: 180px;
+}
+
+/* Isi tab diredupkan selama memuat: penanda terlihat bahwa angka/tabel belum sesuai filter baru. */
+.isiTab {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  border-bottom: 1px solid var(--border-default);
-  margin-bottom: var(--space-6);
+  flex-direction: column;
+  gap: var(--gap-grid, 20px);
+  min-width: 0;
+  transition: opacity 0.15s;
+}
+
+.isiTab[data-redup='true'] {
+  opacity: 0.5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .isiTab {
+    transition: none;
+  }
 }
 
 .kartu {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: var(--space-4);
-  margin-bottom: var(--space-6);
-}
-
-.definisi {
-  font-size: var(--text-xs, 12px);
-  color: var(--text-tertiary);
-  margin: 0 0 var(--space-4);
-}
-
-.peringatan {
-  font-size: var(--text-sm);
-  color: var(--color-warning-800, #92400e);
-  background: var(--color-warning-50, #fffbeb);
-  border: 1px solid var(--color-warning-200, #fde68a);
-  border-radius: var(--radius-md, 8px);
-  padding: var(--space-3) var(--space-4);
-  margin: 0 0 var(--space-6);
+  gap: var(--gap-grid, 20px);
 }
 
 .aksi {
@@ -51,74 +67,171 @@
   align-items: center;
   flex-wrap: wrap;
   gap: var(--space-3);
-  margin-bottom: var(--space-3);
 }
 
-.kosong {
-  text-align: center;
-  color: var(--text-tertiary);
-  padding: var(--space-8);
-}
-
-.caption {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-}
-
-/* Pilihan tampilan kolom (Ringkas / Semua kolom) */
-.segmen {
-  display: inline-flex;
-  border: 1px solid var(--color-neutral-300);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-}
-
-.segmen button {
-  padding: var(--space-1) var(--space-3);
-  font: inherit;
-  font-size: var(--text-sm);
+.jumlah {
+  margin: 0;
+  font-size: var(--fs-small, 12px);
   color: var(--text-secondary);
-  background: var(--color-neutral-0);
-  border: 0;
-  cursor: pointer;
-  transition: background-color var(--transition-fast), color var(--transition-fast);
-}
-
-.segmen button + button {
-  border-left: 1px solid var(--color-neutral-300);
-}
-
-.segmen button[aria-pressed='true'] {
-  background: var(--color-primary-50);
-  color: var(--color-primary-600);
-  font-weight: 600;
-}
-
-.segmen button:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: -2px;
 }
 
 .aksiKanan {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--space-3);
 }
 
-/* Tabel Data Pelayanan: kolom pertama menempel saat digulir ke samping */
+.angka {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.tebal {
+  font-weight: 600;
+}
+
+/* Pilihan tampilan kolom (Ringkas / Semua kolom) */
+.segmen {
+  display: inline-flex;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-button, var(--radius-md));
+  overflow: hidden;
+  background: var(--bg-surface);
+}
+
+.segmen button {
+  min-height: 36px;
+  padding: var(--space-1) var(--space-3);
+  font: inherit;
+  font-size: var(--fs-body, 14px);
+  color: var(--text-secondary);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.segmen button + button {
+  border-left: 1px solid var(--border-default);
+}
+
+.segmen button:hover {
+  background: var(--bg-surface-hover);
+}
+
+.segmen button[aria-pressed='true'] {
+  background: var(--nav-active-bg, var(--color-primary-50));
+  color: var(--color-primary-700);
+  font-weight: 600;
+}
+
+.segmen button:focus-visible {
+  outline: none;
+  box-shadow: inset var(--focus-ring);
+}
+
+@media (pointer: coarse) {
+  .segmen button {
+    min-height: 44px;
+  }
+}
+
+/* Tabel Data Pelayanan: gulir ke samping dalam region, kolom pertama menempel */
+.gulir {
+  /* Teks sr-only absolut pada kepala tabel ikut terkurung di area gulir. */
+  position: relative;
+  width: 100%;
+  overflow-x: auto;
+  border-radius: var(--radius-card, var(--radius-lg));
+}
+
+.gulir:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.tabelData {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-body, 14px);
+  color: var(--text-primary);
+}
+
+.tabelData th {
+  padding: 12px 16px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-tertiary);
+  font-size: var(--fs-table-head, 12px);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.tabelData td {
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.tabelData tbody tr:last-child > td {
+  border-bottom: 0;
+}
+
+.tabelData tbody tr:hover > td {
+  background: var(--bg-surface-hover);
+}
+
 .tabelData .barisData {
   cursor: pointer;
+}
+
+.tabelData th.angka,
+.tabelData td.angka {
+  text-align: right;
+}
+
+.utama {
+  font-weight: 600;
+}
+
+.waktu {
+  font-variant-numeric: tabular-nums;
+}
+
+.teks {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sub {
+  display: block;
+  font-size: var(--fs-small, 12px);
+  font-weight: 400;
+  color: var(--text-tertiary);
+}
+
+.kolAksi {
+  width: 1%;
+  text-align: right;
+}
+
+.kosongSel {
+  padding: var(--space-8);
+  text-align: center;
+  color: var(--text-tertiary);
 }
 
 .tabelData .kolPertama {
   position: sticky;
   left: 0;
-  background: var(--color-neutral-0);
-  border-right: 1px solid var(--color-neutral-100);
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border-subtle);
 }
 
 .tabelData th.kolPertama {
@@ -126,17 +239,17 @@
 }
 
 .tabelData tbody tr:hover td.kolPertama {
-  background: var(--color-neutral-50);
+  background: var(--bg-surface-hover);
 }
 
 .tabelData .barisDetail td {
   padding: var(--space-4) var(--space-4) var(--space-5);
-  background: var(--color-neutral-50);
+  background: var(--bg-surface-muted, var(--bg-canvas));
   white-space: normal;
 }
 
 .tabelData tbody .barisDetail:hover td {
-  background: var(--color-neutral-50);
+  background: var(--bg-surface-muted, var(--bg-canvas));
 }
 
 .detail {
@@ -147,43 +260,48 @@
 }
 
 .detailItem dt {
-  font-size: var(--text-xs);
+  font-size: var(--fs-small, 12px);
   color: var(--text-tertiary);
 }
 
 .detailItem dd {
   margin: 2px 0 0;
-  font-size: var(--text-sm);
+  font-size: var(--fs-body, 14px);
   color: var(--text-primary);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
-@media (max-width: 640px) {
-  .wadah {
-    padding: var(--space-4);
-  }
-}
-
-/* Tabel Data Pelayanan (mode Ringkas): nama tidak membungkus, kontak satu baris, topik dipotong */
+/* Mode Ringkas: nama tidak membungkus, kontak satu baris, topik dipotong */
 .tabelData td.kolPengunjung {
   min-width: 230px;
 }
 
-.tabelData td.kolPengunjung :global(.sub) {
+.tabelData td.kolPengunjung .sub {
   max-width: 230px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.tabelData td:global(.kol-teks) {
-  max-width: 200px;
-}
-
-.tabelData :global(.badge) {
+.hasil {
   max-width: 130px;
   overflow: hidden;
   text-overflow: ellipsis;
-  display: inline-block;
+}
+
+@media (max-width: 640px) {
+  .wadah {
+    padding-left: var(--pad-page, 16px);
+    padding-right: var(--pad-page, 16px);
+  }
+
+  .filter > * {
+    flex: 1 1 100%;
+  }
+
+  .kartu {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
 }

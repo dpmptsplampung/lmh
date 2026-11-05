@@ -1,0 +1,4 @@
+.area1 { padding: 0 var(--pad-page) var(--pad-page); display: grid; gap: var(--space-5); min-width: 0; }
+.filter { display: flex; align-items: end; gap: var(--space-4); flex-wrap: wrap; }
+.filter > :first-child, .filter > :nth-child(2) { flex: 1 1 180px; min-width: 0; }
+@media (max-width: 640px) { .filter > * { width: 100%; } }

@@ -1,16 +1,22 @@
 /* Halaman Registrasi Pengunjung: tab Walk-in / Scan QR. Token global; konsisten dengan halaman FO lain. */
 .halaman {
-  padding: var(--space-8);
+  padding: 0 var(--pad-page) var(--pad-page);
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
-  max-width: 1100px;
+  gap: var(--gap-grid);
+  max-width: var(--content-max);
+  min-width: 0;
 }
 
 .daftarTab {
   display: flex;
   gap: var(--space-1);
-  border-bottom: 1px solid var(--border-default);
+  padding: 4px;
+  background: var(--bg-surface-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-button);
+  width: fit-content;
+  max-width: 100%;
 }
 
 .tab {
@@ -26,9 +32,8 @@
   color: var(--text-secondary);
   background: transparent;
   border: 0;
-  border-bottom: 3px solid transparent;
-  margin-bottom: -1px;
-  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-button);
   cursor: pointer;
   transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
 }
@@ -41,8 +46,9 @@
 .tabAktif,
 .tabAktif:hover {
   color: var(--color-primary-700);
-  border-bottom-color: var(--color-primary-600);
-  background: var(--color-primary-50);
+  border-color: var(--border-subtle);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-card);
 }
 
 .penanda {
@@ -77,7 +83,7 @@
 /* HP: tab memenuhi lebar penuh, target sentuh >= 44px. */
 @media (max-width: 720px) {
   .halaman {
-    padding: var(--space-4);
+    padding: 0 var(--pad-page) var(--pad-page);
     gap: var(--space-4);
   }
 
@@ -96,3 +102,6 @@
     transition: none;
   }
 }
+
+.tab:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.panel { min-width: 0; }

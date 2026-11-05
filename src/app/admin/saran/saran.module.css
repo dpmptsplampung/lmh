@@ -1,0 +1,161 @@
+.halaman {
+  padding: 0 var(--pad-page) var(--pad-page);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-grid);
+}
+
+/* Ringkasan: tiga angka yang bisa diklik sebagai penyaring status */
+.ringkasan {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--gap-grid);
+}
+
+.ringkasanTombol {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--pad-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-card);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  min-height: 44px;
+}
+
+.ringkasanTombol:hover {
+  border-color: var(--border-hover);
+}
+
+.ringkasanTombol[aria-pressed='true'] {
+  background: var(--color-primary-50);
+  border-color: var(--color-primary-500);
+  color: var(--color-primary-800);
+  font-weight: 600;
+}
+
+.ringkasanAngka {
+  font-size: var(--fs-kpi);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+/* Penyaring */
+.penyaring {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: flex-end;
+}
+
+.bidang {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.bidangCari {
+  composes: bidang;
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+/* Tindakan massal dan keterangan */
+.tindakan {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.konfirmasi {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-warning-500);
+  border-radius: var(--radius-lg);
+  background: var(--color-warning-50);
+  font-size: var(--text-sm);
+}
+
+
+
+
+/* Daftar saran */
+.daftar {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.memuatUlang {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.kartu {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-card);
+  padding: var(--pad-card);
+  box-shadow: var(--shadow-card);
+}
+
+.kartuBelum {
+  border-left: 3px solid var(--status-warning-border);
+}
+
+.isi {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text-primary);
+}
+
+.kartuFoot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+@media (max-width: 640px) {
+  .halaman {
+    padding: 0 var(--pad-page) var(--pad-page);
+  }
+}
+
+.ringkasanTombol:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.bidang select { max-width: 100%; }
+@media (max-width: 640px) {
+  .ringkasan { grid-template-columns: minmax(0, 1fr); }
+  .penyaring > * { flex: 1 1 100%; min-width: 0; }
+  .kartuFoot > button { width: 100%; }
+}
+
+.lencanaSumber { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }

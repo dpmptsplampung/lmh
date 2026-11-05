@@ -30,7 +30,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
 ];
 
 // Badge notifikasi pada menu (jumlah data yang perlu dibuka). Sumber hitungan: lib/hooks/useNavBadges.ts.
-export type AdminBadgeKey = 'kotakMasukFo' | 'liveChat' | 'penangananFo' | 'antrian' | 'pengaduan';
+export type AdminBadgeKey = 'kotakMasukFo' | 'liveChat' | 'penangananFo' | 'antrian' | 'pengaduan' | 'saran';
 
 // Role yang berhak melihat tiap badge (juga menentukan kueri hitungan yang dijalankan).
 // Sengaja eksplisit: tidak semua yang boleh MEMBUKA halaman perlu diberi badge (mis. petugas layanan
@@ -41,6 +41,8 @@ export const ADMIN_BADGE_ROLES: Record<AdminBadgeKey, AdminRole[]> = {
   penangananFo: ['admin', 'front_office'],
   antrian: ['admin', 'petugas', 'front_office'],
   pengaduan: ['admin', 'front_office'],
+  // Saran: RLS tabel saran hanya admin dan Front Office; petugas layanan tidak melihat Saran.
+  saran: ['admin', 'front_office'],
 };
 
 export function badgeKeysForRole(role: string | null | undefined): AdminBadgeKey[] {
@@ -78,7 +80,7 @@ export interface AdminNavEntry {
 // Urutan = prioritas pemakaian harian operasional pelayanan (paling penting di atas).
 // Penyaringan per role tidak mengubah urutan relatif.
 export const ADMIN_NAV: AdminNavEntry[] = [
-  { label: 'Dashboard', href: '/admin', iconKey: 'dashboard', roles: ['admin', 'front_office'] },
+  { label: 'Dasbor', href: '/admin', iconKey: 'dashboard', roles: ['admin', 'front_office'] },
 
   // Front Office. Alur Front Office (Tahap B): FO melayani dulu, mengeskalasi ke petugas layanan bila perlu.
   // Halaman /admin/fo/* hanya untuk FO dan Admin (Admin sebagai pengganti FO, kontrak RPC §8).
@@ -91,7 +93,7 @@ export const ADMIN_NAV: AdminNavEntry[] = [
   { label: 'Scan QR', href: '/admin/scan', iconKey: 'scan', roles: ['admin', 'front_office'], group: 'frontOffice', hidden: true, tampilSebagai: '/admin/fo/registrasi' },
 
   // Antrean & Kehadiran
-  { label: 'Antrian', href: '/admin/antrian', iconKey: 'antrian', roles: ['admin', 'petugas', 'front_office'], group: 'antrean', badgeKey: 'antrian' },
+  { label: 'Antrean', href: '/admin/antrian', iconKey: 'antrian', roles: ['admin', 'petugas', 'front_office'], group: 'antrean', badgeKey: 'antrian' },
   { label: 'Absensi', href: '/admin/absensi', iconKey: 'absensi', roles: ['admin', 'petugas', 'front_office'], group: 'antrean' },
   { label: 'Kunjungan', href: '/admin/kunjungan', iconKey: 'kunjungan', roles: ['admin', 'front_office'], group: 'antrean' },
   { label: 'Buku Tamu', href: '/admin/buku-tamu', iconKey: 'bukuTamu', roles: ['admin', 'front_office'], group: 'antrean' },
@@ -99,7 +101,7 @@ export const ADMIN_NAV: AdminNavEntry[] = [
   // Layanan Online
   { label: 'Live Chat', href: '/admin/chat', iconKey: 'chat', roles: ['admin', 'petugas', 'front_office'], group: 'layananOnline', badgeKey: 'liveChat' },
   { label: 'Hasil Survei', href: '/admin/pesan-perilaku', iconKey: 'skm', roles: ['admin', 'petugas', 'front_office'], group: 'pesanPerilaku' },
-  { label: 'Saran', href: '/admin/saran', iconKey: 'saran', roles: ['admin', 'front_office'], group: 'pesanPerilaku' },
+  { label: 'Saran', href: '/admin/saran', iconKey: 'saran', roles: ['admin', 'front_office'], group: 'pesanPerilaku', badgeKey: 'saran' },
   { label: 'Pengaduan', href: '/admin/pengaduan', iconKey: 'pengaduan', roles: ['admin', 'petugas', 'front_office'], group: 'pesanPerilaku', badgeKey: 'pengaduan' },
   // Front Office hanya mengelola FAQ umum (layanan_id NULL; RLS faq_fo_umum, lihat src/lib/faq-scope.ts).
   { label: 'Kelola FAQ', href: '/admin/chat/faq', iconKey: 'faq', roles: ['admin', 'petugas', 'front_office'], group: 'layananOnline' },
@@ -110,7 +112,7 @@ export const ADMIN_NAV: AdminNavEntry[] = [
   { label: 'Rekap', href: '/admin/rekap', iconKey: 'rekap', roles: ['admin', 'petugas', 'front_office'], group: 'laporan' },
   { label: 'Rekap Front Office', href: '/admin/rekap-fo', iconKey: 'rekapFo', roles: ['admin', 'front_office'], group: 'laporan', hidden: true, tampilSebagai: '/admin/rekap' },
   { label: 'Cetak Laporan Pesan Perilaku', href: '/admin/pesan-perilaku/cetak', iconKey: 'skm', roles: ['admin', 'front_office'], group: 'pesanPerilaku', hidden: true, tampilSebagai: '/admin/pesan-perilaku' },
-  { label: 'Hasil SKM', href: '/admin/skm', iconKey: 'skm', roles: ['admin', 'petugas', 'front_office'], group: 'pesanPerilaku', hidden: true, tampilSebagai: '/admin/pesan-perilaku' },
+  { label: 'Hasil Survei', href: '/admin/skm', iconKey: 'skm', roles: ['admin', 'petugas', 'front_office'], group: 'pesanPerilaku', hidden: true, tampilSebagai: '/admin/pesan-perilaku' },
   { label: 'Performa Pelayanan', href: '/admin/performa', iconKey: 'performa', roles: ['admin'], group: 'laporan' },
 
   // Pengelolaan Layanan

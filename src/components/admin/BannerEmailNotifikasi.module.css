@@ -1,0 +1,26 @@
+.banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+  border: 1px solid var(--status-warning-border);
+  border-radius: var(--radius-card);
+  background: var(--status-warning-bg);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+}
+
+.teks {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.aksi {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+@media (max-width: 640px) { .aksi { width: 100%; justify-content: space-between; } }

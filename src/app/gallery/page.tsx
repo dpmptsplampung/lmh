@@ -385,7 +385,7 @@ export default function GalleryPage() {
             </div>
 
             {/* Body */}
-            <div className={styles.secureViewerBody} onContextMenu={handleContextMenu}>
+            <div className={styles.secureViewerBody} role="presentation" onContextMenu={handleContextMenu}>
               <style>{`@media print { .no-print { display: none !important; }`}</style>
               <div className="no-print" style={{ width: '100%', position: 'relative' }}>
                 {!hasPages ? (
@@ -419,7 +419,6 @@ export default function GalleryPage() {
                       src={`/api/investment-docs/page-image?doc_id=${selectedDocId}&page=${currentPage}`}
                       alt={`Halaman ${currentPage} dari ${pageCount}`}
                       style={{ width: '100%', maxWidth: '640px', height: 'auto', border: 'none', position: 'relative', zIndex: 2, display: 'block', margin: '0 auto', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}
-                      onContextMenu={(e) => e.preventDefault()}
                       draggable={false}
                     />
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-4)', marginTop: 'var(--space-4)' }}>
@@ -528,7 +527,6 @@ export default function GalleryPage() {
                       onChange={(e) => setLeadForm({ ...leadForm, nama: e.target.value })}
                       required
                       maxLength={200}
-                      autoFocus
                     />
                   </div>
 

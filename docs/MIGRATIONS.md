@@ -1314,3 +1314,73 @@ Memerlukan 202611030003. Lampiran (JPG/PNG/WEBP/PDF, 5 MB, maks 3) di R2 area `p
 | 202611030008 | `202611030008_pesan_perilaku_publik.sql` | `get_survei_context` + `nama` (sapaan); `saran.sumber` boleh `publik` + RPC `kirim_saran_publik`; RPC `kirim_pengaduan_publik` (nomor laporan acak `P`+8, kontak dibuang bila anonim, `pengaduan.sumber='publik'`); `lacak_pengaduan_nomor`/`tanggapan_pengaduan_nomor`/`lampiran_pengaduan_nomor` melayani `wizard` dan `publik` | `docs/rollback-pesan-perilaku-publik-202611030008.sql` (menolak bila sudah ada data `publik`) | **DITULIS, BELUM DITERAPKAN** |
 
 Memerlukan 202611030003 dan 202611030006. Terapkan SEBELUM merge/deploy: tanpa migrasi, `/saran` menjawab galat, sapaan tanpa nama, dan `/api/pengaduan` jatuh ke jalur lama (`buat_pengaduan`, nomor tiket lama, pelacakan butuh kontak).
+
+## Chat wajib Google: gerbang identitas di database (202611030009)
+
+| # | Berkas | Isi | Rollback | Status |
+|---|---|---|---|---|
+| 202611030009 | `202611030009_chat_identitas_google.sql` | `chat_identitas_diizinkan()` (nonanonim + identitas Google dari `auth.identities`/`app_metadata`; staf aktif dikecualikan; staf nonaktif ditolak); policy RESTRICTIVE INSERT pada `chat_sesi` dan `chat_pesan`; trigger BEFORE INSERT yang juga menjaga RPC SECURITY DEFINER; `service_role` dan cron tanpa JWT tetap lolos | `docs/rollback-chat-identitas-google-202611030009.sql` | **DITULIS, BELUM DITERAPKAN** |
+
+Keputusan pemilik 2026-11-02: pengunjung wajib akun Google untuk chat. Sisi aplikasi (route `api/chat/*`, UI) sudah menegakkan aturan yang sama; migrasi ini menutup jalur tabel langsung. Terapkan hanya setelah lolos di staging (AGENTS.md). Akibat: akun anonim lama tidak bisa membuat sesi/pesan baru; data historis tidak diubah.
+
+## Anonimitas saran dan pengaduan survei (202611030010 hotfix, 202611030011 lanjutan)
+
+Keputusan pemilik 2026-11-02: label "Laporkan dengan anonim. DPMPTSP tidak akan tahu siapa Anda yang melaporkan." harus benar di server. Dipisah dua karena 0010 hanya memakai objek yang sudah di produksi, sedangkan 0011 baru berlaku setelah 202611030006, 202611030008, dan 202611010003 diterapkan.
+
+| # | Berkas | Isi | Rollback | Status |
+|---|---|---|---|---|
+| 202611030010 | `202611030010_anonimitas_saran_pengaduan.sql` | HOTFIX. Trigger memutus semua kolom identitas pada kiriman anonim (`undangan_id`, kontak, nama, `sesi_chat_id`); UPDATE tidak boleh mengubah baris anonim; `saran.anonim` penanda baru; `created_at`/`updated_at` dan riwayat awal SEMUA baris anonim dibulatkan ke 00:00 WIB (agar tak bisa dicocokkan dengan jam mengisi survei); REVOKE `buat_pengaduan`. Blok PERINGATAN: pembersihan PERMANEN saran dan pengaduan anonim lama (tidak bisa dipulihkan rollback); query diagnostik tersedia di komentar. | `docs/rollback-anonimitas-saran-pengaduan-202611030010.sql` | **DITULIS, BELUM DITERAPKAN** |
+| 202611030011 | `202611030011_anonimitas_lanjutan.sql` | RPC final ber-email, `kirim_saran_publik` ber-anonim, CHECK `pelapor_email`, REVOKE `kirim_pengaduan_publik`. Terapkan SESUDAH 202611030006, 202611030008, 202611010003. | `docs/rollback-anonimitas-lanjutan-202611030011.sql` | **DITULIS, BELUM DITERAPKAN** |
+
+Batas yang tetap ada: isi tulisan pengirim sendiri dan log infrastruktur. Teks UI "tidak akan tahu" baru benar penuh setelah 0010 diterapkan; jangan deploy teks anonim baru sebelum itu. Terapkan hanya setelah lolos di staging (AGENTS.md).
+
+## Layar TV: urutan, nama tampil, panggilan, token 8 angka (202611030012)
+
+| # | Berkas | Isi | Rollback | Status |
+|---|---|---|---|---|
+| 202611030012 | `202611030012_layar_tv.sql` | `layanan.nama_layar` (1..40) dan `urutan_layar` (1..9999); `v_layar_antrian` + `nama_layar`/`urutan_layar`/`nama_tampil` di akhir; tabel `panggilan_layar` (hanya SELECT hari ini WIB untuk layar, publikasi Realtime, tanpa tiket_id); `panggil_tiket` mencatat tiap panggilan (penjaga 1 detik per tiket); `layar_token_baru()` 8 angka sebagai DEFAULT, CHECK 8 digit atau 32 hex lama (NOT VALID), `validate_layar_token` memakai btrim (tanpa rate limit, risiko diterima); pg_cron `layar_bersihkan` 00:05 WIB | `docs/rollback-layar-tv-202611030012.sql` | **DITULIS, BELUM DITERAPKAN** |
+
+Hanya bergantung pada migrasi yang sudah di produksi. Penyaringan "layanan berjadwal hari ini" di layar memakai `layanan_status_hari_ini` (migrasi `202610280001`, belum diterapkan): tanpanya layar menampilkan semua layanan `tampil_di_layar`. Keputusan pemilik 2026-11-03: layar lama `/layar-antrian` dihapus; token layar 8 angka; urutan khusus layar; pengumuman 1 sampai 3.
+
+## Masukan pengunjung: penangan pengaduan, SLA hari kerja, saran ditinjau (202611030013)
+
+| # | Berkas | Isi | Rollback | Status |
+|---|---|---|---|---|
+| 202611030013 | `202611030013_masukan_pengunjung.sql` | `pengaduan.penangan_id`/`penangan_sejak`; `pengaduan_riwayat` jenis `status`/`tangani`/`ambil_alih`/`otomatis` dengan penangan lama/baru (baris non-status hanya lewat RPC); RPC `tangani_pengaduan`, `ambil_alih_pengaduan` (alasan 5-500), `linimasa_pengaduan`, `ringkasan_pengaduan_kerja`; view `v_pengaduan_kerja` (security_invoker) dengan SLA `hari_kerja_antara()` (verifikasi 3 hari kerja, penanganan 14, mendekati 2); `saran.ditinjau_pada`/`ditinjau_oleh`, RPC `tandai_saran_ditinjau(p_ids,p_ditinjau)`, `tandai_semua_saran_ditinjau`, `jumlah_saran_belum_ditinjau`; semua tercatat di `audit_log` | `docs/rollback-masukan-pengunjung-202611030013.sql` | **DITULIS, BELUM DITERAPKAN** |
+
+Prasyarat hanya objek yang sudah di produksi; 0006 (tanggapan) dibaca dinamis bila ada. Tidak menyentuh RLS `tiket_antrean`/`kunjungan`. Terapkan hanya setelah staging lolos.
+
+## Profil Saya: ubah nama, email notifikasi, operator harian (202611030014)
+
+| # | Berkas | Isi | Rollback | Status |
+|---|---|---|---|---|
+| 202611030014 | `202611030014_profil_ubah_nama.sql` | `petugas.operator_aktif` (bawaan false); `petugas_ubah_profil` diperluas: nama (trim 2-100, tanpa kontrol/awalan rumus, audit nama lama/baru), HP, email notifikasi nyata (tolak domain login sintetis, verifikasi direset bila berubah), `operator_default` hanya bila `operator_aktif`; RPC Admin `admin_atur_operator(uuid,boolean)` beraudit | `docs/rollback-profil-ubah-nama-202611030014.sql` | **DITULIS, BELUM DITERAPKAN** |
+
+Prasyarat: `email_nyata()` (`202611010003`, belum diterapkan), `sesi_valid`, `staf_saya`. Fungsi lama `absensi_isi_operator` tetap menyalin `operator_default` lama ke absensi (flag hanya mengatur form profil). Terapkan hanya setelah staging lolos.
+
+## Akses Front Office: antrean terbuka, data kerja tertutup (202611030015)
+
+| # | Berkas | Isi | Rollback | Status |
+|---|---|---|---|---|
+| 202611030015 | `202611030015_akses_fo_antrean.sql` | Cabang FO pada `boleh_kunjungan`/`boleh_baca_pendataan` diketatkan (kontak dan draf pekerjaan rekan tertutup); RPC berkolom aman `fo_antrean_daftar`, `fo_kunjungan_daftar`, `fo_pratinjau_reservasi` (Admin/FO aktif; Petugas ditolak); agregat angka saja `rekap_ringkasan_dilayani`; nama FO yang melayani | `docs/rollback-akses-fo-antrean-202611030015.sql` | **DITULIS, BELUM DITERAPKAN** |
+
+**Peringatan urutan dan jendela rilis.** Urutan staging: `202610270001/0002` → `202610280001` → `202610290001/0002` → `202611010001/0002/0003/0005` → `202611030015` (0015 wajib sesudah `202611010003` agar hak FO pencatat tidak tertimpa). Aktifkan RLS ketat dan klien yang memakai RPC baru dalam SATU jendela rilis; RLS ketat tanpa klien baru mengosongkan antrean FO, klien baru tanpa RLS ketat tidak menutup kebocoran. Bukti perilaku lokal: `scripts/lokal-rantai/skenario-akses-fo.mjs` (PGlite, 53 cek). Rekap FO biasa tetap unit `fo` saja (tanpa tab Helpdesk OSS/Non OSS).
+
+## Catatan penerapan hasil tinjauan akhir (2026-11-04)
+
+- Migrasi `202611030011` dan `202611030013` WAJIB diterapkan dengan `--atomic`. Pada 0011, kegagalan di tengah mode non-atomik dapat meninggalkan trigger penjaga anonimitas saran (`trg_saran_anonim`) dalam keadaan mati.
+- Rollback `docs/rollback-layar-tv-202611030012.sql` (`DROP TABLE panggilan_layar`) dan `docs/rollback-masukan-pengunjung-202611030013.sql` (menghapus riwayat penangan dan kolom penangan/ditinjau) bersifat destruktif dan tidak bisa dipulihkan. Hanya dijalankan pemilik, setelah ekspor data; agen dilarang menjalankannya ke DB non-lokal.
+- Isi layar TV (`v_layar_antrian`, `panggilan_layar`) dapat dibaca anon tanpa token; token layar bukan kontrol akses DB. Isinya wajib bebas PII. Di staging, uji sekali bahwa payload Realtime untuk anon tidak memuat `tiket_id`.
+- Migrasi perbaikan `202611040001_perbaikan_tinjauan_akhir.sql` (setelah 0015) menutup temuan keamanan P1 dan sejumlah P2; terapkan bersama 0015 dalam jendela rilis yang sama.
+
+### 202611040001_perbaikan_tinjauan_akhir.sql (BELUM diterapkan)
+
+Perbaikan hasil tinjauan keamanan, QA, dan UI 2026-11-04. Prasyarat: 202611030013, 0014, dan 0015 sudah diterapkan. Terapkan dengan `--atomic`, hanya setelah staging lolos, dalam jendela rilis yang sama dengan 0015 dan klien barunya.
+
+- `fo_ambil_pengunjung`: FO non-Koordinator ditolak untuk kunjungan dalam jendela 7 hari yang bukan miliknya (menutup pemanenan HP/email lewat ID dari daftar antrean). Pengunjung lama di luar jendela tetap bisa didaftarkan ulang.
+- `kirim_saran_publik`: hanya `service_role`; route `/api/saran` memakai service client. `catat_laju_publik(p_aksi, p_kunci, p_maks, p_jendela_detik)` (hanya `service_role`) = penghitung laju bersama di `anon_rate_limit` (`user_id` NULL, `action = '<aksi>:<sha256 IP>'`, kunci advisory per action); route saran memakai 5 kiriman per IP per 10 menit lintas instance dan menolak (503) bila pemeriksaan gagal.
+- Pengaduan: kolom kerja, batas SLA, dan identitas/rute balasan pelapor (`pelapor_nama`, `pelapor_email`, `kontak`) terkunci dari UPDATE klien (berlaku juga untuk Admin); status pengaduan yang punya penangan hanya diubah penangan atau Admin; riwayat status wajib sesuai status saat itu; `linimasa_pengaduan` memeriksa `sesi_valid()` dan memberi `id` lampiran; `v_pengaduan_kerja` menambah `ada_bukti`.
+- `fo_antrean_daftar`/`fo_kunjungan_daftar`: FO non-Koordinator hanya tanggal [hari ini-7, hari ini+1]; `fo_kunjungan_daftar` kini 5 argumen (`p_cari`, `p_status`, total terfilter); overload 3 argumen dibuang.
+- Rekap: FO non-Koordinator dipaksa unit `fo` di fungsi inti; ringkasan "dilayani" hanya menghitung pelayanan berpenangan (sama dengan tabel Kinerja).
+- Operator: `operator_aktif` masuk audit; mematikan izin mengosongkan `operator_default`.
+- Rollback: `docs/rollback-perbaikan-tinjauan-akhir-202611040001.sql`, dijalankan SEBELUM rollback 0015/0014/0013. Skenario bukti: `node scripts/lokal-rantai/skenario-tinjauan-akhir.mjs` (102 cek).

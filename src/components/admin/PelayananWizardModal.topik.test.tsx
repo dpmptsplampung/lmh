@@ -63,7 +63,7 @@ describe('PelayananWizardModal: topik di langkah selesai', () => {
     await buka();
     const sel = (await screen.findByLabelText('Topik penanganan')) as HTMLSelectElement;
     await waitFor(() => expect(sel.options.length).toBe(3));
-    fireEvent.click(screen.getByRole('button', { name: /Selesaikan Antrian/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Selesaikan Antrean/i }));
     const alert = await screen.findByText('Topik penanganan wajib dipilih.');
     expect(alert.getAttribute('role')).toBe('alert');
     expect(sel.getAttribute('aria-invalid')).toBe('true');
@@ -76,7 +76,7 @@ describe('PelayananWizardModal: topik di langkah selesai', () => {
     await waitFor(() => expect(sel.options.length).toBe(3));
     fireEvent.change(sel, { target: { value: 't1' } });
     mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ ok: true }) });
-    fireEvent.click(screen.getByRole('button', { name: /Selesaikan Antrian/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Selesaikan Antrean/i }));
     await waitFor(() => expect(posts()).toHaveLength(1));
     const body = JSON.parse((posts()[0][1] as RequestInit).body as string);
     expect(body).toMatchObject({ nama_usaha: 'Toko Rina', uraian_solusi: 'NIB dibantu terbit.', topik_id: 't1' });
@@ -87,7 +87,7 @@ describe('PelayananWizardModal: topik di langkah selesai', () => {
     topikHasil.data = [];
     await buka();
     mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ ok: true }) });
-    fireEvent.click(screen.getByRole('button', { name: /Selesaikan Antrian/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Selesaikan Antrean/i }));
     await waitFor(() => expect(posts()).toHaveLength(1));
     expect(screen.queryByLabelText('Topik penanganan')).toBeNull();
     expect(JSON.parse((posts()[0][1] as RequestInit).body as string)).not.toHaveProperty('topik_id');

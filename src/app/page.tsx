@@ -28,6 +28,7 @@ import {
 } from '@/components/homepage/BlokLain';
 import { blokTampil, gabungkanBlok, type BlokTersusun } from '@/lib/homepage/blok';
 import {
+  GAGAL_LAYANAN,
   denganBatasWaktu,
   muatBlok,
   muatLayanan,
@@ -50,6 +51,8 @@ interface UserInfo {
 interface DataEtalase {
   blok: BlokTersusun[];
   layanan: LayananEtalase[];
+  /** True bila daftar layanan GAGAL dimuat (semua tingkat query / batas waktu): beda dari kosong yang sah. */
+  layananGalat: boolean;
   status: Map<string, StatusHariIni> | null;
 }
 
@@ -106,10 +109,10 @@ export default function LandingPage() {
       const supabase = createClient();
       const [blok, layanan, status] = await Promise.all([
         denganBatasWaktu(muatBlok(supabase), BATAS_MUAT_MS, gabungkanBlok(null)),
-        denganBatasWaktu(muatLayanan(supabase), BATAS_MUAT_MS, { layanan: [] as LayananEtalase[], tingkat: 0 as const }),
+        denganBatasWaktu(muatLayanan(supabase), BATAS_MUAT_MS, GAGAL_LAYANAN),
         denganBatasWaktu(muatStatusHariIni(supabase), BATAS_MUAT_MS, null),
       ]);
-      setData({ blok, layanan: layanan.layanan, status });
+      setData({ blok, layanan: layanan.layanan, layananGalat: layanan.tingkat === 0, status });
     }
 
     async function fetchSiteSettings() {
@@ -141,6 +144,15 @@ export default function LandingPage() {
     [router],
   );
 
+  // A-01: Coba lagi pada galat daftar layanan memuat ulang HANYA daftar itu (blok dan status tetap).
+  const [memuatLayananUlang, setMemuatLayananUlang] = useState(false);
+  const cobaLagiLayanan = useCallback(async () => {
+    setMemuatLayananUlang(true);
+    const hasil = await denganBatasWaktu(muatLayanan(createClient()), BATAS_MUAT_MS, GAGAL_LAYANAN);
+    setData((prev) => (prev ? { ...prev, layanan: hasil.layanan, layananGalat: hasil.tingkat === 0 } : prev));
+    setMemuatLayananUlang(false);
+  }, []);
+
   const handleLogout = async () => {
     const supabase = createClient();
     await keluarDariSesi(supabase);
@@ -161,7 +173,16 @@ export default function LandingPage() {
         return <EstimasiAntrean key={b.jenis} judul={b.teks.title} penjelasan={b.teks.description} />;
       case 'layanan':
         return (
-          <DaftarLayanan key={b.jenis} layanan={kartu} status={data?.status ?? null} teks={b.teks} onBuka={bukaLayanan} />
+          <DaftarLayanan
+            key={b.jenis}
+            layanan={kartu}
+            status={data?.status ?? null}
+            teks={b.teks}
+            onBuka={bukaLayanan}
+            galat={data?.layananGalat === true}
+            onCobaLagi={() => void cobaLagiLayanan()}
+            memuatUlang={memuatLayananUlang}
+          />
         );
       case 'papan_kinerja':
         return <BlokPapanKinerja key={b.jenis} teks={b.teks} />;

@@ -16,6 +16,7 @@ export default function QRCodeDisplay({ value, size = 128 }: QRCodeDisplayProps)
       QRCode.toCanvas(canvasRef.current, value, {
         width: size,
         margin: 1,
+        // Pengecualian: QR canvas perlu warna literal opak; pustaka qrcode tidak membaca var() CSS.
         color: {
           dark: '#1e293b',
           light: '#ffffff',

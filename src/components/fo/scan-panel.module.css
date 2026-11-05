@@ -1,23 +1,21 @@
 /* Padding halaman dipegang pembungkus tab (registrasi.module.css). */
 .scanPage {
   padding: 0;
-  animation: fadeIn 0.4s ease-out;
 }
 
 .scanLayout {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-8);
-  max-width: 1100px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--gap-grid);
+  max-width: none;
+  min-width: 0;
 }
 
 /* Scanner Area */
 .scannerCard {
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-xl);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card);
   overflow: hidden;
 }
 
@@ -86,11 +84,9 @@
 
 /* Result Area */
 .resultCard {
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-xl);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card);
   overflow: hidden;
 }
 
@@ -123,7 +119,6 @@
 
 /* Visitor Info */
 .visitorInfo {
-  animation: fadeIn 0.4s ease-out;
 }
 
 .visitorHeader {
@@ -147,7 +142,7 @@
   width: 56px;
   height: 56px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--color-primary-100), var(--color-primary-200));
+  background: var(--color-primary-50);
   color: var(--color-primary-700);
   display: flex;
   align-items: center;
@@ -230,7 +225,6 @@
   padding: var(--space-8);
   text-align: center;
   color: var(--color-danger-600);
-  animation: fadeIn 0.3s ease-out;
 }
 
 .notFoundIcon {
@@ -244,7 +238,6 @@
   align-items: center;
   padding: var(--space-8);
   text-align: center;
-  animation: fadeIn 0.4s ease-out;
 }
 
 .scanSuccessIcon {
@@ -269,7 +262,11 @@
 .manualInputRow {
   display: flex;
   gap: var(--space-2);
+  width: 100%;
+  min-width: 0;
 }
+.manualInputRow input { flex: 1; min-width: 0; }
+.manualInputRow button { flex: none; }
 
 /* Responsive */
 @media (max-width: 900px) {
@@ -333,7 +330,7 @@
   margin: 0 0 var(--space-4);
   padding: var(--space-2) var(--space-3);
   font-size: var(--text-sm);
-  color: var(--color-warning-600);
+  color: var(--color-warning-700);
   background: var(--color-warning-50);
   border: 1px solid var(--color-warning-500);
   border-radius: var(--radius-md);
@@ -368,4 +365,10 @@
 .statusTambahan {
   color: inherit;
   opacity: 0.85;
+}
+
+.scannerCard, .resultCard { min-width: 0; box-shadow: var(--shadow-card); }
+
+@media (prefers-reduced-motion: reduce) {
+  .pulsaTitik { animation: none; }
 }

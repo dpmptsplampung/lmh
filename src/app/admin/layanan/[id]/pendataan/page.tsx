@@ -1,6 +1,9 @@
 'use client';
 
-import Link from 'next/link';
+import Tombol from '@/components/ui/Tombol';
+
+import tampilan from './page.dasbor.module.css';
+
 import { useParams } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
@@ -13,11 +16,11 @@ export default function PendataanKhususPage() {
   return (
     <>
       <PageHeader title="Pendataan Khusus" description="Isian tambahan per Layanan yang diisi petugas saat menyelesaikan pelayanan" />
-      <div style={{ padding: 'clamp(var(--space-4), 4vw, var(--space-8))' }}>
-        <p style={{ margin: '0 0 var(--space-4)' }}>
-          <Link href="/admin/layanan" className="btn btn--ghost btn--sm">
+      <div className={tampilan.area1}>
+        <p className={tampilan.teks2}>
+          <Tombol href="/admin/layanan" varian="hantu" ukuran="kecil">
             <ArrowLeft size={14} aria-hidden="true" /> Kembali ke Kelola Layanan
-          </Link>
+          </Tombol>
         </p>
         {id ? <PendataanKhususEditor layananId={id} /> : null}
       </div>

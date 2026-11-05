@@ -1,197 +1,174 @@
+/* Dasbor gaya "Dasbor": kolom tunggal berlebar maksimum, kartu putih di atas kanvas, jarak --gap-grid.
+   Tanpa warna tertulis langsung; semua dari token tema. */
 .dashboard {
-  animation: fadeIn 0.4s ease-out;
-}
-
-.statsGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: var(--space-6);
-  margin-bottom: var(--space-8);
-}
-
-.statCard {
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-xl);
-  padding: var(--space-6);
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-4);
-  transition: box-shadow var(--transition-base);
-}
-
-.statCard:hover {
-  box-shadow: var(--shadow-md);
-}
-
-.statIcon {
-  width: 48px;
-  height: 48px;
-  border-radius: var(--radius-lg);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.statIconBlue {
-  background: var(--color-primary-50);
-  color: var(--color-primary-600);
-}
-
-.statIconGreen {
-  background: var(--color-success-50);
-  color: var(--color-success-600);
-}
-
-.statIconAmber {
-  background: var(--color-accent-50);
-  color: var(--color-accent-600);
-}
-
-.statIconRed {
-  background: var(--color-danger-50);
-  color: var(--color-danger-600);
-}
-
-.statInfo {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: var(--gap-grid, 20px);
+  /* Margin otomatis pada anak flex perlu lebar eksplisit agar tidak mengikuti lebar intrinsik pintasan. */
+  width: 100%;
+  min-width: 0;
+  max-width: var(--content-max, 1440px);
+  margin: 0 auto;
+  padding: 0 var(--pad-page, 24px) var(--space-10, 40px);
 }
 
-.statValue {
-  font-family: var(--font-display);
-  font-size: var(--text-3xl);
-  font-weight: 800;
-  color: var(--text-primary);
-  line-height: 1;
+/* Aksi utama di kepala halaman: di HP lebar penuh dan paling atas. */
+.walkin {
+  white-space: nowrap;
 }
 
-.statLabel {
-  font-size: var(--text-sm);
-  color: var(--text-secondary);
+/* Pintasan Admin: satu baris, menggulir ke samping bila sempit. */
+.pintasan {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
-.chartsGrid {
+.pintasan > * {
+  flex: none;
+}
+
+.atas {
   display: grid;
-  grid-template-columns: 2fr 1fr;
-  gap: var(--space-6);
-  margin-bottom: var(--space-8);
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--gap-grid, 20px);
+  align-items: stretch;
 }
 
-.chartCard {
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-xl);
-  padding: var(--space-6);
-}
-
-.chartTitle {
-  font-size: var(--text-base);
-  font-weight: 600;
-  margin-bottom: var(--space-4);
-  color: var(--text-primary);
-}
-
-.chartBody {
-  height: 300px;
+.kolomStatus {
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
 }
 
-.recentSection {
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-xl);
-  overflow: hidden;
-}
-
-.recentHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space-5) var(--space-6);
-  border-bottom: 1px solid var(--border-default);
-}
-
-.recentTitle {
-  font-size: var(--text-base);
-  font-weight: 600;
-}
-
-@media (max-width: 1024px) {
-  .chartsGrid {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 768px) {
-  .statsGrid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-@media (max-width: 480px) {
-  .statsGrid {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* Quick access Walk-in button on dashboard */
-.walkinTriggerContainer {
-  margin-bottom: var(--space-8);
-  display: flex;
-  justify-content: flex-start;
-  gap: var(--space-3);
+.statusHariIni > header {
   flex-wrap: wrap;
 }
 
-.walkinTriggerBtn {
+.statusHariIni > header > div {
+  flex-wrap: wrap;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.banner:empty {
+  display: none;
+}
+
+.kpi {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--gap-grid, 20px);
+}
+
+.utama {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--gap-grid, 20px);
+  align-items: start;
+}
+
+.kolom,
+.samping {
   display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-6);
-  background: linear-gradient(135deg, var(--color-primary-600), var(--color-primary-700));
-  color: white;
-  border: none;
-  border-radius: var(--radius-xl);
-  font-family: var(--font-sans);
-  font-weight: 700;
+  flex-direction: column;
+  gap: var(--gap-grid, 20px);
+  min-width: 0;
+}
+
+.penuh {
+  min-width: 0;
+}
+
+.galat {
+  min-width: 0;
+}
+
+.satuan {
   font-size: var(--text-sm);
-  cursor: pointer;
-  box-shadow: var(--shadow-md), var(--shadow-glow);
-  transition: all var(--transition-base);
-  min-height: 44px;
+  font-weight: 500;
+  color: var(--text-secondary);
 }
 
-.walkinTriggerBtn:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-lg), var(--shadow-glow);
-  background: linear-gradient(135deg, var(--color-primary-500), var(--color-primary-600));
+.kaki {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
 }
 
-.walkinTriggerBtn:active {
-  transform: scale(0.97);
+.nomor {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-primary-700);
 }
 
-@media (max-width: 768px) {
-  .dashboardGrid {
-    grid-template-columns: 1fr;
+.nama {
+  font-weight: 500;
+}
+
+@media (min-width: 1100px) {
+  .atas {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
   }
-  
-  .statsGrid {
-    gap: var(--space-4);
+}
+
+@media (min-width: 1200px) {
+  .kpi {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
-  
-  .statCard {
-    padding: var(--space-4);
+}
+
+@media (min-width: 1280px) {
+  .utama {
+    grid-template-columns: minmax(0, 1.9fr) minmax(0, 1fr);
+  }
+
+  .penuh {
+    grid-column: 1 / -1;
+  }
+}
+
+/* HP dan tablet: urutan kerja (Registrasi Walk-in di kepala, lalu Perlu tindakan, KPI, grafik); pintasan satu baris gulir. */
+@media (max-width: 1024px) {
+  .dashboard {
+    gap: var(--gap-grid, 16px);
+  }
+
+  .walkin {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .pintasan {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding: 4px;
+    margin: -4px;
+    scrollbar-width: thin;
+  }
+}
+
+@media (max-width: 640px) {
+  .dashboard {
+    padding-left: var(--pad-page, 16px);
+    padding-right: var(--pad-page, 16px);
+  }
+
+  /* A12: Perlu tindakan, banner, pintasan, KPI, lalu status dan grafik. */
+  .atas {
+    display: contents;
+  }
+
+  .perlu { order: 1; }
+  .banner { order: 2; }
+  .pintasan { order: 3; }
+  .kpi { order: 4; }
+  .kolomStatus { order: 5; }
+  .utama,
+  .galat { order: 6; }
+
+  .kpi {
+    gap: 12px;
   }
 }

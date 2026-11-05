@@ -1,0 +1,218 @@
+/* Antrean (gaya Dasbor): kepala halaman, panel Sekarang, kartu statistik, tabel dalam kartu. Token dari tema-dasbor.css. */
+.halaman {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-grid);
+  padding: 0 var(--pad-page) var(--pad-page);
+  max-width: var(--content-max);
+}
+
+.aksiKepala {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.statistik {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--gap-grid);
+}
+
+/* Rekapitulasi Absen: baris pembuka lipatan di dalam kartu. */
+.rekapToggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: var(--target);
+  padding: var(--space-3) var(--space-5);
+  border: 0;
+  border-radius: var(--radius-card);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.rekapToggle:hover {
+  background: var(--bg-surface-muted);
+}
+
+.rekapToggle:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.rekapJudul {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.rekapIsi {
+  border-top: 1px solid var(--border-default);
+}
+
+.rekapAlat {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--space-3) var(--space-5);
+}
+
+.rekapCatatan {
+  padding: var(--space-5);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+/* Alat di atas tabel: tab saringan status. */
+.alatTabel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5) 0;
+}
+
+.nomor {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-muted);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.nama {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.layanan {
+  font-weight: 600;
+}
+
+.sekunder {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+}
+
+.eskalasi {
+  max-width: 300px;
+  margin-top: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-muted);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: 400;
+}
+
+.eskalasiJudul {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.catatanFo {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.oleh {
+  color: var(--text-tertiary);
+}
+
+.waktu {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Sel aksi: semua aksi baris tetap tampil sebagai tombol (tidak disembunyikan di menu). */
+.aksi {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.aksiKolom {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+
+.durasi {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.catatanAksi {
+  max-width: 240px;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+}
+
+.surveiBaris {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.surveiLabel {
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+}
+
+.halamanBawah {
+  padding: 0 var(--space-5) var(--space-3);
+}
+
+.tidakAda {
+  padding: var(--space-5);
+}
+
+@media (max-width: 1024px) {
+  .statistik {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .statistik {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .alatTabel {
+    padding-inline: var(--space-4);
+  }
+
+  .rekapToggle {
+    padding-inline: var(--space-4);
+  }
+
+  .eskalasi {
+    max-width: none;
+  }
+}

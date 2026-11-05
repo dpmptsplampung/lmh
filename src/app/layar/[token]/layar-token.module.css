@@ -1,21 +1,27 @@
 /* WP-29 / DSP-01..07: TV queue display screen styles.
    Audit T4: teks label dibaca dari 3–5 m → lantai ukuran per tingkat (clamp, ikut lebar layar),
-   kontras >= 4.5:1 di atas latar gelap, animasi dihormati prefers-reduced-motion. */
+   kontras >= 4.5:1 pada permukaan terang, animasi dihormati prefers-reduced-motion.
+   Layar TV: SATU layar tanpa scroll, paling banyak 8 kartu per halaman. Tinggi layar dikunci (100dvh).
+   Kisi berpetak SETENGAH kartu (2*kolom x 2*baris, variabel --kolom/--baris dari page.tsx); tiap kartu
+   menempati 2x2 petak lewat grid-column/grid-row inline, sehingga kartu sisa (baris atau halaman yang
+   kurang dari penuh) bisa digeser ke tengah. Isi kartu memakai satuan container query (cqh/cqw) tanpa
+   lantai ukuran dan baris grid berpecahan tetap, jadi bagian-bagian kartu tidak saling menimpa. */
 
 .screen {
   /* Skala teks TV. Lantai 1.25rem (20px) untuk label; naik pelan mengikuti lebar layar. */
   --tv-label: clamp(1.25rem, 0.9vw + 0.5rem, 1.75rem);
   --tv-meta: clamp(1.125rem, 0.6vw + 0.6rem, 1.5rem);
   --tv-loket: clamp(1.5rem, 1.1vw + 0.8rem, 2.25rem);
-  --tv-angka: clamp(4rem, 3.5vw + 2rem, 6.5rem);
-  --tv-nomor: clamp(1.75rem, 1.4vw + 0.9rem, 2.75rem);
 
-  min-height: 100vh;
-  background: #0f172a;
-  color: #f1f5f9;
+  position: relative;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--bg-canvas);
+  color: var(--text-primary);
   display: flex;
   flex-direction: column;
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: var(--font-sans);
 }
 
 /* Hanya untuk pembaca layar */
@@ -38,9 +44,9 @@
   align-items: center;
   gap: 16px;
   flex-wrap: wrap;
-  padding: 16px 32px;
-  background: #1e293b;
-  border-bottom: 2px solid #334155;
+  padding: clamp(6px, 1.2vh, 16px) clamp(12px, 2vw, 32px);
+  background: var(--bg-surface);
+  border-bottom: 2px solid var(--border-default);
   flex-shrink: 0;
 }
 
@@ -51,171 +57,221 @@
 }
 
 .title {
-  font-size: clamp(1.75rem, 1.2vw + 1rem, 2.5rem);
+  font-size: clamp(1.25rem, 3.4vh, 2.5rem);
   font-weight: 700;
-  color: #f1f5f9;
+  color: var(--text-primary);
   margin: 0;
   line-height: 1.2;
 }
 
 .subtitle {
-  font-size: var(--tv-meta);
-  color: #cbd5e1;
+  font-size: clamp(1rem, 2.2vh, 1.5rem);
+  color: var(--text-secondary);
   margin: 0;
 }
 
 .clock {
   text-align: right;
-  font-size: clamp(2rem, 1.6vw + 1.2rem, 3rem);
+  font-size: clamp(1.5rem, 4.4vh, 3rem);
   font-weight: 700;
-  color: #38bdf8;
+  color: var(--color-primary-700);
   line-height: 1.1;
   font-variant-numeric: tabular-nums;
 }
 
 .clockDate {
   display: block;
-  font-size: var(--tv-meta);
+  font-size: clamp(1rem, 2.2vh, 1.5rem);
   font-weight: 400;
-  color: #cbd5e1;
+  color: var(--text-secondary);
   margin-top: 2px;
 }
 
-/* Main grid of loket cards */
-.grid {
-  flex: 1;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr));
-  gap: 16px;
-  padding: 24px 32px;
-  align-content: start;
+/* Kanvas terang polos: tidak ada layanan berjadwal hari ini. Tanpa teks, header, atau teks berjalan. */
+.layarKosong {
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--bg-canvas);
 }
 
-/* Individual loket card */
+/* Kisi halaman: petak setengah kartu. Jarak antarkartu dari margin kartu (bukan gap) agar posisi
+   setengah petak tetap tepat. */
+.grid {
+  --jarak: clamp(4px, 0.8vh, 8px);
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(calc(var(--kolom, 1) * 2), minmax(0, 1fr));
+  grid-template-rows: repeat(calc(var(--baris, 1) * 2), minmax(0, 1fr));
+  padding: clamp(4px, 1.2vh, 16px) clamp(8px, 1.4vw, 24px);
+}
+
+/* Kartu = wadah ukuran (container-type: size). Semua ukuran isi memakai cqh/cqw TANPA lantai (tanpa clamp
+   dengan batas bawah rem/px) dan tiap bagian menempati baris grid berpecahan tetap, jadi bagian-bagian
+   tidak mungkin saling menimpa: jumlah tinggi baris selalu <= tinggi kartu.
+   Kartu kecil (< 200px tinggi atau < 260px lebar) beralih ke mode ringkas di bawah. */
 .loket {
-  background: #1e293b;
-  border: 2px solid #334155;
+  container-type: size;
+  min-width: 0;
+  min-height: 0;
+  margin: var(--jarak);
+  overflow: hidden;
+  background: var(--bg-surface);
+  border: 4px solid var(--border-subtle);
+  box-shadow: var(--shadow-card);
   border-radius: 16px;
-  padding: 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
   transition: border-color 0.3s ease;
 }
 
-.loket:has(.statValue:not(.statValueZero)) {
-  border-color: #3b82f6;
+.loket:has(.nomorValue:not(.nomorKosong)):not(.loketDipanggil) {
+  border-color: var(--color-primary-500);
 }
 
 /* Tanpa opacity: menurunkan opasitas ikut menurunkan kontras teks. */
 .loketKosong {
-  border-color: #1e293b;
+  border-color: var(--bg-surface);
+}
+
+/* Kartu: nama tampil / nomor yang sedang dilayani / jumlah antre. */
+.loketIsi {
+  height: 100%;
+  box-sizing: border-box;
+  padding: min(4cqh, 4cqw);
+  display: grid;
+  gap: 1.5cqh;
+  grid-template-rows: minmax(0, 22fr) minmax(0, 48fr) minmax(0, 30fr);
+}
+
+.loketIsi > * {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .loketName {
-  font-size: var(--tv-loket);
+  font-size: min(9cqh, 7.5cqw);
   font-weight: 700;
-  color: #e2e8f0;
+  color: var(--text-primary);
   margin: 0;
-  line-height: 1.25;
+  line-height: 1.1;
+  max-height: 2.2em;
+  overflow-wrap: anywhere;
+  /* Nama sangat panjang dipotong di baris kedua, bukan menimpa bagian lain. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 
-.loketBody {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.stat {
-  flex: 1;
+.nomorBlok,
+.antreBlok {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-}
-
-/* DSP-01: nomor SANGAT BESAR */
-.statValue {
-  font-size: var(--tv-angka);
-  font-weight: 900;
-  line-height: 1;
-  color: #38bdf8;
-  font-variant-numeric: tabular-nums;
-}
-
-/* Nol tetap terbaca (>= 4.5:1), hanya lebih redup dari angka aktif */
-.statValueZero {
-  color: #94a3b8;
-}
-
-.statValueActive {
-  color: #4ade80;
-}
-
-.statLabel {
-  font-size: var(--tv-label);
-  font-weight: 600;
-  color: #cbd5e1;
+  justify-content: center;
+  gap: 0.8cqh;
   text-align: center;
+}
+
+.nomorLabel,
+.antreLabel {
+  font-size: min(6cqh, 8cqw);
+  font-weight: 600;
+  color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.02em;
   line-height: 1.2;
+  white-space: nowrap;
 }
 
-.statDivider {
-  width: 1px;
-  height: 80px;
-  background: #334155;
-  flex-shrink: 0;
-}
-
-.loketFooter {
-  font-size: var(--tv-label);
-  color: #cbd5e1;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  line-height: 1.3;
-}
-
-.footerOk {
-  color: #4ade80;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.footerWait {
-  color: #fbbf24;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-/* Nomor sedang dilayani. Nomor 'OS-014' (2 huruf + '-' + 3 digit): tidak boleh patah baris. */
-.nomorDilayani {
-  font-size: var(--tv-label);
-  color: #cbd5e1;
-  text-align: center;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-}
-
-.nomorDilayaniValue {
-  display: inline-block;
-  background: #164e63;
-  color: #7dd3fc;
-  padding: 2px 18px;
-  border-radius: 99px;
+/* Nomor 'OS-014' (2 huruf + '-' + 3 digit): tidak boleh patah baris. */
+.nomorValue {
+  font-size: min(28cqh, 17cqw);
   font-weight: 800;
-  font-size: var(--tv-nomor);
-  line-height: 1.25;
-  letter-spacing: 0.04em;
+  line-height: 1;
+  color: var(--text-primary);
+  letter-spacing: 0.03em;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+}
+
+/* Belum ada yang dilayani: tanda strip, tetap terbaca (>= 4.5:1). */
+.nomorKosong {
+  color: var(--text-secondary);
+}
+
+.antreValue {
+  font-size: min(16cqh, 20cqw);
+  font-weight: 900;
+  line-height: 1;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.antreNol {
+  color: var(--text-secondary);
+}
+
+/* Halaman padat pada TV HD: dua baris nama besar dan label tetap sekitar 20px.
+   Jumlah antre sejajar labelnya agar ruang vertikal cukup untuk nama dan nomor. */
+@container (min-height: 200px) and (max-height: 360px) {
+  .loketIsi {
+    grid-template-rows: minmax(0, 35fr) minmax(0, 45fr) minmax(0, 20fr);
+  }
+
+  .loketName {
+    font-size: min(14cqh, 11cqw);
+  }
+
+  .nomorLabel,
+  .antreLabel {
+    font-size: min(10cqh, 8cqw);
+  }
+
+  .nomorValue {
+    font-size: min(25cqh, 17cqw);
+  }
+
+  .antreBlok {
+    flex-direction: row;
+    gap: 3cqw;
+  }
+}
+
+/* Mode ringkas: kartu kecil. Label dibuang; yang tersisa nama, nomor, dan jumlah antre dengan
+   kata "antre" di sampingnya lewat label yang diperkecil. */
+@container (max-height: 199px) or (max-width: 259px) {
+  .loketIsi {
+    padding: min(3cqh, 3cqw);
+    gap: 1.5cqh;
+    grid-template-rows: minmax(0, 30fr) minmax(0, 43fr) minmax(0, 27fr);
+  }
+
+  .nomorLabel {
+    display: none;
+  }
+
+  .antreBlok {
+    flex-direction: row;
+    gap: 3cqw;
+  }
+
+  .loketName {
+    font-size: min(10cqh, 7cqw);
+  }
+
+  .nomorValue {
+    font-size: min(28cqh, 13cqw);
+  }
+
+  .antreValue {
+    font-size: min(18cqh, 15cqw);
+  }
+
+  .antreLabel {
+    font-size: min(8cqh, 4.2cqw);
+  }
 }
 
 /* Footer */
@@ -225,11 +281,11 @@
   align-items: center;
   gap: 8px 24px;
   flex-wrap: wrap;
-  padding: 10px 32px;
-  background: #1e293b;
-  border-top: 1px solid #334155;
-  font-size: var(--tv-meta);
-  color: #cbd5e1;
+  padding: clamp(4px, 1vh, 10px) clamp(12px, 2vw, 32px);
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border-default);
+  font-size: clamp(1rem, 2.2vh, 1.5rem);
+  color: var(--text-secondary);
   flex-shrink: 0;
 }
 
@@ -244,7 +300,7 @@
   padding: 24px;
   text-align: center;
   font-size: clamp(1.5rem, 1vw + 1rem, 2.25rem);
-  color: #cbd5e1;
+  color: var(--text-secondary);
 }
 
 .center p {
@@ -253,7 +309,7 @@
 
 .centerCatatan {
   font-size: var(--tv-label);
-  color: #cbd5e1;
+  color: var(--text-secondary);
 }
 
 /* Gangguan koneksi setelah data pernah tampil */
@@ -263,8 +319,8 @@
   justify-content: center;
   gap: 12px;
   padding: 8px 32px;
-  background: #78350f;
-  color: #fef3c7;
+  background: var(--status-warning-bg);
+  color: var(--status-warning-fg);
   font-size: var(--tv-label);
   font-weight: 600;
   flex-shrink: 0;
@@ -272,62 +328,42 @@
 
 .spinner {
   animation: spin 1s linear infinite;
-  color: #38bdf8;
+  color: var(--color-primary-700);
 }
 
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
 
-/* Belum ada layanan sama sekali */
-.kosongSemua {
-  grid-column: 1 / -1;
-  text-align: center;
-  color: #cbd5e1;
-  font-size: var(--tv-loket);
-  padding: 48px;
+/* Footer: penanda kecil yang tidak mencolok */
+.tandaJadwal,
+.tandaHalaman {
+  font-size: 0.875em;
+  color: var(--text-secondary);
+  margin-left: 12px;
 }
 
-.kosongIkon {
-  margin-bottom: 16px;
-  opacity: 0.6;
+.footerKanan {
+  display: flex;
+  align-items: center;
+  gap: 16px;
 }
 
-/* DSP-04: closed loket message */
-.loketTutup {
-  background: #0f172a;
-  border-color: #1e293b;
+/* Tombol kecil, hilang setelah diklik (satu klik per sesi) */
+.tombolSuara {
+  font: inherit;
+  font-size: 0.875em;
+  color: var(--text-primary);
+  background: var(--border-default);
+  border: 1px solid var(--border-hover);
+  border-radius: 8px;
+  padding: 2px 12px;
+  cursor: pointer;
 }
 
-.loketTutupLabel {
-  font-size: var(--tv-label);
-  color: #94a3b8;
-  text-align: center;
-  padding: 8px 0;
-}
-
-/* Running text banner (DSP-05) */
-.runningTextBar {
-  background: #1e3a5f;
-  border-top: 1px solid #2563eb;
-  padding: 8px 0;
-  overflow: hidden;
-  flex-shrink: 0;
-}
-
-.runningText {
-  display: inline-block;
-  white-space: nowrap;
-  animation: marquee 30s linear infinite;
-  color: #bfdbfe;
-  font-size: var(--tv-label);
-  font-weight: 500;
-  padding-right: 80px;
-}
-
-@keyframes marquee {
-  from { transform: translateX(100vw); }
-  to   { transform: translateX(-100%); }
+.tombolSuara:hover,
+.tombolSuara:focus-visible {
+  background: var(--bg-surface-hover);
 }
 
 /* Updated indicator (DSP-02) */
@@ -341,12 +377,12 @@
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background: #4ade80;
+  background: var(--status-success-fg);
   animation: pulse 2s ease-in-out infinite;
 }
 
 .updatedDotGangguan {
-  background: #fbbf24;
+  background: var(--text-primary);
 }
 
 @keyframes pulse {
@@ -354,17 +390,25 @@
   50%       { opacity: 0.3; }
 }
 
-/* Layar menyala berhari-hari; hormati pengaturan "kurangi gerakan":
-   tanpa marquee/denyut/putaran — teks berjalan menjadi blok statis. */
+/* Layar menyala berhari-hari; hormati pengaturan "kurangi gerakan": tanpa denyut/putaran
+   (teks berjalan dan pita panggilan punya aturan sendiri di lib/layar/elemen.module.css). */
 @media (prefers-reduced-motion: reduce) {
   .loket { transition: none; }
   .spinner { animation: none; }
   .updatedDot { animation: none; }
-  .runningText {
-    animation: none;
-    display: block;
-    white-space: normal;
-    text-align: center;
-    padding: 0 32px;
-  }
 }
+
+.brandIcon { color: var(--color-primary-700); flex: none; }
+.kursorTersembunyi, .kursorTersembunyi * { cursor: none; }
+.loket.loketDipanggil {
+  border-width: 6px;
+  border-color: var(--color-primary-600);
+  animation: panggilanDenyut 2s ease-in-out infinite;
+}
+@keyframes panggilanDenyut {
+  0%, 100% { box-shadow: inset 0 0 0 0 var(--color-primary-200); }
+  50% { box-shadow: inset 0 0 0 4px var(--color-primary-200); }
+}
+.tombolSuara:focus-visible { outline: 3px solid var(--color-primary-600); outline-offset: 2px; }
+@media (pointer: coarse) { .tombolSuara { min-height: 44px; } }
+@media (prefers-reduced-motion: reduce) { .loket.loketDipanggil { animation: none; } }

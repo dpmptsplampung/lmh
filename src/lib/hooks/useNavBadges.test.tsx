@@ -21,7 +21,7 @@ vi.mock('@/lib/chat/status-layanan', () => ({
   muatStatusLayananChat: vi.fn(async () => ({ hariTanpaLayanan: !!infoHari.alasan })),
 }));
 
-import { hitungBadge, totalBadge, useJudulTabBadge, useNavBadges } from './useNavBadges';
+import { hitungBadge, segarkanBadge, totalBadge, useJudulTabBadge, useNavBadges } from './useNavBadges';
 
 const ok = (count: number): HasilFake => ({ data: null, error: null, count });
 const galat: HasilFake = { data: null, error: { message: 'boom' } };
@@ -55,6 +55,7 @@ function pasangJawaban() {
   h.tabel.chat_sesi = ok(4);
   h.tabel.tiket_antrean = ok(5);
   h.tabel.pengaduan = ok(6);
+  h.tabel.saran = ok(7);
 }
 
 describe('hitungBadge (kueri tepat tiap badge)', () => {
@@ -69,6 +70,7 @@ describe('hitungBadge (kueri tepat tiap badge)', () => {
     expect(r.penangananFo?.count).toBe(1);
     expect(r.antrian).toEqual({ count: 5, label: '5 tiket menunggu hari ini' });
     expect(r.pengaduan?.count).toBe(6);
+    expect(r.saran).toEqual({ count: 7, label: '7 saran belum ditinjau' });
 
     const q = (tabel: string) => h.log.filter((l) => l.tabel === tabel).map((l) => l.ops);
     // semua kueri head:true count:'exact'
@@ -89,6 +91,16 @@ describe('hitungBadge (kueri tepat tiap badge)', () => {
     // Pengaduan FO: baru, hanya jalur layanan
     expect(punyaOp(q('pengaduan')[0], 'eq', 'status', 'baru')).toBe(true);
     expect(punyaOp(q('pengaduan')[0], 'eq', 'jalur', 'layanan')).toBe(true);
+    // Saran: yang belum ditinjau (ditinjau_pada kosong)
+    expect(punyaOp(q('saran')[0], 'is', 'ditinjau_pada', null)).toBe(true);
+  });
+
+  it('saran: kolom ditinjau_pada belum ada (migrasi belum diterapkan) = badge tidak tampil, yang lain tetap', async () => {
+    pasangJawaban();
+    h.tabel.saran = galat;
+    const r = await hitungBadge(sb(), ADMIN, opsi);
+    expect(r.saran).toBeUndefined();
+    expect(r.pengaduan?.count).toBe(6);
   });
 
   it('admin: Live Chat = semua sesi eskalasi; pengaduan semua jalur', async () => {
@@ -105,6 +117,7 @@ describe('hitungBadge (kueri tepat tiap badge)', () => {
     pasangJawaban();
     const r = await hitungBadge(sb(), PETUGAS, opsi);
     expect(Object.keys(r).sort()).toEqual(['antrian', 'liveChat']);
+    expect(h.log.some((l) => l.tabel === 'saran')).toBe(false);
     expect(r.antrian?.label).toBe('5 tiket menunggu atau dipanggil hari ini');
     const chat = h.log.find((l) => l.tabel === 'chat_sesi')!.ops;
     expect(punyaOp(chat, 'eq', 'layanan_id', 'lay-1')).toBe(true);
@@ -161,6 +174,39 @@ describe('useNavBadges', () => {
     const { result } = renderHook(() => useNavBadges(FO));
     await waitFor(() => expect(result.current.antrian?.count).toBe(5));
     expect(result.current.liveChat?.count).toBe(2);
+  });
+
+  it('segarkanBadge() memuat ulang segera (tanpa menunggu polling)', async () => {
+    pasangJawaban();
+    const { result } = renderHook(() => useNavBadges(ADMIN));
+    await waitFor(() => expect(result.current.saran?.count).toBe(7));
+    h.tabel.saran = ok(0);
+    await act(async () => { segarkanBadge(); });
+    await waitFor(() => expect(result.current.saran?.count).toBe(0));
+  });
+
+  it.each([
+    ['tabel belum tersedia', 'PGRST205'],
+    ['kolom belum tersedia', '42703'],
+    ['galat database', 'XX000'],
+    ['kueri melempar galat', null],
+  ])('Saran: %s menghapus angka lama dan pulih setelah kueri berhasil', async (_alasan, code) => {
+    pasangJawaban();
+    const { result } = renderHook(() => useNavBadges(ADMIN));
+    await waitFor(() => expect(result.current.saran?.count).toBe(7));
+    const totalAwal = totalBadge(result.current);
+    h.tabel.saran = code
+      ? { data: null, count: 99, error: { code, message: 'Saran tidak dapat dihitung' } }
+      : () => { throw new Error('Koneksi terputus'); };
+
+    await act(async () => { segarkanBadge(); });
+    await waitFor(() => expect(result.current.saran).toBeUndefined());
+    expect(totalBadge(result.current)).toBe(totalAwal - 7);
+    expect(result.current.pengaduan?.count).toBe(6);
+
+    h.tabel.saran = ok(2);
+    await act(async () => { segarkanBadge(); });
+    await waitFor(() => expect(result.current.saran).toEqual({ count: 2, label: '2 saran belum ditinjau' }));
   });
 
   it('badge tidak muncul pada role tak berhak (petugas tidak dapat badge FO/pengaduan)', async () => {

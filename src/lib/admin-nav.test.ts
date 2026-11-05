@@ -12,6 +12,12 @@ import {
   type AdminRole,
 } from './admin-nav';
 
+it('A19: label menu mengikuti glosarium, termasuk alamat hasil survei lama', () => {
+  expect(ADMIN_NAV.find((e) => e.href === '/admin')?.label).toBe('Dasbor');
+  expect(ADMIN_NAV.find((e) => e.href === '/admin/antrian')?.label).toBe('Antrean');
+  expect(ADMIN_NAV.find((e) => e.href === '/admin/skm')?.label).toBe('Hasil Survei');
+});
+
 describe('canAccessAdminPath', () => {
   it('admin can open every registered admin page', () => {
     for (const entry of ADMIN_NAV) {
@@ -190,7 +196,7 @@ describe('pengelompokan menu: data', () => {
   it('urutan menu di dalam tiap grup sesuai prioritas', () => {
     const anak = (key: string) => ADMIN_NAV.filter((e) => !e.hidden && e.group === key).map((e) => e.label);
     expect(anak('frontOffice')).toEqual(['Registrasi Pengunjung', 'Kotak Masuk FO', 'Penanganan']);
-    expect(anak('antrean')).toEqual(['Antrian', 'Absensi', 'Kunjungan', 'Buku Tamu']);
+    expect(anak('antrean')).toEqual(['Antrean', 'Absensi', 'Kunjungan', 'Buku Tamu']);
     expect(anak('layananOnline')).toEqual(['Live Chat', 'Kelola FAQ', 'Log AI Chat']);
     expect(anak('pesanPerilaku')).toEqual(['Hasil Survei', 'Saran', 'Pengaduan']);
     expect(anak('laporan')).toEqual(['Rekap', 'Performa Pelayanan']);
@@ -212,7 +218,7 @@ describe('pengelompokan menu: data', () => {
 });
 
 describe('buildNavTree', () => {
-  it('admin: semua grup, Dashboard di atas, Profil + Tampilan Publik di bawah', () => {
+  it('admin: semua grup, Dasbor di atas, Profil + Tampilan Publik di bawah', () => {
     const t = bentuk('admin');
     expect(t[0]).toBe('/admin');
     expect(t.slice(-2)).toEqual(['/admin/profil', '/']);
@@ -235,7 +241,7 @@ describe('buildNavTree', () => {
     ]);
   });
 
-  it('petugas: tanpa Dashboard/Front Office; grup 1-entri menjadi tautan biasa', () => {
+  it('petugas: tanpa Dasbor/Front Office; grup 1-entri menjadi tautan biasa', () => {
     expect(bentuk('petugas')).toEqual([
       ['Antrean & Kehadiran', '/admin/antrian', '/admin/absensi'],
       ['Layanan Online', '/admin/chat', '/admin/chat/faq'],
@@ -286,7 +292,7 @@ describe('findActiveNavEntry / findGroupForPath', () => {
     expect(findGroupForPath('/admin/petugas/invite')).toBe('sistem');
   });
 
-  it('/admin hanya exact untuk Dashboard; tidak menjadi induk halaman lain', () => {
+  it('/admin hanya exact untuk Dasbor; tidak menjadi induk halaman lain', () => {
     expect(findActiveNavEntry('/admin')?.href).toBe('/admin');
     expect(findGroupForPath('/admin')).toBeNull();
     expect(findActiveNavEntry('/admin/halaman-baru')).toBeUndefined();
@@ -321,6 +327,7 @@ describe('peta badge menu', () => {
       '/admin/antrian': 'antrian',
       '/admin/chat': 'liveChat',
       '/admin/pengaduan': 'pengaduan',
+      '/admin/saran': 'saran',
     });
     expect(Object.keys(ADMIN_BADGE_ROLES).sort()).toEqual(Object.values(peta).sort() as string[]);
   });
@@ -333,8 +340,8 @@ describe('peta badge menu', () => {
   });
 
   it('badge per role', () => {
-    expect(badgeKeysForRole('admin').sort()).toEqual(['antrian', 'kotakMasukFo', 'liveChat', 'penangananFo', 'pengaduan']);
-    expect(badgeKeysForRole('front_office').sort()).toEqual(['antrian', 'kotakMasukFo', 'liveChat', 'penangananFo', 'pengaduan']);
+    expect(badgeKeysForRole('admin').sort()).toEqual(['antrian', 'kotakMasukFo', 'liveChat', 'penangananFo', 'pengaduan', 'saran']);
+    expect(badgeKeysForRole('front_office').sort()).toEqual(['antrian', 'kotakMasukFo', 'liveChat', 'penangananFo', 'pengaduan', 'saran']);
     expect(badgeKeysForRole('petugas').sort()).toEqual(['antrian', 'liveChat']);
     expect(badgeKeysForRole(null)).toEqual([]);
     expect(badgeKeysForRole('pengunjung')).toEqual([]);

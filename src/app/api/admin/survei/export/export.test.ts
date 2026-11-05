@@ -15,10 +15,15 @@ interface Opsi {
   user?: { id: string } | null;
   role?: string;
   aktif?: boolean;
+  koordinator?: boolean;
   skm?: Baris[];
   spak?: Baris[];
   rpcGalat?: string;
   tabelGalat?: string;
+  detailGalat?: string;
+  kodeGalat?: string;
+  rpcKodeGalat?: string;
+  khususBelumAda?: boolean;
 }
 
 const RPC_DATA: Record<string, Baris[]> = {
@@ -32,7 +37,7 @@ function buatKlien(o: Opsi = {}) {
   const rpc = vi.fn((fn: string, args?: Record<string, unknown>) => {
     void args;
     return Promise.resolve(
-      o.rpcGalat === fn ? { data: null, error: { message: 'rpc gagal' } } : { data: RPC_DATA[fn] ?? [], error: null },
+      o.rpcGalat === fn ? { data: null, error: { message: 'rpc gagal', code: o.rpcKodeGalat } } : { data: RPC_DATA[fn] ?? [], error: null },
     );
   });
   const log: { tabel: string; gte: unknown[][]; lt: unknown[][]; range: number[][] }[] = [];
@@ -43,23 +48,27 @@ function buatKlien(o: Opsi = {}) {
         eq: () => b,
         maybeSingle: () =>
           Promise.resolve({
-            data: { id: 'p-1', role: o.role ?? 'admin', layanan_id: null, aktif: o.aktif ?? true },
+            data: { id: 'p-1', role: o.role ?? 'admin', layanan_id: null, aktif: o.aktif ?? true, koordinator: o.koordinator ?? false },
             error: null,
           }),
       };
       return b;
     }
-    const data = tabel === 'skm_respons' ? o.skm ?? [] : o.spak ?? [];
+    const data = tabel === 'skm_respons' ? o.skm ?? [] : tabel === 'spak_respons' ? o.spak ?? [] : [];
     const entri = { tabel, gte: [] as unknown[][], lt: [] as unknown[][], range: [] as number[][] };
     log.push(entri);
     const b: Record<string, unknown> = {};
     b.select = () => b;
+    b.in = () => b;
+    b.eq = () => b;
+    b.or = () => b;
     b.gte = (...a: unknown[]) => { entri.gte.push(a); return b; };
     b.lt = (...a: unknown[]) => { entri.lt.push(a); return b; };
     b.order = () => b;
     b.range = (dari: number, sampai: number) => {
       entri.range.push([dari, sampai]);
-      if (o.tabelGalat === tabel) return Promise.resolve({ data: null, error: { message: 'db gagal' } });
+      if (o.tabelGalat === tabel) return Promise.resolve({ data: null, error: { message: o.detailGalat ?? 'db gagal', code: o.kodeGalat } });
+      if (tabel === 'pendataan_khusus_jawaban' && o.khususBelumAda) return Promise.resolve({ data: null, error: { message: 'tidak ada', code: 'PGRST205' } });
       const potong = Math.min(sampai - dari + 1, 1000); // batas baris server PostgREST
       return Promise.resolve({ data: data.slice(dari, dari + potong), error: null });
     };
@@ -143,7 +152,7 @@ describe('GET /api/admin/survei/export', () => {
     expect(auditInsert).not.toHaveBeenCalled();
   });
 
-  it.each(['admin', 'front_office'])('200 untuk %s: berkas xlsx, header unduhan, empat sheet', async (role) => {
+  it.each(['admin', 'front_office'])('200 untuk %s: berkas xlsx, header unduhan, lima lembar', async (role) => {
     pasang({ role, skm: [skmRow(1)], spak: [] });
     const res = await get();
     expect(res.status).toBe(200);
@@ -152,8 +161,43 @@ describe('GET /api/admin/survei/export', () => {
     expect(res.headers.get('Content-Disposition')).toContain('survei-2026-10-12-sd-2026-10-14.xlsx');
     expect(res.headers.get('Cache-Control')).toBe('no-store');
     const wb = await muat(res);
-    expect(wb.worksheets.map((w) => w.name)).toEqual(['SPAK', 'SKM', 'Ringkasan', 'Legenda']);
+    expect(wb.worksheets.map((w) => w.name)).toEqual(['SPAK', 'SKM', 'Ringkasan', 'Legenda', 'Data responden']);
     expect(wb.getWorksheet('SKM')!.rowCount).toBe(2);
+  });
+
+  it.each(['admin', 'front_office'])('identitas lengkap yang terlihat RLS diekspor oleh %s Koordinator, audit tanpa PII', async (role) => {
+    pasang({ role, koordinator: true, skm: [{
+      ...skmRow(1), kunjungan_id: '00000000-0000-4000-8000-000000000001',
+      kunjungan: { tanggal: '2026-10-12', kategori: 'Instansi', nama: 'Tomi', asal_instansi: 'PT Lampung', email: 'tomi@contoh.id', kontak_hp: '081234567890' },
+    }] });
+    const res = await get();
+    expect(res.status).toBe(200);
+    const wb = await muat(res);
+    const ws = wb.getWorksheet('Data responden')!;
+    expect(ws.getRow(2).values).toEqual(expect.arrayContaining(['Tomi', 'PT Lampung', 'tomi@contoh.id', '081234567890']));
+    expect(JSON.stringify(auditInsert.mock.calls)).not.toMatch(/Tomi|tomi@contoh.id|081234567890/);
+  });
+
+  it('FO biasa tetap mendapat jawaban global, identitas tersembunyi RLS kosong dan legenda menjelaskan', async () => {
+    pasang({ role: 'front_office', koordinator: false, skm: [{ ...skmRow(1), kunjungan_id: 'kunjungan-di-luar-lingkup', kunjungan: null }] });
+    const res = await get();
+    expect(res.status).toBe(200);
+    const wb = await muat(res);
+    const ws = wb.getWorksheet('Data responden')!;
+    expect(ws.rowCount).toBe(2);
+    for (const col of [7, 8, 9, 10, 12, 13, 14]) expect(ws.getRow(2).getCell(col).value).toBeNull();
+    expect(wb.getWorksheet('SKM')!.getRow(2).getCell(5).value).toBe(4);
+    const legenda: string[] = [];
+    wb.getWorksheet('Legenda')!.eachRow((r) => r.eachCell((c) => legenda.push(c.text)));
+    expect(legenda.join(' ')).toContain('akses dibatasi');
+    expect(rpcServis).not.toHaveBeenCalled();
+  });
+
+  it('Petugas Koordinator tetap tidak boleh mengekspor', async () => {
+    const k = pasang({ role: 'petugas', koordinator: true });
+    expect((await get()).status).toBe(403);
+    expect(k.log).toEqual([]);
+    expect(auditInsert).not.toHaveBeenCalled();
   });
 
   it('ringkasan dibaca lewat klien SESI pengguna (bukan service role) dengan p_start/p_end', async () => {
@@ -196,7 +240,7 @@ describe('GET /api/admin/survei/export', () => {
       actor_role: 'front_office',
       aksi: 'export_xlsx',
       entitas: 'survei',
-      detail: { dari: '2026-10-12', sampai: '2026-10-14', jumlah_spak: 0, jumlah_skm: 1, terpotong: false },
+      detail: { dari: '2026-10-12', sampai: '2026-10-14', jumlah_spak: 0, jumlah_skm: 1, terpotong: false, identitas: true },
     });
   });
 
@@ -218,6 +262,51 @@ describe('GET /api/admin/survei/export', () => {
     pasang({ role: 'admin', tabelGalat: 'skm_respons' });
     expect((await get()).status).toBe(500);
     expect(auditInsert).not.toHaveBeenCalled();
+    galat.mockRestore();
+  });
+
+  it('409 MIGRASI_BELUM_DITERAPKAN (bukan 500) bila tabel jawaban atau RPC ringkasan belum ada; tanpa audit', async () => {
+    const galat = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    pasang({ role: 'admin', tabelGalat: 'spak_respons', kodeGalat: 'PGRST205' });
+    const res1 = await get();
+    expect(res1.status).toBe(409);
+    expect(await res1.json()).toMatchObject({ kode: 'MIGRASI_BELUM_DITERAPKAN', error: expect.stringContaining('202611020') });
+    pasang({ role: 'front_office', rpcGalat: 'ringkasan_response_rate', rpcKodeGalat: 'PGRST202' });
+    const res2 = await get();
+    expect(res2.status).toBe(409);
+    expect((await res2.json()).kode).toBe('MIGRASI_BELUM_DITERAPKAN');
+    expect(res2.headers.get('Cache-Control')).toBe('no-store');
+    expect(auditInsert).not.toHaveBeenCalled();
+    galat.mockRestore();
+  });
+
+  it('galat database dengan kode lain tetap 500', async () => {
+    const galat = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    pasang({ role: 'admin', tabelGalat: 'skm_respons', kodeGalat: '57014' });
+    expect((await get()).status).toBe(500);
+    galat.mockRestore();
+  });
+
+  it('tabel Pendataan Khusus belum ada: tetap 200 dengan cadangan email lain, header tidak terpotong, Ringkasan mencatat', async () => {
+    pasang({ role: 'admin', khususBelumAda: true, skm: [{
+      ...skmRow(1), kunjungan_id: '00000000-0000-4000-8000-000000000001',
+      kunjungan: { tanggal: '2026-10-12', kategori: 'Instansi', nama: 'Tomi', email: null },
+    }] });
+    const res = await get();
+    expect(res.status).toBe(200);
+    expect(res.headers.get('X-Survei-Truncated')).toBe('false');
+    const wb = await muat(res);
+    const t: string[] = [];
+    wb.getWorksheet('Ringkasan')!.eachRow((r) => r.eachCell((c) => t.push(c.text)));
+    expect(t.join(' | ')).toMatch(/Pendataan Khusus belum tersedia/);
+    expect(auditInsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('galat ekspor tidak mencatat email atau nomor HP responden ke log', async () => {
+    const galat = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    pasang({ tabelGalat: 'skm_respons', detailGalat: 'data gagal untuk tomi@contoh.id 081234567890' });
+    expect((await get()).status).toBe(500);
+    expect(JSON.stringify(galat.mock.calls)).not.toMatch(/tomi@contoh.id|081234567890/);
     galat.mockRestore();
   });
 });

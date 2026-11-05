@@ -20,7 +20,11 @@ const h = vi.hoisted(() => ({
     jadwalError: null as Err,
     jadwalGate: null as Promise<void> | null, // bila diisi, pembacaan jadwal_standby menunggu gerbang ini
     liburError: null as Err,
+    layananError: null as Err, // galat kueri daftar layanan (semua kolom)
+    layananKosong: false,
+    layananAktifBelumAda: false, // select yang memuat kolom 'aktif' gagal 42703 (migrasi 202610270001 belum diterapkan)
     upsertError: null as Err,
+    upsertGate: null as Promise<void> | null, // bila diisi, upsert menunggu gerbang ini (simpan tertunda)
     upsertRows: null as { hari: number }[] | null, // null = sama dengan baris yang dikirim
     insertError: null as Err,
     deleteResult: {
@@ -32,13 +36,24 @@ const h = vi.hoisted(() => ({
 
 vi.mock('@/components/Toast', () => ({ useToast: () => ({ toast: h.toast }) }));
 vi.mock('@/components/layout/PageHeader', () => ({ default: () => null }));
+// Pengujian jadwal memakai adaptor nilai; perilaku kalender diuji pada pustaka UI.
+vi.mock('@/components/ui/PemilihTanggal', () => ({
+  default: ({ nilai, onUbah, label, id, min }: { nilai: string; onUbah: (v: string) => void; label: string; id?: string; min?: string }) =>
+    <input id={id} aria-label={label} value={nilai} min={min} onChange={(e) => onUbah(e.target.value)} />,
+}));
 vi.mock('@/lib/supabase/client', () => {
   const builder = (table: string) => {
     h.fromCalls.push(table);
     let op: 'select' | 'delete' = 'select';
     let selected = false;
+    let kolom = '';
     const result = () => {
       if (table === 'layanan') {
+        if (h.state.layananError) return { data: null, error: h.state.layananError };
+        if (h.state.layananAktifBelumAda && kolom.includes('aktif')) {
+          return { data: null, error: { code: '42703', message: 'column layanan.aktif does not exist' } };
+        }
+        if (h.state.layananKosong) return { data: [], error: null };
         return {
           data: [
             { id: 'l1', nama: 'Helpdesk OSS', is_ptsp: true, aktif: true },
@@ -65,8 +80,9 @@ vi.mock('@/lib/supabase/client', () => {
       return { data: [], error: null };
     };
     const b: Record<string, unknown> = {};
-    b.select = () => {
+    b.select = (k?: string) => {
       selected = true;
+      kolom = k ?? '';
       return b;
     };
     b.eq = () => b;
@@ -82,7 +98,8 @@ vi.mock('@/lib/supabase/client', () => {
         error: h.state.upsertError,
       };
       const u: Record<string, unknown> = { select: () => u };
-      u.then = (r: (v: unknown) => unknown, j?: (e: unknown) => unknown) => Promise.resolve(hasil).then(r, j);
+      u.then = (r: (v: unknown) => unknown, j?: (e: unknown) => unknown) =>
+        (h.state.upsertGate ? h.state.upsertGate.then(() => hasil) : Promise.resolve(hasil)).then(r, j);
       return u;
     };
     b.insert = (values: unknown) => {
@@ -117,6 +134,11 @@ const SENIN_SAMPAI_RABU = [1, 2, 3].map((hari) => ({
 
 const jamTutup = (hari: string) => screen.getByLabelText(`Jam tutup ${hari}`) as HTMLInputElement;
 const jamBuka = (hari: string) => screen.getByLabelText(`Jam buka ${hari}`) as HTMLInputElement;
+// Hapus libur kini dua langkah: ikon sampah -> konfirmasi "Ya, hapus".
+const hapusLibur = async () => {
+  fireEvent.click(await screen.findByRole('button', { name: /Hapus hari libur/ }));
+  fireEvent.click(await screen.findByRole('button', { name: /Ya, hapus/ }));
+};
 const klikSimpan = async () => fireEvent.click(await screen.findByRole('button', { name: /Simpan jadwal/ }));
 
 describe('admin jadwal: jadwal_standby + hari libur nasional', () => {
@@ -132,7 +154,11 @@ describe('admin jadwal: jadwal_standby + hari libur nasional', () => {
     h.state.jadwalError = null;
     h.state.jadwalGate = null;
     h.state.liburError = null;
+    h.state.layananError = null;
+    h.state.layananAktifBelumAda = false;
+    h.state.layananKosong = false;
     h.state.upsertError = null;
+    h.state.upsertGate = null;
     h.state.upsertRows = null;
     h.state.insertError = null;
     h.state.deleteResult = { data: [{ tanggal: '2099-12-25' }], error: null };
@@ -384,7 +410,7 @@ describe('admin jadwal: jadwal_standby + hari libur nasional', () => {
     h.state.role = 'admin';
     h.state.deleteResult = { data: [], error: null };
     render(<AdminJadwalPage />);
-    fireEvent.click(await screen.findByRole('button', { name: /Hapus hari libur/ }));
+    await hapusLibur();
     await waitFor(() =>
       expect(h.toast).toHaveBeenCalledWith(expect.stringContaining('Gagal menghapus hari libur.'), 'error'),
     );
@@ -397,7 +423,7 @@ describe('admin jadwal: jadwal_standby + hari libur nasional', () => {
     h.state.role = 'admin';
     h.state.deleteResult = { data: null, error: { message: 'TypeError: Failed to fetch', code: '' } };
     render(<AdminJadwalPage />);
-    fireEvent.click(await screen.findByRole('button', { name: /Hapus hari libur/ }));
+    await hapusLibur();
     await waitFor(() => expect(h.toast).toHaveBeenCalledWith(expect.stringContaining('Koneksi bermasalah'), 'error'));
     expect(h.toast).not.toHaveBeenCalledWith(expect.anything(), 'success');
     expect(h.liburReads).toHaveBeenCalledTimes(1);
@@ -406,7 +432,7 @@ describe('admin jadwal: jadwal_standby + hari libur nasional', () => {
   it('admin: hapus libur berhasil menyertakan .select (baris terbukti) -> toast sukses + muat ulang', async () => {
     h.state.role = 'admin';
     render(<AdminJadwalPage />);
-    fireEvent.click(await screen.findByRole('button', { name: /Hapus hari libur/ }));
+    await hapusLibur();
     await waitFor(() => expect(h.toast).toHaveBeenCalledWith('Hari libur dihapus.', 'success'));
     expect(h.deleteSelected).toHaveBeenCalledWith(true);
     expect(h.deleteSelected).not.toHaveBeenCalledWith(false);
@@ -418,7 +444,7 @@ describe('admin jadwal: jadwal_standby + hari libur nasional', () => {
     render(<AdminJadwalPage />);
     await klikSimpan();
     await waitFor(() => expect(h.toast).toHaveBeenCalledWith('Jadwal layanan disimpan.', 'success'));
-    fireEvent.click(await screen.findByRole('button', { name: /Hapus hari libur/ }));
+    await hapusLibur();
     await waitFor(() => expect(h.toast).toHaveBeenCalledWith('Hari libur dihapus.', 'success'));
     expect(h.fromCalls).not.toContain('layanan_jadwal');
     expect(h.fromCalls).not.toContain('layanan_libur');
@@ -435,5 +461,237 @@ describe('admin jadwal: jadwal_standby + hari libur nasional', () => {
     render(<AdminJadwalPage />);
     const bagian = (await screen.findByRole('heading', { name: /Hari libur nasional/ })).closest('section')!;
     expect(within(bagian).getByText(/semua layanan/)).toBeTruthy();
+  });
+  // ── Gelombang 1 GAMMA: C3-03, C3-11, C3-13 ──────────────────────────────────────────────────────────────
+  it('C3-03: ikon hapus hanya meminta konfirmasi (tanggal + keterangan), belum DELETE; Batal membatalkan', async () => {
+    h.state.role = 'admin';
+    render(<AdminJadwalPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /Hapus hari libur/ }));
+    const konfirmasi = await screen.findByRole('alertdialog');
+    expect(konfirmasi.textContent).toContain('Natal');
+    expect(konfirmasi.textContent).toMatch(/semua layanan/i);
+    expect(h.writes).not.toHaveBeenCalledWith('delete', 'hari_libur');
+    fireEvent.click(within(konfirmasi).getByRole('button', { name: 'Batal' }));
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(h.writes).not.toHaveBeenCalledWith('delete', 'hari_libur');
+    expect(screen.getByRole('button', { name: /Hapus hari libur/ })).toBeTruthy();
+  });
+
+  it('C3-03: "Ya, hapus" menjalankan DELETE sekali saja (klik ganda tidak menggandakan)', async () => {
+    h.state.role = 'admin';
+    render(<AdminJadwalPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /Hapus hari libur/ }));
+    const ya = await screen.findByRole('button', { name: /Ya, hapus/ });
+    fireEvent.click(ya);
+    fireEvent.click(ya);
+    await waitFor(() => expect(h.toast).toHaveBeenCalledWith('Hari libur dihapus.', 'success'));
+    expect(h.writes.mock.calls.filter((c) => c[0] === 'delete')).toHaveLength(1);
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+  });
+
+  const gantiKeL2 = () => fireEvent.change(screen.getByLabelText('Layanan'), { target: { value: 'l2' } });
+
+  it('C3-11: jadwal belum disimpan + ganti layanan -> ditahan dengan peringatan; "Tetap di sini" mempertahankan draf', async () => {
+    h.state.role = 'admin';
+    render(<AdminJadwalPage />);
+    await screen.findByRole('checkbox', { name: 'Kamis' });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Kamis' }));
+    const bacaAwal = h.fromCalls.filter((t) => t === 'jadwal_standby').length;
+    gantiKeL2();
+    const peringatan = await screen.findByRole('alert', { name: /belum disimpan/i });
+    expect(peringatan.textContent).toMatch(/belum disimpan/i);
+    expect((screen.getByLabelText('Layanan') as HTMLSelectElement).value).toBe('l1');
+    expect(h.fromCalls.filter((t) => t === 'jadwal_standby').length).toBe(bacaAwal); // tidak memuat l2
+    fireEvent.click(within(peringatan).getByRole('button', { name: /Tetap di sini/ }));
+    expect(screen.queryByRole('alert', { name: /belum disimpan/i })).toBeNull();
+    expect((screen.getByRole('checkbox', { name: 'Kamis' }) as HTMLInputElement).checked).toBe(true);
+  });
+
+  it('C3-11: "Buang perubahan dan pindah" memuat layanan baru', async () => {
+    h.state.role = 'admin';
+    render(<AdminJadwalPage />);
+    await screen.findByRole('checkbox', { name: 'Kamis' });
+    fireEvent.change(jamTutup('Senin'), { target: { value: '12:00' } });
+    h.state.jadwalRows = [{ hari: 6, jam_mulai: '10:00:00', jam_selesai: '12:00:00', aktif: true }];
+    gantiKeL2();
+    fireEvent.click(within(await screen.findByRole('alert', { name: /belum disimpan/i })).getByRole('button', { name: /Buang perubahan/ }));
+    await waitFor(() => expect((screen.getByRole('checkbox', { name: 'Sabtu' }) as HTMLInputElement).checked).toBe(true));
+    expect((screen.getByLabelText('Layanan') as HTMLSelectElement).value).toBe('l2');
+  });
+
+  it('C3-11: tanpa perubahan, ganti layanan langsung (tanpa peringatan); setelah simpan juga tidak kotor', async () => {
+    h.state.role = 'admin';
+    render(<AdminJadwalPage />);
+    await screen.findByRole('checkbox', { name: 'Kamis' });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Kamis' }));
+    await klikSimpan();
+    await waitFor(() => expect(h.toast).toHaveBeenCalledWith('Jadwal layanan disimpan.', 'success'));
+    h.state.jadwalRows = [{ hari: 6, jam_mulai: '10:00:00', jam_selesai: '12:00:00', aktif: true }];
+    gantiKeL2();
+    expect(screen.queryByRole('alert', { name: /belum disimpan/i })).toBeNull();
+    await waitFor(() => expect((screen.getByRole('checkbox', { name: 'Sabtu' }) as HTMLInputElement).checked).toBe(true));
+  });
+
+  it('C3-11: mengubah lalu mengembalikan nilai awal tidak dianggap kotor', async () => {
+    h.state.role = 'admin';
+    render(<AdminJadwalPage />);
+    await screen.findByRole('checkbox', { name: 'Kamis' });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Kamis' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Kamis' }));
+    h.state.jadwalRows = [];
+    gantiKeL2();
+    expect(screen.queryByRole('alert', { name: /belum disimpan/i })).toBeNull();
+    await waitFor(() => expect((screen.getByLabelText('Layanan') as HTMLSelectElement).value).toBe('l2'));
+  });
+
+  it('C3-13: kueri daftar layanan gagal -> galat + Coba lagi, bukan editor kosong; coba lagi memulihkan', async () => {
+    h.state.role = 'admin';
+    h.state.layananError = { message: 'TypeError: Failed to fetch', code: '' };
+    render(<AdminJadwalPage />);
+    expect(await screen.findByText(/Daftar layanan tidak dapat dimuat/)).toBeTruthy();
+    expect(screen.queryByLabelText('Layanan')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Simpan jadwal/ })).toBeNull();
+
+    h.state.layananError = null;
+    fireEvent.click(screen.getByRole('button', { name: 'Coba lagi' }));
+    await screen.findByRole('checkbox', { name: 'Senin' });
+    expect(screen.queryByText(/Daftar layanan tidak dapat dimuat/)).toBeNull();
+    expect((screen.getByLabelText('Layanan') as HTMLSelectElement).value).toBe('l1');
+  });
+
+  it('C3-13: kolom layanan.aktif belum ada (migrasi belum diterapkan) -> turun ke select tanpa aktif, bukan galat/kosong', async () => {
+    h.state.role = 'admin';
+    h.state.layananAktifBelumAda = true;
+    render(<AdminJadwalPage />);
+    await screen.findByRole('checkbox', { name: 'Senin' });
+    expect(screen.queryByText(/Daftar layanan tidak dapat dimuat/)).toBeNull();
+    expect(screen.getAllByRole('option').length).toBe(2);
+  });
+
+  it('C3-13: layanan benar-benar kosong (tanpa galat) tetap pesan kosong, bukan galat', async () => {
+    h.state.role = 'admin';
+    h.state.layananKosong = true;
+    render(<AdminJadwalPage />);
+    expect(await screen.findByText(/Belum ada layanan/)).toBeTruthy();
+    expect(screen.queryByText(/Daftar layanan tidak dapat dimuat/)).toBeNull();
+  });
+
+  // R6 (C3-11): hasil simpan layanan A tidak boleh mengganti baseline draf layanan B.
+  it('R6: upsert A tertunda, pindah ke B, respons A datang -> B tidak berubah dan tidak dianggap kotor', async () => {
+    h.state.role = 'admin';
+    render(<AdminJadwalPage />);
+    await screen.findByRole('checkbox', { name: 'Kamis' });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Kamis' }));
+    let selesai!: () => void;
+    h.state.upsertGate = new Promise<void>((r) => { selesai = r; });
+    await klikSimpan();
+    await waitFor(() => expect(h.writes).toHaveBeenCalled());
+    // Saat simpan A menggantung, admin pindah ke B (dengan konfirmasi buang) dan B termuat.
+    h.state.jadwalRows = [{ hari: 6, jam_mulai: '10:00:00', jam_selesai: '12:00:00', aktif: true }];
+    gantiKeL2();
+    fireEvent.click(within(await screen.findByRole('alert', { name: /belum disimpan/i })).getByRole('button', { name: /Buang perubahan/ }));
+    await waitFor(() => expect((screen.getByRole('checkbox', { name: 'Sabtu' }) as HTMLInputElement).checked).toBe(true));
+    // Respons simpan A baru datang.
+    selesai();
+    await waitFor(() => expect(h.toast).toHaveBeenCalledWith(expect.stringMatching(/Helpdesk OSS/), 'success'));
+    // B tetap bersih: pindah balik ke A tanpa peringatan palsu...
+    expect(screen.queryByRole('alert', { name: /belum disimpan/i })).toBeNull();
+    // ...dan edit B yang kebetulan sama dengan snapshot A tetap dihitung kotor (tidak ditimpa baseline A).
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Kamis' })); // draf B: Kamis aktif, Sabtu aktif; snapshot A: Senin-Kamis
+    h.state.jadwalRows = SENIN_SAMPAI_RABU;
+    fireEvent.change(screen.getByLabelText('Layanan'), { target: { value: 'l1' } });
+    expect(await screen.findByRole('alert', { name: /belum disimpan/i })).toBeTruthy();
+  });
+
+  it('R6: B yang diedit persis seperti snapshot A tetap dianggap belum disimpan setelah respons A datang', async () => {
+    h.state.role = 'admin';
+    render(<AdminJadwalPage />);
+    await screen.findByRole('checkbox', { name: 'Kamis' });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Kamis' })); // draf A: Senin-Kamis aktif
+    let selesai!: () => void;
+    h.state.upsertGate = new Promise<void>((r) => { selesai = r; });
+    await klikSimpan();
+    await waitFor(() => expect(h.writes).toHaveBeenCalled());
+    h.state.jadwalRows = SENIN_SAMPAI_RABU; // B dimuat: Senin-Rabu
+    gantiKeL2();
+    fireEvent.click(within(await screen.findByRole('alert', { name: /belum disimpan/i })).getByRole('button', { name: /Buang perubahan/ }));
+    await waitFor(() => expect((screen.getByLabelText('Layanan') as HTMLSelectElement).value).toBe('l2'));
+    await waitFor(() => expect((screen.getByRole('checkbox', { name: 'Senin' }) as HTMLInputElement).checked).toBe(true));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Kamis' })); // draf B menjadi sama dengan snapshot A
+    selesai();
+    await waitFor(() => expect(h.toast).toHaveBeenCalledWith(expect.stringMatching(/disimpan/), 'success'));
+    h.state.jadwalRows = [];
+    fireEvent.change(screen.getByLabelText('Layanan'), { target: { value: 'l1' } });
+    expect(await screen.findByRole('alert', { name: /belum disimpan/i })).toBeTruthy();
+    expect((screen.getByLabelText('Layanan') as HTMLSelectElement).value).toBe('l2');
+  });
+
+  it('R6: simpan A gagal setelah pindah ke B -> galat tidak muncul di layar B (hanya toast)', async () => {
+    h.state.role = 'admin';
+    render(<AdminJadwalPage />);
+    await screen.findByRole('checkbox', { name: 'Kamis' });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Kamis' }));
+    let selesai!: () => void;
+    h.state.upsertGate = new Promise<void>((r) => { selesai = r; });
+    h.state.upsertError = { message: 'permission denied', code: '42501' };
+    await klikSimpan();
+    await waitFor(() => expect(h.writes).toHaveBeenCalled());
+    h.state.jadwalRows = SENIN_SAMPAI_RABU;
+    gantiKeL2();
+    fireEvent.click(within(await screen.findByRole('alert', { name: /belum disimpan/i })).getByRole('button', { name: /Buang perubahan/ }));
+    await waitFor(() => expect((screen.getByLabelText('Layanan') as HTMLSelectElement).value).toBe('l2'));
+    await waitFor(() => expect((screen.getByRole('checkbox', { name: 'Senin' }) as HTMLInputElement).checked).toBe(true));
+    selesai();
+    await waitFor(() => expect(h.toast).toHaveBeenCalledWith(expect.stringMatching(/Gagal menyimpan jadwal/), 'error'));
+    expect(screen.queryByText(/Gagal menyimpan jadwal/)).toBeNull();
+    expect(screen.queryByRole('alert', { name: /belum disimpan/i })).toBeNull();
+  });
+
+  // R7 (C3-13): objek DB belum ada != gangguan koneksi.
+  const BELUM_ADA = { message: 'relation "public.jadwal_standby" does not exist', code: '42P01' };
+  const JARINGAN = { message: 'TypeError: Failed to fetch', code: '' };
+
+  it('R7: jadwal_standby belum ada (42P01) -> keterangan migrasi, tanpa "Periksa koneksi" dan tanpa Coba lagi', async () => {
+    h.state.role = 'admin';
+    h.state.jadwalError = BELUM_ADA;
+    render(<AdminJadwalPage />);
+    expect(await screen.findByText(/belum tersedia di database/i)).toBeTruthy();
+    expect(screen.queryByText(/Periksa koneksi/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Coba lagi' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Simpan jadwal/ })).toBeNull();
+  });
+
+  it('R7: jadwal_standby galat jaringan -> tetap "Periksa koneksi" + Coba lagi (pesan berbeda dari migrasi)', async () => {
+    h.state.role = 'admin';
+    h.state.jadwalError = JARINGAN;
+    render(<AdminJadwalPage />);
+    expect(await screen.findByText(/Periksa koneksi Anda/)).toBeTruthy();
+    expect(screen.queryByText(/belum tersedia di database/i)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Coba lagi' })).toBeTruthy();
+  });
+
+  it('R7: hari_libur belum ada (42P01 / PGRST205) -> keterangan migrasi tanpa Coba lagi; jaringan tetap koneksi', async () => {
+    h.state.role = 'admin';
+    h.state.liburError = { message: 'Could not find the table', code: 'PGRST205' };
+    render(<AdminJadwalPage />);
+    expect(await screen.findByText(/Hari libur belum tersedia di database/i)).toBeTruthy();
+    expect(screen.queryByText(/Daftar hari libur tidak dapat dimuat/)).toBeNull();
+    expect(screen.queryByText(/Belum ada hari libur/)).toBeNull();
+    expect(screen.queryAllByRole('button', { name: 'Coba lagi' }).length).toBe(0);
+    cleanup();
+    h.state.liburError = JARINGAN;
+    render(<AdminJadwalPage />);
+    expect(await screen.findByText(/Daftar hari libur tidak dapat dimuat\. Periksa koneksi/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Coba lagi' })).toBeTruthy();
+  });
+
+  it('R7: tabel layanan belum ada (42P01, juga pada select lama) -> keterangan migrasi, bukan "Periksa koneksi"', async () => {
+    h.state.role = 'admin';
+    h.state.layananError = BELUM_ADA;
+    render(<AdminJadwalPage />);
+    expect(await screen.findByText(/Layanan belum tersedia di database/i)).toBeTruthy();
+    expect(screen.queryByText(/Periksa koneksi/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Coba lagi' })).toBeNull();
+    expect(screen.queryByLabelText('Layanan')).toBeNull();
   });
 });

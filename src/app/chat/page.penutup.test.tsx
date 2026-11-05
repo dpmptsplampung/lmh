@@ -44,7 +44,7 @@ function siapkanSupabase() {
   saluran.on = () => saluran;
   saluran.subscribe = () => saluran;
   (createClient as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
-    auth: { getUser: () => Promise.resolve({ data: { user: { id: 'auth-user-1' } }, error: null }), signInWithOAuth: vi.fn() },
+    auth: { getUser: () => Promise.resolve({ data: { user: { id: 'auth-user-1', is_anonymous: false, identities: [{ provider: 'google' }] } }, error: null }), signInWithOAuth: vi.fn() },
     from: dari,
     channel: () => saluran,
     removeChannel: vi.fn(),
@@ -53,7 +53,7 @@ function siapkanSupabase() {
 
 async function mulaiSesiChat() {
   await waitFor(() => expect(screen.getByRole('option', { name: 'Bank Lampung' })).toBeInTheDocument());
-  fireEvent.change(screen.getByLabelText('Layanan yang Ditanyakan'), { target: { value: LAYANAN_ID } });
+  fireEvent.change(screen.getByLabelText(/^Layanan yang Ditanyakan/), { target: { value: LAYANAN_ID } });
   fireEvent.click(screen.getByLabelText(/saya setuju data saya diproses/i));
   const tombol = screen.getByRole('button', { name: /mulai sesi chat/i });
   await waitFor(() => expect(tombol).toBeEnabled());

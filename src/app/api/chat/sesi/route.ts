@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { tolakAkunAnonim } from '@/lib/chat/gerbang-google';
 import { z } from 'zod';
 import { createClient as createServerClient } from '@/lib/supabase/server';
 import { MutasiError, mutasiWajibBaris } from '@/lib/supabase/mutate';
@@ -102,6 +103,8 @@ export async function POST(request: NextRequest) {
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  const anonim = tolakAkunAnonim(user);
+  if (anonim) return anonim;
 
   const [nama, args]: [string, Record<string, unknown>] =
     input.aksi === 'takeover'

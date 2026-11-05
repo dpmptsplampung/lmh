@@ -124,7 +124,18 @@ function petakan(rows: BarisView[], turunkanSlug: boolean): LayananEtalase[] {
  * Layanan publik (aktif, bukan nonaktif). Mencoba 3 tingkat kolom; `tingkat` 0 = semuanya gagal (daftar kosong).
  * Tingkat 3 (view sebelum Fase 1) menurunkan slug dari nama di klien.
  */
-export async function muatLayanan(sb: SupabaseClient): Promise<{ layanan: LayananEtalase[]; tingkat: 0 | 1 | 2 | 3 }> {
+export interface HasilLayanan {
+  layanan: LayananEtalase[];
+  tingkat: 0 | 1 | 2 | 3;
+}
+
+/**
+ * Hasil "gagal memuat" (tingkat 0). Pemuat dan batas waktu jatuh ke nilai ini; halaman membacanya sebagai GALAT
+ * (`tingkat === 0`) dan menawarkan Coba lagi, BUKAN sebagai "memang belum ada layanan" (tingkat >= 1 dengan daftar kosong).
+ */
+export const GAGAL_LAYANAN: HasilLayanan = { layanan: [], tingkat: 0 };
+
+export async function muatLayanan(sb: SupabaseClient): Promise<HasilLayanan> {
   const tingkat = [
     { kolom: KOLOM_LENGKAP, turunkan: false },
     { kolom: KOLOM_FASE1, turunkan: false },
@@ -140,7 +151,7 @@ export async function muatLayanan(sb: SupabaseClient): Promise<{ layanan: Layana
       /* coba tingkat berikutnya */
     }
   }
-  return { layanan: [], tingkat: 0 };
+  return GAGAL_LAYANAN;
 }
 
 /** Blok homepage tersusun (semua jenis; yang mati ditandai aktif=false). Galat apa pun -> bawaan. */
