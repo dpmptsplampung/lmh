@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { MAX_CATATAN_LAYANAN } from '@/lib/pelayanan';
+import styles from './FormAntrean.module.css';
 
 export interface TopikOpsi {
   id: string;
@@ -73,7 +74,6 @@ interface Props {
   disabled?: boolean;
 }
 
-const GAYA_GALAT: React.CSSProperties = { color: 'var(--color-danger-600)', fontSize: 12, margin: '4px 0 0' };
 
 export default function TopikCatatanFields({
   idDasar, topik, memuatTopik, galatMuat, topikId, onTopikId, topikWajib, catatan, onCatatan, catatanWajib,
@@ -108,7 +108,7 @@ export default function TopikCatatanFields({
           ))}
         </select>
         {galatTopikTampil && (
-          <p id={idTopikGalat} role="alert" style={GAYA_GALAT}>{galatTopikTampil}</p>
+          <p id={idTopikGalat} role="alert" className={styles.galat}>{galatTopikTampil}</p>
         )}
       </div>
 
@@ -129,12 +129,12 @@ export default function TopikCatatanFields({
           placeholder={placeholderCatatan}
           onChange={(e) => onCatatan(e.target.value)}
         />
-        <small id={idCatatanBantuan} style={{ color: 'var(--text-tertiary)' }}>
+        <small id={idCatatanBantuan} className={styles.bantuan}>
           {bantuanCatatan ? `${bantuanCatatan} ` : ''}
           {catatan.length}/{MAX_CATATAN_LAYANAN} karakter.
         </small>
         {galatCatatan && (
-          <p id={idCatatanGalat} role="alert" style={GAYA_GALAT}>{galatCatatan}</p>
+          <p id={idCatatanGalat} role="alert" className={styles.galat}>{galatCatatan}</p>
         )}
       </div>
     </>

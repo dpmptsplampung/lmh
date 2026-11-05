@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { json, requireStaf } from '@/lib/akun/server';
 import { normalizeNoHp } from '@/lib/akun/login';
 import { todayWIB } from '@/lib/time';
+import { normalisasiAsal, normalisasiHp, normalisasiNama, periksaAsal, periksaHp, periksaNama } from '@/lib/fo/walkin';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,11 +29,13 @@ const query = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
 
+// Bentuk dasar saja; aturan isian (nama, instansi, nomor HP) memakai pemeriksa yang SAMA dengan formulir klien dan
+// walk-in Front Office (`lib/fo/walkin`), agar pesan galatnya identik di semua tempat.
 const body = z
   .object({
-    nama: z.string().trim().min(2).max(200),
-    instansi: z.string().trim().max(200).optional(),
-    no_hp: z.string().trim().max(30).optional(),
+    nama: z.string().max(200),
+    instansi: z.string().max(200).optional(),
+    no_hp: z.string().max(30).optional(),
     bertemu: z.string().trim().min(2).max(200),
     tujuan: z.string().trim().max(500).optional(),
     waktu_masuk: z.iso.datetime({ offset: true }).optional(),
@@ -85,11 +88,21 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) return json({ error: 'Invalid input', details: parsed.error.flatten().fieldErrors }, 400);
   const b = parsed.data;
 
-  let noHp: string | null = null;
-  if (b.no_hp) {
-    noHp = normalizeNoHp(b.no_hp);
-    if (!noHp) return json({ error: 'Format nomor HP tidak valid' }, 400);
+  const galat: Record<string, string[]> = {};
+  const gNama = periksaNama(b.nama);
+  if (gNama) galat.nama = [gNama];
+  const gAsal = periksaAsal(b.instansi ?? '');
+  if (gAsal) galat.instansi = [gAsal];
+  const gHp = periksaHp(b.no_hp ?? '');
+  if (gHp) galat.no_hp = [gHp];
+  if (Object.keys(galat).length > 0) {
+    // `error` = pesan isian pertama (urutan formulir) agar klien yang hanya membaca `error` tetap menampilkan hal yang benar.
+    const pertama = galat.nama?.[0] ?? galat.instansi?.[0] ?? galat.no_hp?.[0];
+    return json({ error: pertama, details: galat }, 400);
   }
+  // Disimpan sebagai E.164 (+62...), bentuk yang sudah dipakai data lama.
+  const noHp = normalizeNoHp(normalisasiHp(b.no_hp ?? ''));
+  if (!noHp) return json({ error: 'Format nomor HP tidak valid', details: { no_hp: ['Format nomor HP tidak valid'] } }, 400);
   let waktu = new Date();
   if (b.waktu_masuk) {
     waktu = new Date(b.waktu_masuk);
@@ -102,8 +115,8 @@ export async function POST(request: NextRequest) {
   const { data, error } = await g.supabase
     .from('buku_tamu')
     .insert({
-      nama: b.nama,
-      asal: b.instansi || null,
+      nama: normalisasiNama(b.nama),
+      asal: normalisasiAsal(b.instansi ?? ''),
       no_hp: noHp,
       menemui_siapa: b.bertemu,
       keperluan: b.tujuan || null,

@@ -47,6 +47,7 @@ export default function LayananPopup({ layanan, status, antrean, onTutup }: Prop
   return (
     <div
       className={styles.latar}
+      role="presentation"
       data-testid="latar-popup"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onTutup();

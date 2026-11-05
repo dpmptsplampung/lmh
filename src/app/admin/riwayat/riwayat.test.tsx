@@ -3,6 +3,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 
 vi.mock('@/components/layout/PageHeader', () => ({ default: () => null }));
+// Kontrak rentang tetap string WIB; interaksi kalender diuji pada pustaka UI.
+vi.mock('@/components/ui/PemilihRentang', () => ({
+  default: ({ dari, sampai, onUbah }: { dari: string; sampai: string; onUbah: (v: { dari: string; sampai: string }) => void }) => <>
+    <input aria-label="Dari tanggal" value={dari} onChange={(e) => onUbah({ dari: e.target.value, sampai })} />
+    <input aria-label="Sampai tanggal" value={sampai} onChange={(e) => onUbah({ dari, sampai: e.target.value })} />
+  </>,
+}));
 
 import RiwayatPage from './page';
 import { ringkasPerubahan } from '@/components/admin/riwayat/RiwayatTable';

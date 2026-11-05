@@ -9,6 +9,7 @@ import { createClient } from '@/lib/supabase/client';
 import { replayQueue } from '@/lib/offline/replay';
 import { pesanHasilReplay } from '@/lib/offline/tutup';
 import { useToast } from '@/components/Toast';
+import { siarkanReplayOffline } from '@/lib/hooks/useAntreanOffline';
 
 export default function OfflineReplayer() {
   const { toast } = useToast();
@@ -28,6 +29,8 @@ export default function OfflineReplayer() {
         const uid = data.session?.user.id;
         if (!uid) return false;
         const r = await replayQueue(uid);
+        // Penghitung offline (bilah atas, banner) ikut diperbarui; siaran tetap dikirim walau komponen sudah dilepas.
+        siarkanReplayOffline({ synced: r.synced, failed: r.failed });
         if (!aktif) return r.failed === 0;
         const pesan = pesanHasilReplay(r);
         if (pesan) toastRef.current(pesan, 'error');

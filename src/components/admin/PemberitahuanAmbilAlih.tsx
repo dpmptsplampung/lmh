@@ -8,6 +8,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { mutasiWajibBaris } from '@/lib/supabase/mutate';
 import { useToast } from '@/components/Toast';
+import CatatanKeadaan from '@/components/ui/CatatanKeadaan';
+import Tombol from '@/components/ui/Tombol';
+import styles from './FormAntrean.module.css';
 
 interface Baris {
   id: string;
@@ -56,24 +59,21 @@ export default function PemberitahuanAmbilAlih({ petugasId }: { petugasId: strin
 
   if (baris.length === 0) return null;
   return (
-    <section aria-label="Pemberitahuan ambil alih" style={{ marginBottom: 'var(--space-4)', display: 'grid', gap: 'var(--space-2)' }}>
+    <section aria-label="Pemberitahuan ambil alih" className={styles.pemberitahuan}>
       {baris.map((b) => {
         const nomor = satu(b.tiket)?.nomor_display;
         const oleh = satu(b.baru)?.nama ?? 'Koordinator';
         return (
-          <div key={b.id} role="status" className="alert alert--warning" style={{
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap',
-            padding: 'var(--space-3) var(--space-4)', borderRadius: 'var(--radius-md, 8px)',
-            background: 'var(--color-warning-50, #fffbeb)', border: '1px solid var(--color-warning-200, #fde68a)',
-          }}>
-            <span style={{ fontSize: 'var(--text-sm)' }}>
-              {b.peran_tahap === 'fo'
-                ? <>Penanganan Front Office yang Anda pegang diambil alih oleh <strong>{oleh}</strong>.</>
-                : <>Pendataan tiket <strong>{nomor ?? '-'}</strong> diambil alih oleh <strong>{oleh}</strong>. Anda masih dapat menyunting drafnya; penyelesaian oleh Koordinator.</>}
-              {' '}Alasan: {b.alasan}
-            </span>
-            <button type="button" className="btn btn--ghost btn--sm" onClick={() => tandai(b.id)}>Mengerti</button>
-          </div>
+          <CatatanKeadaan
+            key={b.id}
+            jenis="info"
+            aksi={<Tombol varian="hantu" ukuran="kecil" onClick={() => tandai(b.id)}>Mengerti</Tombol>}
+          >
+            {b.peran_tahap === 'fo'
+              ? <>Penanganan Front Office yang Anda pegang diambil alih oleh <strong>{oleh}</strong>.</>
+              : <>Pendataan tiket <strong>{nomor ?? '-'}</strong> diambil alih oleh <strong>{oleh}</strong>. Anda masih dapat menyunting drafnya; penyelesaian oleh Koordinator.</>}
+            {' '}Alasan: {b.alasan}
+          </CatatanKeadaan>
         );
       })}
     </section>

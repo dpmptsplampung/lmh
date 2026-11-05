@@ -4,18 +4,18 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { todayWIB, addDaysWIB } from '@/lib/time';
 import {
-  ArrowLeft,
+  CalendarCheck,
   CalendarPlus,
   MapPin,
   User,
   CheckCircle2,
-  Loader2,
   Send,
   Clock,
   Users,
   XCircle,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { formatTanggal } from '@/lib/utils';
 import { mutasiInsert } from '@/lib/supabase/mutate';
 import { GalatRpc } from '@/lib/rpc-galat';
 import {
@@ -29,6 +29,14 @@ import {
 } from '@/lib/reservasi';
 import ErrorRetry from '@/components/ErrorRetry';
 import QRCodeDisplay from '@/components/QRCode';
+import PageHeader from '@/components/layout/PageHeader';
+import Kartu from '@/components/ui/Kartu';
+import Field from '@/components/ui/Field';
+import Lencana, { type NadaLencana } from '@/components/ui/Lencana';
+import PemilihTanggal from '@/components/ui/PemilihTanggal';
+import Skeleton from '@/components/ui/Skeleton';
+import StatusKosong from '@/components/ui/StatusKosong';
+import Tombol from '@/components/ui/Tombol';
 import styles from './reservasi.module.css';
 
 interface FormData {
@@ -54,6 +62,9 @@ export default function ReservasiPage() {
     keperluan: '',
   });
   const [layananOptions, setLayananOptions] = useState<{ id: string; nama: string; status_tampilan?: string; punya_antrean?: boolean }[]>([]);
+  // C2-01: gagal memuat layanan (jaringan/DB) harus beda dari daftar kosong yang sah -> ErrorRetry + Coba lagi.
+  const [layananGalat, setLayananGalat] = useState(false);
+  const [layananMemuat, setLayananMemuat] = useState(false);
   const [pengunjungId, setPengunjungId] = useState<string | null>(null);
   const [authUserId, setAuthUserId] = useState<string | null>(null);
   // Reservasi Saya (kontrak §6.6): baris `kunjungan` milik pengunjung ini.
@@ -98,6 +109,25 @@ export default function ReservasiPage() {
     }
   }, []);
 
+  const muatLayananOpsi = useCallback(async () => {
+    setLayananMemuat(true);
+    try {
+      const { data, error: fetchError } = await createClient()
+        .from('v_layanan_publik')
+        .select('id, nama, status_tampilan, punya_antrean')
+        .neq('tipe', 'modul_publik')
+        .order('nama');
+      if (fetchError) throw fetchError;
+      setLayananOptions((data || []).filter((l) => l.punya_antrean !== false));
+      setLayananGalat(false);
+    } catch {
+      setLayananOptions([]);
+      setLayananGalat(true);
+    } finally {
+      setLayananMemuat(false);
+    }
+  }, []);
+
   useEffect(() => {
     const supabase = createClient();
 
@@ -119,24 +149,13 @@ export default function ReservasiPage() {
       }
 
       // Get layanan
-      try {
-        const { data, error: fetchError } = await supabase
-          .from('v_layanan_publik')
-          .select('id, nama, status_tampilan, punya_antrean')
-          .neq('tipe', 'modul_publik')
-          .order('nama');
-
-        if (fetchError) throw fetchError;
-        setLayananOptions((data || []).filter((l) => l.punya_antrean !== false));
-      } catch {
-        setLayananOptions([]);
-      }
+      await muatLayananOpsi();
 
       setLoadingInit(false);
     }
 
     loadInitData();
-  }, [muatDaftar]);
+  }, [muatDaftar, muatLayananOpsi]);
 
   // Fetch estimasi antrean untuk layanan yang dipilih (I2)
   useEffect(() => {
@@ -223,7 +242,7 @@ export default function ReservasiPage() {
         });
         const layananNama = layananOptions.find((l) => l.id === form.layanan_id)?.nama ?? 'Layanan ini';
         const tglTeks = !jadwalError && jadwalBerikutnya
-          ? new Date(`${jadwalBerikutnya}T00:00:00`).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' })
+          ? formatTanggal(`${jadwalBerikutnya}T12:00:00+07:00`, { weekday: 'long', year: undefined })
           : null;
         setError(
           tglTeks
@@ -312,33 +331,46 @@ export default function ReservasiPage() {
 
   if (loadingInit) {
     return (
-      <div className={styles.reservasiPage}>
-        <div className={styles.container}>
-          <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-20)' }}>
-            <div className="spinner" />
-          </div>
-        </div>
+      <div className={styles.halaman}>
+        <PageHeader title="Rencanakan Kedatangan" description="Memuat formulir reservasi." />
+        <Skeleton bentuk="kartu" jumlah={2} label="Memuat formulir reservasi" />
       </div>
     );
   }
 
-  return (
-    <div className={styles.reservasiPage}>
-      <div className={styles.container}>
-        <Link href="/me" className={styles.backLink}>
-          <ArrowLeft size={16} />
-          Kembali ke Dashboard
-        </Link>
+  const nadaReservasi = (status: string): NadaLencana => {
+    switch (status) {
+      case 'terjadwal':
+        return 'info';
+      case 'menunggu':
+        return 'peringatan';
+      case 'dilayani':
+      case 'selesai':
+        return 'sukses';
+      case 'no_show':
+      case 'tidak_terlayani':
+        return 'bahaya';
+      default:
+        return 'netral';
+    }
+  };
 
-        <div className={styles.formCard}>
+  return (
+    <div className={styles.halaman}>
+      <PageHeader
+        title="Rencanakan Kedatangan"
+        description="Booking kunjungan Anda ke kantor DPMPTSP. Setelah selesai, Anda akan mendapatkan QR code yang dipindai petugas Front Office saat Anda tiba."
+        kembali={{ href: '/me', label: 'Kembali ke Beranda saya' }}
+      />
+
+      <div className={styles.kolom}>
+        <Kartu className={styles.formCard} judul={success ? 'Reservasi Berhasil' : 'Data kunjungan'}>
           {success ? (
-            /* Success State */
-            <div className={styles.successCard}>
-              <div className={styles.successIcon}>
-                <CheckCircle2 size={32} />
-              </div>
-              <h2 className={styles.successTitle}>Reservasi Berhasil! 🎉</h2>
-              <p className={styles.successDescription}>
+            <div className={styles.berhasil}>
+              <span className={styles.berhasilIkon}>
+                <CheckCircle2 size={28} strokeWidth={1.75} aria-hidden="true" />
+              </span>
+              <p className={styles.berhasilTeks}>
                 Simpan QR code ini dan tunjukkan ke petugas saat Anda tiba di kantor DPMPTSP.
               </p>
 
@@ -348,16 +380,15 @@ export default function ReservasiPage() {
                   Tunjukkan QR code ini ke petugas Front Office untuk dipindai saat tiba di kantor
                 </p>
                 <p className={styles.qrHint}>
-                  QR ini juga tersimpan di daftar Reservasi Saya di bawah.
+                  QR ini juga tersimpan di daftar Reservasi Saya.
                 </p>
               </div>
 
-              <div className={styles.successActions}>
-                <Link href="/me" className="btn btn--primary btn--lg">
-                  Kembali ke Dashboard
-                </Link>
-                <button
-                  className="btn btn--secondary btn--lg"
+              <div className={styles.aksiBerhasil}>
+                <Tombol href="/me">Kembali ke Beranda saya</Tombol>
+                <Tombol
+                  varian="sekunder"
+                  ikon={CalendarPlus}
                   onClick={() => {
                     setSuccess(null);
                     setForm({
@@ -370,94 +401,89 @@ export default function ReservasiPage() {
                     });
                   }}
                 >
-                  <CalendarPlus size={18} />
                   Buat Reservasi Lain
-                </button>
+                </Tombol>
               </div>
             </div>
           ) : (
-            /* Form */
-            <>
-              <div className={styles.formHeader}>
-                <div className={styles.formIcon}>
-                  <CalendarPlus size={28} />
+            <form className={styles.formBody} onSubmit={handleSubmit}>
+              {/* Tujuan */}
+              <div className={styles.grup}>
+                <span className={styles.labelGrup}>
+                  Tujuan Kunjungan <span className={styles.bintang} aria-hidden="true">*</span>
+                </span>
+                <div className={styles.tujuanGroup} role="radiogroup" aria-label="Tujuan Kunjungan">
+                  <label
+                    className={`${styles.tujuanOption} ${form.tujuan === 'loket' ? styles.tujuanOptionActive : ''}`}
+                  >
+                    <input
+                      type="radio"
+                      name="tujuan"
+                      value="loket"
+                      checked={form.tujuan === 'loket'}
+                      onChange={() => setForm({ ...form, tujuan: 'loket', nama_yang_ditemui: '' })}
+                      className={styles.tujuanRadioInput}
+                    />
+                    <span
+                      className={`${styles.tujuanRadio} ${form.tujuan === 'loket' ? styles.tujuanRadioActive : ''}`}
+                      aria-hidden
+                    />
+                    <span className={`${styles.tujuanIcon} ${styles.tujuanIconLoket}`} aria-hidden>
+                      <MapPin size={20} strokeWidth={1.75} />
+                    </span>
+                    <span>
+                      <span className={styles.tujuanLabel}>Menuju Loket Layanan</span>
+                      <span className={styles.tujuanHint}>Pilih layanan yang ingin Anda datangi</span>
+                    </span>
+                  </label>
+
+                  <label
+                    className={`${styles.tujuanOption} ${form.tujuan === 'bertemu_seseorang' ? styles.tujuanOptionActive : ''}`}
+                  >
+                    <input
+                      type="radio"
+                      name="tujuan"
+                      value="bertemu_seseorang"
+                      checked={form.tujuan === 'bertemu_seseorang'}
+                      onChange={() => setForm({ ...form, tujuan: 'bertemu_seseorang', layanan_id: '' })}
+                      className={styles.tujuanRadioInput}
+                    />
+                    <span
+                      className={`${styles.tujuanRadio} ${form.tujuan === 'bertemu_seseorang' ? styles.tujuanRadioActive : ''}`}
+                      aria-hidden
+                    />
+                    <span className={`${styles.tujuanIcon} ${styles.tujuanIconBertemu}`} aria-hidden>
+                      <User size={20} strokeWidth={1.75} />
+                    </span>
+                    <span>
+                      <span className={styles.tujuanLabel}>Bertemu Seseorang</span>
+                      <span className={styles.tujuanHint}>Ketik nama orang yang ingin ditemui</span>
+                    </span>
+                  </label>
                 </div>
-                <h1 className={styles.formTitle}>Rencanakan Kedatangan</h1>
-                <p className={styles.formSubtitle}>
-                  Booking kunjungan Anda ke kantor DPMPTSP. Setelah selesai, Anda akan mendapatkan QR code
-                  yang dipindai petugas Front Office saat Anda tiba.
-                </p>
               </div>
 
-              <form className={styles.formBody} onSubmit={handleSubmit}>
-                {/* Tujuan */}
-                <div className="form-group">
-                  <label className="form-label form-label--required">Tujuan Kunjungan</label>
-                  <div className={styles.tujuanGroup} role="radiogroup" aria-label="Tujuan Kunjungan">
-                    <label
-                      className={`${styles.tujuanOption} ${form.tujuan === 'loket' ? styles.tujuanOptionActive : ''}`}
-                    >
-                      <input
-                        type="radio"
-                        name="tujuan"
-                        value="loket"
-                        checked={form.tujuan === 'loket'}
-                        onChange={() => setForm({ ...form, tujuan: 'loket', nama_yang_ditemui: '' })}
-                        className={styles.tujuanRadioInput}
+              {/* Layanan (jika loket) */}
+              {form.tujuan === 'loket' && (
+                <div className={styles.grup}>
+                  {layananGalat ? (
+                    <>
+                      <span className={styles.labelGrup}>Layanan Tujuan</span>
+                      <ErrorRetry
+                        judul="Daftar layanan belum dapat dimuat"
+                        pesan="Periksa koneksi Anda lalu coba lagi. Anda belum dapat memilih layanan tujuan."
+                        onRetry={() => void muatLayananOpsi()}
+                        memuat={layananMemuat}
                       />
-                      <span
-                        className={`${styles.tujuanRadio} ${form.tujuan === 'loket' ? styles.tujuanRadioActive : ''}`}
-                        aria-hidden
-                      />
-                      <span className={`${styles.tujuanIcon} ${styles.tujuanIconLoket}`} aria-hidden>
-                        <MapPin size={20} />
-                      </span>
-                      <span>
-                        <span className={styles.tujuanLabel}>Menuju Loket Layanan</span>
-                        <span className={styles.tujuanHint}>Helpdesk OSS, Sertifikasi Halal, CS BPJS</span>
-                      </span>
-                    </label>
-
-                    <label
-                      className={`${styles.tujuanOption} ${form.tujuan === 'bertemu_seseorang' ? styles.tujuanOptionActive : ''}`}
-                    >
-                      <input
-                        type="radio"
-                        name="tujuan"
-                        value="bertemu_seseorang"
-                        checked={form.tujuan === 'bertemu_seseorang'}
-                        onChange={() => setForm({ ...form, tujuan: 'bertemu_seseorang', layanan_id: '' })}
-                        className={styles.tujuanRadioInput}
-                      />
-                      <span
-                        className={`${styles.tujuanRadio} ${form.tujuan === 'bertemu_seseorang' ? styles.tujuanRadioActive : ''}`}
-                        aria-hidden
-                      />
-                      <span className={`${styles.tujuanIcon} ${styles.tujuanIconBertemu}`} aria-hidden>
-                        <User size={20} />
-                      </span>
-                      <span>
-                        <span className={styles.tujuanLabel}>Bertemu Seseorang</span>
-                        <span className={styles.tujuanHint}>Ketik nama orang yang ingin ditemui</span>
-                      </span>
-                    </label>
-                  </div>
-                </div>
-
-                {/* Layanan (jika loket) */}
-                {form.tujuan === 'loket' && (
-                  <div className="form-group">
-                    <label className="form-label form-label--required" htmlFor="layanan">
-                      Layanan Tujuan
-                    </label>
-                    {layananOptions.length === 0 ? (
-                      <p className="form-hint" style={{ color: 'var(--color-danger-600)' }}>
-                        Gagal memuat layanan
-                      </p>
-                    ) : (
+                    </>
+                  ) : layananOptions.length === 0 ? (
+                    <>
+                      <span className={styles.labelGrup}>Layanan Tujuan</span>
+                      <p className={styles.bantuan}>Belum ada layanan yang dapat direservasi saat ini.</p>
+                    </>
+                  ) : (
+                    <Field label="Layanan Tujuan" wajib>
                       <select
-                        id="layanan"
-                        className="form-select"
                         value={form.layanan_id}
                         onChange={(e) => setForm({ ...form, layanan_id: e.target.value })}
                       >
@@ -468,159 +494,132 @@ export default function ReservasiPage() {
                           </option>
                         ))}
                       </select>
-                    )}
-                    {form.layanan_id && estimasiLayanan && (
-                      <div className={styles.estimasiInline}>
-                        <Clock size={16} />
-                        <span>
-                          Saat ini: ~{estimasiLayanan.estimasi_tunggu_total_menit} menit,&nbsp;
-                          <Users size={14} style={{ verticalAlign: 'middle', display: 'inline' }} />
-                          {' '}{estimasiLayanan.antre_count} antre
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                )}
+                    </Field>
+                  )}
+                  {/* A-07: v_antrian_loket = antrean HARI INI; tidak relevan untuk tanggal reservasi lain. */}
+                  {form.layanan_id && estimasiLayanan && (!form.tanggal_rencana || form.tanggal_rencana === minDate) && (
+                    <p className={styles.estimasiInline}>
+                      <Clock size={16} strokeWidth={1.75} aria-hidden="true" />
+                      <span>
+                        Antrean hari ini: ~{estimasiLayanan.estimasi_tunggu_total_menit} menit,&nbsp;
+                        <Users size={14} strokeWidth={1.75} className={styles.ikonSebaris} aria-hidden="true" />
+                        {' '}{estimasiLayanan.antre_count} antre
+                      </span>
+                    </p>
+                  )}
+                </div>
+              )}
 
-                {/* Nama yang ditemui (jika bertemu) */}
-                {form.tujuan === 'bertemu_seseorang' && (
-                  <div className="form-group">
-                    <label className="form-label form-label--required" htmlFor="namaDitemui">
-                      Nama yang Ingin Ditemui
-                    </label>
-                    <input
-                      id="namaDitemui"
-                      type="text"
-                      className="form-input"
-                      placeholder="Masukkan nama lengkap"
-                      value={form.nama_yang_ditemui}
-                      onChange={(e) => setForm({ ...form, nama_yang_ditemui: e.target.value })}
-                    />
-                  </div>
-                )}
-
-                {/* Tanggal */}
-                <div className="form-group">
-                  <label className="form-label form-label--required" htmlFor="tanggal">
-                    Tanggal Kedatangan
-                  </label>
+              {/* Nama yang ditemui (jika bertemu) */}
+              {form.tujuan === 'bertemu_seseorang' && (
+                <Field label="Nama yang Ingin Ditemui" wajib>
                   <input
-                    id="tanggal"
-                    type="date"
-                    className="form-input"
+                    type="text"
+                    placeholder="Masukkan nama lengkap"
+                    value={form.nama_yang_ditemui}
+                    onChange={(e) => setForm({ ...form, nama_yang_ditemui: e.target.value })}
+                  />
+                </Field>
+              )}
+
+              {/* Tanggal */}
+              <Field
+                label="Tanggal Kedatangan"
+                wajib
+                bantuan={
+                  form.tujuan === 'loket'
+                    ? `Mengikuti jadwal layanan yang dipilih (sebagian layanan juga buka hari Sabtu). Bila layanan tutup di tanggal itu, kami tunjukkan jadwal terdekat. Maksimal ${MAX_BOOKING_DAYS} hari ke depan.`
+                    : form.tujuan === 'bertemu_seseorang'
+                      ? `Bertemu seseorang hanya hari kerja (Senin–Jumat) dan bukan hari libur. Maksimal ${MAX_BOOKING_DAYS} hari ke depan.`
+                      : `Hari yang tersedia mengikuti tujuan kunjungan yang Anda pilih. Maksimal ${MAX_BOOKING_DAYS} hari ke depan.`
+                }
+              >
+                {(p) => (
+                  <PemilihTanggal
+                    id={p.id}
+                    aria-describedby={p['aria-describedby']}
+                    label="Tanggal Kedatangan"
+                    nilai={form.tanggal_rencana}
+                    onUbah={(tanggal) => setForm({ ...form, tanggal_rencana: tanggal })}
                     min={minDate}
                     max={maxDate}
-                    value={form.tanggal_rencana}
-                    onChange={(e) => setForm({ ...form, tanggal_rencana: e.target.value })}
                   />
-                  <span className="form-hint">
-                    Reservasi hanya tersedia pada hari kerja (Senin–Jumat), maksimal {MAX_BOOKING_DAYS} hari ke depan.
-                  </span>
-                </div>
-
-                {/* Jam (opsional) */}
-                <div className="form-group">
-                  <label className="form-label" htmlFor="jam">
-                    Perkiraan Jam Kedatangan
-                  </label>
-                  <input
-                    id="jam"
-                    type="time"
-                    className="form-input"
-                    value={form.jam_rencana}
-                    onChange={(e) => setForm({ ...form, jam_rencana: e.target.value })}
-                  />
-                  <span className="form-hint">Opsional — membantu petugas mempersiapkan layanan</span>
-                </div>
-
-                {/* Keperluan */}
-                <div className="form-group">
-                  <label className="form-label" htmlFor="keperluan">
-                    Keperluan
-                  </label>
-                  <textarea
-                    id="keperluan"
-                    className="form-textarea"
-                    placeholder="Jelaskan secara singkat keperluan Anda (opsional)"
-                    value={form.keperluan}
-                    onChange={(e) => setForm({ ...form, keperluan: e.target.value })}
-                    rows={3}
-                  />
-                </div>
-
-                {consentGagal ? (
-                  <ErrorRetry
-                    judul="Reservasi belum dibuat"
-                    pesan="Persetujuan belum tercatat, coba lagi"
-                    onRetry={() => void handleSubmit()}
-                  />
-                ) : (
-                  error && (
-                    <div className="form-error" role="alert">
-                      {error}
-                    </div>
-                  )
                 )}
+              </Field>
 
-                {/* Consent PDP — wajib sebelum submit */}
-                <div className="form-group" style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)' }}>
-                  <input
-                    id="consent"
-                    type="checkbox"
-                    checked={consentGiven}
-                    onChange={(e) => setConsentGiven(e.target.checked)}
-                    style={{ marginTop: '4px', width: '18px', height: '18px', cursor: 'pointer', flexShrink: 0 }}
-                    required
-                  />
-                  <label
-                    htmlFor="consent"
-                    style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', cursor: 'pointer', lineHeight: 1.5 }}
-                  >
-                    {CONSENT_TEXT}{' '}
-                    <Link
-                      href="/kebijakan-privasi"
-                      style={{ color: 'var(--color-primary-600)', textDecoration: 'underline' }}
-                    >
-                      Baca kebijakan
-                    </Link>
-                  </label>
-                </div>
+              {/* Jam (opsional) */}
+              <Field label="Perkiraan Jam Kedatangan" bantuan="Opsional — membantu petugas mempersiapkan layanan">
+                <input
+                  type="time"
+                  value={form.jam_rencana}
+                  onChange={(e) => setForm({ ...form, jam_rencana: e.target.value })}
+                />
+              </Field>
 
-                <button
-                  type="submit"
-                  className="btn btn--primary btn--lg"
-                  disabled={loading || !consentGiven || (form.tujuan === 'loket' && layananOptions.length === 0)}
-                  style={{ width: '100%' }}
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 size={20} className="animate-pulse" />
-                      Memproses...
-                    </>
-                  ) : (
-                    <>
-                      <Send size={20} />
-                      Buat Reservasi
-                    </>
-                  )}
-                </button>
-              </form>
-            </>
+              {/* Keperluan */}
+              <Field label="Keperluan">
+                <textarea
+                  placeholder="Jelaskan secara singkat keperluan Anda (opsional)"
+                  value={form.keperluan}
+                  onChange={(e) => setForm({ ...form, keperluan: e.target.value })}
+                  rows={3}
+                />
+              </Field>
+
+              {consentGagal ? (
+                <ErrorRetry
+                  judul="Reservasi belum dibuat"
+                  pesan="Persetujuan belum tercatat, coba lagi"
+                  onRetry={() => void handleSubmit()}
+                />
+              ) : (
+                error && (
+                  <p className={styles.galatForm} role="alert">
+                    {error}
+                  </p>
+                )
+              )}
+
+              {/* Consent PDP — wajib sebelum submit */}
+              <div className={styles.consent}>
+                <input
+                  id="consent"
+                  type="checkbox"
+                  className={styles.consentKotak}
+                  checked={consentGiven}
+                  onChange={(e) => setConsentGiven(e.target.checked)}
+                  required
+                />
+                <label htmlFor="consent" className={styles.consentTeks}>
+                  {CONSENT_TEXT}{' '}
+                  <Link href="/kebijakan-privasi" className={styles.consentTautan}>
+                    Baca kebijakan
+                  </Link>
+                </label>
+              </div>
+
+              <Tombol
+                type="submit"
+                ikon={Send}
+                memuat={loading}
+                disabled={!consentGiven || (form.tujuan === 'loket' && layananOptions.length === 0)}
+                className={styles.kirim}
+              >
+                {loading ? 'Memproses...' : 'Buat Reservasi'}
+              </Tombol>
+            </form>
           )}
-        </div>
+        </Kartu>
 
         {/* Reservasi Saya: baris kunjungan (kontrak §6.6), QR untuk yang masih terjadwal */}
-        <section className={styles.daftarSection} aria-labelledby="reservasi-saya-judul">
-          <h2 id="reservasi-saya-judul" className={styles.daftarTitle}>
-            Reservasi Saya
-          </h2>
+        <Kartu className={styles.daftarKartu} judul="Reservasi Saya">
           <div role="status" aria-live="polite">
             {infoBatal && <p className={styles.daftarInfo}>{infoBatal}</p>}
           </div>
           {galatBatal && (
-            <div className="form-error" role="alert" style={{ marginBottom: 'var(--space-3)' }}>
+            <p className={styles.galatForm} role="alert">
               {galatBatal}
-            </div>
+            </p>
           )}
           {daftarGagal ? (
             <ErrorRetry
@@ -631,7 +630,11 @@ export default function ReservasiPage() {
               }}
             />
           ) : daftar.length === 0 ? (
-            <p className="form-hint">Belum ada reservasi.</p>
+            <StatusKosong
+              ikon={CalendarCheck}
+              judul="Belum ada reservasi."
+              isi="Reservasi yang Anda buat akan muncul di sini beserta QR code-nya."
+            />
           ) : (
             <ul className={styles.daftarList}>
               {daftar.map((r) => {
@@ -647,25 +650,20 @@ export default function ReservasiPage() {
                     )}
                     <div className={styles.reservasiInfo}>
                       <div className={styles.daftarBaris}>
-                        <span style={{ fontWeight: 700 }}>
+                        <span className={styles.reservasiNama}>
                           {r.tujuan === 'bertemu_seseorang'
                             ? `Bertemu: ${r.nama_yang_ditemui ?? '-'}`
                             : namaLayananSaran(r.layanan_saran_id)}
                         </span>
-                        <span className={`badge ${info.className}`}>{info.label}</span>
+                        <Lencana nada={nadaReservasi(r.status)}>{info.label}</Lencana>
                       </div>
                       <div className={styles.reservasiMeta}>
-                        <CalendarPlus size={14} className={styles.reservasiMetaIcon} aria-hidden="true" />
-                        {new Date(`${r.tanggal}T00:00:00`).toLocaleDateString('id-ID', {
-                          weekday: 'long',
-                          day: 'numeric',
-                          month: 'long',
-                          year: 'numeric',
-                        })}
+                        <CalendarPlus size={14} strokeWidth={1.75} className={styles.reservasiMetaIcon} aria-hidden="true" />
+                        {formatTanggal(`${r.tanggal}T12:00:00+07:00`, { weekday: 'long' })}
                       </div>
                       {r.jam_rencana && (
                         <div className={styles.reservasiMeta}>
-                          <Clock size={14} className={styles.reservasiMetaIcon} aria-hidden="true" />
+                          <Clock size={14} strokeWidth={1.75} className={styles.reservasiMetaIcon} aria-hidden="true" />
                           {r.jam_rencana.substring(0, 5)} WIB
                         </div>
                       )}
@@ -676,28 +674,29 @@ export default function ReservasiPage() {
                           </p>
                           {konfirmasiBatal === r.id ? (
                             <div className={styles.daftarAksi}>
-                              <button
-                                type="button"
-                                className="btn btn--danger btn--sm"
+                              <Tombol
+                                varian="bahaya"
+                                ukuran="kecil"
                                 onClick={() => void batalkan(r.id)}
                                 disabled={sedangBatal}
                               >
                                 {sedangBatal ? 'Membatalkan…' : 'Ya, batalkan'}
-                              </button>
-                              <button
-                                type="button"
-                                className="btn btn--secondary btn--sm"
+                              </Tombol>
+                              <Tombol
+                                varian="sekunder"
+                                ukuran="kecil"
                                 onClick={() => setKonfirmasiBatal(null)}
                                 disabled={sedangBatal}
                               >
                                 Tidak
-                              </button>
+                              </Tombol>
                             </div>
                           ) : (
                             <div className={styles.daftarAksi}>
-                              <button
-                                type="button"
-                                className="btn btn--ghost btn--sm"
+                              <Tombol
+                                varian="hantu"
+                                ukuran="kecil"
+                                ikon={XCircle}
                                 onClick={() => {
                                   setInfoBatal('');
                                   setGalatBatal('');
@@ -705,8 +704,8 @@ export default function ReservasiPage() {
                                 }}
                                 disabled={membatalkan !== null}
                               >
-                                <XCircle size={14} aria-hidden="true" /> Batalkan reservasi
-                              </button>
+                                Batalkan reservasi
+                              </Tombol>
                             </div>
                           )}
                         </>
@@ -717,7 +716,7 @@ export default function ReservasiPage() {
               })}
             </ul>
           )}
-        </section>
+        </Kartu>
       </div>
     </div>
   );

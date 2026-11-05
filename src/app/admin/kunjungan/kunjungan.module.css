@@ -1,0 +1,118 @@
+/* Kunjungan (gaya Dasbor): kepala halaman, bar alat berkartu, tabel dalam kartu. Token dari tema-dasbor.css. */
+.halaman {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-grid);
+  padding: 0 var(--pad-page) var(--pad-page);
+  max-width: var(--content-max);
+}
+
+.alat {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.cari {
+  position: relative;
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.cariIkon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+
+.cariInput {
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 12px 8px 36px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-button);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: var(--fs-body);
+}
+
+.cariInput::placeholder {
+  color: var(--text-tertiary);
+}
+
+.cariInput:hover {
+  border-color: var(--border-hover);
+}
+
+.cariInput:focus-visible {
+  outline: none;
+  border-color: var(--border-focus);
+  box-shadow: var(--focus-ring);
+}
+
+.status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pesanTanggal {
+  margin: 0;
+  font-size: var(--fs-small);
+  color: var(--status-danger-fg);
+}
+
+.ringkas {
+  margin: 0;
+  font-size: var(--fs-small);
+  color: var(--text-secondary);
+}
+
+.nomor {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-primary-700);
+}
+
+.nama {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.redup {
+  color: var(--text-secondary);
+}
+
+.survei {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (pointer: coarse) {
+  .cariInput {
+    min-height: var(--target-sentuh);
+  }
+}
+
+@media (max-width: 640px) {
+  .status {
+    width: 100%;
+  }
+
+  .cari {
+    flex-basis: 100%;
+  }
+}

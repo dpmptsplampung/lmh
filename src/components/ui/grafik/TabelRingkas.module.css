@@ -1,0 +1,25 @@
+.kaki {
+  padding: 8px var(--pad-card);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.tautan {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 36px;
+  border-radius: var(--radius-md);
+  color: var(--color-primary-700);
+  font-size: var(--fs-body);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.tautan:hover {
+  text-decoration: underline;
+}
+
+.tautan:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}

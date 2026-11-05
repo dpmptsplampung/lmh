@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { formatWaktu } from '@/lib/utils';
 
 // Pesan chat yang dipakai halaman pengunjung & admin. `local` menandai pesan
 // yang hanya ada di browser: 'pending'/'failed' = kiriman optimistic,
@@ -23,8 +24,7 @@ export interface ChatMsg {
   transient?: boolean;
 }
 
-export const waktuLabel = (iso: string) =>
-  new Date(iso).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+export const waktuLabel = (iso: string) => formatWaktu(iso);
 
 /** "Petugas Helpdesk OSS"; fallback "Petugas Loket" bila nama layanan tak tersedia. */
 export const petugasLabel = (layananNama?: string | null) =>

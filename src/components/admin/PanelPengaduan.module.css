@@ -1,0 +1,135 @@
+.nomor {
+  font-variant-numeric: tabular-nums;
+}
+
+.badan {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--pad-card);
+  border-radius: var(--radius-card);
+  background: var(--bg-surface-muted);
+}
+
+.meta dt {
+  font-size: var(--fs-table-head);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+}
+
+.meta dd {
+  margin: var(--space-1) 0 0;
+  font-size: var(--fs-body);
+}
+
+.slaBaris {
+  display: block;
+  margin-top: 4px;
+}
+
+.sub {
+  margin: 0 0 var(--space-2);
+  font-size: var(--fs-card-title);
+  font-weight: 600;
+}
+
+.isi {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: var(--fs-body);
+}
+
+.penangan {
+  padding: var(--pad-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+}
+
+.barisPenangan {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--fs-body);
+}
+
+.formAlih {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.aksiBaris {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.redup {
+  margin: 0;
+  font-size: var(--fs-body);
+  color: var(--text-secondary);
+}
+
+.linimasa {
+  display: grid;
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0 0 0 var(--space-4);
+  border-left: 2px solid var(--border-subtle);
+  list-style: none;
+}
+
+.entri {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.waktu {
+  font-size: var(--fs-small);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.entriJudul {
+  margin: 0;
+  font-size: var(--fs-body);
+  font-weight: 600;
+}
+
+.tautanLampiran {
+  display: inline;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--text-link);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.tautanLampiran:hover:not(:disabled) {
+  color: var(--color-primary-800);
+}
+
+.tautanLampiran:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.tautanLampiran:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+@media (pointer: coarse) { .tautanLampiran { display: inline-flex; align-items: center; min-height: 44px; } }

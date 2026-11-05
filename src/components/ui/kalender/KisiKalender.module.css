@@ -1,0 +1,174 @@
+.kalender {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.kepala {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.judul {
+  flex: 1;
+  text-align: center;
+  font-size: var(--fs-card-title);
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: var(--text-primary);
+}
+
+.navigasi {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: var(--target);
+  height: var(--target);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.navigasi:hover:not([aria-disabled='true']) {
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+}
+
+.navigasi:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.navigasi[aria-disabled='true'] {
+  color: var(--text-tertiary);
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.kisi {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.namaHari {
+  height: 32px;
+  padding: 0;
+  font-size: var(--fs-small);
+  font-weight: 600;
+  text-align: center;
+  color: var(--text-tertiary);
+}
+
+.sel {
+  height: var(--target);
+  padding: 0;
+  text-align: center;
+}
+
+.kosong {
+  padding: 0;
+}
+
+/* Pita rentang: latar rata pada sel, ujung hanya setengah supaya bulat penuh di tombolnya. */
+.selDalam {
+  background: var(--color-primary-50);
+}
+
+.selAwal {
+  background: linear-gradient(to right, transparent 50%, var(--color-primary-50) 50%);
+}
+
+.selAkhir {
+  background: linear-gradient(to left, transparent 50%, var(--color-primary-50) 50%);
+}
+
+.hari {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: var(--target);
+  height: var(--target);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: var(--fs-body);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.hari:hover:not([aria-disabled='true']):not(.terpilih) {
+  background: var(--bg-surface-hover);
+}
+
+.hari:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* Hari ini: huruf tebal dan titik di bawah angka, bukan hanya warna. */
+.hariIni {
+  font-weight: 700;
+}
+
+.hariIni::after {
+  content: '';
+  position: absolute;
+  bottom: 5px;
+  left: 50%;
+  width: 4px;
+  height: 4px;
+  margin-left: -2px;
+  border-radius: var(--radius-full);
+  background: currentColor;
+}
+
+.terpilih {
+  background: var(--color-primary-600);
+  color: var(--text-on-primary);
+  font-weight: 600;
+}
+
+/* Tidak tersedia: dicoret dan diredam, selain atribut aria-disabled. */
+.nonaktif {
+  color: var(--text-tertiary);
+  opacity: 0.5;
+  text-decoration: line-through;
+  cursor: not-allowed;
+}
+
+@media (pointer: coarse) {
+  .sel {
+    height: var(--target-sentuh);
+  }
+
+  .hari {
+    max-width: var(--target-sentuh);
+    height: var(--target-sentuh);
+  }
+
+  .navigasi {
+    width: var(--target-sentuh);
+    height: var(--target-sentuh);
+  }
+}
+
+@media (forced-colors: active) {
+  .terpilih {
+    forced-color-adjust: none;
+    background: Highlight;
+    color: HighlightText;
+  }
+}

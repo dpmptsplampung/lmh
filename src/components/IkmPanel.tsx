@@ -20,7 +20,7 @@ import {
 } from '@/lib/ikm';
 import styles from './IkmPanel.module.css';
 
-const CHART_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
+const CHART_COLORS = ['var(--chart-1, #6366f1)', 'var(--chart-2, #10b981)', 'var(--chart-3, #f59e0b)', 'var(--chart-4, #ef4444)', 'var(--chart-5, #3b82f6)', 'var(--chart-6, #8b5cf6)', 'var(--chart-1, #ec4899)', 'var(--chart-2, #14b8a6)', 'var(--chart-3, #f97316)'];
 
 interface IkmPanelProps {
   rows: IkmRow[];
@@ -69,7 +69,7 @@ export default function IkmPanel({ rows, periodLabel, mode }: IkmPanelProps) {
           {chartData.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} margin={{ top: 8, right: 16, bottom: 40, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid, #e2e8f0)" />
                 <XAxis
                   dataKey="nama"
                   fontSize={11}
@@ -83,8 +83,10 @@ export default function IkmPanel({ rows, periodLabel, mode }: IkmPanelProps) {
                 <Tooltip
                   contentStyle={{
                     borderRadius: '8px',
-                    border: '1px solid #e2e8f0',
-                    boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
+                    border: '1px solid var(--border-default, #e2e8f0)',
+                    boxShadow: 'var(--shadow-panel, 0 4px 6px -1px rgba(0,0,0,0.1))',
+                    background: 'var(--bg-surface, #ffffff)',
+                    color: 'var(--text-primary, #0f172a)',
                   }}
                   formatter={(v) => [v as number, 'IKM']}
                 />

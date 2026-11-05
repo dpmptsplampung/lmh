@@ -1,7 +1,10 @@
+/* Cangkang admin gaya "Dasbor": sidebar melayang (fixed) + bilah atas (fixed) di kolom konten.
+   Token dari tema dasbor (data-tema pada pembungkus); nilai cadangan menjaga tata letak sebelum tema terpasang. */
 .adminLayout {
   display: flex;
   min-height: 100vh;
   min-height: 100dvh;
+  background: var(--bg-canvas);
 }
 
 .adminContent {
@@ -9,12 +12,13 @@
   /* Tanpa ini anak flex selebar tabel/konten melebar melewati layar (halaman
      bergeser horizontal); min-width:0 membuat tabel scroll di wrapper-nya. */
   min-width: 0;
-  margin-left: var(--sidebar-width);
+  /* Ruang untuk sidebar melayang (panel + celah kiri dan kanan) dan bilah atas yang fixed. */
+  margin-left: var(--sidebar-width, 280px);
+  padding-top: var(--appbar-height, 56px);
   display: flex;
   flex-direction: column;
   min-height: 100vh;
   min-height: 100dvh;
-  /* transparent — body gradient + blobs show through, glass cards float above */
 }
 
 .adminBody {
@@ -30,5 +34,21 @@
   .adminBody {
     padding: var(--space-4);
     padding-bottom: max(var(--space-4), env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* Seluruh laporan memakai lebar halaman; ruang navigasi hanya untuk layar. */
+@media print {
+  .adminLayout,
+  .adminContent,
+  .adminBody {
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: none;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    background: var(--bg-surface);
   }
 }

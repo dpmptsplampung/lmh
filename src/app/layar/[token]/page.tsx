@@ -7,19 +7,48 @@
 // DSP-03: robust reconnection for days-long display.
 // Audit T4: gangguan jaringan BUKAN token invalid — hanya jawaban RPC `false` yang eksplisit.
 // Gangguan → "Menghubungkan ulang…", data terakhir dipertahankan, coba-ulang backoff eksponensial.
+// Perbaikan layar TV (.tim/layar-tv/KONTRAK.md): hanya layanan yang BERJADWAL HARI INI tampil sepanjang hari
+// (RPC layanan_status_hari_ini); tidak ada layanan berjadwal = kanvas terang polos; paling banyak 8 kartu per
+// halaman, berganti tiap 8 detik; urutan dan nama tampil khusus layar; pita panggilan + bunyi; teks berjalan
+// berisi pengumuman bergantian. Semua kartu muat SATU layar tanpa scroll (kisi dihitung, ukuran teks
+// mengikuti ukuran kartu lewat container query).
 
 import { useEffect, useState, useCallback, use } from 'react';
-import { Loader2, Monitor, Clock, Users, WifiOff } from 'lucide-react';
+import { Loader2, Monitor, WifiOff } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { getSiteSettings } from '@/lib/site-settings';
 import { APP_NAME } from '@/lib/constants';
+import { formatTanggal, formatWaktu } from '@/lib/utils';
+import PanggilanTerakhir from '@/lib/layar/PanggilanTerakhir';
+import { useLayarMenyala } from '@/lib/layar/useLayarMenyala';
 import { backoffMs, denganBatas } from '@/lib/layar/koneksi';
 import { useAntreanFeed } from '@/lib/layar/useAntreanFeed';
+import { ambilStatusBuka, useRasioArea } from '@/lib/layar/layananBuka';
+import {
+  kisiHalaman,
+  namaTampil,
+  posisiKartu,
+  saringBerjadwalHariIni,
+  urutkanLayar,
+} from '@/lib/layar/tataLayar';
+import { useHalaman } from '@/lib/layar/useHalaman';
+import { usePanggilanLayar } from '@/lib/layar/usePanggilanLayar';
+import { useBunyi } from '@/lib/layar/useBunyi';
+import { KUNCI_PENGUMUMAN_LAYAR, bacaPengumuman } from '@/lib/layar/pengaturan';
+import PitaPanggilan from '@/lib/layar/PitaPanggilan';
+import TeksBerjalan from '@/lib/layar/TeksBerjalan';
 import styles from './layar-token.module.css';
+
+/** Pengumuman dibaca ulang berkala agar perubahan dari halaman Layar admin sampai ke TV tanpa muat ulang. */
+const SEGARKAN_PENGUMUMAN_MS = 5 * 60_000;
 
 interface LoketStatus {
   layanan_id: string;
   layanan_nama: string;
+  /** Kolom v_layar_antrian (migrasi layar TV); tidak ada sebelum migrasi diterapkan. */
+  nama_layar?: string | null;
+  nama_tampil?: string | null;
+  urutan_layar?: number | null;
   tipe: string;
   antre_count: number;
   dilayani_count: number;
@@ -32,14 +61,9 @@ interface LoketStatus {
 
 type StatusToken = 'memeriksa' | 'valid' | 'tidak_valid' | 'gangguan';
 
-/** Kalimat untuk region live: nomor yang baru dipanggil sejak muat sebelumnya (bukan muat pertama). */
-function susunPengumuman(sebelumnya: LoketStatus[] | null, berikutnya: LoketStatus[]): string {
-  if (!sebelumnya) return '';
-  const lama = new Map(sebelumnya.map(l => [l.layanan_id, l.nomor_display_dilayani]));
-  return berikutnya
-    .filter(l => l.nomor_display_dilayani && lama.get(l.layanan_id) !== l.nomor_display_dilayani)
-    .map(l => `Nomor ${l.nomor_display_dilayani} dipanggil di ${l.layanan_nama}`)
-    .join('. ');
+/** Kisi satu halaman: jumlah kolom dan baris (setengah kartu per petak) diteruskan ke CSS lewat variabel. */
+function kisiStyle(kolom: number, baris: number): React.CSSProperties {
+  return { '--kolom': String(kolom), '--baris': String(baris) } as React.CSSProperties;
 }
 
 export default function LayarTokenPage({
@@ -51,8 +75,10 @@ export default function LayarTokenPage({
 
   const [statusToken, setStatusToken] = useState<StatusToken>('memeriksa');
   const [clock, setClock]             = useState<Date | null>(null);
-  const [runningText, setRunningText] = useState('');
-  const [pengumuman, setPengumuman]   = useState('');
+  const [daftarPengumuman, setDaftarPengumuman] = useState<string[]>([]);
+  // Jadwal terbaca? Tidak terbaca (RPC gagal atau belum ada) = semua layanan tampil dengan tanda kecil.
+  const [jadwalDiketahui, setJadwalDiketahui] = useState(true);
+  const { ref: refKisi, rasio } = useRasioArea();
 
   // Validasi token. Hanya `data === false` (RPC menjawab eksplisit) yang berarti tidak valid;
   // error/jaringan/timeout/jawaban tak terduga = gangguan → coba lagi dengan backoff.
@@ -66,7 +92,7 @@ export default function LayarTokenPage({
       try {
         const supabase = createClient();
         const { data, error: rpcErr } = await denganBatas(
-          supabase.rpc('validate_layar_token', { p_token: token }),
+          supabase.rpc('validate_layar_token', { p_token: token.replace(/\s/g, '') }),
         );
         if (!rpcErr) {
           if (data === true) hasil = 'valid';
@@ -90,34 +116,58 @@ export default function LayarTokenPage({
     };
   }, [token]);
 
-  // Load running text from site_settings (DSP-05)
+  // Pengumuman teks berjalan (DSP-05): sampai 3 kunci site_settings, dibaca ulang berkala.
   useEffect(() => {
-    getSiteSettings(['running_text_layar']).then(s => {
-      if (s.running_text_layar) setRunningText(String(s.running_text_layar));
-    }).catch(() => {});
+    let batal = false;
+    const muat = () => {
+      getSiteSettings([...KUNCI_PENGUMUMAN_LAYAR]).then(s => {
+        if (!batal) setDaftarPengumuman(bacaPengumuman(s));
+      }).catch(() => {});
+    };
+    muat();
+    const t = setInterval(muat, SEGARKAN_PENGUMUMAN_MS);
+    return () => { batal = true; clearInterval(t); };
   }, []);
 
   const ambil = useCallback(async () => {
     const supabase = createClient();
-    const { data, error } = await supabase
-      .from('v_layar_antrian')
-      .select('*')
-      .order('layanan_nama');
-    return { data: data as LoketStatus[] | null, error };
-  }, []);
-
-  const saatData = useCallback((sebelumnya: LoketStatus[] | null, berikutnya: LoketStatus[]) => {
-    const kalimat = susunPengumuman(sebelumnya, berikutnya);
-    if (kalimat) setPengumuman(kalimat);
+    const [hasil, status] = await Promise.all([
+      supabase.from('v_layar_antrian').select('*'),
+      ambilStatusBuka(supabase),
+    ]);
+    const semua = hasil.data as LoketStatus[] | null;
+    if (semua) setJadwalDiketahui(status !== null);
+    return { data: semua ? urutkanLayar(saringBerjadwalHariIni(semua, status)) : null, error: hasil.error };
   }, []);
 
   // Siaran realtime (debounce) + polling + backoff saat gangguan — lihat useAntreanFeed.
   const { data: lokets, updatedAt, reconnecting } = useAntreanFeed<LoketStatus>({
     aktif: statusToken === 'valid',
     ambil,
-    saatData,
   });
   const siap = updatedAt !== null;
+
+  // Halaman 8 kartu, berganti tiap 8 detik; kisi dihitung dari halaman PENUH agar ukuran kartu tetap.
+  const { item: kartu, indeks: halamanKe, total: jumlahHalaman } = useHalaman(lokets);
+  const { kolom, baris } = kisiHalaman(lokets.length, rasio);
+
+  // Pita panggilan + bunyi ding. Bunyi baru aktif setelah satu klik (peramban memblokir suara otomatis).
+  const { saatIni: panggilan, riwayat, dipanggilPada } = usePanggilanLayar({ aktif: statusToken === 'valid' });
+  const { kursorTersembunyi } = useLayarMenyala();
+  const kelasLayar = `${styles.screen} ${kursorTersembunyi ? styles.kursorTersembunyi : ''}`;
+  const bunyi = useBunyi();
+  const { ding } = bunyi;
+  const idPanggilan = panggilan?.id ?? null;
+  useEffect(() => {
+    if (idPanggilan) ding();
+  }, [idPanggilan, ding]);
+  const namaLayanan = useCallback(
+    (id: string) => {
+      const l = lokets.find(x => x.layanan_id === id);
+      return l ? namaTampil(l) : undefined;
+    },
+    [lokets],
+  );
 
   // Clock tick
   useEffect(() => {
@@ -129,7 +179,7 @@ export default function LayarTokenPage({
 
   if (statusToken === 'memeriksa') {
     return (
-      <main className={styles.screen}>
+      <main data-tema="dasbor" className={kelasLayar}>
         <div className={styles.center} role="status">
           <Loader2 size={40} className={styles.spinner} />
           Memverifikasi akses…
@@ -140,7 +190,7 @@ export default function LayarTokenPage({
 
   if (statusToken === 'gangguan') {
     return (
-      <main className={styles.screen}>
+      <main data-tema="dasbor" className={kelasLayar}>
         <div className={styles.center} role="status">
           <WifiOff size={40} />
           <p>Menghubungkan ulang…</p>
@@ -154,7 +204,7 @@ export default function LayarTokenPage({
 
   if (statusToken === 'tidak_valid') {
     return (
-      <main className={styles.screen}>
+      <main data-tema="dasbor" className={kelasLayar}>
         <div className={styles.center}>
           <WifiOff size={40} />
           <p>Token tidak valid atau sudah dicabut.</p>
@@ -166,31 +216,34 @@ export default function LayarTokenPage({
     );
   }
 
+  // Tidak ada layanan berjadwal hari ini: kanvas terang polos, tanpa teks, header, atau teks berjalan.
+  if (siap && lokets.length === 0) {
+    return <main data-tema="dasbor" className={`${styles.layarKosong} ${kursorTersembunyi ? styles.kursorTersembunyi : ''}`} data-testid="layar-kosong" aria-hidden="true" />;
+  }
+
   return (
-    <main className={styles.screen}>
+    <main data-tema="dasbor" className={kelasLayar}>
+      {/* Pita panggilan: di atas semua halaman, tidak menggeser tata letak */}
+      <PitaPanggilan panggilan={panggilan} namaLayanan={namaLayanan} />
+
       {/* Header */}
       <header className={styles.header}>
         <div className={styles.brand}>
-          <Monitor size={32} color="#38bdf8" aria-hidden="true" />
+          <Monitor size={32} className={styles.brandIcon} aria-hidden="true" />
           <div>
             <h1 className={styles.title}>Status Antrean Layanan</h1>
-            <p className={styles.subtitle}>{APP_NAME} — diperbarui realtime</p>
+            <p className={styles.subtitle}>{APP_NAME} · diperbarui otomatis</p>
           </div>
         </div>
         {clock && (
           <div className={styles.clock} suppressHydrationWarning>
-            {clock.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            {formatWaktu(clock)}.{String(clock.getUTCSeconds()).padStart(2, '0')} WIB
             <span className={styles.clockDate}>
-              {clock.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+              {formatTanggal(clock, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
             </span>
           </div>
         )}
       </header>
-
-      {/* Region live untuk pembaca layar: nomor yang baru dipanggil (polite, tidak menyela) */}
-      <div className={styles.srOnly} role="status" aria-live="polite" aria-atomic="true">
-        {pengumuman}
-      </div>
 
       {/* Gangguan setelah data pernah tampil: data terakhir tetap ditampilkan */}
       <div role="status" aria-live="polite">
@@ -202,12 +255,8 @@ export default function LayarTokenPage({
         )}
       </div>
 
-      {/* Running text banner (DSP-05) */}
-      {runningText && (
-        <div className={styles.runningTextBar} aria-live="off">
-          <span className={styles.runningText}>{runningText}</span>
-        </div>
-      )}
+      {/* Teks berjalan: 1 sampai 3 pengumuman bergantian (DSP-05) */}
+      <TeksBerjalan pengumuman={daftarPengumuman} />
 
       {/* Body */}
       {!siap && !reconnecting && (
@@ -224,71 +273,54 @@ export default function LayarTokenPage({
         </div>
       )}
 
-      {siap && (
-        <div className={styles.grid}>
-          {lokets.map(loket => {
+      {siap && lokets.length > 0 && (
+        <div
+          ref={refKisi}
+          className={styles.grid}
+          data-testid="kisi-layanan"
+          data-halaman={halamanKe + 1}
+          style={kisiStyle(kolom, baris)}
+        >
+          {kartu.map((loket, i) => {
             const kosong = loket.antre_count === 0 && loket.dilayani_count === 0;
+            const letak = posisiKartu(i, kartu.length, kolom, baris);
             return (
               <section
                 key={loket.layanan_id}
-                className={`${styles.loket} ${kosong ? styles.loketKosong : ''}`}
-                aria-label={loket.layanan_nama}
+                className={`${styles.loket} ${kosong ? styles.loketKosong : ''} ${clock && clock.getTime() - (dipanggilPada[loket.layanan_id] ?? 0) < 30_000 ? styles.loketDipanggil : ''}`}
+                data-dipanggil={clock && clock.getTime() - (dipanggilPada[loket.layanan_id] ?? 0) < 30_000 ? 'true' : undefined}
+                style={{
+                  gridColumn: `${letak.kolomMulai} / span 2`,
+                  gridRow: `${letak.barisMulai} / span 2`,
+                }}
+                aria-label={namaTampil(loket)}
               >
-                <h2 className={styles.loketName}>{loket.layanan_nama}</h2>
+                <div className={styles.loketIsi}>
+                  <h2 className={styles.loketName}>{namaTampil(loket)}</h2>
 
-                {/* Nomor sedang dilayani */}
-                {loket.nomor_display_dilayani && (
-                  <div className={styles.nomorDilayani}>
-                    Melayani
-                    <span className={styles.nomorDilayaniValue}>
-                      {loket.nomor_display_dilayani}
+                  {/* Nomor yang sedang dilayani */}
+                  <div className={styles.nomorBlok}>
+                    <span className={styles.nomorLabel}>Dilayani</span>
+                    <span className={`${styles.nomorValue} ${loket.nomor_display_dilayani ? '' : styles.nomorKosong}`}>
+                      {loket.nomor_display_dilayani ?? '—'}
                     </span>
                   </div>
-                )}
 
-                <div className={styles.loketBody}>
-                  {/* Sedang dilayani */}
-                  <div className={styles.stat}>
-                    <span className={`${styles.statValue} ${loket.dilayani_count === 0 ? styles.statValueZero : styles.statValueActive}`}>
-                      {loket.dilayani_count}
-                    </span>
-                    <span className={styles.statLabel}>sedang dilayani</span>
-                  </div>
-
-                  <div className={styles.statDivider} />
-
-                  {/* Sisa antrean */}
-                  <div className={styles.stat}>
-                    <span className={`${styles.statValue} ${loket.antre_count === 0 ? styles.statValueZero : ''}`}>
+                  {/* Jumlah antre */}
+                  <div className={styles.antreBlok}>
+                    <span className={styles.antreLabel}>Antre</span>
+                    <span className={`${styles.antreValue} ${loket.antre_count === 0 ? styles.antreNol : ''}`}>
                       {loket.antre_count}
                     </span>
-                    <span className={styles.statLabel}>sisa antrean</span>
                   </div>
-                </div>
-
-                <div className={styles.loketFooter}>
-                  {kosong ? (
-                    <span className={styles.footerOk}>
-                      <Users size={20} aria-hidden="true" /> Tidak ada antrean — silakan langsung ke loket
-                    </span>
-                  ) : (
-                    <span className={styles.footerWait}>
-                      <Clock size={20} aria-hidden="true" /> Estimasi tunggu ±{Math.round(loket.estimasi_tunggu_total_menit)} menit
-                    </span>
-                  )}
                 </div>
               </section>
             );
           })}
-
-          {lokets.length === 0 && (
-            <div className={styles.kosongSemua}>
-              <Monitor size={48} className={styles.kosongIkon} aria-hidden="true" />
-              <p>Belum ada layanan aktif hari ini.</p>
-            </div>
-          )}
         </div>
       )}
+
+      {siap && <PanggilanTerakhir riwayat={riwayat} namaLayanan={namaLayanan} />}
 
       {/* Footer */}
       <footer className={styles.footer}>
@@ -296,11 +328,22 @@ export default function LayarTokenPage({
           <div className={`${styles.updatedDot} ${reconnecting ? styles.updatedDotGangguan : ''}`} />
           <span suppressHydrationWarning>
             {updatedAt
-              ? `${reconnecting ? 'Data terakhir' : 'Diperbarui'} ${updatedAt.toLocaleTimeString('id-ID')}`
+              ? `${reconnecting ? 'Data terakhir' : 'Diperbarui'} ${formatWaktu(updatedAt)}`
               : 'Menghubungkan…'}
           </span>
+          {siap && !jadwalDiketahui && <span className={styles.tandaJadwal}>Jadwal belum terbaca</span>}
+          {jumlahHalaman > 1 && (
+            <span className={styles.tandaHalaman}>Halaman {halamanKe + 1} dari {jumlahHalaman}</span>
+          )}
         </div>
-        <span>Silakan menuju loket layanan sesuai keperluan Anda</span>
+        <div className={styles.footerKanan}>
+          {bunyi.tersedia && !bunyi.aktif && (
+            <button type="button" className={styles.tombolSuara} onClick={bunyi.aktifkan}>
+              Aktifkan suara
+            </button>
+          )}
+          <span>Silakan menuju layanan sesuai keperluan Anda</span>
+        </div>
       </footer>
     </main>
   );

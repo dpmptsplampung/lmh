@@ -29,6 +29,25 @@ const eslintConfig = defineConfig([
     ignores: ["src/**/*.test.{ts,tsx}", "src/test/**", "src/lib/supabase/mutate.ts"],
     rules: { "lmh/mutasi-tercek": "error" },
   },
+  // Aksesibilitas (keputusan pemilik 2026-11-04): plugin jsx-a11y sudah dibawa eslint-config-next
+  // (hanya 6 aturan). Aturan tambahan ini aktif untuk kode aplikasi, bukan tes.
+  // `control-has-associated-label` sengaja tidak diaktifkan: terlalu banyak positif palsu pada tombol ikon ber-aria-label.
+  {
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: ["src/**/*.test.{ts,tsx}", "src/test/**"],
+    rules: {
+      "jsx-a11y/label-has-associated-control": "error",
+      "jsx-a11y/click-events-have-key-events": "error",
+      "jsx-a11y/no-static-element-interactions": "error",
+      "jsx-a11y/no-noninteractive-element-interactions": "error",
+      "jsx-a11y/no-noninteractive-tabindex": "error",
+      "jsx-a11y/no-autofocus": "error",
+      "jsx-a11y/anchor-is-valid": "error",
+      "jsx-a11y/heading-has-content": "error",
+      "jsx-a11y/interactive-supports-focus": "error",
+      "jsx-a11y/tabindex-no-positive": "error",
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:

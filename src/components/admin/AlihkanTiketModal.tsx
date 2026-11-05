@@ -10,6 +10,7 @@ import { createClient } from '@/lib/supabase/client';
 import { mutasiWajibBaris, pesanMutasi } from '@/lib/supabase/mutate';
 import { kodeGalatDariError, MAX_ALASAN_ALIHKAN, MIN_ALASAN_ALIHKAN, PESAN_GALAT_ANTREAN } from '@/lib/pelayanan';
 import FormDialog from './FormDialog';
+import styles from './FormAntrean.module.css';
 
 export interface TiketAlihkan {
   id: string;
@@ -161,7 +162,7 @@ export default function AlihkanTiketModal({ tiket, onClose, onSuccess }: Props) 
               ))}
             </select>
             {galatTujuanTampil && (
-              <p id={idLayananGalat} role="alert" style={{ color: 'var(--color-danger-600)', fontSize: 12, margin: '4px 0 0' }}>
+              <p id={idLayananGalat} role="alert" className={styles.galat}>
                 {galatTujuanTampil}
               </p>
             )}
@@ -182,11 +183,11 @@ export default function AlihkanTiketModal({ tiket, onClose, onSuccess }: Props) 
               placeholder="Contoh: kebutuhan pemohon ternyata layanan Sertifikasi Halal"
               onChange={(e) => { setAlasan(e.target.value); setGalatAlasan(null); setGalat(null); }}
             />
-            <small id={idAlasanBantuan} style={{ color: 'var(--text-tertiary)' }}>
+            <small id={idAlasanBantuan} className={styles.bantuan}>
               {MIN_ALASAN_ALIHKAN}-{MAX_ALASAN_ALIHKAN} karakter.
             </small>
             {galatAlasan && (
-              <p id={idAlasanGalat} role="alert" style={{ color: 'var(--color-danger-600)', fontSize: 12, margin: '4px 0 0' }}>
+              <p id={idAlasanGalat} role="alert" className={styles.galat}>
                 {galatAlasan}
               </p>
             )}

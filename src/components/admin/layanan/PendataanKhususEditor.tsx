@@ -1,12 +1,19 @@
 'use client';
 
+import Tombol from '@/components/ui/Tombol';
+
 // Editor Pendataan Khusus per Layanan (Admin, Fase 4 spec §7). Isian yang pernah diisi: label/urutan/wajib/opsi boleh
 // diubah, tidak bisa dihapus (Sembunyikan), jenis tidak pernah dapat diubah. DB adalah penegak akhir (trigger).
 // Penyuntingan langsung di tabel (docs/superpowers/plans/2026-10-30-tabel-dan-edit-inline.md): label diklik lalu diketik, Wajib = saklar di baris,
 // isian baru lewat baris terakhir, jenis dan pilihan lewat baris rincian yang mengembang. Hanya konfirmasi hapus yang dialog.
 import { Fragment, useCallback, useEffect, useId, useState } from 'react';
-import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Eye, EyeOff, Loader2, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Eye, EyeOff, ListChecks, Trash2 } from 'lucide-react';
 import { useToast } from '@/components/Toast';
+import Skeleton from '@/components/ui/Skeleton';
+import { BISA_DIFOKUS } from '@/components/ui/fokus';
+import Galat from '@/components/ui/Galat';
+import CatatanKeadaan from '@/components/ui/CatatanKeadaan';
+import StatusKosong from '@/components/ui/StatusKosong';
 import FormDialog from '@/components/admin/FormDialog';
 import { BarisTambah, SelTeksInline } from '@/components/admin/SuntingInline';
 import { AdminFetchError, adminFetch } from '@/components/admin/adminFetch';
@@ -174,24 +181,12 @@ export default function PendataanKhususEditor({ layananId }: Props) {
     }
   };
 
-  if (memuat) {
-    return (
-      <div style={{ padding: 'var(--space-8)', textAlign: 'center' }} role="status" aria-label="Memuat">
-        <Loader2 size={24} className="animate-pulse" style={{ margin: '0 auto' }} />
-      </div>
-    );
-  }
-  if (galatMuat) {
-    return <div role="alert" className="form-error" style={{ padding: 'var(--space-6)' }}>{galatMuat}</div>;
-  }
-  if (formTetap) {
-    return (
-      <p role="note" style={{ padding: 'var(--space-4)' }}>
-        Layanan ini memakai formulir tetap (OSS / Non OSS), jadi Pendataan Khusus tidak berlaku. Isian formulir tetap
-        hanya dapat diubah lewat perubahan sistem.
-      </p>
-    );
-  }
+  if (memuat) return <Skeleton bentuk="baris" jumlah={5} label="Memuat Pendataan Khusus" />;
+  if (galatMuat) return <Galat pesan={galatMuat} onRetry={() => { setMemuat(true); void muat(); }} />;
+  if (formTetap) return <CatatanKeadaan jenis="lingkup">
+    Layanan ini memakai formulir tetap (OSS / Non OSS), jadi Pendataan Khusus tidak berlaku. Isian formulir tetap
+    hanya dapat diubah lewat perubahan sistem.
+  </CatatanKeadaan>;
 
   return (
     <>
@@ -200,7 +195,7 @@ export default function PendataanKhususEditor({ layananId }: Props) {
         Identitas pengunjung (nama, nomor HP, email, asal instansi, kategori, keperluan), topik, dan catatan sudah dicatat
         sebagai Pendataan Umum, jadi jangan menanyakannya lagi di sini. Tidak ada unggah berkas.
       </p>
-      <div className="table-wrapper">
+      <div className="table-wrapper" role="region" aria-label="Daftar isian Pendataan Khusus" {...BISA_DIFOKUS}>
         <table className="table">
           <caption className="sr-only">Daftar isian Pendataan Khusus</caption>
           <thead>
@@ -213,7 +208,7 @@ export default function PendataanKhususEditor({ layananId }: Props) {
             {isian.length === 0 && (
               <tr>
                 <td colSpan={KOLOM} className="kosong-sel">
-                  Belum ada isian. Petugas hanya mengisi topik dan catatan.
+                  <StatusKosong ikon={ListChecks} judul="Belum ada isian. Petugas hanya mengisi topik dan catatan." />
                 </td>
               </tr>
             )}
@@ -252,12 +247,12 @@ export default function PendataanKhususEditor({ layananId }: Props) {
                     </td>
                     <td>
                       <div className={styles.geser}>
-                        <button type="button" className="btn btn--ghost btn--sm" aria-label={`Naik ${f.label}`} disabled={i === 0} onClick={() => void geser(i, -1)}>
+                        <Tombol type="button" varian="hantu" ukuran="kecil" aria-label={`Naik ${f.label}`} disabled={i === 0} onClick={() => void geser(i, -1)}>
                           <ArrowUp size={14} aria-hidden="true" />
-                        </button>
-                        <button type="button" className="btn btn--ghost btn--sm" aria-label={`Turun ${f.label}`} disabled={i === isian.length - 1} onClick={() => void geser(i, 1)}>
+                        </Tombol>
+                        <Tombol type="button" varian="hantu" ukuran="kecil" aria-label={`Turun ${f.label}`} disabled={i === isian.length - 1} onClick={() => void geser(i, 1)}>
                           <ArrowDown size={14} aria-hidden="true" />
-                        </button>
+                        </Tombol>
                       </div>
                     </td>
                     <td>
@@ -266,24 +261,23 @@ export default function PendataanKhususEditor({ layananId }: Props) {
                     </td>
                     <td className="kol-aksi">
                       <div className="aksi-baris">
-                        <button
+                        <Tombol
                           type="button"
-                          className="btn btn--ghost btn--sm"
+                          varian="hantu" ukuran="kecil"
                           aria-label={`Rincian ${f.label}`}
                           aria-expanded={buka}
                           aria-controls={buka ? idRincian : undefined}
-                          onClick={() => bukaTutup(f)}
-                        >
+                          onClick={() => bukaTutup(f)}>
                           {buka ? <ChevronUp size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />} Rincian
-                        </button>
-                        <button type="button" className="btn btn--ghost btn--sm" aria-label={`${f.tersembunyi ? 'Tampilkan' : 'Sembunyikan'} ${f.label}`} onClick={() => void ubahTersembunyi(f)}>
+                        </Tombol>
+                        <Tombol type="button" varian="hantu" ukuran="kecil" aria-label={`${f.tersembunyi ? 'Tampilkan' : 'Sembunyikan'} ${f.label}`} onClick={() => void ubahTersembunyi(f)}>
                           {f.tersembunyi ? <Eye size={14} aria-hidden="true" /> : <EyeOff size={14} aria-hidden="true" />}
                           {f.tersembunyi ? ' Tampilkan' : ' Sembunyikan'}
-                        </button>
+                        </Tombol>
                         {!f.pernah_diisi && (
-                          <button type="button" className="btn btn--ghost btn--sm" aria-label={`Hapus ${f.label}`} onClick={() => { setGalatHapus(null); setHapus(f); }}>
+                          <Tombol type="button" varian="hantu" ukuran="kecil" aria-label={`Hapus ${f.label}`} onClick={() => { setGalatHapus(null); setHapus(f); }}>
                             <Trash2 size={14} aria-hidden="true" /> Hapus
-                          </button>
+                          </Tombol>
                         )}
                       </div>
                     </td>
@@ -319,9 +313,9 @@ export default function PendataanKhususEditor({ layananId }: Props) {
                               </small>
                               {galatOpsi[f.id] && <p id={`${idRincian}-opsi-galat`} role="alert" className={styles.galat}>{galatOpsi[f.id]}</p>}
                               <div>
-                                <button type="button" className="btn btn--secondary btn--sm" disabled={sedang} aria-busy={sedang || undefined} onClick={() => void simpanOpsi(f)}>
+                                <Tombol type="button" varian="sekunder" ukuran="kecil" disabled={sedang} aria-busy={sedang || undefined} onClick={() => void simpanOpsi(f)}>
                                   Simpan pilihan
-                                </button>
+                                </Tombol>
                               </div>
                             </div>
                           )}
@@ -363,8 +357,7 @@ export default function PendataanKhususEditor({ layananId }: Props) {
           galat={galatHapus}
           onClose={() => { setHapus(null); setGalatHapus(null); }}
           onSubmit={jalankanHapus}
-          maxWidth={460}
-        >
+          maxWidth={460}>
           {() => null}
         </FormDialog>
       )}

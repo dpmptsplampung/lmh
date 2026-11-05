@@ -1,19 +1,7 @@
-// Keterangan singkat per role di atas halaman admin (RBAC Tahap 1).
+import CatatanKeadaan from '@/components/ui/CatatanKeadaan';
+import styles from './RoleNote.module.css';
+
+// Keterangan lingkup per role di atas halaman admin (RBAC Tahap 1). Tampil sebagai catatan netral, bukan galat.
 export default function RoleNote({ children }: { children: React.ReactNode }) {
-  return (
-    <p
-      role="note"
-      style={{
-        fontSize: 'var(--text-sm)',
-        color: 'var(--text-secondary)',
-        background: 'var(--color-primary-50, #eff6ff)',
-        border: '1px solid var(--color-primary-100, #dbeafe)',
-        borderRadius: 'var(--radius-md, 8px)',
-        padding: 'var(--space-2) var(--space-3)',
-        margin: '0 0 var(--space-4)',
-      }}
-    >
-      {children}
-    </p>
-  );
+  return <CatatanKeadaan jenis="lingkup" className={styles.catatan}>{children}</CatatanKeadaan>;
 }

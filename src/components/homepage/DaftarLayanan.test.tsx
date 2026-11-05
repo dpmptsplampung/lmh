@@ -90,6 +90,21 @@ describe('DaftarLayanan', () => {
     expect(screen.queryByText('Helpdesk OSS')).toBeNull();
   });
 
+  it('A-01: galat memuat = pesan galat + Coba lagi, BUKAN "sedang disiapkan"', () => {
+    const onCobaLagi = vi.fn();
+    render(<DaftarLayanan layanan={[]} status={null} teks={teks} onBuka={vi.fn()} galat onCobaLagi={onCobaLagi} />);
+    expect(screen.getByRole('alert')).toHaveTextContent(/belum dapat dimuat/i);
+    expect(screen.queryByText(/sedang disiapkan/i)).toBeNull();
+    expect(screen.queryByLabelText('Cari layanan')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Coba lagi' }));
+    expect(onCobaLagi).toHaveBeenCalledTimes(1);
+  });
+
+  it('A-01: percobaan ulang berjalan -> tombol nonaktif "Memuat…"', () => {
+    render(<DaftarLayanan layanan={[]} status={null} teks={teks} onBuka={vi.fn()} galat memuatUlang onCobaLagi={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Memuat…' })).toBeDisabled();
+  });
+
   it('section berjangkar #layanan', () => {
     const { container } = render(<DaftarLayanan layanan={semua} status={status} teks={teks} onBuka={vi.fn()} />);
     expect(container.querySelector('section#layanan')).not.toBeNull();

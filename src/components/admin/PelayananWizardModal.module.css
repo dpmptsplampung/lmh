@@ -1,0 +1,244 @@
+/* Wizard Pendataan Pelayanan (gaya Dasbor): cangkang modal bertahap. Token dari tema-dasbor.css. */
+.latar {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background: var(--surface-overlay);
+  outline: none;
+}
+
+.kotak {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 760px;
+  max-height: calc(100dvh - 2rem);
+  overflow: hidden;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-card);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-overlay);
+}
+
+.kepala {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-5) var(--space-6);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.kepalaIsi {
+  min-width: 0;
+}
+
+.judulBaris {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.judul {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-lg);
+  font-weight: 700;
+}
+
+.meta {
+  margin: 2px 0 0;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+}
+
+.nomorTiket {
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.peringatan {
+  margin: var(--space-1) 0 0;
+  color: var(--color-warning-600);
+  font-size: var(--text-xs);
+}
+
+.tutup {
+  flex: none;
+  min-width: var(--target);
+  padding-inline: 0;
+}
+
+.langkah {
+  display: flex;
+  border-bottom: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  overflow-x: auto;
+}
+
+.langkahTombol {
+  flex: 1 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: var(--target);
+  padding: var(--space-3) var(--space-4);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.langkahTombol:hover {
+  background: var(--bg-surface-muted);
+}
+
+.langkahTombol:focus-visible {
+  outline: none;
+  box-shadow: inset var(--focus-ring);
+}
+
+.langkahAktif {
+  border-bottom-color: var(--color-primary-700);
+  background: var(--color-primary-50);
+  color: var(--color-primary-700);
+  font-weight: 700;
+}
+
+.badan {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-6);
+}
+
+.petunjuk {
+  margin: 0 0 var(--space-4);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+}
+
+.kolom {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.dua {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+
+.topik {
+  margin-bottom: var(--space-4);
+}
+
+.ikonInline {
+  display: inline;
+  margin-right: var(--space-1);
+}
+
+.galatField {
+  margin-top: var(--space-1);
+  color: var(--color-danger-600);
+  font-size: var(--text-xs);
+}
+
+.cepat {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.cepatTombol {
+  padding: 2px var(--space-2);
+  font-size: var(--text-xs);
+}
+
+.konfirmasi {
+  padding: var(--space-4) var(--space-6);
+  border-top: 1px solid var(--color-warning-500);
+  background: var(--color-warning-50);
+}
+
+.konfirmasiJudul {
+  margin: 0;
+  font-weight: 700;
+}
+
+.konfirmasiDesk {
+  margin: 2px 0 var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.konfirmasiAksi {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.kaki {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-6);
+  border-top: 1px solid var(--border-default);
+  background: var(--bg-surface);
+}
+
+.kakiKanan {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.berikut {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+@media (max-width: 640px) {
+  .kotak {
+    max-height: 100dvh;
+    border-radius: 0;
+  }
+
+  .latar {
+    padding: 0;
+  }
+
+  .kepala,
+  .badan,
+  .kaki,
+  .konfirmasi {
+    padding-inline: var(--space-4);
+  }
+
+  .dua {
+    grid-template-columns: 1fr;
+  }
+
+  .kaki {
+    flex-wrap: wrap;
+  }
+}
+
+@media (pointer: coarse) {
+  .cepatTombol {
+    min-height: var(--target-sentuh);
+  }
+}

@@ -1,0 +1,161 @@
+.latar {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 12vh 16px 16px;
+  background: var(--surface-overlay, rgba(15, 23, 42, 0.45));
+}
+
+.dialog {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 560px;
+  max-height: min(70vh, 520px);
+  overflow: hidden;
+  background: var(--bg-surface, #fff);
+  border-radius: var(--radius-panel, 20px);
+  box-shadow: var(--shadow-overlay, 0 24px 48px -12px rgba(15, 23, 42, 0.18));
+}
+
+.cari {
+  position: relative;
+  flex: none;
+  border-bottom: 1px solid var(--border-subtle, #e6eaf0);
+}
+
+.ikon {
+  position: absolute;
+  left: 18px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-tertiary, #64748b);
+  pointer-events: none;
+}
+
+.isian {
+  width: 100%;
+  height: 56px;
+  padding: 0 64px 0 46px;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary, #0f172a);
+  font: inherit;
+  font-size: 1rem; /* 16px: iOS tidak memperbesar halaman saat fokus */
+}
+
+.isian::placeholder {
+  color: var(--text-tertiary, #64748b);
+  opacity: 1;
+}
+
+.isian:focus-visible {
+  outline: none;
+  box-shadow: inset 0 -2px 0 var(--color-primary-600, #2563eb);
+}
+
+.kbd {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 1px 6px;
+  border: 1px solid var(--border-default, #dfe4ec);
+  border-radius: 6px;
+  background: var(--bg-surface-muted, #f5f7fa);
+  color: var(--text-tertiary, #64748b);
+  font: 500 0.6875rem var(--font-sans, system-ui);
+}
+
+.daftar {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 6px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+}
+
+.butirWadah {
+  margin: 0;
+}
+
+.kelompok {
+  display: block;
+  padding: 10px 10px 4px;
+  color: var(--nav-group-label, #64748b);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.butir {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  padding: 0 10px;
+  border-radius: var(--radius-lg, 12px);
+  color: var(--text-primary, #0f172a);
+  font-size: 0.875rem;
+  text-decoration: none;
+}
+
+.butir[aria-selected='true'] {
+  background: var(--nav-active-bg, #0f131b);
+  color: var(--nav-active-fg, #fff);
+}
+
+.butir[aria-selected='true'] .sub {
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.sub {
+  flex: none;
+  color: var(--text-tertiary, #64748b);
+  font-size: 0.75rem;
+}
+
+.kosong {
+  margin: 0;
+  padding: 24px 16px;
+  color: var(--text-secondary, #475569);
+  text-align: center;
+}
+
+.bantu {
+  flex: none;
+  margin: 0;
+  padding: 8px 16px;
+  border-top: 1px solid var(--border-subtle, #e6eaf0);
+  color: var(--text-tertiary, #64748b);
+  font-size: 0.75rem;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 640px) {
+  .latar {
+    padding-top: 8vh;
+  }
+
+  .bantu {
+    display: none;
+  }
+}

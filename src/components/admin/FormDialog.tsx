@@ -51,7 +51,7 @@ export default function FormDialog({
       aria-labelledby={idJudul}
       aria-describedby={deskripsi ? idDesk : undefined}
       style={{
-        position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.45)', zIndex: 1000,
+        position: 'fixed', inset: 0, backgroundColor: 'var(--surface-overlay)', zIndex: 1000,
         display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-4)', outline: 'none',
       }}
     >
@@ -60,14 +60,14 @@ export default function FormDialog({
         noValidate
         style={{
           // Opak: --surface-elevated adalah kaca 62% tanpa blur, sehingga isi halaman di belakang dialog tembus dan sulit dibaca.
-          background: '#ffffff', borderRadius: 'var(--radius-2xl, 16px)', width: '100%',
+          background: 'var(--bg-surface, var(--color-neutral-0))', borderRadius: 'var(--radius-panel, 16px)', boxShadow: 'var(--shadow-overlay, none)', width: '100%',
           maxWidth, maxHeight: 'calc(100dvh - 2rem)', display: 'flex', flexDirection: 'column',
-          border: '1px solid var(--border-default, #e2e8f0)', overflow: 'hidden',
+          border: '1px solid var(--border-subtle, var(--border-default))', overflow: 'hidden',
         }}
       >
-        <div style={{ padding: 'var(--space-5) var(--space-6)', borderBottom: '1px solid var(--border-default, #e2e8f0)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 'var(--space-3)' }}>
+        <div style={{ padding: 'var(--space-5) var(--space-6)', borderBottom: '1px solid var(--border-subtle, var(--border-default))', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 'var(--space-3)' }}>
           <div>
-            <h2 id={idJudul} style={{ fontSize: 'var(--text-lg)', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <h2 id={idJudul} style={{ fontSize: 'var(--text-lg)', fontWeight: 600, margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
               {judul}
             </h2>
             {deskripsi && (
@@ -84,13 +84,13 @@ export default function FormDialog({
         <div style={{ padding: 'var(--space-5) var(--space-6)', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', overflowY: 'auto' }}>
           {children({ galat: idGalat })}
           {galat && (
-            <p id={idGalat} role="alert" style={{ color: 'var(--color-danger-600)', fontSize: 'var(--text-sm)', margin: 0 }}>
+            <p id={idGalat} role="alert" style={{ color: 'var(--status-danger-fg, var(--color-danger-600))', fontSize: 'var(--text-sm)', margin: 0 }}>
               {galat}
             </p>
           )}
         </div>
 
-        <div style={{ padding: 'var(--space-4) var(--space-6)', borderTop: '1px solid var(--border-default, #e2e8f0)', display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)' }}>
+        <div style={{ padding: 'var(--space-4) var(--space-6)', borderTop: '1px solid var(--border-subtle, var(--border-default))', display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)' }}>
           <button type="button" className="btn btn--ghost btn--sm" onClick={onClose} disabled={mengirim}>
             Batal
           </button>

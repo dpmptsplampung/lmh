@@ -14,6 +14,7 @@ import { argData, argRekap, formLayanan, muatLingkup, responsGalatRekap } from '
 import { lampirkanKhusus } from '@/lib/rekap/khusus';
 import type { FieldKhusus } from '@/lib/pendataan-khusus/jenis';
 import { muatFieldKhusus, muatJawabanKhusus } from '@/lib/rekap/khususServer';
+import { muatRingkasanDilayani } from '@/lib/rekap/ringkasan';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,18 +53,24 @@ export async function GET(request: NextRequest) {
   }
 
   const arg = argRekap(q);
+  let dilayani;
+  try {
+    dilayani = await muatRingkasanDilayani(supabase, q.bagian === 'data' ? argData(q) : arg);
+  } catch (error) {
+    return responsGalatRekap(error, LABEL);
+  }
   const daftar = (v: unknown) => (Array.isArray(v) ? (v as Record<string, unknown>[]) : []);
   if (q.bagian === 'harian') {
     const { data, error } = await supabase.rpc('rekap_harian_terpadu', arg);
     if (error) return responsGalatRekap(error, LABEL);
     const b = (data ?? {}) as { rows?: unknown; ringkasan?: unknown };
-    return NextResponse.json({ rows: daftar(b.rows).map(petaBarisHarian), ringkasan: petaRingkasanHarian(b.ringkasan) });
+    return NextResponse.json({ rows: daftar(b.rows).map(petaBarisHarian), ringkasan: petaRingkasanHarian(b.ringkasan), dilayani });
   }
 
   if (q.bagian === 'kinerja') {
     const { data, error } = await supabase.rpc('rekap_kinerja_petugas', arg);
     if (error) return responsGalatRekap(error, LABEL);
-    return NextResponse.json({ rows: daftar((data as { rows?: unknown } | null)?.rows).map(petaBarisKinerja) });
+    return NextResponse.json({ rows: daftar((data as { rows?: unknown } | null)?.rows).map(petaBarisKinerja), dilayani });
   }
 
   // bagian === 'data': satu halaman (detail hanya untuk halaman ini) + total dari DB.
@@ -86,6 +93,7 @@ export async function GET(request: NextRequest) {
     return responsGalatRekap(e, LABEL);
   }
   return NextResponse.json({
+    dilayani,
     total: Number(b.total ?? 0) || 0,
     form_type: await formLayanan(supabase, q.layanan_id),
     kolom_khusus,

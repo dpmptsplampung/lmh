@@ -25,6 +25,8 @@ import {
   RotateCcw,
   Loader2,
 } from 'lucide-react';
+import Skeleton from '@/components/ui/Skeleton';
+import { formatTanggal } from '@/lib/utils';
 import FoTolakReservasiDialog from '@/components/admin/FoTolakReservasiDialog';
 import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/components/Toast';
@@ -38,6 +40,7 @@ import {
   type HasilCheckinReservasi,
 } from '@/lib/fo-penanganan';
 import { useKameraPemindai } from '@/lib/hooks/useKameraPemindai';
+import { muatPratinjauReservasi } from '@/lib/fo/akses-antrean';
 import styles from './scan-panel.module.css';
 
 // Pratinjau reservasi (kontrak §6.4). Semua kolom dibaca dari `kunjungan`: sejak WP-24 (migrasi 202610140007) reservasi
@@ -57,6 +60,8 @@ interface Pratinjau {
   /** Token yang dipindai/diketik (dipakai RPC), bukan kolom DB. */
   qr_token: string;
   layananSaranNama: string | null;
+  /** Pratinjau aman dari RPC (migrasi 202611030015): kontak, instansi, tujuan, dan keperluan baru tampil setelah check-in. */
+  terbatas?: boolean;
 }
 
 type ScanState = 'scanning' | 'mencari' | 'found' | 'not_found' | 'hangus' | 'error' | 'processed' | 'ditolak';
@@ -80,12 +85,7 @@ const LABEL_STATUS: Record<string, string> = {
 };
 
 function formatDate(dateStr: string): string {
-  return new Date(dateStr + 'T00:00:00').toLocaleDateString('id-ID', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
+  return formatTanggal(dateStr, { weekday: 'long' });
 }
 
 export default function ScanPanel() {
@@ -121,21 +121,43 @@ export default function ScanPanel() {
     setGalatCari(null);
     try {
       const supabase = createClient();
-      const { data, error } = await supabase
-        .from('kunjungan')
-        .select(
-          'id, nama, tanggal, status, tujuan, layanan_saran_id, nama_yang_ditemui, keperluan, jam_rencana, asal_instansi, email',
-        )
-        .eq('qr_token', token)
-        .eq('asal', 'reservasi')
-        .maybeSingle();
 
-      if (error) {
-        console.error('Gagal membaca reservasi:', error);
-        setResult(null);
-        setGalatCari('Gagal membaca reservasi. Periksa koneksi lalu coba lagi.');
-        setScanState('error');
-        return;
+      // Akses FO (migrasi 202611030015): pratinjau lewat RPC berkolom aman (nama, tanggal, status, jam, layanan). Isian
+      // pengunjung lain tidak dibaca lagi; identitas yang menjadi hak FO terbaca lewat RLS setelah check-in.
+      // RPC belum ada -> kueri lama di bawah. Galat lain tampil sebagai gagal membaca.
+      const lewat = await muatPratinjauReservasi(supabase, token);
+      let data: Omit<Pratinjau, 'qr_token' | 'layananSaranNama'> | null = null;
+      let layananSaranNama: string | null = null;
+      let terbatas = false;
+      if (lewat.tersedia) {
+        terbatas = true;
+        if (lewat.data) {
+          const p = lewat.data;
+          data = {
+            id: p.id, nama: p.nama, tanggal: p.tanggal, status: p.status, jam_rencana: p.jam_rencana,
+            layanan_saran_id: p.layanan_saran_id, tujuan: null, nama_yang_ditemui: null, keperluan: null,
+            asal_instansi: null, email: null,
+          };
+          layananSaranNama = p.layanan_nama;
+        }
+      } else {
+        const { data: baris, error } = await supabase
+          .from('kunjungan')
+          .select(
+            'id, nama, tanggal, status, tujuan, layanan_saran_id, nama_yang_ditemui, keperluan, jam_rencana, asal_instansi, email',
+          )
+          .eq('qr_token', token)
+          .eq('asal', 'reservasi')
+          .maybeSingle();
+
+        if (error) {
+          console.error('Gagal membaca reservasi:', error);
+          setResult(null);
+          setGalatCari('Gagal membaca reservasi. Periksa koneksi lalu coba lagi.');
+          setScanState('error');
+          return;
+        }
+        data = (baris as unknown as typeof data) ?? null;
       }
       if (!data) {
         setResult(null);
@@ -151,17 +173,13 @@ export default function ScanPanel() {
         return;
       }
 
-      const dasar = data as unknown as Omit<Pratinjau, 'qr_token' | 'layananSaranNama'>;
-      const { layanan_saran_id } = dasar;
-
-      let layananSaranNama: string | null = null;
-      if (layanan_saran_id) {
-        const { data: l } = await supabase.from('layanan').select('nama').eq('id', layanan_saran_id).maybeSingle();
+      if (!terbatas && data.layanan_saran_id) {
+        const { data: l } = await supabase.from('layanan').select('nama').eq('id', data.layanan_saran_id).maybeSingle();
         layananSaranNama = (l as { nama?: string } | null)?.nama ?? null;
       }
 
       const pratinjau: Pratinjau = {
-        ...dasar, qr_token: token, layananSaranNama,
+        ...data, qr_token: token, layananSaranNama, terbatas,
       };
       setResult(pratinjau);
 
@@ -263,7 +281,7 @@ export default function ScanPanel() {
   const tujuanTeks = result
     ? result.tujuan === 'bertemu_seseorang'
       ? `Bertemu: ${result.nama_yang_ditemui ?? '-'}`
-      : result.layananSaranNama ?? 'Loket layanan (belum memilih layanan)'
+      : result.layananSaranNama ?? (result.terbatas ? 'Tujuan tampil setelah check-in' : 'Loket layanan (belum memilih layanan)')
     : '';
 
   return (
@@ -357,7 +375,7 @@ export default function ScanPanel() {
 
               {scanState === 'mencari' && (
                 <div className={styles.resultEmpty}>
-                  <Loader2 size={40} className="animate-spin" aria-hidden="true" />
+                  <Skeleton bentuk="kartu" label={false} />
                   <p className={styles.teksHasil}>Mencari reservasi…</p>
                 </div>
               )}
@@ -408,7 +426,9 @@ export default function ScanPanel() {
                     <div>
                       <div className={styles.visitorName}>{result.nama}</div>
                       <div className={styles.visitorEmail}>
-                        {[result.asal_instansi, result.email].filter(Boolean).join(' · ') || 'Data kontak tidak tersedia'}
+                        {result.terbatas
+                          ? 'Kontak dan keperluan tampil setelah check-in.'
+                          : [result.asal_instansi, result.email].filter(Boolean).join(' · ') || 'Data kontak tidak tersedia'}
                       </div>
                     </div>
                   </div>

@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { audit, json, requireAdmin } from '@/lib/akun/server';
 import { MutasiError, mutasiInsert, mutasiWajibBaris } from '@/lib/supabase/mutate';
 import { catatMutasiGagal, kodeDbMutasi, pesanDbMutasi } from '@/app/api/admin/_mutasi';
-import { objekBelumAda } from '@/lib/akses-data/galat';
+import { KODE_MIGRASI_BELUM, objekBelumAda } from '@/lib/akses-data/galat';
+import { createClient } from '@/lib/supabase/server';
 import { isSyntheticEmail, isValidUsername, normalizeNoHp, normalizeUsername, usernameToEmail } from '@/lib/akun/login';
 
 export const dynamic = 'force-dynamic';
@@ -17,6 +18,7 @@ const schema = z
     email_notifikasi: z.email().max(254).nullable(),
     role: z.enum(['admin', 'front_office', 'petugas']),
     email_login: z.email().max(254),
+    operator_aktif: z.boolean(),
   })
   .partial()
   .strict();
@@ -38,6 +40,22 @@ export async function PATCH(request: NextRequest, { params }: Ctx) {
     return json({ error: 'Invalid input', details: parsed.success ? {} : parsed.error.flatten().fieldErrors }, 400);
   }
   const b = parsed.data;
+
+  // Penanda operator berdiri sendiri. RPC memakai JWT Admin dan mencatat audit atomik di DB.
+  if (b.operator_aktif !== undefined) {
+    if (Object.keys(b).length !== 1) return json({ error: 'Ubah penanda operator secara terpisah dari data akun' }, 400);
+    const sesi = await createClient();
+    const { error } = await sesi.rpc('admin_atur_operator', { p_petugas_id: id, p_aktif: b.operator_aktif });
+    if (error) {
+      if (objekBelumAda(error)) return json({ error: 'Penanda operator belum tersedia', kode: KODE_MIGRASI_BELUM }, 409);
+      if (error.code === '42501') return json({ error: 'Akses ditolak' }, 403);
+      if (error.code === 'P0002') return json({ error: 'Akun tidak ditemukan' }, 404);
+      if (error.code === '22023') return json({ error: 'Penanda operator tidak valid' }, 400);
+      console.error('[admin/petugas PATCH] operator gagal', error.code);
+      return json({ error: 'Gagal mengubah penanda operator' }, 500);
+    }
+    return json({ ok: true, operator_aktif: b.operator_aktif });
+  }
 
   const { data: target } = await service
     .from('petugas')

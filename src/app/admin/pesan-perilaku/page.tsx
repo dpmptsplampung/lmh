@@ -1,14 +1,20 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import Link from 'next/link';
-import { AlertCircle, ArrowLeft, Download, Loader2, Printer } from 'lucide-react';
+import { ArrowLeft, Download, Printer, MessageSquare, MessagesSquare } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import { createClient } from '@/lib/supabase/client';
 import RoleNote from '@/components/admin/RoleNote';
-import FilterPeriode from '@/components/admin/survei/FilterPeriode';
-import PanelIkmGlobal from '@/components/admin/survei/PanelIkmGlobal';
-import PanelSpakGlobal, { type ResponseRateGlobal } from '@/components/admin/survei/PanelSpakGlobal';
+import FilterPeriode from './FilterHasil';
+import Tombol from '@/components/ui/Tombol';
+import Kartu from '@/components/ui/Kartu';
+import Skeleton from '@/components/ui/Skeleton';
+import Galat from '@/components/ui/Galat';
+import CatatanKeadaan from '@/components/ui/CatatanKeadaan';
+import { objekBelumAda, KODE_MIGRASI_BELUM } from '@/lib/akses-data/galat';
+import { PanelIkm as PanelIkmGlobal, PanelSpak as PanelSpakGlobal } from './PanelHasil';
+import Tab, { PanelTab } from '@/components/ui/Tab';
+import { type ResponseRateGlobal } from '@/components/admin/survei/PanelSpakGlobal';
 import IkmPanel from '@/components/IkmPanel';
 import type { IkmRow } from '@/lib/ikm';
 import { labelRentang, rentangPreset } from '@/lib/survei/rentang';
@@ -16,7 +22,7 @@ import type { RingkasanIkmGlobal, RingkasanSpakGlobal } from '@/lib/survei/ringk
 import { todayWIB } from '@/lib/time';
 import styles from './pesanPerilaku.module.css';
 
-type Tab = 'ikm' | 'spak';
+type JenisSurvei = 'ikm' | 'spak';
 type Role = 'admin' | 'front_office' | 'petugas';
 type StatusRole = { tahap: 'memuat' } | { tahap: 'gagal' } | { tahap: 'siap'; role: Role; layananNama: string | null; layananId: string | null };
 
@@ -40,9 +46,11 @@ interface RingkasanIkmRow {
 // dengan filter tanggal, dashboard persen, dan unduhan. Petugas layanan: hanya IKM untuk Layanannya sendiri (batas data petugas).
 export default function HasilSurveiPage() {
   const [status, setStatus] = useState<StatusRole>({ tahap: 'memuat' });
+  const [ulang, setUlang] = useState(0);
 
   useEffect(() => {
     (async () => {
+      setStatus({ tahap: 'memuat' });
       try {
         const supabase = createClient();
         const { data: { user } } = await supabase.auth.getUser();
@@ -70,14 +78,14 @@ export default function HasilSurveiPage() {
         setStatus({ tahap: 'gagal' });
       }
     })();
-  }, []);
+  }, [ulang]);
 
   const bolehGlobal = status.tahap === 'siap' && status.role !== 'petugas';
 
   return (
     <>
       <PageHeader
-        title="Hasil Survei Pesan Perilaku"
+        title="Hasil Survei"
         description={
           bolehGlobal
             ? 'Indeks Kepuasan Masyarakat (IKM, PermenPANRB 14/2017) dan Persepsi Anti Korupsi (SPAK), gabungan seluruh pelayanan'
@@ -85,23 +93,16 @@ export default function HasilSurveiPage() {
         }
       >
         {bolehGlobal && (
-          <Link href="/admin/pesan-perilaku/cetak" className="btn btn--secondary btn--sm">
-            <Printer size={16} aria-hidden="true" /> Laporan &amp; Cetak
-          </Link>
+          <Tombol href="/admin/pesan-perilaku/cetak" varian="sekunder" ikon={Printer}>Laporan &amp; Cetak</Tombol>
         )}
       </PageHeader>
 
       <div className={styles.skmContainer}>
         {status.tahap === 'memuat' && (
-          <div className={styles.loading} role="status" aria-label="Memuat">
-            <Loader2 size={28} className="animate-pulse" />
-          </div>
+          <Skeleton bentuk="kartu" jumlah={3} label="Memuat hasil survei" />
         )}
         {status.tahap === 'gagal' && (
-          <div className={styles.errorBox} role="alert">
-            <AlertCircle size={16} style={{ verticalAlign: 'middle', marginRight: 6 }} />
-            Peran Anda tidak dapat dipastikan. Muat ulang halaman atau masuk kembali.
-          </div>
+          <Galat pesan="Peran Anda tidak dapat dipastikan. Muat ulang halaman atau masuk kembali." onRetry={() => setUlang((n) => n + 1)} />
         )}
         {status.tahap === 'siap' && status.role !== 'petugas' && <HasilGlobal />}
         {status.tahap === 'siap' && status.role === 'petugas' && (
@@ -115,23 +116,69 @@ export default function HasilSurveiPage() {
 function HasilGlobal() {
   const hariIni = todayWIB();
   const [rentang, setRentang] = useState(() => rentangPreset('bulan', hariIni));
-  const [tab, setTab] = useState<Tab>('ikm');
+  const [tab, setTab] = useState<JenisSurvei>('ikm');
   const [data, setData] = useState<RingkasanGlobal | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [belum, setBelum] = useState(false);
+  const [ulang, setUlang] = useState(0);
+  const [mengunduh, setMengunduh] = useState(false);
+  const [galatUnduh, setGalatUnduh] = useState('');
   const { dari, sampai } = rentang;
+
+  async function unduhExcel() {
+    if (mengunduh) return;
+    setMengunduh(true);
+    setGalatUnduh('');
+    let pesan = 'Gagal mengunduh Excel. Pastikan Anda masih masuk, lalu coba lagi.';
+    let url: string | undefined;
+    try {
+      const res = await fetch(`/api/admin/survei/export?dari=${dari}&sampai=${sampai}`, { cache: 'no-store' });
+      if (res.status === 409) {
+        pesan = 'Unduh Excel belum tersedia; pembaruan basis data belum diterapkan. Coba lagi setelah pembaruan selesai.';
+        throw new Error('Ekspor belum tersedia');
+      }
+      const tipe = res.headers.get('Content-Type')?.split(';')[0].trim().toLowerCase();
+      if (!res.ok || tipe !== 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+        !/^attachment\b/i.test(res.headers.get('Content-Disposition') ?? '')) {
+        throw new Error('Respons bukan berkas Excel');
+      }
+      const blob = await res.blob();
+      if (blob.size === 0) throw new Error('Berkas Excel kosong');
+      url = URL.createObjectURL(blob);
+      const tautan = document.createElement('a');
+      tautan.href = url;
+      tautan.download = `survei-${dari}-sd-${sampai}.xlsx`;
+      document.body.appendChild(tautan);
+      try { tautan.click(); } finally { tautan.remove(); }
+    } catch {
+      setGalatUnduh(pesan);
+    } finally {
+      if (url) {
+        const objekUrl = url;
+        setTimeout(() => URL.revokeObjectURL(objekUrl), 0);
+      }
+      setMengunduh(false);
+    }
+  }
 
   const muat = useCallback(async (signal: AbortSignal) => {
     setLoading(true);
     setError('');
+    setBelum(false);
     try {
       const res = await fetch(`/api/admin/survei/ringkasan?dari=${dari}&sampai=${sampai}`, { cache: 'no-store', signal });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        const isi = await res.json().catch(() => null);
+        if (isi?.code === KODE_MIGRASI_BELUM || isi?.error === KODE_MIGRASI_BELUM || objekBelumAda(isi)) throw { code: 'PGRST202' };
+        throw new Error(`HTTP ${res.status}`);
+      }
       setData((await res.json()) as RingkasanGlobal);
     } catch (e) {
       if ((e as { name?: string }).name === 'AbortError') return;
       console.error('Hasil survei global:', e);
       setData(null);
+      setBelum(objekBelumAda(e));
       setError('Gagal memuat hasil survei. Pastikan Anda masuk sebagai admin atau Front Office, lalu coba lagi.');
     } finally {
       if (!signal.aborted) setLoading(false);
@@ -140,10 +187,9 @@ function HasilGlobal() {
 
   useEffect(() => {
     const kontrol = new AbortController();
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void muat(kontrol.signal);
+    void Promise.resolve().then(() => { if (!kontrol.signal.aborted) return muat(kontrol.signal); });
     return () => kontrol.abort();
-  }, [muat]);
+  }, [muat, ulang]);
 
   const periodeLabel = labelRentang(dari, sampai);
 
@@ -154,57 +200,24 @@ function HasilGlobal() {
           <h2 className={styles.skmTitle}>Hasil Survei — Seluruh Pelayanan</h2>
           <p className={styles.skmSubtitle}>Angka digabung dari semua Layanan dan Front Office; tidak dipecah per Layanan.</p>
         </div>
-        <Link href="/admin" className={styles.skmBackLink}>
-          <ArrowLeft size={16} />
-          Kembali ke Dashboard
-        </Link>
+        <Tombol href="/admin" varian="sekunder" ikon={ArrowLeft}>Kembali ke Dasbor</Tombol>
       </div>
 
       <FilterPeriode dari={dari} sampai={sampai} hariIni={hariIni} onUbah={setRentang}>
-        <a className={styles.downloadLink} href={`/api/admin/survei/export?dari=${dari}&sampai=${sampai}`}>
-          <Download size={16} aria-hidden="true" />
-          Unduh Excel
-        </a>
-        <Link className={styles.downloadLink} href={`/admin/pesan-perilaku/cetak?dari=${dari}&sampai=${sampai}`}>
-          <Printer size={16} aria-hidden="true" />
-          Cetak / PDF
-        </Link>
+        <Tombol varian="sekunder" ikon={Download} memuat={mengunduh} download href={`/api/admin/survei/export?dari=${dari}&sampai=${sampai}`} onClick={(e) => { e.preventDefault(); void unduhExcel(); }}>Unduh Excel</Tombol>
+        <Tombol varian="sekunder" ikon={Printer} href={`/admin/pesan-perilaku/cetak?dari=${dari}&sampai=${sampai}`}>Cetak / PDF</Tombol>
       </FilterPeriode>
 
-      {error && (
-        <div className={styles.errorBox} role="alert">
-          <AlertCircle size={16} style={{ verticalAlign: 'middle', marginRight: 6 }} />
-          {error}
-        </div>
-      )}
+      {galatUnduh && <Galat pesan={galatUnduh} onRetry={() => { void unduhExcel(); }} />}
+      {belum ? <CatatanKeadaan jenis="menunggu-migrasi" aksi={<Tombol varian="sekunder" onClick={() => setUlang((n) => n + 1)}>Coba lagi</Tombol>}>Hasil survei belum tersedia; pembaruan basis data belum diterapkan.</CatatanKeadaan> : error && <Galat pesan={error} onRetry={() => setUlang((n) => n + 1)} />}
       {data?.terpotong && (
-        <p role="status" style={{ margin: '0 0 var(--space-4)', fontSize: 'var(--text-sm)' }}>
-          Jawaban melebihi batas baris dan terpotong; persempit periode agar angka lengkap.
-        </p>
+        <CatatanKeadaan jenis="info">Jawaban melebihi batas baris dan terpotong; persempit periode agar angka lengkap.</CatatanKeadaan>
       )}
 
-      <div className={styles.tabs} role="tablist" aria-label="Jenis survei">
-        {(['ikm', 'spak'] as const).map((t) => (
-          <button
-            key={t}
-            type="button"
-            role="tab"
-            id={`tab-${t}`}
-            aria-selected={tab === t}
-            aria-controls={`panel-${t}`}
-            className={`${styles.tab} ${tab === t ? styles.tabActive : ''}`}
-            onClick={() => setTab(t)}
-          >
-            {t === 'ikm' ? 'IKM' : 'SPAK'}
-          </button>
-        ))}
-      </div>
-
-      <div id={`panel-${tab}`} role="tabpanel" aria-labelledby={`tab-${tab}`}>
+      <Kartu padding="rapat"><Tab id="survei" label="Jenis survei" tab={[{ kunci: 'ikm', label: 'IKM' }, { kunci: 'spak', label: 'SPAK' }]} aktif={tab} onGanti={(t) => setTab(t as JenisSurvei)} /></Kartu>
+      <PanelTab idTab="survei" kunci={tab} aktif={tab}>
         {loading ? (
-          <div className={styles.loading} role="status" aria-label="Memuat">
-            <Loader2 size={28} className="animate-pulse" />
-          </div>
+          <Skeleton bentuk="kartu" jumlah={3} label="Memuat hasil survei" />
         ) : data ? (
           tab === 'ikm' ? (
             <PanelIkmGlobal data={data.ikm} responseRate={data.responseRate} periodeLabel={periodeLabel} />
@@ -212,6 +225,10 @@ function HasilGlobal() {
             <PanelSpakGlobal data={data.spak} responseRate={data.responseRate} periodeLabel={periodeLabel} />
           )
         ) : null}
+      </PanelTab>
+      <div className={styles.aksi}>
+        <Tombol href="/admin/saran" varian="sekunder" ikon={MessageSquare}>Saran</Tombol>
+        <Tombol href="/admin/pengaduan" varian="sekunder" ikon={MessagesSquare}>Pengaduan</Tombol>
       </div>
     </>
   );
@@ -223,6 +240,8 @@ function HasilPetugas({ layananNama, layananId }: { layananNama: string; layanan
   const [rows, setRows] = useState<IkmRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [belum, setBelum] = useState(false);
+  const [ulang, setUlang] = useState(0);
   const { dari, sampai } = rentang;
 
   useEffect(() => {
@@ -230,6 +249,7 @@ function HasilPetugas({ layananNama, layananId }: { layananNama: string; layanan
     (async () => {
       setLoading(true);
       setError('');
+      setBelum(false);
       try {
         const { data, error: rpcErr } = await createClient().rpc('ringkasan_ikm', { p_start: dari, p_end: sampai });
         if (rpcErr) throw rpcErr;
@@ -244,7 +264,11 @@ function HasilPetugas({ layananNama, layananId }: { layananNama: string; layanan
         );
       } catch (e) {
         console.error('SKM dashboard error:', e);
-        if (!batal) setError('Gagal memuat data IKM. Pastikan Anda masuk sebagai admin/petugas.');
+        if (!batal) {
+          setRows([]);
+          setBelum(objekBelumAda(e));
+          setError('Gagal memuat data IKM. Pastikan Anda masuk sebagai admin/petugas.');
+        }
       } finally {
         if (!batal) setLoading(false);
       }
@@ -252,7 +276,7 @@ function HasilPetugas({ layananNama, layananId }: { layananNama: string; layanan
     return () => {
       batal = true;
     };
-  }, [dari, sampai]);
+  }, [dari, sampai, ulang]);
 
   // Petugas hanya melihat IKM Layanannya.
   const barisIkm = rows.filter((r) => r.layanan_id === layananId);
@@ -267,19 +291,10 @@ function HasilPetugas({ layananNama, layananId }: { layananNama: string; layanan
         </div>
       </div>
       <FilterPeriode dari={dari} sampai={sampai} hariIni={hariIni} onUbah={setRentang} />
-      {error && (
-        <div className={styles.errorBox} role="alert">
-          <AlertCircle size={16} style={{ verticalAlign: 'middle', marginRight: 6 }} />
-          {error}
-        </div>
-      )}
-      {loading ? (
-        <div className={styles.loading} role="status" aria-label="Memuat">
-          <Loader2 size={28} className="animate-pulse" />
-        </div>
-      ) : (
-        <IkmPanel rows={barisIkm} periodLabel={labelRentang(dari, sampai)} mode="admin" />
-      )}
+      {loading ? <Skeleton bentuk="kartu" jumlah={3} label="Memuat IKM layanan" />
+        : belum ? <CatatanKeadaan jenis="menunggu-migrasi" aksi={<Tombol varian="sekunder" onClick={() => setUlang((n) => n + 1)}>Coba lagi</Tombol>}>Data IKM belum tersedia; pembaruan basis data belum diterapkan.</CatatanKeadaan>
+        : error ? <Galat pesan={error} onRetry={() => setUlang((n) => n + 1)} />
+        : <IkmPanel rows={barisIkm} periodLabel={labelRentang(dari, sampai)} mode="admin" />}
     </>
   );
 }

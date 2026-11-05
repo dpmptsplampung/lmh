@@ -86,6 +86,17 @@ async function bukaFormSelesai() {
 }
 
 describe('Penanganan: memuat data', () => {
+  it.each([
+    ['2026-10-13T01:30:00.000Z', '08.30'],
+    ['bukan tanggal', '-'],
+    [null, '-'],
+  ])('jam mulai penanganan memakai format WIB bersama untuk %s', async (mulai_at, jam) => {
+    siapkan({ berjalan: [berjalan({ mulai_at })] });
+    render(<PenangananFoPage />);
+    expect(await screen.findByText(`Mulai ${jam} WIB`)).toBeInTheDocument();
+    expect(screen.queryByText(/Invalid Date/)).toBeNull();
+  });
+
   it('menampilkan penanganan berjalan milik saya (hanya tahap FO) dan memasang realtime', async () => {
     siapkan();
     render(<PenangananFoPage />);
@@ -569,5 +580,22 @@ describe('Penanganan: dialog eskalasi (fo_eskalasi)', () => {
 
     selesai({ data: hasilEskalasi(), error: null });
     expect(await screen.findByTestId('nomor-tiket')).toHaveTextContent('OS-014');
+  });
+});
+
+describe('Penanganan: keadaan Dasbor', () => {
+  it('galat awal tidak ditampilkan sebagai hitungan nol atau riwayat kosong', async () => {
+    siapkan();
+    m.h.tabel.penanganan = { data: null, error: { message: 'koneksi gagal' } };
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    render(<PenangananFoPage />);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Gagal memuat data penanganan/);
+    expect(screen.queryByLabelText('Ringkasan penanganan')).toBeNull();
+    expect(screen.queryByText('Belum ada penanganan yang selesai hari ini.')).toBeNull();
+    siapkan();
+    fireEvent.click(screen.getByRole('button', { name: 'Coba lagi' }));
+    expect(await screen.findByRole('button', { name: 'Selesaikan penanganan Budi Santoso' })).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).toBeNull();
+    spy.mockRestore();
   });
 });

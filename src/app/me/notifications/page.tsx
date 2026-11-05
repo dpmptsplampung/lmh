@@ -1,10 +1,17 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
-import { Bell, ArrowLeft, BellOff, Check, Mail } from 'lucide-react';
+import { Bell, BellOff, Check, Mail } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { MutasiError, mutasiBolehKosong, mutasiInsert } from '@/lib/supabase/mutate';
+import { formatTanggalWaktu } from '@/lib/utils';
+import PageHeader from '@/components/layout/PageHeader';
+import Kartu from '@/components/ui/Kartu';
+import Lencana, { type NadaLencana } from '@/components/ui/Lencana';
+import Tombol from '@/components/ui/Tombol';
+import Skeleton from '@/components/ui/Skeleton';
+import StatusKosong from '@/components/ui/StatusKosong';
+import Galat from '@/components/ui/Galat';
 import styles from './notifications.module.css';
 
 interface NotifRow {
@@ -31,6 +38,8 @@ export default function NotificationsPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [galatMuat, setGalatMuat] = useState(false);
+  const [percobaan, setPercobaan] = useState(0);
 
   useEffect(() => {
     const supabase = createClient();
@@ -65,10 +74,17 @@ export default function NotificationsPage() {
     }
 
     load().catch(() => {
-      setMessage('Gagal memuat data. Silakan refresh halaman.');
+      // Gagal memuat BUKAN "belum ada notifikasi": tampilkan galat dengan "Coba lagi".
+      setGalatMuat(true);
       setLoading(false);
     });
-  }, []);
+  }, [percobaan]);
+
+  const ulangiMuat = () => {
+    setGalatMuat(false);
+    setLoading(true);
+    setPercobaan((n) => n + 1);
+  };
 
   useEffect(() => {
     if (!pushSupported) return;
@@ -184,107 +200,120 @@ export default function NotificationsPage() {
     }
   };
 
+  const nadaStatus = (status: string): { label: string; nada: NadaLencana } => {
+    switch (status) {
+      case 'sent':
+        return { label: 'Terkirim', nada: 'sukses' };
+      case 'pending':
+      case 'processing':
+        return { label: 'Menunggu dikirim', nada: 'peringatan' };
+      case 'failed':
+        return { label: 'Gagal terkirim', nada: 'bahaya' };
+      case 'skipped':
+        return { label: 'Dilewati', nada: 'netral' };
+      default:
+        return { label: status, nada: 'netral' };
+    }
+  };
+
   const formatDate = (iso: string) => {
     try {
-      return new Date(iso).toLocaleString('id-ID', {
-        dateStyle: 'medium',
-        timeStyle: 'short',
-      });
+      return formatTanggalWaktu(iso);
     } catch {
       return iso;
     }
   };
 
+  const kepala = (
+    <PageHeader
+      title="Notifikasi"
+      description="Kelola preferensi notifikasi dan lihat riwayat pesan Anda."
+      kembali={{ href: '/me', label: 'Kembali' }}
+    />
+  );
+
   if (loading) {
     return (
       <div className={styles.page}>
-        <div className={styles.container}>
-          <div className="spinner" />
-        </div>
+        {kepala}
+        <Skeleton bentuk="kartu" jumlah={2} label="Memuat notifikasi" />
+      </div>
+    );
+  }
+
+  if (galatMuat) {
+    return (
+      <div className={styles.page}>
+        {kepala}
+        <Galat pesan="Notifikasi belum bisa dimuat. Periksa koneksi Anda, lalu coba lagi." onRetry={ulangiMuat} />
       </div>
     );
   }
 
   return (
     <div className={styles.page}>
-      <div className={styles.container}>
-        <Link href="/me" className={styles.backLink}>
-          <ArrowLeft size={16} />
-          <span>Kembali</span>
-        </Link>
+      {kepala}
 
-        <header className={styles.header}>
-          <Bell size={28} />
-          <h1>Notifikasi</h1>
-          <p className={styles.subtitle}>
-            Kelola preferensi notifikasi dan lihat riwayat pesan Anda.
+      <Kartu judul="Notifikasi Push">
+        <div className={styles.pushCard}>
+          <p className={styles.pushDesc}>
+            {pushSupported
+              ? 'Terima pemberitahuan langsung di browser Anda.'
+              : 'Notifikasi push tidak didukung di browser ini.'}
           </p>
-        </header>
+          <Tombol
+            varian={pushEnabled ? 'sekunder' : 'utama'}
+            ikon={pushEnabled ? Check : BellOff}
+            disabled={!pushSupported || busy}
+            data-enabled={pushEnabled}
+            onClick={handleTogglePush}
+            className={styles.toggleBtn}
+          >
+            {pushEnabled ? 'Aktif' : 'Aktifkan notifikasi push'}
+          </Tombol>
+        </div>
+        {message && (
+          <p className={styles.message} role="status">
+            {message}
+          </p>
+        )}
+      </Kartu>
 
-        <section className={styles.pushSection}>
-          <div className={styles.pushCard}>
-            <div className={styles.pushInfo}>
-              <strong>Notifikasi Push</strong>
-              <p className={styles.pushDesc}>
-                {pushSupported
-                  ? 'Terima pemberitahuan langsung di browser Anda.'
-                  : 'Notifikasi push tidak didukung di browser ini.'}
-              </p>
-            </div>
-            <button
-              type="button"
-              className={styles.toggleBtn}
-              disabled={!pushSupported || busy}
-              data-enabled={pushEnabled}
-              onClick={handleTogglePush}
-            >
-              {pushEnabled ? (
-                <>
-                  <Check size={16} /> Aktif
-                </>
-              ) : (
-                <>
-                  <BellOff size={16} /> Aktifkan notifikasi push
-                </>
-              )}
-            </button>
-          </div>
-          {message && <p className={styles.message}>{message}</p>}
-        </section>
-
-        <section className={styles.listSection}>
-          <h2 className={styles.listTitle}>Riwayat Notifikasi</h2>
-          {notifications.length === 0 ? (
-            <div className={styles.empty}>
-              <BellOff size={36} />
-              <p>Belum ada notifikasi.</p>
-            </div>
-          ) : (
-            <ul className={styles.list}>
-              {notifications.map((n) => (
+      <Kartu judul="Riwayat Notifikasi">
+        {notifications.length === 0 ? (
+          <StatusKosong
+            ikon={BellOff}
+            judul="Belum ada notifikasi."
+            isi="Pengingat kunjungan dan kabar layanan akan muncul di sini."
+          />
+        ) : (
+          <ul className={styles.list}>
+            {notifications.map((n) => {
+              const st = nadaStatus(n.status);
+              return (
                 <li key={n.id} className={styles.notifItem} data-status={n.status}>
-                  <div className={styles.notifIcon}>
-                    {n.kanal === 'email' ? <Mail size={18} /> : <Bell size={18} />}
-                  </div>
+                  <span className={styles.notifIcon}>
+                    {n.kanal === 'email' ? (
+                      <Mail size={18} strokeWidth={1.75} aria-hidden="true" />
+                    ) : (
+                      <Bell size={18} strokeWidth={1.75} aria-hidden="true" />
+                    )}
+                  </span>
                   <div className={styles.notifBody}>
-                    <div className={styles.notifSubject}>
-                      {n.subjek || 'Notifikasi'}
-                    </div>
+                    <p className={styles.notifSubject}>{n.subjek || 'Notifikasi'}</p>
                     <p className={styles.notifText}>{n.body}</p>
                     <div className={styles.notifMeta}>
-                      <span className={styles.notifKanal}>{n.kanal}</span>
-                      <span className={styles.notifStatus} data-status={n.status}>
-                        {n.status}
-                      </span>
-                      <time>{formatDate(n.created_at)}</time>
+                      <Lencana nada="netral">{n.kanal === 'email' ? 'Email' : 'Push'}</Lencana>
+                      <Lencana nada={st.nada} titik>{st.label}</Lencana>
+                      <time dateTime={n.created_at}>{formatDate(n.created_at)}</time>
                     </div>
                   </div>
                 </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      </div>
+              );
+            })}
+          </ul>
+        )}
+      </Kartu>
     </div>
   );
 }

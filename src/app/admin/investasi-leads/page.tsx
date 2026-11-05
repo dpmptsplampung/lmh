@@ -1,14 +1,17 @@
 'use client';
 
+import tampilan from './page.dasbor.module.css';
+
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import {
-  ArrowLeft,
-  Loader2,
-  AlertCircle,
-  TrendingUp,
-  Search,
-} from 'lucide-react';
+import { ArrowLeft, TrendingUp, Search } from 'lucide-react';
+import Kartu from '@/components/ui/Kartu';
+import Tabel from '@/components/ui/Tabel';
+import Lencana, { type NadaLencana } from '@/components/ui/Lencana';
+import Skeleton from '@/components/ui/Skeleton';
+import StatusKosong from '@/components/ui/StatusKosong';
+import Galat from '@/components/ui/Galat';
+import { formatTanggal } from '@/lib/utils';
 import PageHeader from '@/components/layout/PageHeader';
 import Pagination from '@/components/Pagination';
 import { createClient } from '@/lib/supabase/client';
@@ -41,24 +44,8 @@ interface LeadRow {
   investment_documents: { judul: string }[] | null;
 }
 
-function statusClass(status: LeadStatus): string {
-  switch (status) {
-    case 'baru': return styles.statusBaru;
-    case 'dihubungi': return styles.statusDihubungi;
-    case 'berlanjut': return styles.statusBerlanjut;
-    case 'ditolak': return styles.statusDitolak;
-    case 'selesai': return styles.statusSelesai;
-  }
-}
-
-function formatDate(iso: string): string {
-  try {
-    const d = new Date(iso);
-    return d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
-  } catch {
-    return iso;
-  }
-}
+const statusNada = (status: LeadStatus): NadaLencana => status === 'baru' ? 'info' : status === 'ditolak' ? 'bahaya' : status === 'selesai' ? 'sukses' : 'netral';
+const formatDate = (iso: string) => formatTanggal(iso, { day: '2-digit', month: 'short' });
 
 function truncate(text: string | null, max: number): string {
   if (!text) return '—';
@@ -154,25 +141,18 @@ export default function InvestasiLeadsAdminPage() {
         <div className={styles.header}>
           <div>
             <h2 className={styles.title}>
-              <TrendingUp size={20} style={{ color: 'var(--color-primary-500)' }} />
+              <TrendingUp size={20} className={tampilan.area1}  />
               Daftar Lead
             </h2>
             <p className={styles.subtitle}>
-              {totalCount} lead{statusFilter !== 'semua' ? ` (${STATUS_LABELS[statusFilter]})` : ''}
+              {error ? '—' : totalCount} lead{statusFilter !== 'semua' ? ` (${STATUS_LABELS[statusFilter]})` : ''}
             </p>
           </div>
           <Link href="/admin" className={styles.backLink}>
             <ArrowLeft size={16} />
-            Kembali ke Dashboard
+            Kembali ke Dasbor
           </Link>
         </div>
-
-        {error && (
-          <div className={styles.errorBox} role="alert">
-            <AlertCircle size={16} style={{ verticalAlign: 'middle', marginRight: 6 }} />
-            {error}
-          </div>
-        )}
 
         <div className={styles.filterBar}>
           <div className={styles.filterGroup}>
@@ -181,8 +161,7 @@ export default function InvestasiLeadsAdminPage() {
               className={styles.filterSelect}
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as 'semua' | LeadStatus)}
-              aria-label="Filter status"
-            >
+              aria-label="Filter status">
               <option value="semua">Semua</option>
               {STATUS_OPTIONS.map((s) => (
                 <option key={s} value={s}>{STATUS_LABELS[s]}</option>
@@ -205,70 +184,30 @@ export default function InvestasiLeadsAdminPage() {
           </div>
         </div>
 
-        {loading ? (
-          <div className={styles.loading}>
-            <Loader2 size={28} className="animate-pulse" />
-          </div>
-        ) : (
-          <div className={styles.tableSection}>
-            <div className={styles.tableWrapper}>
-              <table className={styles.table}>
-                <thead>
-                  <tr>
-                    <th>Tanggal</th>
-                    <th>Dokumen</th>
-                    <th>Nama</th>
-                    <th>Email</th>
-                    <th>Instansi</th>
-                    <th>Minat</th>
-                    <th>Status</th>
-                    <th>Aksi</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className={styles.tableEmpty}>
-                        <TrendingUp size={20} style={{ verticalAlign: 'middle', marginRight: 6 }} />
-                        Belum ada lead investasi
-                      </td>
-                    </tr>
-                  ) : (
-                    rows.map((r) => (
-                      <tr key={r.id}>
-                        <td style={{ whiteSpace: 'nowrap' }}>{formatDate(r.created_at)}</td>
-                        <td>{r.investment_documents?.[0]?.judul ?? '—'}</td>
-                        <td style={{ fontWeight: 500 }}>{r.nama}</td>
-                        <td style={{ fontSize: 'var(--text-xs)' }}>{r.email}</td>
-                        <td>{r.instansi ?? '—'}</td>
-                        <td style={{ maxWidth: '200px' }} title={r.minat ?? ''}>{truncate(r.minat, 60)}</td>
-                        <td>
-                          <span className={`${styles.statusBadge} ${statusClass(r.status)}`}>
-                            {STATUS_LABELS[r.status]}
-                          </span>
-                        </td>
-                        <td>
-                          <select
-                            className={styles.actionSelect}
-                            value={r.status}
-                            onChange={(e) => handleStatusChange(r.id, e.target.value as LeadStatus)}
-                            disabled={updatingId === r.id}
-                            aria-label={`Ubah status lead ${r.nama}`}
-                          >
-                            {STATUS_OPTIONS.map((s) => (
-                              <option key={s} value={s}>{STATUS_LABELS[s]}</option>
-                            ))}
-                          </select>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-            <Pagination page={page} pageSize={PAGE_SIZE} total={totalCount} onPageChange={setPage} />
-          </div>
-        )}
+        <Kartu judul="Lead investasi" padding="tanpa">
+          {loading ? <Skeleton bentuk="baris" jumlah={5} label="Memuat lead investasi" /> : error ? (
+            <Galat pesan={error} onRetry={() => { void loadData(); }} />
+          ) : (
+            <>
+              <Tabel caption="Daftar lead investasi (WIB)" baris={rows} kunciBaris="id"
+                kosong={<StatusKosong ikon={TrendingUp} judul="Belum ada lead investasi" />} kolom={[
+                  { kunci: 'tanggal', judul: 'Tanggal', render: (r) => formatDate(r.created_at) },
+                  { kunci: 'dokumen', judul: 'Dokumen', render: (r) => r.investment_documents?.[0]?.judul ?? '—' },
+                  { kunci: 'nama', judul: 'Nama', judulBaris: true },
+                  { kunci: 'email', judul: 'Email' },
+                  { kunci: 'instansi', judul: 'Instansi', render: (r) => r.instansi ?? '—' },
+                  { kunci: 'minat', judul: 'Minat', render: (r) => <span title={r.minat ?? ''}>{truncate(r.minat, 60)}</span> },
+                  { kunci: 'status', judul: 'Status', render: (r) => <Lencana nada={statusNada(r.status)}>{STATUS_LABELS[r.status]}</Lencana> },
+                  { kunci: 'aksi', judul: 'Aksi', render: (r) => <select className={styles.actionSelect} value={r.status}
+                    onChange={(e) => handleStatusChange(r.id, e.target.value as LeadStatus)} disabled={updatingId === r.id}
+                    aria-label={`Ubah status lead ${r.nama}`}>
+                    {STATUS_OPTIONS.map((status) => <option key={status} value={status}>{STATUS_LABELS[status]}</option>)}
+                  </select> },
+                ]} />
+              <Pagination page={page} pageSize={PAGE_SIZE} total={totalCount} onPageChange={setPage} />
+            </>
+          )}
+        </Kartu>
       </div>
     </>
   );

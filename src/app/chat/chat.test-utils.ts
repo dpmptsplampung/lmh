@@ -4,6 +4,9 @@ import { vi } from 'vitest';
 export const L_BANK = '11111111-1111-4111-8111-111111111111';
 export const L_BPJS = '22222222-2222-4222-8222-222222222222';
 
+/** Akun Google nyata menurut data Auth: nonanonim + identitas Google (gerbang R5 memeriksa ini). */
+export const PENGGUNA_GOOGLE = { id: 'auth-1', is_anonymous: false, identities: [{ provider: 'google' }] };
+
 export interface OpsiHarness {
   layanan?: Array<{ id: string; nama: string; chatbot_aktif: boolean; punya_chat?: boolean }>;
   /** Hasil RPC chat_percakapan_saya; undefined = RPC belum ada (cadangan select chat_sesi). */
@@ -18,6 +21,10 @@ export interface OpsiHarness {
   petugas?: { status: number; body: unknown };
   ai?: { status: number; body: unknown };
   postPesan?: (body: { sesi_id: string; isi: string }) => { status: number; body: unknown };
+  /** Pengguna dari auth.getUser(); null = belum masuk. Bawaan: `PENGGUNA_GOOGLE`. */
+  user?: Record<string, unknown> | null;
+  /** Belum ada baris `pengunjung`: halaman membuat profil sendiri. */
+  tanpaProfil?: boolean;
 }
 
 export function siapkanHarness(
@@ -33,7 +40,7 @@ export function siapkanHarness(
     const b: Record<string, unknown> = {};
     for (const k of ['select', 'eq', 'neq', 'order', 'or']) b[k] = () => b;
     b.single = () =>
-      Promise.resolve({ data: table === 'pengunjung' ? { id: 'peng-1', nama: 'Budi' } : null, error: null });
+      Promise.resolve({ data: table === 'pengunjung' && !opsi.tanpaProfil ? { id: 'peng-1', nama: 'Budi' } : null, error: null });
     b.insert = (payload: unknown) => {
       inserts.push({ table, payload });
       const sesudah: Record<string, unknown> = {};
@@ -59,8 +66,10 @@ export function siapkanHarness(
     if (nama === 'chat_percakapan_saya' && opsi.rpcDaftar !== undefined) return { data: opsi.rpcDaftar, error: null };
     return { data: null, error: { code: 'PGRST202', message: 'tidak ada' } };
   });
+  const signInWithOAuth = vi.fn();
+  const pengguna = opsi.user === undefined ? PENGGUNA_GOOGLE : opsi.user;
   (createClient as ReturnType<typeof vi.fn>).mockReturnValue({
-    auth: { getUser: () => Promise.resolve({ data: { user: { id: 'auth-1' } }, error: null }), signInWithOAuth: vi.fn() },
+    auth: { getUser: () => Promise.resolve({ data: { user: pengguna }, error: null }), signInWithOAuth },
     from: dari,
     rpc,
     channel: () => saluran,
@@ -90,7 +99,7 @@ export function siapkanHarness(
     return balas(404, {});
   });
   vi.stubGlobal('fetch', fetchMock);
-  return { inserts, rpc, panggilan, fetchMock };
+  return { inserts, rpc, panggilan, fetchMock, signInWithOAuth };
 }
 
 export const STATUS_BUKA = {

@@ -1,7 +1,17 @@
 'use client';
 
+import Tombol from '@/components/ui/Tombol';
+import Kartu from '@/components/ui/Kartu';
+import Field from '@/components/ui/Field';
+import PemilihRentang from '@/components/ui/PemilihRentang';
+import Skeleton from '@/components/ui/Skeleton';
+import Galat from '@/components/ui/Galat';
+import StatusKosong from '@/components/ui/StatusKosong';
+import { History } from 'lucide-react';
+
+import tampilan from './page.dasbor.module.css';
+
 import { useCallback, useEffect, useState } from 'react';
-import { Loader2 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import Pagination from '@/components/Pagination';
 import RoleNote from '@/components/admin/RoleNote';
@@ -61,53 +71,40 @@ export default function RiwayatPage() {
 
   return (
     <>
-      <PageHeader title="Riwayat Perubahan" description="Siapa mengubah apa dan kapan" />
-      <div style={{ padding: 'clamp(var(--space-4), 4vw, var(--space-8))' }}>
+      <PageHeader title="Riwayat Perubahan" description="Siapa mengubah apa dan kapan" meta="Waktu ditampilkan dalam WIB" />
+      <div className={tampilan.area1}>
         <RoleNote>Hanya Admin yang dapat melihat halaman ini. Nilai rahasia (token, kunci) tidak pernah ditampilkan.</RoleNote>
-        <form onSubmit={terapkan} aria-label="Filter riwayat"
-          style={{ display: 'grid', gap: 'var(--space-3)', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', marginBottom: 'var(--space-4)' }}>
-          <div className="form-group">
-            <label className="form-label" htmlFor="rwJenis">Jenis</label>
-            <select id="rwJenis" className="form-input" value={draft.jenis} onChange={(e) => setDraft({ ...draft, jenis: e.target.value })}>
-              <option value="">Semua</option>
-              {JENIS.map((j) => <option key={j} value={j}>{j}</option>)}
-            </select>
-          </div>
-          <div className="form-group">
-            <label className="form-label" htmlFor="rwOrang">Pelaku</label>
-            <select id="rwOrang" className="form-input" value={draft.orang} onChange={(e) => setDraft({ ...draft, orang: e.target.value })}>
-              <option value="">Semua</option>
-              {orang.map((o) => <option key={o.id} value={o.id}>{o.nama}</option>)}
-            </select>
-          </div>
-          <div className="form-group">
-            <label className="form-label" htmlFor="rwDari">Dari tanggal</label>
-            <input id="rwDari" type="date" className="form-input" value={draft.dari} onChange={(e) => setDraft({ ...draft, dari: e.target.value })} />
-          </div>
-          <div className="form-group">
-            <label className="form-label" htmlFor="rwSampai">Sampai tanggal</label>
-            <input id="rwSampai" type="date" className="form-input" value={draft.sampai} onChange={(e) => setDraft({ ...draft, sampai: e.target.value })} />
-          </div>
-          <div style={{ alignSelf: 'end' }}>
-            <button type="submit" className="btn btn--primary">Terapkan</button>
-          </div>
-        </form>
-        <div className="table-wrapper">
-          {loading ? (
-            <div style={{ padding: 'var(--space-8)', textAlign: 'center' }} role="status" aria-label="Memuat">
-              <Loader2 size={24} className="animate-pulse" style={{ margin: '0 auto' }} />
-            </div>
-          ) : loadError ? (
-            <div style={{ padding: 'var(--space-8)', textAlign: 'center' }} role="alert" className="form-error">{loadError}</div>
+        <Kartu judul="Filter riwayat">
+          <form onSubmit={terapkan} aria-label="Filter riwayat" className={tampilan.filter}>
+            <Field label="Jenis">
+              <select id="rwJenis" value={draft.jenis} onChange={(e) => setDraft({ ...draft, jenis: e.target.value })}>
+                <option value="">Semua</option>
+                {JENIS.map((j) => <option key={j} value={j}>{j}</option>)}
+              </select>
+            </Field>
+            <Field label="Pelaku">
+              <select id="rwOrang" value={draft.orang} onChange={(e) => setDraft({ ...draft, orang: e.target.value })}>
+                <option value="">Semua</option>
+                {orang.map((o) => <option key={o.id} value={o.id}>{o.nama}</option>)}
+              </select>
+            </Field>
+            <PemilihRentang label="Rentang tanggal" dari={draft.dari} sampai={draft.sampai}
+              onUbah={({ dari, sampai }) => setDraft({ ...draft, dari, sampai })} />
+            <Tombol type="submit">Terapkan</Tombol>
+          </form>
+        </Kartu>
+        <Kartu judul="Riwayat perubahan" padding="tanpa">
+          {loading ? <Skeleton bentuk="baris" jumlah={5} label="Memuat riwayat" /> : loadError ? (
+            <Galat pesan={loadError} onRetry={() => { setLoading(true); void load(filter, page); }} />
           ) : items.length === 0 ? (
-            <div style={{ padding: 'var(--space-8)', textAlign: 'center', color: 'var(--text-tertiary)' }}>Tidak ada riwayat untuk filter ini.</div>
+            <StatusKosong ikon={History} judul="Tidak ada riwayat untuk filter ini." />
           ) : (
             <>
               <RiwayatTable items={items} />
               <Pagination page={page} pageSize={LIMIT} total={total} onPageChange={setPage} />
             </>
           )}
-        </div>
+        </Kartu>
       </div>
     </>
   );

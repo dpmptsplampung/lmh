@@ -3,18 +3,14 @@
 import { Bar, BarChart, CartesianGrid, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { RingkasanIkmGlobal } from '@/lib/survei/ringkasan-global';
 import { persen } from '@/lib/survei/ringkasan-global';
+import { RENTANG_MUTU_IKM } from '@/lib/ikm';
 import { WARNA_BESARAN, WARNA_GRID, fmt1, fmtPersen } from './grafik';
 import KartuKpi from './KartuKpi';
 import TrenGrafik from './TrenGrafik';
 import type { ResponseRateGlobal } from './PanelSpakGlobal';
 import styles from './HasilGlobal.module.css';
 
-const MUTU: { kode: 'A' | 'B' | 'C' | 'D'; label: string; rentang: string }[] = [
-  { kode: 'A', label: 'Sangat Baik', rentang: '88 - 100' },
-  { kode: 'B', label: 'Baik', rentang: '76 - 87,99' },
-  { kode: 'C', label: 'Kurang Baik', rentang: '60 - 75,99' },
-  { kode: 'D', label: 'Tidak Baik', rentang: 'di bawah 60' },
-];
+const MUTU = RENTANG_MUTU_IKM;
 
 interface Props {
   data: RingkasanIkmGlobal;

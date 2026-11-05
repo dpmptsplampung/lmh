@@ -18,6 +18,7 @@ import {
   type PengunjungTerpilih,
   type SaranPengunjung,
 } from '@/lib/fo/cari-pengunjung';
+import { formatTanggal } from '@/lib/utils';
 import { todayWIB } from '@/lib/time';
 import styles from './saran-pengunjung.module.css';
 
@@ -27,7 +28,7 @@ const JEDA_TUTUP_BLUR_MS = 150;
 function formatTanggalId(tanggal: string): string {
   const d = new Date(`${tanggal}T00:00:00+07:00`);
   if (Number.isNaN(d.getTime())) return tanggal;
-  return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta' });
+  return formatTanggal(d);
 }
 
 const PESAN_AMBIL = {
@@ -218,6 +219,7 @@ export default function InputSaranPengunjung({
           className={styles.daftar}
         >
           {saran.map((s, i) => (
+            // eslint-disable-next-line jsx-a11y/click-events-have-key-events -- pola combobox ARIA: papan ketik ditangani input (panah/Enter) lewat aria-activedescendant
             <li
               key={s.id}
               id={`${idDaftar}-${i}`}

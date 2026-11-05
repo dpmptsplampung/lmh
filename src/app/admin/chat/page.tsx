@@ -7,20 +7,23 @@ import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
   MessageSquare,
-  Bot,
-  CheckCircle2,
-  AlertCircle,
-  Loader2,
   Wifi,
   WifiOff,
   UserCheck,
   UserCog,
   ArrowRight,
+  Sparkles,
 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/components/Toast';
-import { truncate, relativeTime } from '@/lib/utils';
+import { truncate, relativeTime, formatTanggal, formatWaktu } from '@/lib/utils';
+import CatatanKeadaan from '@/components/ui/CatatanKeadaan';
+import Galat from '@/components/ui/Galat';
+import Lencana, { type NadaLencana } from '@/components/ui/Lencana';
+import Skeleton from '@/components/ui/Skeleton';
+import StatusKosong from '@/components/ui/StatusKosong';
+import Tombol from '@/components/ui/Tombol';
 import { urlLoginAlasan } from '@/lib/sesi-staf';
 import {
   GalatAksiChat,
@@ -47,7 +50,6 @@ import {
   useFallbackPoll,
   useOnSubscribed,
   makeThrottle,
-  waktuLabel,
   type ChatMsg,
   type RtState,
 } from '@/app/chat/merge';
@@ -96,10 +98,10 @@ interface TahapChat {
 type DialogAksi = 'ambil_alih' | 'teruskan' | 'selesai';
 
 const statusConfig = {
-  bot: { label: 'Bot', icon: <Bot size={12} />, className: 'badge--bot' },
-  eskalasi: { label: 'Menunggu Diambil', icon: <AlertCircle size={12} />, className: 'badge--eskalasi' },
-  aktif: { label: 'Aktif', icon: <MessageSquare size={12} />, className: 'badge--aktif' },
-  selesai: { label: 'Selesai', icon: <CheckCircle2 size={12} />, className: 'badge--selesai' },
+  bot: { label: 'Bot' },
+  eskalasi: { label: 'Menunggu Diambil' },
+  aktif: { label: 'Aktif' },
+  selesai: { label: 'Selesai' },
 };
 
 export default function AdminChatPage() {
@@ -114,6 +116,9 @@ export default function AdminChatPage() {
   const [riwayatMemuat, setRiwayatMemuat] = useState(false);
   const [messageInput, setMessageInput] = useState('');
   const [loading, setLoading] = useState(true);
+  const [daftarDimuat, setDaftarDimuat] = useState(false);
+  const [daftarGalat, setDaftarGalat] = useState('');
+  const [penanganGalat, setPenanganGalat] = useState(false);
   const [loadingDraft, setLoadingDraft] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState('');
@@ -232,45 +237,56 @@ export default function AdminChatPage() {
     const seq = ++listSeq.current;
     const supabase = createClient();
     // Daftar sesi + tahap penanganan chat yang masih terbuka (siapa memegang / menunggu di tahap apa), lewat RLS.
-    const [{ data, error }, resTahap] = await Promise.all([
-      supabase.rpc('chat_sesi_ringkas', {
-        p_limit: 100,
-        p_include_selesai: showSelesaiRef.current,
-      }),
-      supabase
-        .from('penanganan')
-        .select('id, chat_sesi_id, peran_tahap, status, layanan_id, penangan_id')
-        .eq('saluran', 'chat')
-        .in('status', ['menunggu', 'berjalan']),
-    ]);
-    if (seq !== listSeq.current) return;
-    if (error) {
-      toast('Gagal memuat sesi chat', 'error');
-      return;
-    }
-    let rows = (data ?? []) as RingkasRow[];
-    // Petugas biasa hanya melihat layanannya sendiri.
-    if (layananFilterRef.current) {
-      rows = rows.filter((r) => r.layanan_id === layananFilterRef.current);
-    }
-    if (resTahap.error) {
-      toast('Gagal memuat status penanganan chat', 'error');
-    } else {
-      const peta: Record<string, TahapChat> = {};
-      for (const t of (resTahap.data ?? []) as TahapChat[]) peta[t.chat_sesi_id] = t;
-      setTahapMap(peta);
-    }
-    setSessions(rows);
-    // Tautan dari Kotak Masuk FO: buka sesi yang dituju begitu terlihat di daftar.
-    const tuju = deepLinkRef.current;
-    if (tuju) {
-      const row = rows.find((r) => r.id === tuju);
-      if (row) {
-        deepLinkRef.current = null;
-        setSelectedId(row.id);
-        setSnapshot(row);
-        muatKontak(row.id);
+    try {
+      const [{ data, error }, resTahap] = await Promise.all([
+        supabase.rpc('chat_sesi_ringkas', {
+          p_limit: 100,
+          p_include_selesai: showSelesaiRef.current,
+        }),
+        supabase
+          .from('penanganan')
+          .select('id, chat_sesi_id, peran_tahap, status, layanan_id, penangan_id')
+          .eq('saluran', 'chat')
+          .in('status', ['menunggu', 'berjalan']),
+      ]);
+      if (seq !== listSeq.current) return;
+      if (error) {
+        setDaftarGalat('Gagal memuat sesi chat');
+        setDaftarDimuat(true);
+        toast('Gagal memuat sesi chat', 'error');
+        return;
       }
+      setDaftarGalat('');
+      setDaftarDimuat(true);
+      setPenanganGalat(!!resTahap.error);
+      let rows = (data ?? []) as RingkasRow[];
+      // Petugas biasa hanya melihat layanannya sendiri.
+      if (layananFilterRef.current) {
+        rows = rows.filter((r) => r.layanan_id === layananFilterRef.current);
+      }
+      if (resTahap.error) {
+        toast('Gagal memuat status penanganan chat', 'error');
+      } else {
+        const peta: Record<string, TahapChat> = {};
+        for (const t of (resTahap.data ?? []) as TahapChat[]) peta[t.chat_sesi_id] = t;
+        setTahapMap(peta);
+      }
+      setSessions(rows);
+      // Tautan dari Kotak Masuk FO: buka sesi yang dituju begitu terlihat di daftar.
+      const tuju = deepLinkRef.current;
+      if (tuju) {
+        const row = rows.find((r) => r.id === tuju);
+        if (row) {
+          deepLinkRef.current = null;
+          setSelectedId(row.id);
+          setSnapshot(row);
+          muatKontak(row.id);
+        }
+      }
+    } catch {
+      if (seq !== listSeq.current) return;
+      setDaftarGalat('Gangguan jaringan. Sesi chat tidak dapat dimuat.');
+      setDaftarDimuat(true);
     }
   }, [toast, muatKontak]);
 
@@ -352,6 +368,7 @@ export default function AdminChatPage() {
         }, 3000);
       } catch (e) {
         console.error(e);
+        setDaftarGalat('Gagal menginisialisasi chat. Coba muat daftar kembali.');
         toast('Gagal menginisialisasi chat', 'error');
       } finally {
         if (active) setLoading(false);
@@ -626,8 +643,7 @@ export default function AdminChatPage() {
 
   // Pembatas sesi hanya bila percakapan memuat lebih dari satu sesi (riwayat lintas sesi, Fase 5).
   const banyakSesi = new Set(messages.map((m) => m.sesi_id).filter(Boolean)).size > 1;
-  const tanggalSesi = (iso: string) =>
-    new Date(iso).toLocaleDateString('id-ID', { timeZone: 'Asia/Jakarta', day: 'numeric', month: 'long', year: 'numeric' });
+  const tanggalSesi = (iso: string) => formatTanggal(iso);
   const namaSender = (p: Message['pengirim']) =>
     p === 'petugas' ? 'Petugas' : p === 'bot' ? 'Bot FAQ' : 'Pengunjung';
 
@@ -635,338 +651,174 @@ export default function AdminChatPage() {
   // Chat yang menunggu diambil (kotak masuk) tampil paling atas; urutan lain tetap (sort stabil).
   const sessionsUrut = [...sessions].sort((a, b) => Number(b.status === 'eskalasi') - Number(a.status === 'eskalasi'));
 
+  const nadaStatus: Record<Status, NadaLencana> = { bot: 'netral', eskalasi: 'peringatan', aktif: 'primer', selesai: 'sukses' };
+
   return (
     <>
-      <PageHeader
-        title="Live Chat"
-        description="Panel petugas — tangani chat pengunjung yang masuk"
-      />
-
-      {alasanTanpaLayanan && (
-        <div
-          role="status"
-          data-testid="admin-chat-hari-tanpa-layanan"
-          id="alasan-hari-tanpa-layanan"
-          style={{
-            margin: 'var(--space-4) var(--space-8) 0', padding: 'var(--space-2) var(--space-3)',
-            fontSize: 'var(--text-sm)', color: 'var(--color-warning-600)', background: 'var(--color-warning-50)',
-            border: '1px solid var(--color-warning-500)', borderRadius: 'var(--radius-md)',
-          }}
-        >
-          {alasanTanpaLayanan}
-        </div>
-      )}
-
-      {peringatan && (
-        <div
-          role="status"
-          style={{
-            display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 'var(--space-3)',
-            margin: 'var(--space-4) var(--space-8) 0', padding: 'var(--space-2) var(--space-3)',
-            fontSize: 'var(--text-sm)', color: 'var(--color-warning-600)', background: 'var(--color-warning-50)',
-            border: '1px solid var(--color-warning-500)', borderRadius: 'var(--radius-md)',
-          }}
-        >
-          <span>{peringatan}</span>
-          <button type="button" className="btn btn--ghost btn--sm" onClick={() => setPeringatan(null)}>
-            Tutup
-          </button>
-        </div>
-      )}
-
-      <div className={styles.layout} data-selected={selectedSession ? 'true' : 'false'}>
-        {/* Session List */}
-        <div className={styles.list}>
-          <div style={{
-            padding: 'var(--space-4)',
-            borderBottom: '1px solid var(--border-default)',
-            fontWeight: 600,
-            fontSize: 'var(--text-sm)',
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span>
-                Sesi Chat ({sessions.filter(s => s.status !== 'selesai').length} aktif
-                {menunggu > 0 ? `, ${menunggu} menunggu diambil` : ''})
-              </span>
-              <span
-                role="status"
-                title={rt === 'ok' ? 'Realtime tersambung' : 'Realtime terputus — memakai pembaruan berkala'}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '11px', fontWeight: 500,
-                  color: rt === 'ok' ? 'var(--color-success-600)' : 'var(--color-danger-600)',
-                }}
-              >
-                {rt === 'ok' ? <Wifi size={12} /> : <WifiOff size={12} />}
-                {rt === 'ok' ? 'Langsung' : rt === 'connecting' ? 'Menyambung…' : 'Terputus'}
-              </span>
-            </div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '12px', fontWeight: 400, marginTop: 6, cursor: 'pointer' }}>
-              <input type="checkbox" checked={showSelesai} onChange={(e) => setShowSelesai(e.target.checked)} />
-              Tampilkan sesi selesai
-            </label>
+      <PageHeader title="Live Chat" description="Tangani percakapan pengunjung, teruskan ke layanan, dan catat hasil penanganan." />
+      <div className={styles.halaman}>
+        {myRole === 'petugas' && (
+          <CatatanKeadaan jenis="lingkup">Menampilkan percakapan dalam lingkup layanan Anda.</CatatanKeadaan>
+        )}
+        {alasanTanpaLayanan && (
+          <div role="status" data-testid="admin-chat-hari-tanpa-layanan" id="alasan-hari-tanpa-layanan">
+            <CatatanKeadaan jenis="tanpa-layanan">{alasanTanpaLayanan}</CatatanKeadaan>
           </div>
-          <div style={{ flex: 1, overflowY: 'auto' }}>
-            {loading ? (
-              <div style={{ padding: 'var(--space-8)', textAlign: 'center', color: 'var(--text-tertiary)' }}>
-                <Loader2 size={24} className="animate-pulse" style={{ margin: '0 auto' }} />
+        )}
+        {peringatan && (
+          <CatatanKeadaan jenis="info" aksi={<Tombol varian="hantu" ukuran="kecil" onClick={() => setPeringatan(null)}>Tutup</Tombol>}>
+            {peringatan}
+          </CatatanKeadaan>
+        )}
+        {penanganGalat && <Galat pesan="Gagal memuat status penanganan chat. Periksa status sebelum mengambil tindakan." onRetry={() => void fetchSessions()} />}
+        <div className={styles.layout} data-selected={selectedSession ? 'true' : 'false'}>
+          <section className={styles.list} aria-label="Daftar sesi chat">
+            <div className={styles.listHeader}>
+              <div className={styles.listTitle}>
+                <h2>Sesi Chat</h2>
+                <span role="status" title={rt === 'ok' ? 'Realtime tersambung' : 'Realtime belum tersambung, memakai pembaruan berkala'}>
+                  <Lencana nada={rt === 'ok' ? 'sukses' : rt === 'connecting' ? 'netral' : 'bahaya'} ikon={rt === 'ok' ? Wifi : WifiOff}>
+                    {rt === 'ok' ? 'Langsung' : rt === 'connecting' ? 'Menyambung…' : 'Terputus'}
+                  </Lencana>
+                </span>
               </div>
-            ) : sessions.length === 0 ? (
-              <div style={{ padding: 'var(--space-8)', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 'var(--text-sm)' }}>
-                Belum ada sesi chat
-              </div>
-            ) : sessionsUrut.map((session) => {
-              const config = statusConfig[session.status];
-              const unread = session.id !== selectedId && session.unread && cleared[session.id] !== session.last_pesan_at;
-              const holder = session.status === 'aktif' ? holderName(session) : null;
-              return (
-                <button
-                  type="button"
-                  key={session.id}
-                  onClick={() => handleSelectSession(session)}
-                  style={{
-                    display: 'block',
-                    width: '100%',
-                    textAlign: 'left',
-                    border: 'none',
-                    font: 'inherit',
-                    color: 'inherit',
-                    padding: 'var(--space-4)',
-                    borderBottom: '1px solid var(--color-neutral-100)',
-                    cursor: 'pointer',
-                    background: selectedId === session.id ? 'var(--color-primary-50)' : 'transparent',
-                    transition: 'background var(--transition-fast)',
-                    minHeight: '44px',
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
-                    <span style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{layananNama[session.layanan_id] || 'Layanan'}</span>
-                    <span className={`badge ${config.className}`} style={{ fontSize: '10px' }}>
-                      {config.icon} {labelStatus(session)}
+              {daftarDimuat && !daftarGalat && (
+                <p className={styles.listSummary}>{sessions.filter(s => s.status !== 'selesai').length} aktif{menunggu > 0 ? `, ${menunggu} menunggu diambil` : ''}</p>
+              )}
+              {rt !== 'ok' && <p className={styles.listSummary}>Pembaruan berkala saat realtime belum tersambung.</p>}
+              <label className={styles.showClosed}>
+                <input type="checkbox" checked={showSelesai} onChange={(e) => setShowSelesai(e.target.checked)} />
+                Tampilkan sesi selesai
+              </label>
+            </div>
+            <div className={styles.sessions}>
+              {daftarGalat ? (
+                <Galat pesan={daftarGalat} onRetry={() => void fetchSessions()} />
+              ) : loading || !daftarDimuat ? (
+                <div className={styles.listState} role="status"><Skeleton bentuk="baris" jumlah={5} label="Memuat sesi chat…" /></div>
+              ) : sessions.length === 0 ? (
+                <StatusKosong ikon={MessageSquare} judul="Belum ada sesi chat" isi="Percakapan pengunjung akan tampil di sini." />
+              ) : sessionsUrut.map((session) => {
+                const unread = session.id !== selectedId && session.unread && cleared[session.id] !== session.last_pesan_at;
+                const holder = session.status === 'aktif' ? holderName(session) : null;
+                return (
+                  <button
+                    type="button"
+                    key={session.id}
+                    onClick={() => handleSelectSession(session)}
+                    className={styles.session}
+                    aria-pressed={selectedId === session.id}
+                  >
+                    <span className={styles.sessionTop}>
+                      <span className={styles.sessionService}>{layananNama[session.layanan_id] || 'Layanan'}</span>
+                      <Lencana nada={nadaStatus[session.status]}>{labelStatus(session)}</Lencana>
                     </span>
+                    {session.last_pesan && <span className={styles.preview}>{truncate(session.last_pesan, 40)}</span>}
+                    <span className={styles.sessionMeta}>
+                      <span>{holder ? `Ditangani: ${holder}` : kontak[session.id] || 'Pengunjung'}</span>
+                      <span className={styles.sessionTime}>
+                        {unread && <span className={styles.unread} aria-label="Pesan belum dibalas" />}
+                        <time dateTime={session.last_pesan_at ?? session.created_at} title={`${formatTanggal(session.last_pesan_at ?? session.created_at)} ${formatWaktu(session.last_pesan_at ?? session.created_at)} WIB`}>
+                          {relativeTime(session.last_pesan_at ?? session.created_at)}
+                        </time>
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+          <section className={styles.thread} aria-label="Percakapan terpilih">
+            {selectedSession ? (
+              <>
+                <div className={styles.threadHeader}>
+                  <div className={styles.threadIdentity}>
+                    <Tombol varian="sekunder" ukuran="kecil" ikon={ArrowLeft} className={styles.backBtn} onClick={handleBackToList}>Daftar sesi</Tombol>
+                    <h2>{kontak[selectedSession.id] || 'Pengunjung'}</h2>
+                    <p>
+                      Layanan: {layananNama[selectedSession.layanan_id] || '—'}
+                      {selectedSession.status === 'aktif' && <> · Ditangani oleh {isOwner(selectedSession) ? 'Anda' : holderName(selectedSession) ?? '—'}</>}
+                      {selectedSession.status === 'eskalasi' && <> · {menungguLayanan(selectedSession) ? 'Diteruskan, menunggu petugas layanan' : 'Menunggu diambil'}</>}
+                    </p>
                   </div>
-                  {session.last_pesan && (
-                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: 'var(--space-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {truncate(session.last_pesan, 40)}
+                  {selectedSession.status !== 'selesai' && (
+                    <div className={styles.threadActions}>
+                      {bolehAmbil(selectedSession) && (
+                        <Tombol ukuran="kecil" ikon={UserCheck} onClick={() => void handleAmbil()} disabled={aksiBusy || tanpaLayanan} memuat={aksiBusy} title={alasanTanpaLayanan ?? undefined} aria-describedby={tanpaLayanan ? 'alasan-hari-tanpa-layanan' : undefined}>Ambil Chat</Tombol>
+                      )}
+                      {bolehAmbilAlih(selectedSession) && (
+                        <Tombol ukuran="kecil" ikon={UserCog} onClick={() => setDialog('ambil_alih')} disabled={aksiBusy || tanpaLayanan} title={alasanTanpaLayanan ?? undefined} aria-describedby={tanpaLayanan ? 'alasan-hari-tanpa-layanan' : undefined}>Ambil Alih Chat</Tombol>
+                      )}
+                      {bolehTeruskan(selectedSession) && (
+                        <Tombol varian="sekunder" ukuran="kecil" ikon={ArrowRight} onClick={() => setDialog('teruskan')} disabled={aksiBusy || tanpaLayanan} title={alasanTanpaLayanan ?? undefined} aria-describedby={tanpaLayanan ? 'alasan-hari-tanpa-layanan' : undefined}>Teruskan ke Layanan</Tombol>
+                      )}
+                      {isOwner(selectedSession) && <Tombol varian="sekunder" ukuran="kecil" onClick={() => setDialog('selesai')} disabled={aksiBusy}>Selesaikan Chat</Tombol>}
                     </div>
                   )}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'var(--space-2)' }}>
-                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                      {holder ? `Ditangani: ${holder}` : kontak[session.id] || 'Pengunjung'}
-                    </span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                      {unread && (
-                        <span
-                          aria-label="Pesan belum dibalas"
-                          style={{
-                            background: 'var(--color-danger-500)',
-                            width: 10,
-                            height: 10,
-                            borderRadius: '999px',
-                          }}
-                        />
-                      )}
-                      <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
-                        {relativeTime(session.last_pesan_at ?? session.created_at)}
-                      </span>
+                </div>
+                {selectedSession.status !== 'selesai' ? (
+                  <div className={styles.replyTools}>
+                    {!canReply && (
+                      <p role="status" className={styles.replyNote}>
+                        {alasanTanpaLayanan
+                          ? dipegangLain(selectedSession)
+                            ? `Chat ini sedang ditangani ${holderName(selectedSession) ?? 'petugas lain'}. ${alasanTanpaLayanan}`
+                            : alasanTanpaLayanan
+                          : dipegangLain(selectedSession)
+                            ? `Chat ini sedang ditangani ${holderName(selectedSession) ?? 'petugas lain'}.${bolehAmbilAlih(selectedSession) ? ' Tekan "Ambil Alih Chat" (alasan wajib) untuk membalas.' : ''}`
+                            : menungguLayanan(selectedSession) && !bolehAmbil(selectedSession)
+                              ? 'Chat ini sudah diteruskan ke petugas layanan. Petugas layanan yang akan mengambilnya.'
+                              : 'Tekan "Ambil Chat" untuk mulai membalas pengunjung.'}
+                      </p>
+                    )}
+                    {sendError && <p role="alert" className={styles.sendError}>{sendError}</p>}
+                    <div className={styles.draftTools}>
+                      <Tombol varian="sekunder" ukuran="kecil" ikon={Sparkles} onClick={handleGenerateDraft} disabled={loadingDraft || !canReply} memuat={loadingDraft} title="Minta Gemini memuatkan draf balasan berbasis FAQ & Dasar Hukum">Draf Gemini</Tombol>
                     </div>
                   </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Chat Thread */}
-        <div className={styles.thread}>
-          {selectedSession ? (
-            <>
-              {/* Thread Header */}
-              <div className={styles.threadHeader}>
-                <div>
-                  <button type="button" className={`btn btn--secondary btn--sm ${styles.backBtn}`} onClick={handleBackToList}>
-                    <ArrowLeft size={14} /> Daftar sesi
-                  </button>
-                  <h3 style={{ fontWeight: 600, fontSize: 'var(--text-base)', marginBottom: '4px' }}>
-                    {kontak[selectedSession.id] || 'Pengunjung'}
-                  </h3>
-                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-                    Layanan: {layananNama[selectedSession.layanan_id] || '—'}
-                    {selectedSession.status === 'aktif' && (
-                      <> · Ditangani oleh {isOwner(selectedSession) ? 'Anda' : holderName(selectedSession) ?? '—'}</>
-                    )}
-                    {selectedSession.status === 'eskalasi' && (
-                      <> · {menungguLayanan(selectedSession) ? 'Diteruskan, menunggu petugas layanan' : 'Menunggu diambil'}</>
-                    )}
-                  </div>
-                </div>
-                {selectedSession.status !== 'selesai' && (
-                  <div className={styles.threadActions}>
-                    {bolehAmbil(selectedSession) && (
-                      <button
-                        type="button"
-                        className="btn btn--primary btn--sm"
-                        onClick={() => void handleAmbil()}
-                        disabled={aksiBusy || tanpaLayanan}
-                        aria-busy={aksiBusy}
-                        title={alasanTanpaLayanan ?? undefined}
-                        aria-describedby={tanpaLayanan ? 'alasan-hari-tanpa-layanan' : undefined}
-                      >
-                        {aksiBusy ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <UserCheck size={14} aria-hidden="true" />}
-                        Ambil Chat
-                      </button>
-                    )}
-                    {bolehAmbilAlih(selectedSession) && (
-                      <button
-                        type="button"
-                        className="btn btn--primary btn--sm"
-                        onClick={() => setDialog('ambil_alih')}
-                        disabled={aksiBusy || tanpaLayanan}
-                        title={alasanTanpaLayanan ?? undefined}
-                        aria-describedby={tanpaLayanan ? 'alasan-hari-tanpa-layanan' : undefined}
-                      >
-                        <UserCog size={14} aria-hidden="true" /> Ambil Alih Chat
-                      </button>
-                    )}
-                    {bolehTeruskan(selectedSession) && (
-                      <button
-                        type="button"
-                        className="btn btn--secondary btn--sm"
-                        onClick={() => setDialog('teruskan')}
-                        disabled={aksiBusy || tanpaLayanan}
-                        title={alasanTanpaLayanan ?? undefined}
-                        aria-describedby={tanpaLayanan ? 'alasan-hari-tanpa-layanan' : undefined}
-                      >
-                        <ArrowRight size={14} aria-hidden="true" /> Teruskan ke Layanan
-                      </button>
-                    )}
-                    {isOwner(selectedSession) && (
-                      <button type="button" className="btn btn--secondary btn--sm" onClick={() => setDialog('selesai')} disabled={aksiBusy}>
-                        Selesaikan Chat
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {selectedSession.status !== 'selesai' ? (
-                <div style={{ display: 'flex', flexDirection: 'column', background: 'var(--surface-primary)', borderBottom: '1px solid var(--border-default)' }}>
-                        {!canReply && (
-                          <div role="status" style={{ padding: 'var(--space-2) var(--space-4)', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
-                            {alasanTanpaLayanan
-                              ? dipegangLain(selectedSession)
-                                ? `Chat ini sedang ditangani ${holderName(selectedSession) ?? 'petugas lain'}. ${alasanTanpaLayanan}`
-                                : alasanTanpaLayanan
-                              : dipegangLain(selectedSession)
-                              ? `Chat ini sedang ditangani ${holderName(selectedSession) ?? 'petugas lain'}.${bolehAmbilAlih(selectedSession) ? ' Tekan "Ambil Alih Chat" (alasan wajib) untuk membalas.' : ''}`
-                              : menungguLayanan(selectedSession) && !bolehAmbil(selectedSession)
-                                ? 'Chat ini sudah diteruskan ke petugas layanan. Petugas layanan yang akan mengambilnya.'
-                                : 'Tekan "Ambil Chat" untuk mulai membalas pengunjung.'}
+                ) : <p className={styles.closedNote}>Sesi chat ini sudah selesai.</p>}
+                <div className={ui.shell}>
+                  <MainContainer responsive>
+                    <ChatContainer>
+                      <MessageList>
+                        {riwayatAdaLebih && (
+                          <div className={styles.history}>
+                            <Tombol varian="sekunder" ukuran="kecil" onClick={() => void muatRiwayatLebihLama()} disabled={riwayatMemuat} memuat={riwayatMemuat}>Muat riwayat sebelumnya</Tombol>
                           </div>
                         )}
-                        {sendError && (
-                          <div role="alert" style={{ padding: 'var(--space-2) var(--space-4)', fontSize: 'var(--text-xs)', color: 'var(--color-danger-700)' }}>
-                            {sendError}
-                          </div>
-                        )}
-                        {/* Draft Button above input */}
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', padding: 'var(--space-2) var(--space-4) 0' }}>
-                          <button
-                            type="button"
-                            className="btn btn--secondary btn--sm"
-                            onClick={handleGenerateDraft}
-                            disabled={loadingDraft || !canReply}
-                            title="Minta Gemini memuatkan draf balasan berbasis FAQ & Dasar Hukum"
-                            style={{ borderRadius: '999px', fontSize: 'var(--text-xs)', height: '28px', padding: '0 12px' }}
-                          >
-                            {loadingDraft ? <Loader2 size={12} className="animate-pulse" /> : '⚡ Draf Gemini'}
-                          </button>
-                        </div>
-                </div>
-              ) : (
-                <div style={{ padding: 'var(--space-4)', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 'var(--text-sm)', background: 'var(--surface-primary)' }}>
-                  Sesi chat ini sudah selesai.
-                </div>
-              )}
-              {/* Chatscope Messages Area */}
-              <div className={ui.shell}>
-                <MainContainer responsive>
-                  <ChatContainer>
-                    <MessageList>
-                      {riwayatAdaLebih && (
-                        <div style={{ textAlign: 'center', padding: 'var(--space-2)' }}>
-                          <button
-                            type="button"
-                            className="btn btn--secondary btn--sm"
-                            onClick={() => void muatRiwayatLebihLama()}
-                            disabled={riwayatMemuat}
-                          >
-                            {riwayatMemuat ? 'Memuat...' : 'Muat riwayat sebelumnya'}
-                          </button>
-                        </div>
-                      )}
-                      {messages.map((msg, i) => {
-                        const sebelumnya = messages[i - 1];
-                        const pembatas =
-                          banyakSesi && msg.sesi_id && (!sebelumnya || sebelumnya.sesi_id !== msg.sesi_id);
-                        return (
-                          <Fragment key={msg.client_uuid ?? msg.id}>
-                            {pembatas && (
-                              <div
-                                role="separator"
-                                aria-label={`Sesi ${tanggalSesi(msg.created_at)}`}
-                                style={{ textAlign: 'center', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', padding: 'var(--space-2) 0' }}
-                              >
-                                — Sesi {tanggalSesi(msg.created_at)} —
-                              </div>
-                            )}
-                            <ChatMessage
-                              model={{
+                        {messages.map((msg, i) => {
+                          const sebelumnya = messages[i - 1];
+                          const pembatas = banyakSesi && msg.sesi_id && (!sebelumnya || sebelumnya.sesi_id !== msg.sesi_id);
+                          return (
+                            <Fragment key={msg.client_uuid ?? msg.id}>
+                              {pembatas && <div role="separator" aria-label={`Sesi ${tanggalSesi(msg.created_at)}`} className={styles.sessionDivider}>Sesi {tanggalSesi(msg.created_at)}</div>}
+                              <ChatMessage model={{
                                 message: msg.jenis_jawaban === JENIS_PENUTUP_SURVEI ? bersihkanPenutup(msg.isi) : msg.isi,
-                                sentTime: waktuLabel(msg.created_at),
+                                sentTime: `${formatWaktu(msg.created_at)} WIB`,
                                 sender: namaSender(msg.pengirim),
                                 direction: msg.pengirim === 'petugas' ? 'outgoing' : 'incoming',
                                 position: 'single',
-                              }}
-                            >
-                              <ChatMessage.Header sender={namaSender(msg.pengirim)} sentTime={waktuLabel(msg.created_at)} />
-                              {msg.lampiran_kunci && (
-                                <ChatMessage.CustomContent><GambarLampiran pesanId={msg.id} nama={msg.lampiran_nama} /></ChatMessage.CustomContent>
-                              )}
-                            </ChatMessage>
-                          </Fragment>
-                        );
-                      })}
-                    </MessageList>
-                    <input
-                      ref={berkasRef}
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp"
-                      hidden
-                      onChange={(e) => { void kirimFoto(e.target.files?.[0]); e.target.value = ''; }}
-                    />
-
-                    {/* MessageInput harus anak LANGSUNG ChatContainer: pembungkus <div> dibuang chatscope. */}
-                    {selectedSession.status !== 'selesai' && (
-                      <MessageInput
-                        placeholder={canReply ? 'Ketik balasan Anda...' : 'Ambil chat untuk membalas'}
-                        value={messageInput}
-                        onChange={(val) => setMessageInput(val)}
-                        onSend={(_html, _text, innerText) => handleSendMessage(innerText)}
-                        attachButton={canReply}
-                        onAttachClick={() => berkasRef.current?.click()}
-                        disabled={!canReply || sending || mengirimFoto}
-                      />
-                    )}
-                  </ChatContainer>
-                </MainContainer>
-              </div>
-            </>
-          ) : (
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-tertiary)' }}>
-              <MessageSquare size={48} style={{ marginBottom: 'var(--space-4)', opacity: 0.5 }} />
-              <p>Pilih sesi chat di samping untuk mulai membalas</p>
-            </div>
-          )}
+                              }}>
+                                <ChatMessage.Header sender={namaSender(msg.pengirim)} sentTime={`${formatWaktu(msg.created_at)} WIB`} />
+                                {msg.lampiran_kunci && <ChatMessage.CustomContent><GambarLampiran pesanId={msg.id} nama={msg.lampiran_nama} /></ChatMessage.CustomContent>}
+                              </ChatMessage>
+                            </Fragment>
+                          );
+                        })}
+                      </MessageList>
+                      <input ref={berkasRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(e) => { void kirimFoto(e.target.files?.[0]); e.target.value = ''; }} />
+                      {/* MessageInput harus anak langsung ChatContainer agar alur kirim dan lampiran tetap bekerja. */}
+                      {selectedSession.status !== 'selesai' && (
+                        <MessageInput placeholder={canReply ? 'Ketik balasan Anda...' : 'Ambil chat untuk membalas'} value={messageInput} onChange={(val) => setMessageInput(val)} onSend={(_html, _text, innerText) => handleSendMessage(innerText)} attachButton={canReply} onAttachClick={() => berkasRef.current?.click()} disabled={!canReply || sending || mengirimFoto} />
+                      )}
+                    </ChatContainer>
+                  </MainContainer>
+                </div>
+              </>
+            ) : (
+              <div className={styles.threadEmpty}><StatusKosong ikon={MessageSquare} judul="Pilih sesi chat di samping untuk mulai membalas" isi="Riwayat percakapan dan aksi penanganan tampil setelah sesi dipilih." /></div>
+            )}
+          </section>
         </div>
       </div>
 

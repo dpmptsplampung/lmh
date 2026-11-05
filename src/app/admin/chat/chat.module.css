@@ -1,81 +1,98 @@
-/* Tata letak panel petugas: daftar sesi (kiri) + utas (kanan).
-   <=900px menjadi satu panel: daftar dulu, memilih sesi membuka utas dengan
-   tombol "Daftar sesi" untuk kembali. */
+.halaman {
+  padding: 0 var(--pad-page) var(--pad-page);
+  display: grid;
+  gap: var(--gap-grid);
+  min-width: 0;
+}
 
 .layout {
   display: flex;
-  height: calc(100vh - var(--header-height) - 112px);
-  height: calc(100dvh - var(--header-height) - 112px);
-  min-height: 420px;
-  margin: var(--space-8);
-  border-radius: var(--radius-xl);
+  height: calc(100dvh - var(--appbar-height) - 160px);
+  min-height: 480px;
+  min-width: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card);
   overflow: hidden;
-  border: 1px solid var(--border-default);
-  background: var(--surface-elevated);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-card);
 }
 
 .list {
-  width: 340px;
+  width: 320px;
   flex-shrink: 0;
-  border-right: 1px solid var(--border-default);
-  display: flex;
-  flex-direction: column;
-  background: var(--surface-primary);
-}
-
-.thread {
-  flex: 1;
   min-width: 0;
+  border-right: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
 }
 
-.threadHeader {
-  padding: var(--space-4);
-  border-bottom: 1px solid var(--border-default);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
+.listHeader { padding: var(--pad-card); border-bottom: 1px solid var(--border-subtle); }
+.listTitle, .sessionTop, .sessionMeta { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); }
+.listTitle h2, .threadIdentity h2 { margin: 0; font-size: var(--fs-card-title); font-weight: 600; }
+.listSummary { margin: var(--space-2) 0 0; color: var(--text-secondary); font-size: var(--fs-small); }
+.showClosed { display: flex; align-items: center; gap: var(--space-2); min-height: 36px; margin-top: var(--space-2); font-size: var(--fs-small); cursor: pointer; }
+.showClosed input { accent-color: var(--color-primary-600); }
+.sessions { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.listState { padding: var(--pad-card); }
+.session {
+  display: grid;
   gap: var(--space-2);
-  background: var(--surface-primary);
+  width: 100%;
+  min-height: 88px;
+  text-align: left;
+  padding: var(--pad-card);
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  border-left: 3px solid transparent;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font: inherit;
+  cursor: pointer;
 }
+.session:hover { background: var(--bg-surface-hover); }
+.session[aria-pressed='true'] { background: var(--color-primary-50); border-left-color: var(--color-primary-600); }
+.session:focus-visible { outline: 2px solid var(--border-focus); outline-offset: -3px; }
+.sessionTop { align-items: flex-start; flex-wrap: wrap; }
+.sessionService { font-size: var(--fs-body); font-weight: 600; overflow-wrap: anywhere; }
+.preview { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: var(--fs-body); }
+.sessionMeta { align-items: flex-end; flex-wrap: wrap; font-size: var(--fs-small); color: var(--text-secondary); overflow-wrap: anywhere; }
+.sessionTime { display: inline-flex; align-items: center; gap: var(--space-2); font-variant-numeric: tabular-nums; }
+.unread { width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--status-danger-fg); }
+.thread { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.threadHeader { padding: var(--pad-card); border-bottom: 1px solid var(--border-subtle); display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: var(--space-3); }
+.threadIdentity { min-width: 0; overflow-wrap: anywhere; }
+.threadIdentity p { margin: var(--space-1) 0 0; font-size: var(--fs-small); color: var(--text-secondary); }
+.threadActions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.backBtn { display: none; }
+.replyTools { padding: var(--space-3) var(--pad-card); border-bottom: 1px solid var(--border-subtle); background: var(--bg-surface-muted); }
+.replyNote, .sendError { margin: 0 0 var(--space-2); font-size: var(--fs-small); color: var(--text-secondary); }
+.sendError { color: var(--status-danger-fg); }
+.draftTools { display: flex; justify-content: flex-end; }
+.closedNote, .sessionDivider { padding: var(--space-3); margin: 0; text-align: center; font-size: var(--fs-small); color: var(--text-secondary); background: var(--bg-surface-muted); }
+.history { text-align: center; padding: var(--space-2); }
+.threadEmpty { flex: 1; display: grid; align-content: center; }
 
-.threadActions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
+/* Penyesuaian editor bersama hanya di panel staf. */
+.layout :global(.cs-chat-container) :global(.cs-message-input) :global(.cs-message-input__content-editor-wrapper):focus-within {
+  background: var(--bg-surface);
+  box-shadow: var(--focus-ring);
 }
+.layout :global(.cs-message--outgoing) :global(.cs-message__content) { color: var(--text-on-primary); }
+.layout :global(.cs-message) { animation: none; }
+.layout :global(.cs-message__content) { overflow-wrap: anywhere; }
 
-.backBtn {
-  display: none;
-}
-
-@media (max-width: 1024px) {
-  .layout {
-    margin: var(--space-2) 0;
-    height: calc(100vh - 160px);
-    height: calc(100dvh - 160px);
-  }
-}
-
+@media (max-width: 1100px) { .list { width: 280px; } }
 @media (max-width: 900px) {
-  .layout {
-    border-radius: var(--radius-lg);
-  }
-
-  .list {
-    width: 100%;
-    border-right: 0;
-  }
-
-  .layout[data-selected='true'] .list,
-  .layout[data-selected='false'] .thread {
-    display: none;
-  }
-
-  .backBtn {
-    display: inline-flex;
-    margin-bottom: var(--space-2);
-  }
+  .list { width: 100%; border-right: 0; }
+  .layout[data-selected='true'] .list, .layout[data-selected='false'] .thread { display: none; }
+  .backBtn { display: inline-flex; margin-bottom: var(--space-2); }
+}
+@media (max-width: 640px) {
+  .layout { height: calc(100dvh - var(--appbar-height) - 168px); }
+  .threadActions { width: 100%; }
+  .threadActions > * { flex: 1 1 auto; }
+}
+@media (pointer: coarse) {
+  .showClosed { min-height: 44px; }
+  .layout :global(.cs-button) { min-width: 44px; min-height: 44px; }
 }

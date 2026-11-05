@@ -219,7 +219,7 @@ import { createClient } from '@/lib/supabase/client';
 type InsertCapture = { table: string; payload: unknown };
 
 const buildMockSupabase = (opts: {
-  user: { id: string } | null;
+  user: { id: string; is_anonymous?: boolean; identities?: Array<{ provider: string }> } | null;
   pengunjung: { id: string; nama: string } | null;
   layanan: { id: string; nama: string; chatbot_aktif: boolean }[];
   sessionResult?: { id: string; status: string } | null;
@@ -332,7 +332,7 @@ describe('K2 chat page: handleStartSession includes pengunjung_id', () => {
 
   it('INSERTs chat_sesi with pengunjung_id when user is logged in', async () => {
     const { inserts } = buildMockSupabase({
-      user: { id: 'auth-user-1' },
+      user: { id: 'auth-user-1', is_anonymous: false, identities: [{ provider: 'google' }] },
       pengunjung: { id: 'peng-uuid-9', nama: 'Budi' },
       layanan: [{ id: 'lay-1', nama: 'DPMPTSP', chatbot_aktif: true }],
       sessionResult: { id: 'sesi-123', status: 'bot' },
@@ -342,11 +342,11 @@ describe('K2 chat page: handleStartSession includes pengunjung_id', () => {
 
     // Wait for auth + layanan load to settle and the logged-in input to appear.
     await waitFor(() => {
-      expect(screen.getByLabelText('Layanan yang Ditanyakan')).toBeInTheDocument();
+      expect(screen.getByLabelText(/^Layanan yang Ditanyakan/)).toBeInTheDocument();
     });
 
     // Select a layanan
-    fireEvent.change(screen.getByLabelText('Layanan yang Ditanyakan'), {
+    fireEvent.change(screen.getByLabelText(/^Layanan yang Ditanyakan/), {
       target: { value: 'lay-1' },
     });
 
@@ -369,11 +369,11 @@ describe('K2 chat page: handleStartSession includes pengunjung_id', () => {
     });
   });
 
-  it('does NOT include pengunjung_id when user is anonymous (no pengunjung row yet)', async () => {
+  it('does NOT include pengunjung_id when the Google user has no pengunjung row yet', async () => {
     // Guards against accidentally sending pengunjung_id: undefined as a real field.
     const { inserts } = buildMockSupabase({
-      user: { id: 'anon-user-1' },
-      pengunjung: null, // anon, no pengunjung row yet
+      user: { id: 'anon-user-1', is_anonymous: false, identities: [{ provider: 'google' }] },
+      pengunjung: null, // no pengunjung row yet
       layanan: [{ id: 'lay-1', nama: 'DPMPTSP', chatbot_aktif: true }],
       sessionResult: { id: 'sesi-anon', status: 'bot' },
     });
@@ -381,10 +381,10 @@ describe('K2 chat page: handleStartSession includes pengunjung_id', () => {
     render(<PublicChatPage />);
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Layanan yang Ditanyakan')).toBeInTheDocument();
+      expect(screen.getByLabelText(/^Layanan yang Ditanyakan/)).toBeInTheDocument();
     });
 
-    fireEvent.change(screen.getByLabelText('Layanan yang Ditanyakan'), {
+    fireEvent.change(screen.getByLabelText(/^Layanan yang Ditanyakan/), {
       target: { value: 'lay-1' },
     });
 

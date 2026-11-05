@@ -36,7 +36,7 @@ vi.mock('@/lib/supabase/client', () => {
   const channel = { on: () => channel, subscribe: () => channel };
   return {
     createClient: () => ({
-      auth: { getUser: () => Promise.resolve({ data: { user: { id: 'u1' } } }) },
+      auth: { getUser: () => Promise.resolve({ data: { user: { id: 'u1', is_anonymous: false, identities: [{ provider: 'google' }] } } }) },
       from: q,
       channel: () => channel,
       removeChannel: () => {},

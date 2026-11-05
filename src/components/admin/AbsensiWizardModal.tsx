@@ -1,12 +1,19 @@
 'use client';
 
 import { useEffect, useRef, useCallback, useReducer, useState } from 'react';
-import { X, ChevronRight, ChevronLeft, Camera, CheckCircle2, Loader2, ImagePlus } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Camera, CheckCircle2, ImagePlus } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/components/Toast';
 import { todayWIB } from '@/lib/time';
 import { kompresBerkas, kompresKeJpeg } from '@/lib/foto/kompres';
 import { unggahKeR2 } from '@/lib/storage/unggah';
+import { objekBelumAda } from '@/lib/akses-data/galat';
+import ErrorRetry from '@/components/ErrorRetry';
+import Dialog from '@/components/ui/Dialog';
+import Field from '@/components/ui/Field';
+import Tombol from '@/components/ui/Tombol';
+import { cn } from '@/lib/utils';
+import styles from './AbsensiWizardModal.module.css';
 
 interface Layanan { id: string; nama: string; }
 
@@ -28,6 +35,9 @@ type WizardState = {
   /** Foto terkompresi (JPEG) + URL pratinjau (blob:) */
   foto: { blob: Blob; url: string } | null;
   layananList: Layanan[];
+  /** Status muat daftar layanan; galat tidak boleh tampil sebagai daftar kosong (C-08). */
+  layananStatus: 'memuat' | 'siap' | 'galat';
+  layananGalat: string;
   streaming: boolean;
 };
 
@@ -37,6 +47,8 @@ const INITIAL: WizardState = {
   nama: '',
   foto: null,
   layananList: [],
+  layananStatus: 'memuat',
+  layananGalat: '',
   streaming: false,
 };
 
@@ -47,6 +59,8 @@ type WizardAction =
   | { type: 'SET_NAMA'; nama: string }
   | { type: 'SET_FOTO'; foto: { blob: Blob; url: string } | null }
   | { type: 'SET_LAYANAN_LIST'; list: Layanan[] }
+  | { type: 'LAYANAN_MEMUAT' }
+  | { type: 'LAYANAN_GALAT'; pesan: string }
   | { type: 'SET_STREAMING'; value: boolean };
 
 function reducer(state: WizardState, action: WizardAction): WizardState {
@@ -56,7 +70,9 @@ function reducer(state: WizardState, action: WizardAction): WizardState {
     case 'SET_LAYANAN':       return { ...state, selectedLayananId: action.id };
     case 'SET_NAMA':          return { ...state, nama: action.nama };
     case 'SET_FOTO':          return { ...state, foto: action.foto };
-    case 'SET_LAYANAN_LIST':  return { ...state, layananList: action.list };
+    case 'SET_LAYANAN_LIST':  return { ...state, layananList: action.list, layananStatus: 'siap', layananGalat: '' };
+    case 'LAYANAN_MEMUAT':    return { ...state, layananStatus: 'memuat', layananGalat: '' };
+    case 'LAYANAN_GALAT':      return { ...state, layananList: [], layananStatus: 'galat', layananGalat: action.pesan };
     case 'SET_STREAMING':     return { ...state, streaming: action.value };
     default:                  return state;
   }
@@ -73,7 +89,12 @@ export default function AbsensiWizardModal({
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const berkasRef = useRef<HTMLInputElement>(null);
+  const namaRef = useRef<HTMLInputElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  // Kunci sinkron kirim (C-03): state `submitting` baru terbaca pada render berikutnya, jadi Enter beruntun lolos.
+  const kirimRef = useRef(false);
+  // Hanya permintaan daftar layanan terakhir yang boleh menulis state (hasil basi dibuang).
+  const permintaanLayananRef = useRef(0);
 
   // ── Helpers (deklarasikan sebelum effects) ────────────────────────────────
   const stopStream = useCallback(() => {
@@ -85,8 +106,21 @@ export default function AbsensiWizardModal({
   }, []);
 
   const loadLayanan = useCallback(async () => {
+    const nomor = ++permintaanLayananRef.current;
+    dispatch({ type: 'LAYANAN_MEMUAT' });
     const supabase = createClient();
-    const { data } = await supabase.from('layanan').select('id, nama').is('diarsipkan_at', null).order('nama');
+    // Arsip = aktif === false (sumber kebenaran DB, sama dengan Kelola Layanan); diarsipkan_at bisa kosong pada data lama.
+    const { data, error } = await supabase.from('layanan').select('id, nama').eq('aktif', true).order('nama');
+    if (nomor !== permintaanLayananRef.current) return;
+    if (error) {
+      dispatch({
+        type: 'LAYANAN_GALAT',
+        pesan: objekBelumAda(error)
+          ? 'Daftar layanan belum bisa dimuat: migrasi database belum diterapkan. Hubungi admin.'
+          : 'Daftar layanan gagal dimuat. Periksa koneksi, lalu coba lagi.',
+      });
+      return;
+    }
     dispatch({ type: 'SET_LAYANAN_LIST', list: data ?? [] });
   }, []);
 
@@ -99,6 +133,11 @@ export default function AbsensiWizardModal({
       stopStream();
     }
   }, [isOpen, loadLayanan, stopStream]);
+
+  // Fokus ke isian nama saat langkah 3 tampil (pengganti autoFocus).
+  useEffect(() => {
+    if (isOpen && w.step === 3) namaRef.current?.focus();
+  }, [isOpen, w.step]);
 
   // Cleanup saat unmount
   useEffect(() => {
@@ -182,6 +221,8 @@ export default function AbsensiWizardModal({
     const nama = w.nama.trim().replace(/\s+/g, ' ');
     if (nama.length < 2) { toast('Ketik nama petugas (minimal 2 huruf)', 'warning'); return; }
     if (!w.foto) { toast('Foto wajib diambil', 'warning'); return; }
+    if (kirimRef.current) return;
+    kirimRef.current = true;
 
     try {
       setSubmitting(true);
@@ -209,208 +250,155 @@ export default function AbsensiWizardModal({
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Gagal mencatat absensi', 'error');
     } finally {
+      kirimRef.current = false;
       setSubmitting(false);
     }
   };
 
   if (!isOpen) return null;
 
+  const namaLayananDipilih = w.layananList.find((l) => l.id === w.selectedLayananId)?.nama;
+  const labelLangkah = w.step === 1 ? 'Pilih Layanan' : w.step === 2 ? 'Foto Petugas' : 'Nama Petugas';
+
   return (
-    <div
-      role="dialog" aria-modal="true" aria-labelledby="aw-title"
-      style={{
-        position: 'fixed', inset: 0,
-        backgroundColor: 'rgba(15,23,42,0.45)',
-        zIndex: 1000,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 'var(--space-4)',
-      }}
-    >
-      <div style={{
-        background: '#ffffff',
-        borderRadius: 'var(--radius-2xl, 16px)',
-        width: '100%', maxWidth: '520px',
-        boxShadow: '0 10px 40px rgba(15, 23, 42, 0.12), 0 2px 6px rgba(15, 23, 42, 0.04)',
-        border: '1px solid var(--border-default, #e2e8f0)',
-        overflowX: 'hidden',
-        overflowY: 'auto',
-        maxHeight: 'calc(100dvh - 2rem)',
-      }}>
-        {/* Header */}
-        <div style={{
-          padding: 'var(--space-5) var(--space-6)',
-          borderBottom: '1px solid var(--border-default, #e2e8f0)',
-          background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        }}>
-          <div>
-            <h2 id="aw-title" style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 700 }}>
-              Catat Hadir Petugas
-            </h2>
-            <p style={{ margin: '2px 0 0', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-              Langkah {w.step} dari 3 —&nbsp;
-              {w.step === 1 && 'Pilih Layanan'}
-              {w.step === 2 && 'Foto Petugas'}
-              {w.step === 3 && 'Nama Petugas'}
-            </p>
-          </div>
-          <button onClick={onClose} className="btn btn--ghost btn--sm"
-            style={{ borderRadius: '50%', padding: 6 }} aria-label="Tutup">
-            <X size={18} />
-          </button>
-        </div>
-
-        {/* Body */}
-        <div style={{ padding: 'var(--space-6)' }}>
-
-          {/* ── Step 1: Pilih Layanan ── */}
-          {w.step === 1 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-              <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
-                Pilih layanan tempat petugas bertugas:
-              </p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-                {w.layananList.map(l => (
-                  <button key={l.id}
-                    onClick={() => dispatch({ type: 'SET_LAYANAN', id: l.id })}
-                    style={{
-                      padding: 'var(--space-3) var(--space-4)',
-                      borderRadius: 'var(--radius-lg)',
-                      border: w.selectedLayananId === l.id
-                        ? '2px solid var(--color-primary-600, #0284c7)'
-                        : '1px solid var(--border-default, #e2e8f0)',
-                      background: w.selectedLayananId === l.id
-                        ? 'var(--color-primary-50, #f0f9ff)'
-                        : 'var(--surface-default, #fff)',
-                      cursor: 'pointer', textAlign: 'left',
-                      fontSize: 'var(--text-sm)', fontWeight: 500,
-                      color: w.selectedLayananId === l.id
-                        ? 'var(--color-primary-700, #0369a1)'
-                        : 'var(--text-primary)',
-                      transition: 'all 0.15s ease',
-                    }}
-                  >
-                    {l.nama}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* ── Step 2: Webcam ── */}
-          {w.step === 2 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', alignItems: 'center' }}>
-              {w.foto ? (
-                <>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={w.foto.url} alt="Foto petugas"
-                    style={{ width: '100%', maxWidth: 400, borderRadius: 'var(--radius-lg)',
-                      border: '1px solid var(--border-default)' }} />
-                  <button className="btn btn--ghost btn--sm" onClick={retakePhoto}>
-                    <Camera size={16} /> Ulangi Foto
-                  </button>
-                </>
-              ) : (
-                <>
-                  <div style={{ position: 'relative', width: '100%', maxWidth: 400 }}>
-                    <video ref={videoRef} playsInline muted
-                      style={{ width: '100%', borderRadius: 'var(--radius-lg)',
-                        border: '1px solid var(--border-default)',
-                        background: '#000', display: w.streaming ? 'block' : 'none' }} />
-                    {!w.streaming && (
-                      <div style={{
-                        width: '100%', height: 240, borderRadius: 'var(--radius-lg)',
-                        border: '1px dashed var(--border-default)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        color: 'var(--text-tertiary)', flexDirection: 'column', gap: 8,
-                      }}>
-                        <Camera size={32} />
-                        <span style={{ fontSize: 'var(--text-sm)' }}>Kamera belum aktif</span>
-                      </div>
-                    )}
-                  </div>
-                  <input ref={berkasRef} type="file" accept="image/*" capture="user" hidden
-                    onChange={e => { void pilihBerkas(e.target.files?.[0]); e.target.value = ''; }} />
-                  {!w.streaming ? (
-                    <button className="btn btn--primary" onClick={() => void startCamera()}>
-                      <Camera size={16} /> Aktifkan Kamera
-                    </button>
-                  ) : (
-                    <button className="btn btn--primary" onClick={() => void capturePhoto()}>
-                      <Camera size={16} /> Ambil Foto
-                    </button>
-                  )}
-                  <button className="btn btn--ghost btn--sm" onClick={() => berkasRef.current?.click()}>
-                    <ImagePlus size={16} /> Pilih dari galeri / kamera ponsel
-                  </button>
-                </>
-              )}
-            </div>
-          )}
-
-          {/* ── Step 3: Nama manual ── */}
-          {w.step === 3 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-              {w.foto && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={w.foto.url} alt="Foto petugas"
-                  style={{ width: 96, height: 96, borderRadius: '50%',
-                    objectFit: 'cover', border: '2px solid var(--color-primary-300)',
-                    alignSelf: 'center' }} />
-              )}
-              <p style={{ margin: 0, textAlign: 'center', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-                {w.layananList.find(l => l.id === w.selectedLayananId)?.nama}
-              </p>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-                <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>
-                  Nama Petugas <span style={{ color: 'var(--color-error)' }}>*</span>
-                </span>
-                <input className="input" type="text" autoFocus autoComplete="off" maxLength={100}
-                  placeholder="Ketik nama lengkap petugas"
-                  value={w.nama}
-                  onChange={e => dispatch({ type: 'SET_NAMA', nama: e.target.value })}
-                  onKeyDown={e => { if (e.key === 'Enter') void handleSelesai(); }} />
-              </label>
-            </div>
-          )}
-
-        </div>
-
-        {/* Footer */}
-        <div style={{
-          padding: 'var(--space-4) var(--space-6)',
-          borderTop: '1px solid var(--border-default, #e2e8f0)',
-          display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)',
-        }}>
+    <Dialog
+      terbuka
+      onTutup={onClose}
+      dikunci={submitting}
+      judul="Catat Hadir Petugas"
+      deskripsi={`Langkah ${w.step} dari 3 — ${labelLangkah}`}
+      kaki={(
+        <div className={styles.kaki}>
           {w.step > 1 ? (
-            <button className="btn btn--ghost btn--sm" onClick={handleBack} disabled={submitting}>
-              <ChevronLeft size={16} /> Kembali
-            </button>
-          ) : <div />}
+            <Tombol varian="hantu" ukuran="kecil" ikon={ChevronLeft} onClick={handleBack} disabled={submitting}>
+              Kembali
+            </Tombol>
+          ) : <span />}
 
           {w.step === 1 && (
-            <button className="btn btn--primary"
-              onClick={handleNextToWebcam}
-              disabled={!w.selectedLayananId}>
-              <ChevronRight size={16} />
+            <Tombol varian="utama" ikon={ChevronRight} onClick={handleNextToWebcam} disabled={!w.selectedLayananId}>
               Lanjut
-            </button>
+            </Tombol>
           )}
           {w.step === 2 && (
-            <button className="btn btn--primary" onClick={handleNextToNama} disabled={!w.foto}>
-              <ChevronRight size={16} /> Lanjut
-            </button>
+            <Tombol varian="utama" ikon={ChevronRight} onClick={handleNextToNama} disabled={!w.foto}>
+              Lanjut
+            </Tombol>
           )}
           {w.step === 3 && (
-            <button className="btn btn--primary" onClick={() => void handleSelesai()}
-              disabled={submitting || w.nama.trim().length < 2}>
-              {submitting
-                ? <><Loader2 size={16} className="animate-spin" /> Menyimpan…</>
-                : <><CheckCircle2 size={16} /> Selesai</>}
-            </button>
+            <Tombol
+              varian="utama"
+              ikon={CheckCircle2}
+              onClick={() => void handleSelesai()}
+              disabled={submitting || w.nama.trim().length < 2}
+              memuat={submitting}
+            >
+              {submitting ? 'Menyimpan…' : 'Selesai'}
+            </Tombol>
           )}
         </div>
-      </div>
-    </div>
+      )}
+    >
+      {/* ── Step 1: Pilih Layanan ── */}
+      {w.step === 1 && (
+        <div className={styles.kolom}>
+          <p className={styles.petunjuk}>Pilih layanan tempat petugas bertugas:</p>
+          {w.layananStatus === 'memuat' && (
+            <p role="status" className={styles.catatan}>Memuat daftar layanan…</p>
+          )}
+          {w.layananStatus === 'galat' && (
+            <ErrorRetry pesan={w.layananGalat} onRetry={() => void loadLayanan()} />
+          )}
+          {w.layananStatus === 'siap' && w.layananList.length === 0 && (
+            <p role="status" className={styles.petunjuk}>
+              Belum ada layanan aktif. Hubungi admin untuk menambahkan layanan.
+            </p>
+          )}
+          <div className={styles.pilihan}>
+            {w.layananList.map((l) => (
+              <button
+                key={l.id}
+                type="button"
+                aria-pressed={w.selectedLayananId === l.id}
+                onClick={() => dispatch({ type: 'SET_LAYANAN', id: l.id })}
+                className={cn(styles.pilihanTombol, w.selectedLayananId === l.id && styles.pilihanAktif)}
+              >
+                {l.nama}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Step 2: Webcam ── */}
+      {w.step === 2 && (
+        <div className={cn(styles.kolom, styles.tengah)}>
+          {w.foto ? (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={w.foto.url} alt="Foto petugas" className={styles.foto} />
+              <Tombol varian="hantu" ukuran="kecil" ikon={Camera} onClick={retakePhoto}>
+                Ulangi Foto
+              </Tombol>
+            </>
+          ) : (
+            <>
+              <div className={styles.kamera}>
+                <video
+                  ref={videoRef}
+                  playsInline
+                  muted
+                  className={cn(styles.video, !w.streaming && styles.sembunyi)}
+                />
+                {!w.streaming && (
+                  <div className={styles.kameraKosong}>
+                    <Camera size={32} strokeWidth={1.75} aria-hidden="true" />
+                    <span>Kamera belum aktif</span>
+                  </div>
+                )}
+              </div>
+              <input ref={berkasRef} type="file" accept="image/*" capture="user" hidden
+                onChange={e => { void pilihBerkas(e.target.files?.[0]); e.target.value = ''; }} />
+              {!w.streaming ? (
+                <Tombol varian="utama" ikon={Camera} onClick={() => void startCamera()}>
+                  Aktifkan Kamera
+                </Tombol>
+              ) : (
+                <Tombol varian="utama" ikon={Camera} onClick={() => void capturePhoto()}>
+                  Ambil Foto
+                </Tombol>
+              )}
+              <Tombol varian="hantu" ukuran="kecil" ikon={ImagePlus} onClick={() => berkasRef.current?.click()}>
+                Pilih dari galeri / kamera ponsel
+              </Tombol>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── Step 3: Nama manual ── */}
+      {w.step === 3 && (
+        <div className={styles.kolom}>
+          {w.foto && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={w.foto.url} alt="Foto petugas" className={styles.fotoBulat} />
+          )}
+          {namaLayananDipilih && <p className={styles.layananDipilih}>{namaLayananDipilih}</p>}
+          <Field label="Nama Petugas" wajib>
+            <input
+              ref={namaRef}
+              className="form-input"
+              type="text"
+              autoComplete="off"
+              maxLength={100}
+              placeholder="Ketik nama lengkap petugas"
+              value={w.nama}
+              onChange={e => dispatch({ type: 'SET_NAMA', nama: e.target.value })}
+              onKeyDown={e => { if (e.key === 'Enter' && !submitting) void handleSelesai(); }}
+            />
+          </Field>
+        </div>
+      )}
+    </Dialog>
   );
 }

@@ -1,0 +1,51 @@
+.bilah {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 20px;
+  margin: 0;
+  padding: 10px 16px;
+  list-style: none;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: var(--fs-body);
+}
+
+.item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.titik {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--warna-titik);
+}
+
+.netral {
+  --warna-titik: var(--status-neutral-fg);
+}
+
+.sukses {
+  --warna-titik: var(--status-success-fg);
+}
+
+.peringatan {
+  --warna-titik: var(--status-warning-fg);
+}
+
+.bahaya {
+  --warna-titik: var(--status-danger-fg);
+}
+
+.info {
+  --warna-titik: var(--status-info-fg);
+}
+
+.primer {
+  --warna-titik: var(--color-primary-600);
+}

@@ -1,95 +1,65 @@
-.reservasiPage {
-  min-height: 100vh;
-  background: transparent;
-}
-
-.container {
-  max-width: 640px;
-  margin: 0 auto;
-  padding: var(--space-8);
-}
-
-.backLink {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--text-sm);
-  color: var(--text-secondary);
-  text-decoration: none;
-  margin-bottom: var(--space-6);
-  transition: color var(--transition-fast);
-}
-
-.backLink:hover {
-  color: var(--color-primary-600);
-}
-
-.formCard {
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-2xl);
-  padding: var(--space-8);
-  box-shadow: var(--shadow-sm);
-  animation: fadeIn 0.4s ease-out;
-}
-
-.formHeader {
-  margin-bottom: var(--space-8);
-}
-
-.formIcon {
-  width: 56px;
-  height: 56px;
-  border-radius: var(--radius-xl);
-  background: linear-gradient(135deg, var(--color-primary-600), var(--color-primary-700));
-  color: white;
+/* Reservasi pengunjung: kartu datar gaya "Dasbor". Token dari tema-dasbor.css (dipasang cangkang /me). */
+.halaman {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: var(--space-4);
-  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.25);
+  flex-direction: column;
+  gap: var(--gap-grid, 20px);
+  min-width: 0;
 }
 
-.formTitle {
-  font-family: var(--font-display);
-  font-size: var(--text-2xl);
-  font-weight: 800;
-  color: var(--text-primary);
-  margin-bottom: var(--space-2);
+/* Formulir (kiri) + Reservasi Saya (kanan) di layar lebar; bertumpuk di HP. */
+.kolom {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--gap-grid, 20px);
+  align-items: start;
 }
 
-.formSubtitle {
-  font-size: var(--text-sm);
-  color: var(--text-secondary);
-  line-height: 1.6;
+@media (min-width: 1200px) {
+  .kolom {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 420px);
+  }
 }
 
 .formBody {
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
+  gap: 18px;
 }
 
-.estimasiInline {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin-top: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  background: var(--color-primary-50);
-  border: 1px solid var(--color-primary-100);
-  border-radius: var(--radius-md);
-  font-size: var(--text-sm);
-  color: var(--color-primary-700);
-}
-
-/* Radio Tujuan */
-.tujuanGroup {
+.grup {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: 8px;
+  min-width: 0;
+}
+
+.labelGrup {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.bintang {
+  color: var(--status-danger-fg);
+}
+
+.bantuan {
+  margin: 0;
+  font-size: var(--fs-small);
+  color: var(--text-secondary);
+}
+
+/* Pilihan tujuan: dua kartu radio */
+.tujuanGroup {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+@media (max-width: 560px) {
+  .tujuanGroup {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .tujuanRadioInput {
@@ -105,41 +75,41 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-4);
-  border: 2px solid var(--border-default);
+  gap: 12px;
+  min-height: var(--target-sentuh, 44px);
+  padding: 14px;
+  border: 1px solid var(--border-default);
   border-radius: var(--radius-lg);
+  background: var(--bg-surface);
   cursor: pointer;
-  transition: all var(--transition-fast);
-  min-height: 44px;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 
 .tujuanOption:has(.tujuanRadioInput:focus-visible) {
-  outline: 2px solid var(--color-primary-600);
-  outline-offset: 2px;
+  box-shadow: var(--focus-ring);
 }
 
 .tujuanOption:hover {
-  border-color: var(--color-primary-300);
-  background: var(--color-primary-50);
+  border-color: var(--border-hover);
+  background: var(--bg-surface-hover);
 }
 
-.tujuanOptionActive {
-  border-color: var(--color-primary-500);
-  background: var(--color-primary-50);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+.tujuanOptionActive,
+.tujuanOptionActive:hover {
+  border-color: var(--color-primary-600);
+  background: var(--status-info-bg);
 }
 
 .tujuanRadio {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  border: 2px solid var(--border-default);
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
-  transition: all var(--transition-fast);
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid var(--border-hover);
+  background: var(--bg-surface);
 }
 
 .tujuanRadioActive {
@@ -152,206 +122,268 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
+  background: var(--bg-surface);
 }
 
 .tujuanIcon {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius-md);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
 }
 
 .tujuanIconLoket {
-  background: var(--color-primary-50);
-  color: var(--color-primary-600);
+  background: var(--status-info-bg);
+  color: var(--status-info-fg);
 }
 
 .tujuanIconBertemu {
-  background: var(--color-accent-100);
-  color: var(--color-accent-700);
+  background: var(--status-success-bg);
+  color: var(--status-success-fg);
 }
 
 .tujuanLabel {
   display: block;
+  font-size: var(--fs-body);
   font-weight: 600;
-  font-size: var(--text-sm);
   color: var(--text-primary);
 }
 
 .tujuanHint {
   display: block;
-  font-size: var(--text-xs);
+  margin-top: 2px;
+  font-size: var(--fs-small);
   color: var(--text-secondary);
 }
 
-/* Success State */
-.successCard {
-  text-align: center;
-  animation: fadeIn 0.5s ease-out;
-}
-
-.successIcon {
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  background: var(--color-success-50);
-  color: var(--color-success-600);
+.estimasiInline {
   display: flex;
   align-items: center;
-  justify-content: center;
-  margin: 0 auto var(--space-5);
+  gap: 8px;
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  background: var(--status-info-bg);
+  border: 1px solid var(--status-info-border);
+  color: var(--status-info-fg);
+  font-size: var(--fs-small);
 }
 
-.successTitle {
-  font-family: var(--font-display);
-  font-size: var(--text-2xl);
-  font-weight: 800;
-  margin-bottom: var(--space-2);
+.estimasiInline > svg {
+  flex: none;
 }
 
-.successDescription {
-  font-size: var(--text-sm);
+.ikonSebaris {
+  display: inline;
+  vertical-align: middle;
+}
+
+.galatForm {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--status-danger-bg);
+  border: 1px solid var(--status-danger-border);
+  color: var(--status-danger-fg);
+  font-size: var(--fs-body);
+  overflow-wrap: anywhere;
+}
+
+/* Persetujuan PDP */
+.consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.consentKotak {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin: 2px 0 0;
+  accent-color: var(--color-primary-600);
+  cursor: pointer;
+}
+
+.consentKotak:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: 4px;
+}
+
+.consentTeks {
+  font-size: var(--fs-body);
+  line-height: 1.5;
   color: var(--text-secondary);
-  margin-bottom: var(--space-8);
-  line-height: 1.6;
+  cursor: pointer;
+}
+
+.consentTautan {
+  color: var(--text-link);
+  text-decoration: underline;
+}
+
+.kirim {
+  width: 100%;
+  min-height: var(--target-sentuh, 44px);
+}
+
+/* Berhasil */
+.berhasil {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  text-align: center;
+}
+
+.berhasilIkon {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--status-success-bg);
+  color: var(--status-success-fg);
+}
+
+.berhasilTeks {
+  margin: 0;
+  max-width: 44ch;
+  font-size: var(--fs-body);
+  color: var(--text-secondary);
 }
 
 .qrWrapper {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-6);
-  background: var(--color-neutral-50);
-  border-radius: var(--radius-xl);
-  margin-bottom: var(--space-6);
+  gap: 8px;
+  padding: 16px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface-muted);
+  max-width: 100%;
+}
+
+.qrWrapper canvas {
+  max-width: 100%;
 }
 
 .qrHint {
-  font-size: var(--text-xs);
-  color: var(--text-tertiary);
+  margin: 0;
+  max-width: 36ch;
+  font-size: var(--fs-small);
+  color: var(--text-secondary);
 }
 
-.successActions {
+.aksiBerhasil {
   display: flex;
-  gap: var(--space-3);
-  justify-content: center;
   flex-wrap: wrap;
-}
-
-@media (max-width: 768px) {
-  .container {
-    padding: var(--space-4);
-  }
-
-  .formCard {
-    padding: var(--space-5);
-  }
+  justify-content: center;
+  gap: 10px;
 }
 
 /* Reservasi Saya */
-.daftarSection {
-  margin-top: var(--space-8);
+.daftarInfo {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--status-success-bg);
+  border: 1px solid var(--status-success-border);
+  color: var(--status-success-fg);
+  font-size: var(--fs-body);
 }
 
-.daftarTitle {
-  font-size: var(--text-lg);
-  font-weight: 700;
-  margin-bottom: var(--space-3);
+.daftarKartu .galatForm {
+  margin-bottom: 12px;
 }
 
 .daftarList {
-  list-style: none;
-  margin: 0;
-  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reservasiCard {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 14px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface-muted);
+  border: 1px solid var(--border-subtle);
+}
+
+.reservasiQr {
+  flex: none;
+  line-height: 0;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+}
+
+.reservasiInfo {
+  flex: 1 1 180px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .daftarBaris {
   display: flex;
-  align-items: center;
-  gap: var(--space-3);
   flex-wrap: wrap;
-}
-
-.daftarCatatan {
-  font-size: var(--text-xs);
-  color: var(--text-tertiary);
-  margin-top: var(--space-1);
-}
-
-.daftarAksi {
-  display: flex;
-  gap: var(--space-2);
-  margin-top: var(--space-2);
-  flex-wrap: wrap;
-}
-
-.daftarInfo {
-  font-size: var(--text-sm);
-  color: var(--color-success-700);
-  margin-bottom: var(--space-3);
-}
-
-.reservasiCard {
-  background: var(--bg-card);
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-xl);
-  padding: var(--space-5);
-  display: flex;
-  gap: var(--space-5);
-  align-items: flex-start;
-}
-
-.reservasiQr {
-  flex-shrink: 0;
-  width: 112px;
-  height: 112px;
-  border-radius: var(--radius-lg);
-  background: #fff;
-  padding: var(--space-2);
-  border: 1px solid var(--border-primary);
-  display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 6px 10px;
 }
 
-.reservasiInfo {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
+.reservasiNama {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
 }
 
 .reservasiMeta {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  font-size: var(--text-sm);
+  gap: 8px;
+  font-size: var(--fs-body);
   color: var(--text-secondary);
 }
 
 .reservasiMetaIcon {
+  flex: none;
   color: var(--text-tertiary);
-  flex-shrink: 0;
 }
 
-@media (max-width: 480px) {
-  .reservasiCard {
-    flex-direction: column;
-    align-items: center;
-  }
+.daftarCatatan {
+  margin: 0;
+  font-size: var(--fs-small);
+  color: var(--text-tertiary);
+}
 
-  .reservasiInfo {
-    width: 100%;
+.daftarAksi {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+@media (pointer: coarse) {
+  .daftarAksi > * {
+    min-height: var(--target-sentuh, 44px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tujuanOption {
+    transition: none;
   }
 }

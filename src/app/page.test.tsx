@@ -157,7 +157,26 @@ describe('Homepage etalase: blok', () => {
     h.data.layanan = { layanan: [], tingkat: 0 };
     render(<LandingPage />);
     expect(await screen.findByRole('heading', { level: 1 })).toBeInTheDocument();
-    expect(screen.getByText(/sedang disiapkan/i)).toBeInTheDocument();
+    // A-01: semua tingkat query gagal = galat (dengan Coba lagi), bukan "daftar sedang disiapkan".
+    expect(screen.getByRole('alert')).toHaveTextContent(/belum dapat dimuat/i);
+    expect(screen.queryByText(/sedang disiapkan/i)).toBeNull();
+  });
+
+  it('A-01: Coba lagi memuat ulang daftar layanan dan menampilkan kartu', async () => {
+    h.data.layanan = { layanan: [], tingkat: 0 };
+    render(<LandingPage />);
+    const tombol = await screen.findByRole('button', { name: 'Coba lagi' });
+    h.data.layanan = { layanan: [layanan('1', 'Helpdesk OSS')], tingkat: 1 };
+    fireEvent.click(tombol);
+    expect(await screen.findByRole('button', { name: /Helpdesk OSS/ })).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('A-01: daftar kosong yang sah (tingkat 1) tetap pesan "sedang disiapkan", tanpa galat', async () => {
+    h.data.layanan = { layanan: [], tingkat: 1 };
+    render(<LandingPage />);
+    await screen.findByText(/sedang disiapkan/i);
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
   it('permintaan menggantung: setelah 6 detik halaman tampil dengan bawaan (bukan "Memuat halaman…" selamanya)', async () => {
@@ -174,7 +193,9 @@ describe('Homepage etalase: blok', () => {
         await vi.advanceTimersByTimeAsync(200);
       });
       expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument();
-      expect(screen.getByText(/sedang disiapkan/i)).toBeInTheDocument();
+      // Batas waktu lewat = galat (Coba lagi), bukan "memang belum ada layanan".
+      expect(screen.getByRole('alert')).toHaveTextContent(/belum dapat dimuat/i);
+      expect(screen.queryByText(/sedang disiapkan/i)).toBeNull();
       expect(screen.queryByText(/Memuat halaman/)).toBeNull();
     } finally {
       vi.useRealTimers();

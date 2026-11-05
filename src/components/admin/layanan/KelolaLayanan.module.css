@@ -157,3 +157,7 @@
 :global(.table) td.kolLabel {
   min-width: 300px;
 }
+
+.bagian { margin-top: var(--space-5); }
+@media (pointer: coarse) { .geser button { min-width: 44px; min-height: 44px; } }
+@media (max-width: 640px) { .rincianIsi { grid-template-columns: minmax(0, 1fr); } }

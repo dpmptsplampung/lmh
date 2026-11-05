@@ -19,6 +19,12 @@ export function responsGalatRekap(error: unknown, label: string): NextResponse {
     return NextResponse.json({ error: PESAN_MIGRASI_REKAP, kode: KODE_MIGRASI_BELUM }, { status: 409 });
   }
   const pesan = String((error as { message?: unknown } | null)?.message ?? '');
+  if (pesan.startsWith('SESI_TIDAK_SAH:')) {
+    return NextResponse.json({ error: 'Sesi Anda tidak berlaku lagi. Silakan masuk kembali.', kode: 'SESI_TIDAK_SAH' }, { status: 401 });
+  }
+  if (pesan.startsWith('FORBIDDEN:')) {
+    return NextResponse.json({ error: 'Anda tidak berhak membaca rekap ini.', kode: 'FORBIDDEN' }, { status: 403 });
+  }
   const kode = /^(RENTANG_TIDAK_VALID|UNIT_TIDAK_VALID)/.exec(pesan)?.[1];
   if (kode) {
     return NextResponse.json({ error: pesan.replace(/^[A-Z_]+:\s*/, ''), kode }, { status: 422 });

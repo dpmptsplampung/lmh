@@ -1,17 +1,26 @@
 'use client';
 
-import Link from 'next/link';
+import Tombol from '@/components/ui/Tombol';
+import Kartu from '@/components/ui/Kartu';
+import { BISA_DIFOKUS } from '@/components/ui/fokus';
+import Tabel, { type KolomTabel } from '@/components/ui/Tabel';
+import Lencana from '@/components/ui/Lencana';
+import Skeleton from '@/components/ui/Skeleton';
+import StatusKosong from '@/components/ui/StatusKosong';
+import Galat from '@/components/ui/Galat';
+import { formatTanggal } from '@/lib/utils';
+
+import tampilan from './page.dasbor.module.css';
+
 import { useCallback, useEffect, useState } from 'react';
-import { Archive, Building2, Loader2, Plus, RotateCcw, Trash2 } from 'lucide-react';
+import { Archive, Building2, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import { useToast } from '@/components/Toast';
 import RoleNote from '@/components/admin/RoleNote';
 import { AkunDialog } from '@/components/admin/AkunForm';
 import FormDialog from '@/components/admin/FormDialog';
 import { AdminFetchError, adminFetch } from '@/components/admin/adminFetch';
-import LayananForm, {
-  FORM_PENDATAAN_LABEL, STATUS_LABEL, type HasilForm, type LayananRow,
-} from '@/components/admin/layanan/LayananForm';
+import LayananForm, { FORM_PENDATAAN_LABEL, STATUS_LABEL, type HasilForm, type LayananRow } from '@/components/admin/layanan/LayananForm';
 import { BarisTambah, SelTeksInline } from '@/components/admin/SuntingInline';
 import type { InstansiRow, LayananTautan } from '@/lib/layanan/schemas';
 import styles from '@/components/admin/layanan/KelolaLayanan.module.css';
@@ -27,7 +36,7 @@ const tanggalArsip = (iso: string | null | undefined) => {
   const d = new Date(iso);
   return Number.isNaN(d.getTime())
     ? '—'
-    : d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta' });
+    : formatTanggal(iso);
 };
 
 // Dialog yang sedang terbuka: form (baru / ubah), konfirmasi arsip, atau konfirmasi hapus permanen.
@@ -158,7 +167,6 @@ export default function KelolaLayananPage() {
     }
   };
 
-
   const validasiInstansiNama = (v: string) =>
     v.length < NAMA_INSTANSI_MIN || v.length > NAMA_INSTANSI_MAKS
       ? `Nama instansi ${NAMA_INSTANSI_MIN} sampai ${NAMA_INSTANSI_MAKS} karakter.`
@@ -210,10 +218,39 @@ export default function KelolaLayananPage() {
   const aktif = rows.filter((r) => r.aktif !== false);
   const arsip = rows.filter((r) => r.aktif === false);
 
+  const kolomLayanan: KolomTabel<LayananRow>[] = [
+    { kunci: 'nama', judul: 'Layanan', judulBaris: true },
+    { kunci: 'instansi', judul: 'Instansi', render: (r) => namaInstansi(r.instansi_id) },
+    { kunci: 'loket', judul: 'Loket', angka: true, render: (r) => r.nomor_loket ?? '—' },
+    { kunci: 'prefiks', judul: 'Prefiks', render: (r) => r.prefiks_antrean ?? '—' },
+    { kunci: 'tampilan', judul: 'Halaman utama', render: (r) => <Lencana nada={r.status_tampilan === 'aktif' ? 'sukses' : 'netral'}>{STATUS_LABEL[r.status_tampilan] ?? r.status_tampilan}</Lencana> },
+    { kunci: 'homepage', judul: 'Homepage', render: (r) => ya(r.tampil_di_homepage ?? true) },
+    { kunci: 'layar', judul: 'Layar TV', render: (r) => ya(r.tampil_di_layar) },
+    { kunci: 'antrean', judul: 'Antrean', render: (r) => ya(r.punya_antrean) },
+    { kunci: 'pendataan', judul: 'Pendataan', render: (r) => r.form_pendataan ? FORM_PENDATAAN_LABEL[r.form_pendataan] : '—' },
+    { kunci: 'chat', judul: 'Chat', render: (r) => ya(r.punya_chat) },
+    { kunci: 'bot', judul: 'Bot', render: (r) => bisaUbah ? (
+      <label className={styles.saklarBaris}>
+        <input type="checkbox" role="switch" aria-label={`Bot ${r.nama}`}
+          checked={r.chatbot_aktif} onChange={() => ubahBot(r)} />
+        {r.chatbot_aktif ? 'Hidup' : 'Mati'}
+      </label>
+    ) : (r.chatbot_aktif ? 'Hidup' : 'Mati') },
+  ];
+  if (bisaUbah) kolomLayanan.push({ kunci: 'aksi', judul: 'Aksi', render: (r) => (
+    <div className={styles.rowActions}>
+      <Tombol varian="sekunder" ukuran="kecil" aria-label={`Ubah ${r.nama}`} onClick={() => bukaUbah(r)}>Ubah</Tombol>
+      {!r.form_pendataan && <Tombol href={`/admin/layanan/${r.id}/pendataan`} varian="hantu" ukuran="kecil"
+        aria-label={`Pendataan Khusus ${r.nama}`}>Pendataan Khusus</Tombol>}
+      <Tombol varian="hantu" ukuran="kecil" ikon={Archive} aria-label={`Arsipkan ${r.nama}`}
+        onClick={() => setAksi({ jenis: 'arsip', row: r })}>Arsipkan</Tombol>
+    </div>
+  ) });
+
   return (
     <>
-      <PageHeader title="Kelola Layanan" description="Tambah layanan, atur konten, website terkait, Instansi, loket, antrean, Formulir Pendataan, chat, dan bot" />
-      <div style={{ padding: 'clamp(var(--space-4), 4vw, var(--space-8))' }}>
+      <PageHeader meta="Tanggal ditampilkan dalam WIB" title="Kelola Layanan" description="Tambah layanan, atur konten, website terkait, Instansi, loket, antrean, Formulir Pendataan, chat, dan bot" />
+      <div className={tampilan.area1}>
         {!loading && !loadError && (
           <RoleNote>
             {bisaUbah
@@ -223,88 +260,34 @@ export default function KelolaLayananPage() {
         )}
         {!loading && !loadError && bisaUbah && (
           <div className={styles.toolbar}>
-            <a href="#instansi" className="btn btn--secondary">
+            <Tombol href="#instansi" varian="sekunder">
               <Building2 size={16} aria-hidden="true" /> Kelola Instansi
-            </a>
-            <button type="button" className="btn btn--primary" onClick={bukaBaru}>
+            </Tombol>
+            <Tombol type="button" varian="utama" onClick={bukaBaru}>
               <Plus size={16} aria-hidden="true" /> Tambah layanan
-            </button>
+            </Tombol>
           </div>
         )}
-        <div className="table-wrapper">
+        <Kartu judul="Layanan aktif" padding="tanpa">
           {loading ? (
-            <div style={{ padding: 'var(--space-8)', textAlign: 'center' }} role="status" aria-label="Memuat">
-              <Loader2 size={24} className="animate-pulse" style={{ margin: '0 auto' }} />
-            </div>
+            <Skeleton bentuk="baris" jumlah={5} label="Memuat layanan" />
           ) : loadError ? (
-            <div style={{ padding: 'var(--space-8)', textAlign: 'center' }} role="alert" className="form-error">{loadError}</div>
-          ) : aktif.length === 0 ? (
-            <div style={{ padding: 'var(--space-8)', textAlign: 'center', color: 'var(--text-tertiary)' }}>
-              {bisaUbah ? 'Belum ada layanan aktif. Pilih "Tambah layanan" untuk membuat yang pertama.' : 'Belum ada layanan aktif.'}
-            </div>
+            <Galat pesan={loadError} onRetry={() => { setLoading(true); void load(); }} />
           ) : (
-            <table className="table">
-              <caption className={styles.srOnly}>Daftar layanan aktif</caption>
-              <thead>
-                <tr>
-                  <th>Layanan</th><th>Instansi</th><th>Loket</th><th>Prefiks</th><th>Halaman utama</th><th>Homepage</th>
-                  <th>Layar TV</th><th>Antrean</th><th>Pendataan</th><th>Chat</th><th>Bot</th>
-                  {bisaUbah && <th>Aksi</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {aktif.map((r) => (
-                  <tr key={r.id}>
-                    <td style={{ fontWeight: 600 }}>{r.nama}</td>
-                    <td>{namaInstansi(r.instansi_id)}</td>
-                    <td>{r.nomor_loket ?? '—'}</td>
-                    <td>{r.prefiks_antrean ?? '—'}</td>
-                    <td>{STATUS_LABEL[r.status_tampilan] ?? r.status_tampilan}</td>
-                    <td>{ya(r.tampil_di_homepage ?? true)}</td>
-                    <td>{ya(r.tampil_di_layar)}</td>
-                    <td>{ya(r.punya_antrean)}</td>
-                    <td>{r.form_pendataan ? FORM_PENDATAAN_LABEL[r.form_pendataan] : '—'}</td>
-                    <td>{ya(r.punya_chat)}</td>
-                    <td>
-                      {bisaUbah ? (
-                        <label style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
-                          <input type="checkbox" role="switch" aria-label={`Bot ${r.nama}`}
-                            checked={r.chatbot_aktif} onChange={() => ubahBot(r)} />
-                          {r.chatbot_aktif ? 'Hidup' : 'Mati'}
-                        </label>
-                      ) : (r.chatbot_aktif ? 'Hidup' : 'Mati')}
-                    </td>
-                    {bisaUbah && (
-                      <td>
-                        <div className={styles.rowActions}>
-                          <button type="button" className="btn btn--secondary btn--sm"
-                            aria-label={`Ubah ${r.nama}`} onClick={() => bukaUbah(r)}>Ubah</button>
-                          {!r.form_pendataan && (
-                            <Link href={`/admin/layanan/${r.id}/pendataan`} className="btn btn--ghost btn--sm"
-                              aria-label={`Pendataan Khusus ${r.nama}`}>Pendataan Khusus</Link>
-                          )}
-                          <button type="button" className="btn btn--ghost btn--sm"
-                            aria-label={`Arsipkan ${r.nama}`} onClick={() => setAksi({ jenis: 'arsip', row: r })}>
-                            <Archive size={14} aria-hidden="true" /> Arsipkan
-                          </button>
-                        </div>
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <Tabel caption="Daftar layanan aktif" kolom={kolomLayanan} baris={aktif} kunciBaris="id"
+              kosong={<StatusKosong ikon={Building2} judul="Belum ada layanan aktif."
+                isi={bisaUbah ? 'Pilih "Tambah layanan" untuk membuat yang pertama.' : undefined} />} />
           )}
-        </div>
+        </Kartu>
 
         {!loading && !loadError && bisaUbah && (
-          <section id="instansi">
-            <h2 id="judulInstansi" className={styles.sectionTitle}>Instansi</h2>
+          <Kartu id="instansi" judul="Instansi" className={styles.bagian}>
+
             <p className={styles.sectionHint}>
               Instansi adalah pemilik layanan, misalnya dinas atau lembaga. Klik nama atau singkatan untuk mengubahnya;
               layanan memilih instansinya di formulir layanan.
             </p>
-            <div className="table-wrapper">
+            <div className="table-wrapper" role="region" aria-label="Daftar instansi" {...BISA_DIFOKUS}>
               <table className="table">
                 <caption className="sr-only">Daftar instansi</caption>
                 <thead>
@@ -339,16 +322,16 @@ export default function KelolaLayananPage() {
                 </tbody>
               </table>
             </div>
-          </section>
+          </Kartu>
         )}
 
         {!loading && !loadError && arsip.length > 0 && (
-          <section aria-labelledby="judulArsip">
-            <h2 id="judulArsip" className={styles.sectionTitle}>Diarsipkan</h2>
+          <Kartu judul="Diarsipkan" className={styles.bagian}>
+
             <p className={styles.sectionHint}>
               Layanan yang diarsipkan tidak tampil di publik dan tidak menerbitkan tiket atau reservasi baru. Riwayatnya tetap tersimpan.
             </p>
-            <div className="table-wrapper">
+            <div className="table-wrapper" role="region" aria-label="Daftar layanan yang diarsipkan" {...BISA_DIFOKUS}>
               <table className="table">
                 <caption className={styles.srOnly}>Daftar layanan yang diarsipkan</caption>
                 <thead>
@@ -360,20 +343,20 @@ export default function KelolaLayananPage() {
                 <tbody>
                   {arsip.map((r) => (
                     <tr key={r.id} className={styles.mutedRow}>
-                      <td style={{ fontWeight: 600 }}>{r.nama}</td>
+                      <td className={tampilan.sel5} >{r.nama}</td>
                       <td>{namaInstansi(r.instansi_id)}</td>
                       <td>{tanggalArsip(r.diarsipkan_at)}</td>
                       {bisaUbah && (
                         <td>
                           <div className={styles.rowActions}>
-                            <button type="button" className="btn btn--secondary btn--sm"
+                            <Tombol type="button" varian="sekunder" ukuran="kecil"
                               aria-label={`Aktifkan lagi ${r.nama}`} onClick={() => aktifkanLagi(r)}>
                               <RotateCcw size={14} aria-hidden="true" /> Aktifkan lagi
-                            </button>
-                            <button type="button" className="btn btn--ghost btn--sm"
+                            </Tombol>
+                            <Tombol type="button" varian="hantu" ukuran="kecil"
                               aria-label={`Hapus permanen ${r.nama}`} onClick={() => setAksi({ jenis: 'hapus', row: r })}>
                               <Trash2 size={14} aria-hidden="true" /> Hapus permanen
-                            </button>
+                            </Tombol>
                           </div>
                         </td>
                       )}
@@ -382,7 +365,7 @@ export default function KelolaLayananPage() {
                 </tbody>
               </table>
             </div>
-          </section>
+          </Kartu>
         )}
       </div>
 
@@ -404,8 +387,7 @@ export default function KelolaLayananPage() {
           galat={aksiError || null}
           onClose={tutupAksi}
           onSubmit={jalankanAksi}
-          maxWidth={460}
-        >
+          maxWidth={460}>
           {() => null}
         </FormDialog>
       )}

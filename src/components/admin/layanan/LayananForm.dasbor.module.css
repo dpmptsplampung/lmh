@@ -1,0 +1,37 @@
+.area1 {
+  gap: var(--space-4);
+}
+
+.baris2 {
+  border: 1px solid var(--color-warning-500, var(--status-warning-fg));
+  border-radius: var(--radius-md, 8px);
+  padding: var(--space-3);
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.area3 {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.teks4 {
+  margin: 0;
+}
+
+.baris5 {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.baris6 {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.area1 { display: flex; flex-direction: column; gap: var(--space-4); }
+.subjudul { font-size: var(--text-sm); font-weight: 700; color: var(--text-secondary); margin: var(--space-2) 0 0; }

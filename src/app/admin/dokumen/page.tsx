@@ -1,11 +1,25 @@
 'use client';
 
+import Field from '@/components/ui/Field';
+
+import Tombol from '@/components/ui/Tombol';
+import Tabel from '@/components/ui/Tabel';
+import Kartu from '@/components/ui/Kartu';
+import KartuStatistik from '@/components/ui/KartuStatistik';
+import Lencana from '@/components/ui/Lencana';
+import Skeleton from '@/components/ui/Skeleton';
+import StatusKosong from '@/components/ui/StatusKosong';
+import Galat from '@/components/ui/Galat';
+
+import tampilan from './page.dasbor.module.css';
+
 // WP-27 / BOT-01..10: Admin page for managing RAG regulatory documents.
 // Staff paste plain text; system chunks and embeds for bot retrieval (BOT-07).
 // Embedding is triggered via /api/admin/dokumen/embed route.
 
 import { useState, useEffect, useCallback } from 'react';
 import { FileText, Plus, Trash2, RefreshCw, BookOpen, CheckCircle2, Clock, AlertCircle } from 'lucide-react';
+import { formatTanggal } from '@/lib/utils';
 import PageHeader from '@/components/layout/PageHeader';
 import { createClient } from '@/lib/supabase/client';
 import { mutasiInsert, mutasiWajibBaris, pesanMutasi } from '@/lib/supabase/mutate';
@@ -30,6 +44,7 @@ export default function AdminDokumenPage() {
   const [docs, setDocs] = useState<DokumenRow[]>([]);
   const [layananList, setLayananList] = useState<LayananOption[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [embedding, setEmbedding] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
@@ -49,7 +64,9 @@ export default function AdminDokumenPage() {
       setDocs((data ?? []) as DokumenRow[]);
       const { data: ld } = await supabase.from('layanan').select('id, nama').order('nama');
       setLayananList(ld ?? []);
+      setLoadError('');
     } catch {
+      setLoadError('Gagal memuat dokumen');
       toast('Gagal memuat dokumen', 'error');
     } finally {
       setLoading(false);
@@ -136,194 +153,132 @@ export default function AdminDokumenPage() {
 
   return (
     <>
-      <PageHeader title='Dokumen Peraturan' description='Kelola dokumen sumber untuk bot RAG (BOT-01..10)'>
-        <button className='btn btn--ghost btn--sm' onClick={loadDocs}>
+      <PageHeader meta="Tanggal ditampilkan dalam WIB" title='Dokumen Peraturan' description='Kelola dokumen sumber untuk bot RAG (BOT-01..10)'>
+        <Tombol varian="hantu" ukuran="kecil" type="button" onClick={loadDocs}>
           <RefreshCw size={16} className={loading ? 'animate-spin' : ''} /> Refresh
-        </button>
-        <button className='btn btn--primary btn--sm' onClick={() => setShowForm(!showForm)}>
+        </Tombol>
+        <Tombol varian="utama" ukuran="kecil" type="button" onClick={() => setShowForm(!showForm)}>
           <Plus size={16} /> {showForm ? 'Tutup' : 'Tambah Dokumen'}
-        </button>
+        </Tombol>
       </PageHeader>
 
-      <div style={{ padding: 'var(--space-8)' }}>
-        {/* Stats */}
-        <div className='grid-stats' style={{ marginBottom: 'var(--space-8)' }}>
-          <div className='stat-card'>
-            <div className='stat-card__icon' style={{ background: 'var(--color-primary-50)', color: 'var(--color-primary-600)' }}>
-              <CheckCircle2 size={22} />
-            </div>
-            <span className='stat-card__value'>{berlakuCount}</span>
-            <span className='stat-card__label'>Dokumen Berlaku</span>
-          </div>
-          <div className='stat-card'>
-            <div className='stat-card__icon' style={{ background: 'var(--color-neutral-100)', color: 'var(--color-neutral-500)' }}>
-              <AlertCircle size={22} />
-            </div>
-            <span className='stat-card__value'>{dicabutCount}</span>
-            <span className='stat-card__label'>Dicabut</span>
-          </div>
-          <div className='stat-card'>
-            <div className='stat-card__icon' style={{ background: 'var(--color-primary-50)', color: 'var(--color-primary-600)' }}>
-              <BookOpen size={22} />
-            </div>
-            <span className='stat-card__value'>{docs.length}</span>
-            <span className='stat-card__label'>Total Dokumen</span>
-          </div>
-        </div>
+      <div className={tampilan.area1}>
+        {!loadError && <div className={tampilan.statistik}>
+          <KartuStatistik label="Dokumen Berlaku" nilai={berlakuCount} ikon={CheckCircle2} memuat={loading} />
+          <KartuStatistik label="Dicabut" nilai={dicabutCount} ikon={AlertCircle} memuat={loading} />
+          <KartuStatistik label="Total Dokumen" nilai={docs.length} ikon={BookOpen} memuat={loading} />
+        </div>}
 
         {/* Add form */}
         {showForm && (
-          <div className='table-wrapper' style={{ padding: 'var(--space-6)', marginBottom: 'var(--space-8)' }}>
-            <h3 style={{ fontWeight: 700, marginBottom: 'var(--space-4)' }}>Tambah Dokumen Baru</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
-              <div className='form-group'>
-                <label className='form-label form-label--required'>Judul</label>
-                <input className='form-input' value={form.judul} onChange={e => setForm(f => ({ ...f, judul: e.target.value }))} placeholder='Judul dokumen' />
-              </div>
-              <div className='form-group'>
-                <label className='form-label'>Nomor</label>
-                <input className='form-input' value={form.nomor} onChange={e => setForm(f => ({ ...f, nomor: e.target.value }))} placeholder='Nomor peraturan' />
-              </div>
-              <div className='form-group'>
-                <label className='form-label'>Jenis</label>
-                <select className='form-input' value={form.jenis} onChange={e => setForm(f => ({ ...f, jenis: e.target.value }))}>
+          <Kartu judul="Tambah Dokumen Baru" className={tampilan.formDokumen}>
+            <div className={tampilan.kisi7}>
+              <Field label="Judul" wajib>
+                <input id='dok-judul' className='form-input' value={form.judul} onChange={e => setForm(f => ({ ...f, judul: e.target.value }))} placeholder='Judul dokumen' />
+              </Field>
+              <Field label="Nomor">
+                <input id='dok-nomor' className='form-input' value={form.nomor} onChange={e => setForm(f => ({ ...f, nomor: e.target.value }))} placeholder='Nomor peraturan' />
+              </Field>
+              <Field label="Jenis">
+                <select id='dok-jenis' className='form-input' value={form.jenis} onChange={e => setForm(f => ({ ...f, jenis: e.target.value }))}>
                   <option value='peraturan'>Peraturan</option>
                   <option value='sop'>SOP</option>
                   <option value='maklumat'>Maklumat</option>
                   <option value='standar_pelayanan'>Standar Pelayanan</option>
                 </select>
-              </div>
-              <div className='form-group'>
-                <label className='form-label'>Status</label>
-                <select className='form-input' value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>
+              </Field>
+              <Field label="Status">
+                <select id='dok-status' className='form-input' value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>
                   <option value='berlaku'>Berlaku</option>
                   <option value='dicabut'>Dicabut</option>
                 </select>
-              </div>
-              <div className='form-group'>
-                <label className='form-label'>Layanan Terkait</label>
-                <select className='form-input' value={form.layanan_id} onChange={e => setForm(f => ({ ...f, layanan_id: e.target.value }))}>
+              </Field>
+              <Field label="Layanan Terkait">
+                <select id='dok-layanan' className='form-input' value={form.layanan_id} onChange={e => setForm(f => ({ ...f, layanan_id: e.target.value }))}>
                   <option value=''>— Umum —</option>
                   {layananList.map(l => (
                     <option key={l.id} value={l.id}>{l.nama}</option>
                   ))}
                 </select>
-              </div>
-              <div className='form-group'>
-                <label className='form-label'>URL Sumber</label>
-                <input className='form-input' type='url' value={form.sumber_url} onChange={e => setForm(f => ({ ...f, sumber_url: e.target.value }))} placeholder='https://...' />
-              </div>
+              </Field>
+              <Field label="URL Sumber">
+                <input id='dok-sumber' className='form-input' type='url' value={form.sumber_url} onChange={e => setForm(f => ({ ...f, sumber_url: e.target.value }))} placeholder='https://...' />
+              </Field>
             </div>
-            <div className='form-group' style={{ marginTop: 'var(--space-4)' }}>
-              <label className='form-label form-label--required'>Teks Utama</label>
+            <div className={["form-group", tampilan.area8].filter(Boolean).join(' ')}>
+              <label className='form-label form-label--required' htmlFor='dok-teks'>Teks Utama</label>
               <textarea
-                className='form-input'
+                id='dok-teks'
+                className={["form-input", tampilan.area9].filter(Boolean).join(' ')}
                 rows={10}
                 value={form.teks_utama}
                 onChange={e => setForm(f => ({ ...f, teks_utama: e.target.value }))}
                 placeholder='Paste teks lengkap peraturan / SOP di sini. Sistem akan otomatis memotong dan mengembedding untuk bot RAG.'
-                style={{ fontFamily: 'monospace', fontSize: 'var(--text-sm)' }}
+
               />
               <span className='form-hint'>Teks ini akan di-chunk dan di-embed ke vektor database (BOT-07). Gunakan format plain text.</span>
             </div>
-            <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end', marginTop: 'var(--space-4)' }}>
-              <button className='btn btn--ghost' onClick={() => setShowForm(false)}>Batal</button>
-              <button className='btn btn--primary' onClick={handleSimpan}>
+            <div className={tampilan.baris10}>
+              <Tombol varian="hantu" type="button" onClick={() => setShowForm(false)}>Batal</Tombol>
+              <Tombol varian="utama" type="button" onClick={handleSimpan}>
                 <FileText size={16} /> Simpan Dokumen
-              </button>
+              </Tombol>
             </div>
-          </div>
+          </Kartu>
         )}
 
         {/* Table */}
-        {loading ? (
-          <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: 'var(--space-8)' }}>Memuat data...</p>
+        <Kartu judul="Daftar dokumen" padding="tanpa">
+        {loading ? <Skeleton bentuk="baris" jumlah={5} label="Memuat dokumen" /> : loadError ? (
+          <Galat pesan={loadError} onRetry={() => { void loadDocs(); }} />
         ) : (
-          <div className='table-wrapper'>
-            <table className='table'>
-              <thead>
-                <tr>
-                  <th>Dokumen</th>
-                  <th>Jenis</th>
-                  <th>Layanan</th>
-                  <th>Status</th>
-                  <th>Dibuat</th>
-                  <th>Aksi</th>
-                </tr>
-              </thead>
-              <tbody>
-                {docs.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: 'var(--space-8)' }}>
-                      Belum ada dokumen. Klik &quot;Tambah Dokumen&quot; untuk menambahkan.
-                    </td>
-                  </tr>
-                ) : docs.map(doc => (
-                  <tr key={doc.id}>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)' }}>
-                        <FileText size={18} style={{ color: 'var(--color-primary-500)', flexShrink: 0, marginTop: 2 }} />
+          <Tabel caption="Daftar dokumen peraturan" baris={docs} kunciBaris="id" kosong={<StatusKosong ikon={FileText} judul="Belum ada dokumen. Klik &quot;Tambah Dokumen&quot; untuk menambahkan." />} kolom={[
+{ kunci: 'kolom0', judul: "Dokumen", judulBaris: true, render: (doc) => (<><div className={tampilan.baris13}>
+                        <FileText size={18} className={tampilan.area14}  />
                         <div>
-                          <span style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{doc.judul}</span>
+                          <span className={tampilan.teks15} >{doc.judul}</span>
                           {doc.nomor && (
-                            <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: 2 }}>{doc.nomor}</p>
+                            <p className={tampilan.teks16} >{doc.nomor}</p>
                           )}
                         </div>
-                      </div>
-                    </td>
-                    <td>
-                      <span className='badge badge--draft'>{jenisLabel[doc.jenis] ?? doc.jenis}</span>
-                    </td>
-                    <td style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
-                      {doc.layanan?.nama ?? <span style={{ color: 'var(--text-tertiary)' }}>Umum</span>}
-                    </td>
-                    <td>
-                      {doc.status === 'berlaku' ? (
-                        <span className='badge badge--aktif'>
-                          <CheckCircle2 size={12} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />
+                      </div></>) },
+{ kunci: 'kolom1', judul: "Jenis", render: (doc) => (<><Lencana nada="netral">{jenisLabel[doc.jenis] ?? doc.jenis}</Lencana></>) },
+{ kunci: 'kolom2', judul: "Layanan", render: (doc) => (<div className={tampilan.sel17}>{doc.layanan?.nama ?? <span className={tampilan.teks18} >Umum</span>}</div>) },
+{ kunci: 'kolom3', judul: "Status", render: (doc) => (<>{doc.status === 'berlaku' ? (
+                        <Lencana nada="sukses">
+                          <CheckCircle2 size={12} className={tampilan.area19}  />
                           Berlaku
-                        </span>
+                        </Lencana>
                       ) : (
-                        <span className='badge badge--nonaktif'>
-                          <AlertCircle size={12} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />
+                        <Lencana nada="netral">
+                          <AlertCircle size={12} className={tampilan.area19}  />
                           Dicabut
-                        </span>
-                      )}
-                    </td>
-                    <td style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-                      <Clock size={12} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />
-                      {new Date(doc.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-                        <button
-                          className='btn btn--ghost btn--sm'
+                        </Lencana>
+                      )}</>) },
+{ kunci: 'kolom4', judul: "Dibuat", render: (doc) => (<div className={tampilan.sel20}><Clock size={12} className={tampilan.area19}  />{formatTanggal(doc.created_at, { month: 'short' })}</div>) },
+{ kunci: 'kolom5', judul: "Aksi", render: (doc) => (<><div className={tampilan.baris21}>
+                        <Tombol
+                          varian="hantu" ukuran="kecil" type="button"
                           title='Embed ke vektor DB'
                           disabled={embedding === doc.id}
-                          onClick={() => handleEmbed(doc.id)}
-                        >
+                          onClick={() => handleEmbed(doc.id)}>
                           {embedding === doc.id
                             ? <RefreshCw size={14} className='animate-spin' />
                             : <BookOpen size={14} />}
-                        </button>
+                        </Tombol>
                         {doc.status === 'berlaku' && (
-                          <button
-                            className='btn btn--ghost btn--sm'
+                          <Tombol
+                            varian="hantu" ukuran="kecil" className={["", tampilan.area22].filter(Boolean).join('')}
                             title='Cabut dokumen'
-                            style={{ color: 'var(--color-warning-600)' }}
-                            onClick={() => handleCabut(doc.id)}
-                          >
+
+                            onClick={() => handleCabut(doc.id)}>
                             <Trash2 size={14} />
-                          </button>
+                          </Tombol>
                         )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                      </div></>) }
+]} />
         )}
+        </Kartu>
       </div>
     </>
   );

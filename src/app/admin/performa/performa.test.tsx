@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 
-vi.mock('@/components/Toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
+// toast harus stabil antar render (seperti useToast asli); fungsi baru tiap render memicu muat ulang berulang.
+const toastStabil = vi.hoisted(() => ({ nilai: { toast: () => {} } }));
+vi.mock('@/components/Toast', () => ({ useToast: () => toastStabil.nilai }));
 vi.mock('@/components/layout/PageHeader', () => ({
   default: ({ title, children }: { title: string; children?: React.ReactNode }) => (
     <div><h1>{title}</h1>{children}</div>
@@ -76,5 +78,18 @@ describe('/admin/performa', () => {
     render(<PerformaPage />);
     expect(await screen.findByRole('alert')).toHaveTextContent(/hanya admin/i);
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  });
+
+  it('memilih rentang lewat PemilihRentang memuat ulang dengan dari/sampai baru', async () => {
+    mockFetch.mockResolvedValue({ ok: true, status: 200, json: async () => data() });
+    render(<PerformaPage />);
+    await screen.findByText('Tingkat eskalasi FO ke layanan');
+    const sebelum = mockFetch.mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: /^Rentang tanggal:/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bulan lalu' }));
+    await waitFor(() => expect(mockFetch.mock.calls.length).toBe(sebelum + 1));
+    const q = new URL(String(mockFetch.mock.calls.at(-1)![0]), 'http://x').searchParams;
+    expect(q.get('dari')).toMatch(/-01$/);
+    expect(q.get('dari')! <= q.get('sampai')!).toBe(true);
   });
 });

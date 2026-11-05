@@ -6,6 +6,9 @@
 // berasal dari kolomDataPelayanan().
 import { Fragment, useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
+import Tombol from '@/components/ui/Tombol';
+import Lencana from '@/components/ui/Lencana';
+import { BISA_DIFOKUS } from '@/components/ui/fokus';
 import { formatTanggalId, formatWaktuId, hitungDurasiMenit } from '@/lib/rekap/format';
 import { labelHasil, namaUnit, type BarisPelayanan, type KolomData, type NilaiSel } from '@/lib/rekap/terpadu';
 import styles from './rekap.module.css';
@@ -24,7 +27,7 @@ interface Props {
 const TIDAK_ADA = '—';
 const teksSel = (v: NilaiSel): string => (v == null || v === '' ? TIDAK_ADA : String(v));
 
-const KOLOM_RINGKAS = ['Tanggal', 'Pengunjung', 'Unit / Layanan', 'Topik', 'Hasil', 'Petugas'] as const;
+const KOLOM_RINGKAS = ['Tanggal', 'Pengunjung', 'Unit / Layanan', 'Topik', 'Hasil', 'Petugas', 'Front Office'] as const;
 
 /** Waktu satu baris: "09:10–09:25 · 15 mnt"; bagian yang kosong dibuang. */
 function ringkasWaktu(r: BarisPelayanan): string {
@@ -51,23 +54,24 @@ export default function TabelDataPelayanan({ rows, kolom, tampilan, keadaan }: P
     });
 
   return (
-    <table className={`table ${styles.tabelData}`}>
+    <div className={styles.gulir} role="region" aria-label="Data pelayanan, satu baris per pelayanan" {...BISA_DIFOKUS}>
+    <table className={styles.tabelData}>
       <caption className="sr-only">Data pelayanan, satu baris per pelayanan</caption>
       <thead>
         <tr>
           {ringkas
             ? KOLOM_RINGKAS.map((j, i) => <th key={j} scope="col" className={i === 0 ? styles.kolPertama : undefined}>{j}</th>)
             : kolom.map((k, i) => (
-                <th key={k.kunci} scope="col" className={[i === 0 ? styles.kolPertama : '', k.kunci === 'durasi' ? 'kol-angka' : ''].filter(Boolean).join(' ') || undefined}>
+                <th key={k.kunci} scope="col" className={[i === 0 ? styles.kolPertama : '', k.kunci === 'durasi' ? styles.angka : ''].filter(Boolean).join(' ') || undefined}>
                   {k.judul}
                 </th>
               ))}
-          <th scope="col" className="kol-aksi"><span className="sr-only">Aksi</span></th>
+          <th scope="col" className={styles.kolAksi}><span className="sr-only">Aksi</span></th>
         </tr>
       </thead>
       <tbody>
         {rows.length === 0 && (
-          <tr><td colSpan={jumlahKolom} className="kosong-sel">{keadaan ?? 'Belum ada pelayanan dilayani pada rentang ini.'}</td></tr>
+          <tr><td colSpan={jumlahKolom} className={styles.kosongSel}>{keadaan ?? 'Belum ada pelayanan dilayani pada rentang ini.'}</td></tr>
         )}
         {rows.map((r) => {
           const buka = terbuka.has(r.pelayanan_id);
@@ -77,33 +81,35 @@ export default function TabelDataPelayanan({ rows, kolom, tampilan, keadaan }: P
               <tr className={styles.barisData} onClick={() => alihkan(r.pelayanan_id)} data-terbuka={buka || undefined}>
                 {ringkas ? (
                   <>
-                    <td className={`kol-utama kol-waktu ${styles.kolPertama}`}>
+                    <td className={`${styles.utama} ${styles.waktu} ${styles.kolPertama}`}>
                       {r.tanggal ? formatTanggalId(r.tanggal) : TIDAK_ADA}
-                      {ringkasWaktu(r) && <span className="sub">{ringkasWaktu(r)}</span>}
+                      {ringkasWaktu(r) && <span className={styles.sub}>{ringkasWaktu(r)}</span>}
                     </td>
-                    <td className={`kol-utama ${styles.kolPengunjung}`}>
+                    <td className={`${styles.utama} ${styles.kolPengunjung}`}>
                       {r.pengunjung_nama ?? TIDAK_ADA}
-                      {kontak(r) && <span className="sub" title={kontak(r)}>{kontak(r)}</span>}
+                      {kontak(r) && <span className={styles.sub} title={kontak(r)}>{kontak(r)}</span>}
                     </td>
-                    <td className="kol-teks" title={namaUnit(r)}>{namaUnit(r)}</td>
-                    <td className="kol-teks" title={r.topik ?? '(tidak tercatat)'}>{r.topik ?? '(tidak tercatat)'}</td>
-                    <td>{r.hasil ? <span className={`badge ${r.hasil === 'selesai' ? 'badge--selesai' : ''}`} title={labelHasil(r.hasil)}>{labelHasil(r.hasil)}</span> : TIDAK_ADA}</td>
-                    <td className="kol-teks" title={r.penangan_nama ?? ''}>{r.penangan_nama ?? TIDAK_ADA}</td>
+                    <td className={styles.teks} title={namaUnit(r)}>{namaUnit(r)}</td>
+                    <td className={styles.teks} title={r.topik ?? '(tidak tercatat)'}>{r.topik ?? '(tidak tercatat)'}</td>
+                    <td>{r.hasil ? <Lencana nada={r.hasil === 'selesai' ? 'sukses' : 'netral'} titik className={styles.hasil}>{labelHasil(r.hasil)}</Lencana> : TIDAK_ADA}</td>
+                    <td className={styles.teks} title={r.penangan_nama ?? ''}>{r.penangan_nama ?? TIDAK_ADA}</td>
+                    <td className={styles.teks} title={r.fo_nama ?? ''}>{r.fo_nama ?? TIDAK_ADA}</td>
                   </>
                 ) : (
                   kolom.map((k, i) => {
                     const teks = teksSel(k.ambil(r));
                     const kelas = [
                       i === 0 ? styles.kolPertama : '',
-                      k.kunci === 'durasi' ? 'kol-angka' : ['tanggal', 'mulai', 'selesai', 'nomor_tiket'].includes(k.kunci) ? 'kol-waktu' : 'kol-teks',
+                      k.kunci === 'durasi' ? styles.angka : ['tanggal', 'mulai', 'selesai', 'nomor_tiket'].includes(k.kunci) ? styles.waktu : styles.teks,
                     ].filter(Boolean).join(' ');
                     return <td key={k.kunci} className={kelas} title={teks}>{teks}</td>;
                   })
                 )}
-                <td className="kol-aksi">
-                  <button
-                    type="button"
-                    className="btn btn--ghost btn--sm"
+                <td className={styles.kolAksi}>
+                  <Tombol
+                    varian="hantu"
+                    ukuran="kecil"
+                    ikon={buka ? ChevronDown : ChevronRight}
                     aria-label={`Detail pelayanan ${r.pengunjung_nama ?? ''}`.trim()}
                     aria-expanded={buka}
                     aria-controls={idDetail}
@@ -112,9 +118,8 @@ export default function TabelDataPelayanan({ rows, kolom, tampilan, keadaan }: P
                       alihkan(r.pelayanan_id);
                     }}
                   >
-                    {buka ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
                     Detail
-                  </button>
+                  </Tombol>
                 </td>
               </tr>
               {buka && (
@@ -136,5 +141,6 @@ export default function TabelDataPelayanan({ rows, kolom, tampilan, keadaan }: P
         })}
       </tbody>
     </table>
+    </div>
   );
 }

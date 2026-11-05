@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Clock, Users, CheckCircle2, Loader2, CalendarOff, DoorClosed } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { todayWIB } from '@/lib/time';
 import styles from './EstimasiAntrean.module.css';
 
 export interface LoketEstimasi {
@@ -15,12 +16,6 @@ export interface LoketEstimasi {
   estimasi_tunggu_total_menit: number;
   /** Present when view/API exposes history sample size; 0 or missing → provisional */
   sample_count?: number | null;
-}
-
-/** Tanggal hari ini menurut zona waktu kantor (WIB) dalam format YYYY-MM-DD —
- *  seluruh logika jadwal & hari_libur memakai Asia/Jakarta. */
-function tanggalWIB(): string {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' });
 }
 
 function isProvisional(row: LoketEstimasi): boolean {
@@ -71,7 +66,7 @@ export default function EstimasiAntrean({ judul, penjelasan }: { judul?: string;
     setLokets(rows);
 
     // --- Status buka/tutup hari ini (WIB) ---
-    const today = tanggalWIB();
+    const today = todayWIB();
     // 1. Hari libur nasional (tabel hari_libur) → banner untuk seluruh section.
     const { data: liburRows } = await supabase
       .from('hari_libur')

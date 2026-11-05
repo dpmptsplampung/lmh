@@ -31,8 +31,21 @@ describe('namaUntukSapaan', () => {
     'menganggap %j sebagai tanpa nama',
     (v) => expect(namaUntukSapaan(v)).toBeNull(),
   );
+  it.each([
+    ['tomi', 'Tomi'],
+    ['budi santoso', 'Budi Santoso'],
+    ['BUDI SANTOSO', 'Budi Santoso'],
+    ['siti nur-aini', 'Siti Nur-Aini'],
+    ["dewi o'connor", "Dewi O'Connor"],
+  ])('merapikan huruf kapital nama yang ditulis seluruhnya kecil atau besar: %s', (masuk, harapan) => {
+    expect(namaUntukSapaan(masuk)).toBe(harapan);
+  });
+  it.each(['Budi bin Ahmad', 'M. Rizki', 'Ir. H. Ahmad', 'McDonald', 'dr. Tomi'])(
+    'tidak mengubah nama berhuruf campur: %s',
+    (nama) => expect(namaUntukSapaan(nama)).toBe(nama),
+  );
   it('memotong nama yang terlalu panjang', () => {
-    const hasil = namaUntukSapaan('A'.repeat(100))!;
+    const hasil = namaUntukSapaan('Ab'.repeat(50))!;
     expect(hasil.length).toBeLessThanOrEqual(61);
     expect(hasil.endsWith('…')).toBe(true);
   });

@@ -10,9 +10,19 @@
 // Satu definisi "dilayani" untuk semua angka (lihat DEFINISI_DILAYANI). Tidak ada tombol "Rollup": selalu terkini.
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { BarChart2, Building2, Download, FileCheck, Loader2, RefreshCw, Table2, Users } from 'lucide-react';
+import { ClipboardCheck, Download, MessageCircle, RefreshCw, Users } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import RoleNote from '@/components/admin/RoleNote';
+import Tombol from '@/components/ui/Tombol';
+import Kartu from '@/components/ui/Kartu';
+import KartuStatistik from '@/components/ui/KartuStatistik';
+import Tab, { idPanelTab, idTab } from '@/components/ui/Tab';
+import Tabel, { type KolomTabel } from '@/components/ui/Tabel';
+import Field from '@/components/ui/Field';
+import Galat from '@/components/ui/Galat';
+import CatatanKeadaan from '@/components/ui/CatatanKeadaan';
+import PemilihRentang from '@/components/ui/PemilihRentang';
+import { BISA_DIFOKUS } from '@/components/ui/fokus';
 import Pagination from '@/components/Pagination';
 import { useToast } from '@/components/Toast';
 import { addDaysWIB, todayWIB } from '@/lib/time';
@@ -31,17 +41,37 @@ import {
   type UnitRekap,
 } from '@/lib/rekap/terpadu';
 import TabelDataPelayanan, { type TampilanKolom } from './TabelDataPelayanan';
+import RingkasanDilayani from '@/components/admin/RingkasanDilayani';
+import { ambilDilayani, type Dilayani } from '@/lib/fo/akses-antrean';
 import styles from './rekap.module.css';
 
 type Bagian = 'harian' | 'oss' | 'perizinan' | 'data' | 'kinerja';
 type BagianForm = 'oss' | 'perizinan';
 
-const BAGIAN: { kunci: Bagian; label: string; ikon: typeof BarChart2 }[] = [
-  { kunci: 'harian', label: 'Rekap Harian', ikon: BarChart2 },
-  { kunci: 'oss', label: 'Helpdesk OSS', ikon: Building2 },
-  { kunci: 'perizinan', label: 'Non OSS', ikon: FileCheck },
-  { kunci: 'data', label: 'Data Pelayanan', ikon: Table2 },
-  { kunci: 'kinerja', label: 'Kinerja Petugas', ikon: Users },
+const BAGIAN: { kunci: Bagian; label: string }[] = [
+  { kunci: 'harian', label: 'Rekap Harian' },
+  { kunci: 'oss', label: 'Helpdesk OSS' },
+  { kunci: 'perizinan', label: 'Non OSS' },
+  { kunci: 'data', label: 'Data Pelayanan' },
+  { kunci: 'kinerja', label: 'Kinerja Petugas' },
+];
+
+const ID_TAB = 'rekap';
+
+const KOLOM_HARIAN: KolomTabel<BarisHarian>[] = [
+  { kunci: 'tanggal', judul: 'Tanggal', judulBaris: true, peran: 'utama', render: (r) => formatTanggalId(r.tanggal) },
+  { kunci: 'unit', judul: 'Unit', render: (r) => namaUnit(r) },
+  { kunci: 'tatap_muka', judul: 'Tatap muka', angka: true },
+  { kunci: 'live_chat', judul: 'Live Chat', angka: true },
+  { kunci: 'jumlah', judul: 'Jumlah', angka: true, render: (r) => <strong>{r.jumlah}</strong> },
+];
+
+const KOLOM_KINERJA: KolomTabel<BarisKinerja>[] = [
+  { kunci: 'penangan_nama', judul: 'Petugas', judulBaris: true, peran: 'utama', render: (r) => r.penangan_nama ?? '(tanpa nama)' },
+  { kunci: 'unit', judul: 'Unit', render: (r) => namaUnit(r) },
+  { kunci: 'jumlah', judul: 'Dilayani', angka: true },
+  { kunci: 'live_chat', judul: 'Live Chat', angka: true },
+  { kunci: 'rata_durasi_menit', judul: 'Rata durasi', angka: true, render: (r) => formatMenit(r.rata_durasi_menit) },
 ];
 
 const adalahBagianForm = (b: Bagian): b is BagianForm => b === 'oss' || b === 'perizinan';
@@ -85,6 +115,8 @@ function RekapTerpadu() {
   const [harian, setHarian] = useState<{ rows: BarisHarian[]; ringkasan: RingkasanHarian } | null>(null);
   const [data, setData] = useState<{ rows: BarisPelayanan[]; total: number; form_type: FormPendataan | null; kolom_khusus?: FieldKhusus[] } | null>(null);
   const [kinerja, setKinerja] = useState<BarisKinerja[] | null>(null);
+  // "Dilayani saya / total" (migrasi 202611030015): null = belum ada / migrasi belum diterapkan -> ringkasan disembunyikan.
+  const [dilayani, setDilayani] = useState<Dilayani | null>(null);
   const [halaman, setHalaman] = useState(0);
   // Tampilan kolom Data Pelayanan: null = bawaan (Ringkas; tab Helpdesk OSS / Non OSS langsung Semua kolom agar kolom formulirnya tampil).
   const [tampilanPilihan, setTampilan] = useState<TampilanKolom | null>(null);
@@ -108,6 +140,8 @@ function RekapTerpadu() {
   const layananTab = tabForm ? (layananForm[tabForm] ?? daftarForm[0]?.id ?? '') : '';
   const bagianTampil = BAGIAN.filter(({ kunci }) => !info || bagianTersedia(kunci));
   const layananLain = (info?.opsi_layanan ?? []).filter((o) => !o.form_pendataan);
+  // Harian dan Kinerja memuat semua Layanan, jadi filternya juga semua; hanya Data Pelayanan yang terbatas ke Layanan tanpa formulir.
+  const daftarFilterLayanan = bagian === 'data' ? layananLain : (info?.opsi_layanan ?? []);
 
   const params = useMemo(() => {
     const p = new URLSearchParams({ dari, sampai });
@@ -128,6 +162,14 @@ function RekapTerpadu() {
     const pesan = typeof r.body.error === 'string' ? r.body.error : 'Gagal memuat rekap';
     if (r.status === 409 && r.body.kode === 'MIGRASI_BELUM_DITERAPKAN') setStatus({ jenis: 'migrasi', pesan });
     else setStatus({ jenis: 'galat', pesan });
+  }, []);
+
+  // Data lama dibuang bila permintaan gagal: tabel/kartu tidak boleh menampilkan hasil filter sebelumnya di bawah filter baru.
+  const buangData = useCallback((b: Bagian) => {
+    setDilayani(null);
+    if (b === 'harian') setHarian(null);
+    else if (b === 'kinerja') setKinerja(null);
+    else setData(null);
   }, []);
 
   useEffect(() => {
@@ -162,17 +204,24 @@ function RekapTerpadu() {
       }
       const r = await ambilJson(`/api/admin/rekap/terpadu?${p}`);
       if (nomor !== permintaanTerakhir.current) return;
-      if (!r.ok) return tanganiGagal(r);
+      if (!r.ok) {
+        buangData(bagian);
+        return tanganiGagal(r);
+      }
       setStatus({ jenis: 'siap' });
+      setDilayani(ambilDilayani(r.body));
       if (bagian === 'harian') setHarian(r.body as unknown as { rows: BarisHarian[]; ringkasan: RingkasanHarian });
       else if (bagian === 'kinerja') setKinerja((r.body.rows ?? []) as BarisKinerja[]);
       else setData(r.body as unknown as { rows: BarisPelayanan[]; total: number; form_type: FormPendataan | null; kolom_khusus?: FieldKhusus[] });
     } catch {
-      if (nomor === permintaanTerakhir.current) setStatus({ jenis: 'galat', pesan: 'Gagal memuat rekap' });
+      if (nomor === permintaanTerakhir.current) {
+        buangData(bagian);
+        setStatus({ jenis: 'galat', pesan: 'Gagal memuat rekap' });
+      }
     } finally {
       if (nomor === permintaanTerakhir.current) setMemuat(false);
     }
-  }, [bagian, halaman, params, layananTab, tanganiGagal]);
+  }, [bagian, halaman, params, layananTab, tanganiGagal, buangData]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -217,124 +266,115 @@ function RekapTerpadu() {
 
   const tampilan: TampilanKolom = tampilanPilihan ?? (tabForm ? 'semua' : 'ringkas');
   const kolom = kolomDataPelayanan(data?.form_type ?? null, kolomKhusus(data?.kolom_khusus ?? []));
-  const pilihLayanan = !tabForm && layananLain.length > 0 && unit !== 'fo';
+  const galatMuat = status.jenis !== 'siap';
+  const pesanKosong = (kosong: string) => (memuat ? 'Memuat…' : galatMuat ? 'Data tidak dapat ditampilkan; lihat pesan di atas.' : kosong);
+  const pilihLayanan = !tabForm && daftarFilterLayanan.length > 0 && unit !== 'fo';
   const pindahBagian = (kunci: Bagian) => {
     if (kunci === bagian) return;
     setHalaman(0);
+    // Pilihan Layanan berformulir tidak sah di Data Pelayanan: buang agar tidak terkirim diam-diam tanpa tampil di pilihan.
+    if (kunci === 'data' && layananId && !layananLain.some((o) => o.id === layananId)) setLayananId('');
     // Tab data berbagi satu tabel: kosongkan agar kolom/isian tab sebelumnya tidak sempat tampil di tab ini.
     if (kunci === 'data' || adalahBagianForm(kunci)) setData(null);
     setBagian(kunci);
   };
 
+  const daftarTab = bagianTampil.map(({ kunci, label }) => ({ kunci, label }));
+  const kosongTabel = (teks: string) => (
+    <CatatanKeadaan jenis={galatMuat ? 'info' : 'kosong'}>{pesanKosong(teks)}</CatatanKeadaan>
+  );
+
   return (
     <>
       <PageHeader title="Rekap Pelayanan" description="Rekap harian, data pelayanan, dan kinerja petugas sesuai hak akses Anda">
-        <button type="button" className="btn btn--ghost btn--sm" onClick={muat} disabled={memuat}>
-          <RefreshCw size={16} className={memuat ? 'animate-spin' : ''} aria-hidden="true" /> Muat ulang
-        </button>
+        <Tombol varian="hantu" ukuran="kecil" ikon={RefreshCw} onClick={muat} memuat={memuat}>
+          Muat ulang
+        </Tombol>
       </PageHeader>
 
       <div className={styles.wadah}>
         {info && <RoleNote>{info.label} Setiap unduhan tercatat.</RoleNote>}
         <p className={styles.definisi}>{DEFINISI_DILAYANI}</p>
 
-        {status.jenis === 'migrasi' && <p className={styles.peringatan} role="status">{status.pesan}</p>}
-        {status.jenis === 'galat' && <p className={styles.peringatan} role="alert">{status.pesan}</p>}
+        {status.jenis === 'migrasi' && <CatatanKeadaan jenis="menunggu-migrasi">{status.pesan}</CatatanKeadaan>}
+        {status.jenis === 'galat' && <Galat pesan={status.pesan} onRetry={muat} memuat={memuat} />}
 
-        <div className={styles.filter}>
-          <div className="form-group">
-            <label className="form-label" htmlFor="rekap-dari">Dari tanggal</label>
-            <input id="rekap-dari" type="date" className="form-input" value={dari} max={sampai}
-              onChange={(e) => ubahFilter(setDari)(e.target.value)} />
+        <Kartu className={styles.kartuFilter}>
+          <div className={styles.filter}>
+            <Field label="Rentang tanggal">
+              {(f) => (
+                <PemilihRentang
+                  id={f.id}
+                  label="Rentang tanggal"
+                  dari={dari}
+                  sampai={sampai}
+                  onUbah={(r) => {
+                    setHalaman(0);
+                    setDari(r.dari);
+                    setSampai(r.sampai);
+                  }}
+                />
+              )}
+            </Field>
+            {info && !tabForm && info.unit_opsi.length > 1 && (
+              <Field label="Unit" className={styles.filterSelect}>
+                <select value={unit} onChange={(e) => ubahFilter(setUnit)(e.target.value as '' | UnitRekap)}>
+                  <option value="">Semua unit</option>
+                  <option value="fo">Front Office</option>
+                  <option value="layanan">Layanan</option>
+                </select>
+              </Field>
+            )}
+            {pilihLayanan && info && (
+              <Field label="Layanan" className={styles.filterSelect}>
+                <select value={layananId} onChange={(e) => ubahFilter(setLayananId)(e.target.value)}>
+                  <option value="">Semua Layanan</option>
+                  {daftarFilterLayanan.map((o) => <option key={o.id} value={o.id}>{o.nama}</option>)}
+                </select>
+              </Field>
+            )}
+            {tabForm && daftarForm.length > 1 && (
+              <Field label="Layanan" className={styles.filterSelect}>
+                <select value={layananTab}
+                  onChange={(e) => ubahFilter((v: string) => setLayananForm((s) => ({ ...s, [tabForm]: v })))(e.target.value)}>
+                  {daftarForm.map((o) => <option key={o.id} value={o.id}>{o.nama}</option>)}
+                </select>
+              </Field>
+            )}
           </div>
-          <div className="form-group">
-            <label className="form-label" htmlFor="rekap-sampai">Sampai tanggal</label>
-            <input id="rekap-sampai" type="date" className="form-input" value={sampai} min={dari}
-              onChange={(e) => ubahFilter(setSampai)(e.target.value)} />
-          </div>
-          {info && !tabForm && info.unit_opsi.length > 1 && (
-            <div className="form-group">
-              <label className="form-label" htmlFor="rekap-unit">Unit</label>
-              <select id="rekap-unit" className="form-input" value={unit}
-                onChange={(e) => ubahFilter(setUnit)(e.target.value as '' | UnitRekap)}>
-                <option value="">Semua unit</option>
-                <option value="fo">Front Office</option>
-                <option value="layanan">Layanan</option>
-              </select>
-            </div>
-          )}
-          {pilihLayanan && info && (
-            <div className="form-group">
-              <label className="form-label" htmlFor="rekap-layanan">Layanan</label>
-              <select id="rekap-layanan" className="form-input" value={layananId}
-                onChange={(e) => ubahFilter(setLayananId)(e.target.value)}>
-                <option value="">Semua Layanan</option>
-                {layananLain.map((o) => <option key={o.id} value={o.id}>{o.nama}</option>)}
-              </select>
-            </div>
-          )}
-          {tabForm && daftarForm.length > 1 && (
-            <div className="form-group">
-              <label className="form-label" htmlFor="rekap-layanan-form">Layanan</label>
-              <select id="rekap-layanan-form" className="form-input" value={layananTab}
-                onChange={(e) => ubahFilter((v: string) => setLayananForm((s) => ({ ...s, [tabForm]: v })))(e.target.value)}>
-                {daftarForm.map((o) => <option key={o.id} value={o.id}>{o.nama}</option>)}
-              </select>
-            </div>
-          )}
-        </div>
+        </Kartu>
 
-        <div className={styles.tab} role="tablist" aria-label="Bagian rekap">
-          {bagianTampil.map(({ kunci, label, ikon: Ikon }) => (
-            <button
-              key={kunci}
-              type="button"
-              role="tab"
-              id={`tab-${kunci}`}
-              aria-selected={bagian === kunci}
-              aria-controls={`panel-${kunci}`}
-              className={`btn ${bagian === kunci ? 'btn--primary' : 'btn--ghost'} btn--sm`}
-              onClick={() => pindahBagian(kunci)}
-            >
-              <Ikon size={16} aria-hidden="true" /> {label}
-            </button>
-          ))}
-        </div>
+        <Tab id={ID_TAB} label="Bagian rekap" tab={daftarTab} aktif={bagian} onGanti={(k) => pindahBagian(k as Bagian)} />
 
-        <div role="tabpanel" id={`panel-${bagian}`} aria-labelledby={`tab-${bagian}`} aria-busy={memuat}>
+        <div
+          role="tabpanel"
+          id={idPanelTab(ID_TAB, bagian)}
+          aria-labelledby={idTab(ID_TAB, bagian)}
+          aria-busy={memuat}
+          data-memuat={memuat ? 'true' : undefined}
+          className={styles.isiTab}
+          data-redup={memuat ? 'true' : 'false'}
+          {...BISA_DIFOKUS}
+        >
+          {status.jenis === 'siap' && <RingkasanDilayani dilayani={dilayani} memuat={memuat} />}
           {bagian === 'harian' && (
             <>
-              <div className={styles.kartu}>
-                <div className="stat-card"><span className="stat-card__value">{harian?.ringkasan.jumlah ?? 0}</span><span className="stat-card__label">Dilayani (periode)</span></div>
-                <div className="stat-card"><span className="stat-card__value">{harian?.ringkasan.tatap_muka ?? 0}</span><span className="stat-card__label">Tatap muka</span></div>
-                <div className="stat-card"><span className="stat-card__value">{harian?.ringkasan.live_chat ?? 0}</span><span className="stat-card__label">Live Chat</span></div>
-              </div>
-              <div className="table-wrapper">
-                <table className="table">
-                  <caption className={styles.caption}>Jumlah pelayanan dilayani per tanggal dan unit</caption>
-                  <thead>
-                    <tr>
-                      <th scope="col">Tanggal</th><th scope="col">Unit</th><th scope="col" className="kol-angka">Tatap muka</th>
-                      <th scope="col" className="kol-angka">Live Chat</th><th scope="col" className="kol-angka">Jumlah</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(harian?.rows ?? []).length === 0 ? (
-                      <tr><td colSpan={5} className="kosong-sel">{memuat ? 'Memuat…' : 'Belum ada pelayanan dilayani pada rentang ini.'}</td></tr>
-                    ) : (
-                      harian!.rows.map((r) => (
-                        <tr key={`${r.tanggal}-${r.unit}-${r.layanan_id ?? 'fo'}`}>
-                          <td className="kol-waktu">{formatTanggalId(r.tanggal)}</td>
-                          <td className="kol-utama">{namaUnit(r)}</td>
-                          <td className="kol-angka">{r.tatap_muka}</td>
-                          <td className="kol-angka">{r.live_chat}</td>
-                          <td className="kol-angka" style={{ fontWeight: 600 }}>{r.jumlah}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
+              <section className={styles.kartu} aria-label="Ringkasan periode">
+                <KartuStatistik label="Dilayani (periode)" ikon={ClipboardCheck} nilai={harian ? harian.ringkasan.jumlah : '—'} memuat={memuat && !harian && !galatMuat} />
+                <KartuStatistik label="Tatap muka" ikon={Users} nilai={harian ? harian.ringkasan.tatap_muka : '—'} memuat={memuat && !harian && !galatMuat} />
+                <KartuStatistik label="Live Chat" ikon={MessageCircle} nilai={harian ? harian.ringkasan.live_chat : '—'} memuat={memuat && !harian && !galatMuat} />
+              </section>
+              <Kartu padding="tanpa">
+                <Tabel
+                  caption="Jumlah pelayanan dilayani per tanggal dan unit"
+                  kolom={KOLOM_HARIAN}
+                  baris={harian?.rows ?? []}
+                  kunciBaris={(r) => `${r.tanggal}-${r.unit}-${r.layanan_id ?? 'fo'}`}
+                  kartuDiHp
+                  memuat={memuat && !harian}
+                  kosong={kosongTabel('Belum ada pelayanan dilayani pada rentang ini.')}
+                />
+              </Kartu>
             </>
           )}
 
@@ -344,58 +384,42 @@ function RekapTerpadu() {
                 <p className={styles.definisi}>Tidak termasuk Helpdesk OSS dan Non OSS; datanya ada di tab masing-masing.</p>
               )}
               <div className={styles.aksi}>
-                <span className={styles.definisi} style={{ margin: 0 }}>{data ? `${data.total} pelayanan` : ''}{!tabForm && !(data?.kolom_khusus?.length) && ' · pilih satu Layanan untuk menampilkan kolom Pendataan Khusus-nya'}</span>
+                <p className={styles.jumlah}>{data ? `${data.total} pelayanan` : ''}{!tabForm && !(data?.kolom_khusus?.length) && ' · pilih satu Layanan untuk menampilkan kolom Pendataan Khusus-nya'}</p>
                 <div className={styles.aksiKanan}>
                   <div className={styles.segmen} role="group" aria-label="Tampilan kolom">
                     <button type="button" aria-pressed={tampilan === 'ringkas'} onClick={() => setTampilan('ringkas')}>Ringkas</button>
                     <button type="button" aria-pressed={tampilan === 'semua'} onClick={() => setTampilan('semua')}>Semua kolom</button>
                   </div>
-                  <button type="button" className="btn btn--primary btn--sm" onClick={unduh}
+                  <Tombol varian="utama" ukuran="kecil" ikon={Download} onClick={unduh} memuat={mengekspor}
                     disabled={memuat || mengekspor || status.jenis !== 'siap'}>
-                    {mengekspor ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Download size={14} aria-hidden="true" />}
-                    {' '}Unduh Excel
-                  </button>
+                    Unduh Excel
+                  </Tombol>
                 </div>
               </div>
-              <div className="table-wrapper">
+              <Kartu padding="tanpa">
                 <TabelDataPelayanan
                   rows={data?.rows ?? []}
                   kolom={kolom}
                   tampilan={tampilan}
-                  keadaan={memuat ? 'Memuat…' : 'Belum ada pelayanan dilayani pada rentang ini.'}
+                  keadaan={pesanKosong('Belum ada pelayanan dilayani pada rentang ini.')}
                 />
                 {data && <Pagination page={halaman} pageSize={UKURAN_HALAMAN} total={data.total} onPageChange={setHalaman} />}
-              </div>
+              </Kartu>
             </>
           )}
 
           {bagian === 'kinerja' && (
-            <div className="table-wrapper">
-              <table className="table">
-                <caption className={styles.caption}>Kinerja petugas: jumlah pelayanan dilayani per petugas dan unit</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Petugas</th><th scope="col">Unit</th><th scope="col" className="kol-angka">Dilayani</th>
-                    <th scope="col" className="kol-angka">Live Chat</th><th scope="col" className="kol-angka">Rata durasi</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(kinerja ?? []).length === 0 ? (
-                    <tr><td colSpan={5} className="kosong-sel">{memuat ? 'Memuat…' : 'Belum ada data kinerja pada rentang ini.'}</td></tr>
-                  ) : (
-                    kinerja!.map((r) => (
-                      <tr key={`${r.penangan_id}-${r.unit}-${r.layanan_id ?? 'fo'}`}>
-                        <td className="kol-utama">{r.penangan_nama ?? '(tanpa nama)'}</td>
-                        <td>{namaUnit(r)}</td>
-                        <td className="kol-angka">{r.jumlah}</td>
-                        <td className="kol-angka">{r.live_chat}</td>
-                        <td className="kol-angka">{formatMenit(r.rata_durasi_menit)}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+            <Kartu padding="tanpa">
+              <Tabel
+                caption="Kinerja petugas: jumlah pelayanan dilayani per petugas dan unit"
+                kolom={KOLOM_KINERJA}
+                baris={kinerja ?? []}
+                kunciBaris={(r) => `${r.penangan_id}-${r.unit}-${r.layanan_id ?? 'fo'}`}
+                kartuDiHp
+                memuat={memuat && !kinerja}
+                kosong={kosongTabel('Belum ada data kinerja pada rentang ini.')}
+              />
+            </Kartu>
           )}
         </div>
       </div>

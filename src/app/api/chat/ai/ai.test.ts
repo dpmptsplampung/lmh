@@ -5,6 +5,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // @/lib/supabase/server. Its auth.getUser() drives the ownership check.
 const serverState = {
   callerId: 'auth-user-1' as string | null,
+  anonim: false,
+  /** Penyedia login akun uji: 'google' (bawaan) atau 'email' (sandi). */
+  provider: 'google' as 'google' | 'email',
   // RPC klien berJWT pengguna (chat_minta_petugas). Default: fungsi belum ada (migrasi belum diterapkan).
   rpc: (async () => ({ data: null, error: { code: 'PGRST202', message: 'tidak ada' } })) as (
     nama: string,
@@ -16,7 +19,7 @@ vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(async () => ({
     auth: {
       getUser: vi.fn(async () => ({
-        data: { user: serverState.callerId ? { id: serverState.callerId } : null },
+        data: { user: serverState.callerId ? { id: serverState.callerId, is_anonymous: serverState.anonim, identities: [{ provider: serverState.provider }] } : null },
         error: null,
       })),
     },
@@ -123,6 +126,8 @@ interface MockServiceOpts {
   // Ownership + sesi lookup
   pengunjungId?: string | null;
   pengunjungError?: { message: string } | null;
+  /** Pemanggil adalah petugas aktif (baris `petugas`). */
+  stafAktif?: boolean;
   pengunjungMissing?: boolean;
   sesiPengunjungId?: string | null;
   sesiError?: { message: string } | null;
@@ -253,6 +258,18 @@ const mockServiceClient = async (opts: MockServiceOpts = {}) => {
       }
       if (table === 'pengunjung') {
         return { select: vi.fn().mockReturnValue(pengunjungChain) };
+      }
+      if (table === 'petugas') {
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              maybeSingle: vi.fn().mockResolvedValue({
+                data: opts.stafAktif ? { id: 'pt-1', role: 'petugas', layanan_id: null, aktif: true } : null,
+                error: null,
+              }),
+            }),
+          }),
+        };
       }
       if (table === 'chat_sesi') {
         return {
@@ -401,6 +418,47 @@ describe('POST /api/chat/ai — sesi ownership', () => {
     const { POST } = await import('./route');
     const res = await POST(buildRequest(validBody));
     expect(res.status).toBe(401);
+  });
+
+  it('returns 403 LOGIN_GOOGLE when caller is an anonymous account (chat wajib Google)', async () => {
+    await mockServiceClient();
+    serverState.anonim = true;
+    try {
+      const { POST } = await import('./route');
+      const res = await POST(buildRequest(validBody));
+      expect(res.status).toBe(403);
+      const j = await res.json();
+      expect(j.kode).toBe('LOGIN_GOOGLE');
+      expect(j.error).toMatch(/Google/);
+    } finally {
+      serverState.anonim = false;
+    }
+  });
+
+  it('R5: pengunjung nonanonim tanpa identitas Google (sandi) ditolak 403 LOGIN_GOOGLE sebelum bot/AI berjalan', async () => {
+    const mock = await mockServiceClient();
+    serverState.provider = 'email';
+    try {
+      const { POST } = await import('./route');
+      const res = await POST(buildRequest(validBody));
+      expect(res.status).toBe(403);
+      expect((await res.json()).kode).toBe('LOGIN_GOOGLE');
+      expect(mock.from).not.toHaveBeenCalledWith('chat_sesi');
+    } finally {
+      serverState.provider = 'google';
+    }
+  });
+
+  it('R5: STAF sah (petugas aktif) dengan sandi tidak ditolak gerbang Google', async () => {
+    await mockServiceClient({ stafAktif: true });
+    serverState.provider = 'email';
+    try {
+      const { POST } = await import('./route');
+      const res = await POST(buildRequest(validBody));
+      expect(res.status).not.toBe(403);
+    } finally {
+      serverState.provider = 'google';
+    }
   });
 
   it('returns 403 when caller has no pengunjung row', async () => {

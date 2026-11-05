@@ -1,0 +1,76 @@
+/* Absensi (gaya Dasbor): kartu aksi, daftar kehadiran dalam kartu. Token dari tema-dasbor.css. */
+.halaman {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-grid);
+  padding: 0 var(--pad-page) var(--pad-page);
+  max-width: var(--content-max);
+}
+
+.penjelasan {
+  margin: 0 0 var(--space-4);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.tombolBaris {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.statistik {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--gap-grid);
+}
+
+.catatan {
+  margin-top: var(--space-4);
+}
+
+.layanan {
+  font-weight: 600;
+}
+
+.nama {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.jam {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.jamHadir {
+  color: var(--color-success-500);
+}
+
+.jamPulang {
+  color: var(--text-tertiary);
+}
+
+.aksi {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+
+.galat {
+  padding: var(--space-5);
+}
+
+@media (max-width: 640px) {
+  .statistik {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .tombolBaris > * {
+    flex: 1 1 100%;
+  }
+}

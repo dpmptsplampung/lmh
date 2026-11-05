@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { backoffMs, denganBatas, BATAS_WAKTU_MS } from './koneksi';
 
-// Umpan data antrean untuk layar TV (audit T4). Bersama oleh /layar/[token] dan /layar-antrian.
+// Umpan data antrean untuk layar TV (audit T4). Dipakai layar TV /layar/[token].
 //
 // - Jalur utama: siaran realtime `antrean:publik` (payload tiket_id, layanan_id, nomor_display, status).
 //   Satu aksi bisa menghasilkan dua siaran identik → muat ulang di-debounce (trailing) agar tidak

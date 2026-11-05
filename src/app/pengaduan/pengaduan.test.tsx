@@ -22,13 +22,19 @@ afterEach(() => {
 const uraian = 'Petugas meminta uang di luar tarif resmi saat saya mengurus izin.';
 
 describe('/pengaduan (publik, anonim)', () => {
+  it('teks yang tampil tidak memuat tanda pisah em dash (bahasa-inti), termasuk opsi layanan umum', async () => {
+    const { container } = render(<PengaduanPage />);
+    expect(container.textContent ?? '').not.toContain('—');
+    expect(screen.getByRole('option', { name: 'Umum / tidak spesifik' })).toBeInTheDocument();
+  });
+
   it('mencentang anonim menyembunyikan kontak dan MENGOSONGKAN kontak yang sudah terlanjur diketik', async () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ nomor_tiket: 'PABCDEFGH', lacak_dengan_nomor: true }), { status: 201 }));
     render(<PengaduanPage />);
     fireEvent.change(screen.getByLabelText(/Uraian pengaduan/), { target: { value: uraian } });
     fireEvent.change(screen.getByLabelText(/Kontak/), { target: { value: '081234567890' } });
 
-    fireEvent.click(screen.getByRole('checkbox', { name: /Kirim secara anonim/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /Laporkan dengan anonim/ }));
     expect(screen.queryByLabelText(/Kontak/)).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: /Kirim Pengaduan/ }));
@@ -44,7 +50,7 @@ describe('/pengaduan (publik, anonim)', () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ nomor_tiket: 'PABCDEFGH', lacak_dengan_nomor: true }), { status: 201 }));
     render(<PengaduanPage />);
     fireEvent.change(screen.getByLabelText(/Uraian pengaduan/), { target: { value: uraian } });
-    fireEvent.click(screen.getByRole('checkbox', { name: /Kirim secara anonim/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /Laporkan dengan anonim/ }));
     fireEvent.click(screen.getByRole('button', { name: /Kirim Pengaduan/ }));
 
     await screen.findByText('PABCDEFGH');

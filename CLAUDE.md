@@ -6,6 +6,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 AGENTS.md di atas berisi aturan wajib (Next.js 16 punya breaking changes → baca `node_modules/next/dist/docs/` dulu, aturan GitHub (`gh`)/push, workflow skill). Bagian di bawah adalah peta kode agar tidak perlu membaca ulang seluruh project.
 
+## Orkestrasi (tim developer)
+
+Di project ini Claude bertindak sebagai project manager tim lintas model (Claude + Codex) lewat Orca. Aturan umum, roster model dan effort, serta protokol diskusi ada di skill global `tim` (`~/.claude/skills/tim/`); jangan diulang di sini. Panduan Orca versi terpasang: `orca skills get orchestration`.
+
+Khusus LMH, setiap spec worker memuat:
+- Next.js 16 punya breaking changes: baca `node_modules/next/dist/docs/` sebelum menulis kode Next.js.
+- Waktu lewat `src/lib/time.ts` (WIB). Baseline migrasi immutable: migrasi baru = file baru bertimestamp lebih besar + test kontrak di `supabase/migrations/*.test.ts`. CSP di `next.config.ts`. PII lewat `lib/pii.ts` dan `lib/csv.ts`.
+- Worker Codex membaca `AGENTS.md`, bukan `CLAUDE.md`: tunjuk bagian peta kode di file ini yang relevan (Arsitektur, Peta file, Peta database).
+- Test sempit: `npx vitest run --pool=vmForks <file>`. Gate penuh `npm run verify:baseline` dijalankan PM sekali per gelombang, setelah diff direview.
+
+**Batas keras (semua worker dan PM):**
+- Tanpa konfirmasi pengguna: `git push`, membuat release/PR/label/issue, mengubah remote GitHub.
+- Menyentuh DB produksi: `node scripts/apply-migration.mjs`, `npm run test:rls`, `scripts/selftest-wp*.mjs`, `scripts/verify-wp*.mjs` membaca `.env.local` dan menyambung ke produksi. Worker dilarang menjalankannya. PM hanya menjalankan setelah menampilkan host tujuan dan daftar migrasi, dan setelah pengguna setuju.
+- Worker tidak membaca, mengubah, atau mencetak `.env*`, credential, atau backup, dan tidak membuat commit kecuali spec menyuruh.
+
 ## Apa ini
 
 Lampung Maju Hub (LMH) — portal pelayanan terpadu DPMPTSP Provinsi Lampung (bahasa UI & komentar kode: Indonesia). Next.js 16 App Router + React 19 + TypeScript, Supabase (Postgres/Auth/Storage/Realtime, RLS-heavy), CSS Modules (tanpa Tailwind), Vitest, deploy Vercel. Node >=22. Alias import `@/` → `src/`.
@@ -37,7 +52,7 @@ Test ada di samping source (`*.test.ts(x)`) dan di `supabase/migrations/*.test.t
 - Pengunjung memakai anon sign-in Supabase (RLS `pengunjung_id = auth.uid()`); mitra/UMKM memakai magic-link. Akun mitra = individual (`docs/KEBIJAKAN_AKUN_MITRA.md`).
 - Supabase client: `src/lib/supabase/{client,server,service}.ts`. `service.ts` = service-role (server-only; jangan dipakai di client). Env divalidasi zod di `src/lib/env/{server,client}.ts`, dipanggil dari `src/instrumentation.ts` saat start (placeholder value ditolak).
 **Domain (halaman di `src/app/*`, API di `src/app/api/*`)**
-- Pelayanan/antrean: `checkin`, `admin/{kunjungan,scan,antrian,absensi}`, `layar/[token]` & `layar-antrian` (layar TV bertoken), `me/reservasi`. Model data "Visit Spine": tabel `kunjungan` + `tiket_antrean` (sumber kebenaran; `visit` lama kini arsip baca-saja: WP-24 = migrasi `202610140007`/`0008` sudah DITERAPKAN ke produksi 2026-10-14 malam bersama 0002-0013, lihat `docs/MIGRATIONS.md` dan `docs/RUNBOOK_FO_ESKALASI.md` §12). Penomoran antrean atomik di DB (RPC/counter), absensi petugas jadi gerbang antrean, jadwal harian dibekukan. Helper: `src/lib/pelayanan.ts`, `lib/types/pelayanan.ts`, `lib/hooks/useRealtimeRefetch.ts` (Supabase Realtime), `components/{WalkinWizard,EstimasiAntrean}`, `components/admin/*Wizard*`.
+- Pelayanan/antrean: `checkin`, `admin/{kunjungan,scan,antrian,absensi}`, `layar/[token]` (layar TV bertoken 8 angka; maks 8 kartu per halaman, bergantian 8 detik; pita panggilan dari tabel `panggilan_layar`; layar lama `layar-antrian` dihapus 2026-11-03), `me/reservasi`. Model data "Visit Spine": tabel `kunjungan` + `tiket_antrean` (sumber kebenaran; `visit` lama kini arsip baca-saja: WP-24 = migrasi `202610140007`/`0008` sudah DITERAPKAN ke produksi 2026-10-14 malam bersama 0002-0013, lihat `docs/MIGRATIONS.md` dan `docs/RUNBOOK_FO_ESKALASI.md` §12). Penomoran antrean atomik di DB (RPC/counter), absensi petugas jadi gerbang antrean, jadwal harian dibekukan. Helper: `src/lib/pelayanan.ts`, `lib/types/pelayanan.ts`, `lib/hooks/useRealtimeRefetch.ts` (Supabase Realtime), `components/{WalkinWizard,EstimasiAntrean}`, `components/admin/*Wizard*`.
 - Chat & bot: `chat`, `admin/chat/*`, `api/chat/{ai,messages,sesi}`. `api/chat/ai/route.ts` = RAG (FAQ + `dokumen_peraturan` via pgvector 3072-dim & FTS) dengan `lib/gemini.ts`, rantai LLM multi-vendor + circuit breaker + kuota harian di `lib/llm/registry.ts` (env `LLM_CHAT_PROVIDERS` format `provider:model,...`), redaksi PII/deteksi prompt-injection di `lib/pii.ts`, eskalasi otomatis ke petugas. Embedding admin: `api/admin/{faq,dokumen}/embed`.
 - Rekap terpadu (Fase 3): `admin/rekap` (tab: Rekap Harian, Helpdesk OSS, Non OSS, Data Pelayanan + Excel, Kinerja Petugas; tab Helpdesk OSS/Non OSS terkunci ke Layanan berformulir `oss`/`perizinan` agar kolom formulir langsung tampil dan hanya muncul bila Layanan itu ada dalam lingkup pengguna; tab Data Pelayanan = Layanan lain (mengirim `tanpa_form=1` -> `rekap_data_pelayanan(..., p_tanpa_form)`, migrasi `202611010005`, belum diterapkan; Harian/Kinerja tetap semua Layanan); `admin/rekap-fo` redirect) -> `api/admin/rekap/terpadu[/export]` -> RPC berlingkup `rekap_data_pelayanan`/`rekap_harian_terpadu`/`rekap_kinerja_petugas` (migrasi `202610290002`); logika di `src/lib/rekap/{terpadu,terpaduServer,excelTerpadu}.ts`. `admin/performa` (Admin) tetap. IKM/SKM: `skm` (tab IKM dan SPAK, RPC `ringkasan_ikm`/`ringkasan_spak`, unduhan `api/admin/survei/export`), `transparansi`, `lib/ikm.ts`. Pengaduan (`pengaduan`, `api/pengaduan`), `standar-pelayanan`, UMKM marketplace (`umkm`, `api/umkm`), investasi/gallery/`peta-potensi` (PDF di-render jadi PNG ber-watermark: `api/investment-docs/*`, `canvas`/`pdfjs-dist`/`sharp`), konten landing via CMS registry (`lib/site-settings.ts`).
 - Notifikasi: trigger DB → `api/notif/{send,retry}` dipanggil cron (header `Authorization: Bearer $CRON_SECRET`); Resend (`lib/email-html.ts`) + web-push (`public/sw-push.js`). PWA offline: `public/sw.js`, `lib/offline/{queue,replay}.ts` (IndexedDB queue + replay check-in).
@@ -67,7 +82,7 @@ Pola umum: halaman (`page.tsx`) adalah **client component besar yang berisi logi
 | `/umkm`, `/umkm/inbox`, `/umkm/edit/[id]` | marketplace dua sisi, inquiry, edit via magic-link | `api/umkm/*`, `v_umkm_public/match` |
 | `/gallery`, `/peta-potensi` | investment gallery (PDF→PNG watermark), peta potensi | `api/investment-docs/*`, `api/investasi/lead` |
 | `/standar-pelayanan`, `/kebijakan-privasi`, `/offline` | statis/PWA fallback | — |
-| `/layar/[token]`, `/layar-antrian` | layar TV antrean (token / legacy) | `v_layar_antrian`, `layar_token` |
+| `/layar/[token]` | layar TV antrean (token 8 angka; layanan aktif berjadwal hari ini; urutan dan nama tampil diatur di `/admin/layar`) | `v_layar_antrian`, `layar_token`, `panggilan_layar`, RPC `layanan_status_hari_ini` |
 
 **Menu Pesan Perilaku (admin/FO):** `admin/pesan-perilaku` (hasil IKM/SPAK), `admin/pesan-perilaku/cetak` (laporan angka + grafik batang + cetak/PDF: survei, response rate, saran, pengaduan; admin & FO), `admin/saran`, `admin/pengaduan`; `/admin/skm` redirect. Saran/pengaduan dari wizard: `api/survei/{saran,pengaduan}` -> RPC `kirim_saran`/`kirim_pengaduan_survei` (migrasi `202611030003`); lacak pengaduan wizard cukup nomor laporan (`lacak_pengaduan_nomor`). Angka laporan: `lib/survei/laporan.ts`.
 

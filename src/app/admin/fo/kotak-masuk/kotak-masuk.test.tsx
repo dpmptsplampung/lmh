@@ -56,6 +56,18 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('Kotak Masuk FO', () => {
+  it.each([
+    ['2026-10-13T01:30:00.000Z', '08.30'],
+    ['bukan tanggal', '-'],
+    [null, '-'],
+  ])('jam menunggu memakai format WIB bersama untuk %s', async (created_at, jam) => {
+    siapkan([barisKotak({ created_at })]);
+    render(<KotakMasukFoPage />);
+    await screen.findByRole('heading', { name: 'Budi Santoso' });
+    expect(screen.getByText(/sejak/)).toHaveTextContent(`(sejak ${jam} WIB)`);
+    expect(screen.queryByText(/Invalid Date/)).toBeNull();
+  });
+
   it('memuat penanganan FO berstatus menunggu, urut waktu masuk, dan memasang realtime pada tabel penanganan', async () => {
     siapkan([barisKotak()]);
     render(<KotakMasukFoPage />);
@@ -225,6 +237,8 @@ describe('Kotak Masuk FO', () => {
     render(<KotakMasukFoPage />);
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/Gagal memuat kotak masuk/);
+    expect(screen.queryByLabelText('Ringkasan kotak masuk')).toBeNull();
+    expect(screen.queryByText(/Kotak masuk kosong/)).toBeNull();
     siapkan([barisKotak()]);
     fireEvent.click(screen.getByRole('button', { name: /Coba lagi/ }));
     expect(await screen.findByRole('heading', { name: 'Budi Santoso' })).toBeInTheDocument();

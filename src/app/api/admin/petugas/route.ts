@@ -2,6 +2,7 @@ import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { audit, generateTempPassword, json, requireAdmin } from '@/lib/akun/server';
 import { isValidUsername, normalizeNoHp, normalizeUsername, usernameToEmail } from '@/lib/akun/login';
+import { objekBelumAda } from '@/lib/akses-data/galat';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,8 +22,17 @@ export async function GET() {
   const peta = new Map<string, boolean>(
     tersedia ? (penanda as { id: string; koordinator: boolean | null }[]).map((p) => [p.id, p.koordinator === true]) : [],
   );
-  const akun = ((data ?? []) as { id: string }[]).map((a) => ({ ...a, koordinator: peta.get(a.id) ?? false }));
-  return json({ akun, koordinator_tersedia: tersedia });
+  const { data: operator, error: eOperator } = await g.service.from('petugas').select('id, operator_aktif');
+  if (eOperator && !objekBelumAda(eOperator)) {
+    console.error('[admin/petugas] penanda operator gagal', eOperator.code);
+    return json({ error: 'Gagal memuat penanda operator' }, 500);
+  }
+  const operatorTersedia = !eOperator && Array.isArray(operator);
+  const petaOperator = new Map<string, boolean>(operatorTersedia
+    ? (operator as { id: string; operator_aktif: boolean }[]).map((p) => [p.id, p.operator_aktif === true]) : []);
+  const akun = ((data ?? []) as { id: string }[]).map((a) => ({ ...a, koordinator: peta.get(a.id) ?? false,
+    operator_aktif: petaOperator.get(a.id) ?? false }));
+  return json({ akun, koordinator_tersedia: tersedia, operator_aktif_tersedia: operatorTersedia });
 }
 
 const createSchema = z

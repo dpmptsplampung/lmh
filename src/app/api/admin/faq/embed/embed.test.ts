@@ -87,12 +87,11 @@ const mockServiceClient = async (opts: MockServiceOpts = {}) => {
   const pendingFaqs = opts.pendingFaqs ?? [];
   // UPDATE kini berakhir .select('id') agar baris terdampak terlihat (mutasiWajibBaris).
   const updateChain = {
-    eq: vi.fn(() => ({
-      select: vi.fn().mockResolvedValue({
-        data: opts.updateError ? null : (opts.updateRows ?? [{ id: 'ok' }]),
-        error: opts.updateError ?? null,
-      }),
-    })),
+    eq: vi.fn().mockReturnThis(),
+    select: vi.fn().mockResolvedValue({
+      data: opts.updateError ? null : (opts.updateRows ?? [{ id: 'ok' }]),
+      error: opts.updateError ?? null,
+    }),
   };
 
   const mock = {

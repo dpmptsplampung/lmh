@@ -102,6 +102,54 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe('kotak masuk chat', () => {
+  it.each([
+    ['kosong', []],
+    ['null', null],
+  ])('tetap merender daftar kosong saat tabel kosong dan RPC %s', async (_nama, data) => {
+    m.h.rpc = () => ({ data, error: null });
+    render(<AdminChatPage />);
+
+    expect(await screen.findByText('Belum ada sesi chat')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Daftar sesi chat' })).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('RPC belum tersedia karena migrasi tertunda menampilkan galat inline', async () => {
+    m.h.rpc = () => ({ data: null, error: { code: 'PGRST202', message: 'Function not found in schema cache' } });
+    render(<AdminChatPage />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Gagal memuat sesi chat');
+    expect(screen.getByRole('region', { name: 'Daftar sesi chat' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Coba lagi/ })).toBeEnabled();
+    expect(screen.queryByText('Belum ada sesi chat')).toBeNull();
+  });
+
+  it('kolom referensi dan tabel penanganan belum tersedia tidak menjatuhkan halaman', async () => {
+    m.h.tabel.layanan = { data: null, error: { code: '42703', message: 'column punya_chat does not exist' } };
+    m.h.tabel.penanganan = { data: null, error: { code: '42P01', message: 'relation penanganan does not exist' } };
+    m.h.rpc = () => ({ data: [], error: null });
+    render(<AdminChatPage />);
+
+    expect(await screen.findByText('Belum ada sesi chat')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Gagal memuat status penanganan chat');
+    expect(screen.getByRole('region', { name: 'Daftar sesi chat' })).toBeInTheDocument();
+  });
+
+  it('galat daftar tidak tampil sebagai kosong dan dapat dicoba lagi', async () => {
+    siapkan('front_office');
+    const rpcAwal = m.h.rpc;
+    m.h.rpc = (nama, args) => nama === 'chat_sesi_ringkas'
+      ? { data: null, error: { message: 'Gangguan' } }
+      : rpcAwal(nama, args);
+    render(<AdminChatPage />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Gagal memuat sesi chat');
+    expect(screen.queryByText('Belum ada sesi chat')).toBeNull();
+    m.h.rpc = rpcAwal;
+    fireEvent.click(screen.getByRole('button', { name: /Coba lagi/ }));
+    expect(await screen.findByRole('button', { name: /Helpdesk OSS/ })).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
   it('chat eskalasi yang menunggu tampil paling atas dengan hitungan "menunggu diambil"', async () => {
     siapkan('front_office');
     m.h.rpc = (nama) =>
@@ -328,7 +376,7 @@ describe('Ambil Alih (Admin, alasan wajib)', () => {
     const dialog = await screen.findByRole('dialog', { name: /Ambil alih chat Ani/ });
     expect(dialog).toHaveAttribute('aria-modal', 'true');
     expect(within(dialog).getByText(/Sari/)).toBeInTheDocument();
-    const alasan = within(dialog).getByLabelText('Alasan ambil alih');
+    const alasan = within(dialog).getByRole('textbox', { name: 'Alasan ambil alih' });
     expect(alasan).toHaveFocus();
 
     fireEvent.change(alasan, { target: { value: 'abc' } });
@@ -350,7 +398,7 @@ describe('Ambil Alih (Admin, alasan wajib)', () => {
     await bukaSesi();
     fireEvent.click(screen.getByRole('button', { name: /Ambil Alih Chat/ }));
     const dialog = await screen.findByRole('dialog');
-    fireEvent.change(within(dialog).getByLabelText('Alasan ambil alih'), { target: { value: 'alasan cukup panjang' } });
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Alasan ambil alih' }), { target: { value: 'alasan cukup panjang' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Ambil alih chat' }));
     expect(await within(dialog).findByRole('alert')).toHaveTextContent(/Alasan ambil alih wajib/);
     expect(screen.getByRole('dialog')).toBeInTheDocument();
@@ -382,7 +430,7 @@ describe('Teruskan ke Layanan (FO)', () => {
 
   it('pilihan layanan hanya yang aktif dan punya_chat; topik FO; layanan sesi dipra-pilih; fokus awal ke layanan', async () => {
     const dialog = await bukaDialog();
-    const layanan = within(dialog).getByLabelText('Layanan tujuan') as HTMLSelectElement;
+    const layanan = within(dialog).getByRole('combobox', { name: 'Layanan tujuan' }) as HTMLSelectElement;
     expect(layanan).toHaveFocus();
     expect(layanan.value).toBe('l1'); // layanan sesi saat ini
     const opsi = Array.from(layanan.options).map((o) => o.textContent);
@@ -405,7 +453,7 @@ describe('Teruskan ke Layanan (FO)', () => {
   it('sukses: kirim layanan/topik/catatan; petugas_hadir=false memunculkan peringatan (bukan galat)', async () => {
     jawabSesi = () => pesanOk({ layanan_nama: 'Bank Lampung', petugas_hadir: false, notifikasi_diantrekan: 0 });
     const dialog = await bukaDialog();
-    fireEvent.change(within(dialog).getByLabelText('Layanan tujuan'), { target: { value: 'l3' } });
+    fireEvent.change(within(dialog).getByRole('combobox', { name: 'Layanan tujuan' }), { target: { value: 'l3' } });
     fireEvent.change(within(dialog).getByLabelText('Topik'), { target: { value: 'tf-2' } });
     fireEvent.change(within(dialog).getByLabelText('Catatan singkat'), { target: { value: 'Tanya kredit UMKM' } });
     sesi = { ...sesi, status: 'eskalasi', ditangani_oleh: null, layanan_id: 'l3' };

@@ -1,0 +1,90 @@
+.daftar {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item + .item {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.baris {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+a.baris:hover .judul {
+  text-decoration: underline;
+}
+
+a.baris:focus-visible {
+  outline: none;
+  border-radius: var(--radius-md);
+  box-shadow: var(--focus-ring);
+}
+
+.teks {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.judul {
+  overflow: hidden;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deskripsi {
+  overflow: hidden;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sisi {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+
+.waktu {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.kaki {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.tautan {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  border-radius: var(--radius-md);
+  color: var(--color-primary-700);
+  font-size: var(--fs-body);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.tautan:hover {
+  text-decoration: underline;
+}
+
+.tautan:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}

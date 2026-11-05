@@ -19,6 +19,7 @@ import { PESAN_EMAIL_WAJIB, POLA_EMAIL_NYATA } from '@/lib/types/pelayanan';
 import FormDialog from './FormDialog';
 import PendataanKhususFields, { useFieldKhusus } from './PendataanKhususFields';
 import TopikCatatanFields, { useTopikLayanan } from './TopikCatatanFields';
+import styles from './FormAntrean.module.css';
 
 const PESAN_MIGRASI_SEBAGIAN =
   'Pendataan Khusus belum aktif sepenuhnya di server (migrasi belum lengkap), sehingga tiket belum dapat diselesaikan dengan isian ini. Hubungi Admin.';
@@ -180,12 +181,12 @@ export default function SelesaiEskalasiModal({ tiket, onClose, onSuccess }: Prop
             aria-describedby={`${idDasar}-email-info${galatEmail ? ` ${idDasar}-email-galat` : ''}`}
             onChange={(e) => { setEmail(e.target.value); setGalatEmail(null); setGalat(null); }}
           />
-          <p id={`${idDasar}-email-info`} style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--text-secondary)' }}>
+          <p id={`${idDasar}-email-info`} className={styles.info}>
             Pengunjung yang dieskalasi wajib punya email. Isi bila belum tercatat oleh Front Office atau bila ingin
             memperbaruinya; kosongkan bila email sudah ada.
           </p>
           {galatEmail && (
-            <p id={`${idDasar}-email-galat`} role="alert" style={{ color: 'var(--color-danger-600)', fontSize: 12, margin: '4px 0 0' }}>{galatEmail}</p>
+            <p id={`${idDasar}-email-galat`} role="alert" className={styles.galat}>{galatEmail}</p>
           )}
         </div>
         {khusus.tersedia && (

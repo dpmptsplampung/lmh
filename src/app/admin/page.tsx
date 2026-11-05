@@ -2,42 +2,54 @@
 
 // WP-22: Stats reads migrated from visit → kunjungan + tiket_antrean.
 // Pendaftaran walk-in dilakukan Front Office di /admin/fo/registrasi?tab=walkin (rpc fo_mulai_kunjungan); halaman ini hanya membaca.
+// Gaya "Dasbor": kepala + aksi utama, pintasan Admin, Perlu tindakan (A5), Status hari ini, KPI, grafik, tabel ringkas.
+// Semua angka berasal dari kueri yang sudah ada; satu-satunya tambahan adalah hitungan SLA pengaduan (A5, v_pengaduan_kerja).
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { todayWIB, addDaysWIB } from '@/lib/time';
+import { formatTanggal, formatWaktu } from '@/lib/utils';
 import {
   Users,
   Clock,
   CheckCircle2,
-  TrendingUp,
-  ArrowRight,
+  Timer,
   UserPlus,
   ShieldCheck,
   ClipboardList,
   Bot,
 } from 'lucide-react';
-import Link from 'next/link';
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  Legend,
-} from 'recharts';
 import PageHeader from '@/components/layout/PageHeader';
 import CalendarBanner from '@/components/admin/CalendarBanner';
+import BannerEmailNotifikasi from '@/components/admin/BannerEmailNotifikasi';
+import PerluTindakan, { type SlaPengaduan } from '@/components/admin/PerluTindakan';
+import Tombol from '@/components/ui/Tombol';
+import Lencana, { type NadaLencana } from '@/components/ui/Lencana';
+import KartuStatistik from '@/components/ui/KartuStatistik';
+import Galat from '@/components/ui/Galat';
+import CatatanKeadaan from '@/components/ui/CatatanKeadaan';
+import { formatAngka } from '@/components/ui/format';
+import PanelGrafik from '@/components/ui/grafik/PanelGrafik';
+import GrafikGaris from '@/components/ui/grafik/GrafikGaris';
+import GrafikBatang from '@/components/ui/grafik/GrafikBatang';
+import GrafikDonat from '@/components/ui/grafik/GrafikDonat';
+import TabelRingkas from '@/components/ui/grafik/TabelRingkas';
+import type { ItemBilahStatus } from '@/components/ui/grafik/BilahStatus';
+import type { KolomTabel } from '@/components/ui/Tabel';
 import { createClient } from '@/lib/supabase/client';
 import { useRealtimeRefetch } from '@/lib/hooks/useRealtimeRefetch';
-import { useToast } from '@/components/Toast';
+import { useNavBadges, type PenggunaBadge } from '@/lib/hooks/useNavBadges';
+import StatusHariIni from './dashboard/StatusHariIni';
+import {
+  hariTersibuk,
+  irisanDonat,
+  jumlahKunjungan,
+  rataMenit,
+  ringkasPerLayanan,
+  susunHarian,
+  type BarisLayanan,
+  type HariKunjungan,
+} from './dashboard/turunan';
 import styles from './dashboard.module.css';
-
-const CHART_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
 
 interface RecentVisit {
   id: string;
@@ -48,101 +60,131 @@ interface RecentVisit {
   nomor_display: string;
 }
 
-interface DailyVisit {
-  hari: string;
-  kunjungan: number;
+interface DataDasbor {
+  totalHariIni: number;
+  menunggu: number;
+  selesai: number;
+  /** null = belum ada tiket selesai yang lengkap waktunya (bukan 0). */
+  rataLayan: number | null;
+  rataTunggu: number | null;
+  jumlahUkur: number;
+  recent: RecentVisit[];
+  harian: HariKunjungan[];
+  layanan: BarisLayanan[];
+  diperbarui: Date;
 }
 
-interface LayananBreakdown {
-  nama: string;
-  jumlah: number;
-  color: string;
-}
+const STATUS_LENCANA: Record<string, { nada: NadaLencana; label: string }> = {
+  menunggu: { nada: 'peringatan', label: 'Menunggu' },
+  dilayani: { nada: 'info', label: 'Sedang dilayani' },
+  selesai: { nada: 'sukses', label: 'Selesai' },
+};
+
+const KOLOM_LAYANAN: KolomTabel<BarisLayanan>[] = [
+  { kunci: 'nama', judul: 'Layanan', judulBaris: true, peran: 'utama' },
+  { kunci: 'menunggu', judul: 'Menunggu', angka: true },
+  { kunci: 'dilayani', judul: 'Dilayani', angka: true },
+  { kunci: 'selesai', judul: 'Selesai', angka: true },
+];
+
+const KOLOM_RECENT: KolomTabel<RecentVisit>[] = [
+  { kunci: 'nomor_display', judul: 'No. tiket', render: (v) => <span className={styles.nomor}>{v.nomor_display}</span> },
+  { kunci: 'nama', judul: 'Nama', render: (v) => <span className={styles.nama}>{v.nama}</span> },
+  { kunci: 'layanan', judul: 'Layanan' },
+  { kunci: 'waktu', judul: 'Waktu', angka: true },
+  {
+    kunci: 'status',
+    judul: 'Status',
+    render: (v) => {
+      const s = STATUS_LENCANA[v.status] ?? { nada: 'netral' as const, label: v.status };
+      return <Lencana nada={s.nada} titik>{s.label}</Lencana>;
+    },
+  },
+];
+
+const namaDari = (obj: unknown): string | null => {
+  if (!obj) return null;
+  const satu = Array.isArray(obj) ? obj[0] : obj;
+  return (satu as { nama?: string } | undefined)?.nama ?? null;
+};
 
 export default function AdminDashboard() {
-  const { toast } = useToast();
-
   // Dashboard untuk Admin dan Front Office. Petugas → antrian.
   // Tombol Tambah Petugas / Tata Kelola Data / Log AI hanya untuk Admin;
   // sebelum role terbukti admin, tombol itu tidak ditampilkan ("tolak dulu").
-  const [isAdmin, setIsAdmin] = useState(false);
-  useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) return;
-      supabase.from('petugas').select('role').eq('auth_user_id', user.id).maybeSingle()
-        .then(({ data }) => {
-          if (data?.role === 'petugas') window.location.replace('/admin/antrian');
-          else setIsAdmin(data?.role === 'admin');
-        });
-    });
-  }, []);
+  const [who, setWho] = useState<PenggunaBadge | null>(null);
+  const isAdmin = who?.role === 'admin';
 
-  const [totalHariIni, setTotalHariIni] = useState(0);
-  const [menunggu, setMenunggu] = useState(0);
-  const [selesai, setSelesai] = useState(0);
-  const [rataWaktu, setRataWaktu] = useState(0);
-  const [recentVisits, setRecentVisits] = useState<RecentVisit[]>([]);
-  const [dailyVisitsState, setDailyVisitsState] = useState<DailyVisit[]>([]);
-  const [layananBreakdownState, setLayananBreakdownState] = useState<LayananBreakdown[]>([]);
+  // Lencana yang sama dengan menu samping (satu sumber hitungan); dipakai kartu "Perlu tindakan sekarang".
+  const badges = useNavBadges(who);
+  const badgeSiap = Object.keys(badges).length > 0;
+
+  const [data, setData] = useState<DataDasbor | null>(null);
+  // loading = kerangka: hanya muat awal. Muat ulang dari realtime/polling berjalan senyap (angka & grafik tetap tampil, B-01).
   const [loading, setLoading] = useState(true);
+  const [galatMuat, setGalatMuat] = useState<string | null>(null);
+  const [galatSegar, setGalatSegar] = useState(false);
+  // SLA pengaduan (A5). null = view belum ada atau gagal dihitung: baris SLA disembunyikan (bukan 0).
+  const [sla, setSla] = useState<SlaPengaduan | null>(null);
+  const [slaMigrasi, setSlaMigrasi] = useState(false);
+  const muatanRef = useRef(0); // hanya respons permintaan terakhir yang boleh mengisi layar
+  const adaDataRef = useRef(false); // sudah pernah memuat data valid
+  const roleRef = useRef<string | null>(null);
+  const role = who?.role ?? null;
+  useEffect(() => {
+    roleRef.current = role;
+  }, [role]);
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
+  const loadData = useCallback(async (senyap = false) => {
+    const muatan = ++muatanRef.current;
+    if (!senyap) {
+      adaDataRef.current = false;
+      setLoading(true);
+      setGalatMuat(null);
+    }
     try {
       const supabase = createClient();
       const today = todayWIB();
 
       // --- 1. Total kunjungan hari ini (all loket, checked-in) ---
-      const { count: total } = await supabase
+      const { count: total, error: errTotal } = await supabase
         .from('kunjungan')
         .select('*', { count: 'exact', head: true })
         .eq('tanggal', today)
         .neq('status', 'terjadwal');
 
       // --- 2. Sedang menunggu (via tiket_antrean) ---
-      const { count: waiting } = await supabase
+      const { count: waiting, error: errMenunggu } = await supabase
         .from('tiket_antrean')
         .select('*', { count: 'exact', head: true })
         .eq('tanggal', today)
         .eq('status', 'menunggu');
 
       // --- 3. Selesai dilayani (via tiket_antrean) ---
-      const { count: done } = await supabase
+      const { count: done, error: errSelesai } = await supabase
         .from('tiket_antrean')
         .select('*', { count: 'exact', head: true })
         .eq('tanggal', today)
         .eq('status', 'selesai');
 
-      setTotalHariIni(total ?? 0);
-      setMenunggu(waiting ?? 0);
-      setSelesai(done ?? 0);
+      const galatHitung = errTotal ?? errMenunggu ?? errSelesai;
+      if (galatHitung) throw galatHitung; // galat tidak boleh tampil sebagai angka 0
 
-      // --- 4. Rata-rata waktu layanan (tiket selesai hari ini) ---
-      const { data: completedTickets } = await supabase
+      // --- 4. Rata-rata waktu layan dan waktu tunggu (tiket selesai hari ini) ---
+      const { data: completedTickets, error: errDurasi } = await supabase
         .from('tiket_antrean')
-        .select('waktu_mulai_layan, waktu_selesai')
+        .select('waktu_terbit, waktu_mulai_layan, waktu_selesai')
         .eq('tanggal', today)
         .eq('status', 'selesai')
         .not('waktu_selesai', 'is', null);
 
-      const completedWithBoth = (completedTickets ?? []).filter(
-        (t) => t.waktu_mulai_layan && t.waktu_selesai
-      );
-      if (completedWithBoth.length > 0) {
-        const avgMs = completedWithBoth.reduce((sum, t) => {
-          return sum + (
-            new Date(t.waktu_selesai as string).getTime() -
-            new Date(t.waktu_mulai_layan as string).getTime()
-          );
-        }, 0) / completedWithBoth.length;
-        setRataWaktu(Math.round(avgMs / 60000));
-      } else {
-        setRataWaktu(0);
-      }
+      if (errDurasi) throw errDurasi;
+      const tiketSelesai = completedTickets ?? [];
+      const layan = rataMenit(tiketSelesai.map((t) => [t.waktu_mulai_layan, t.waktu_selesai]));
+      const tunggu = rataMenit(tiketSelesai.map((t) => [t.waktu_terbit, t.waktu_mulai_layan]));
 
       // --- 5. Kunjungan terbaru (last 5 hari ini) ---
-      const { data: recent } = await supabase
+      const { data: recent, error: errRecent } = await supabase
         .from('kunjungan')
         .select('id, nama, status, waktu_masuk, tiket_antrean(nomor_display, layanan:layanan_id(nama))')
         .eq('tanggal', today)
@@ -150,292 +192,369 @@ export default function AdminDashboard() {
         .order('waktu_masuk', { ascending: false, nullsFirst: false })
         .limit(5);
 
-      setRecentVisits((recent ?? []).map((r) => {
+      if (errRecent) throw errRecent;
+      const recentBaru = (recent ?? []).map((r) => {
         const tiket = Array.isArray(r.tiket_antrean) ? r.tiket_antrean[0] : r.tiket_antrean;
-        const layananObj = tiket?.layanan;
-        const layananNama = !layananObj
-          ? '—'
-          : Array.isArray(layananObj)
-            ? (layananObj[0]?.nama ?? '—')
-            : ((layananObj as { nama: string }).nama ?? '—');
         return {
           id: r.id,
           nama: r.nama,
-          layanan: layananNama,
+          layanan: namaDari(tiket?.layanan) ?? '—',
           nomor_display: tiket?.nomor_display ?? '—',
-          waktu: r.waktu_masuk
-            ? new Date(r.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
-            : '—',
+          waktu: r.waktu_masuk ? formatWaktu(r.waktu_masuk) : '—',
           status: r.status,
         };
-      }));
-
+      });
 
       // --- 7. Volume kunjungan mingguan (last 7 days via kunjungan.tanggal) ---
-      const days = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
       const sevenDaysAgo = addDaysWIB(-6);
-      const { data: weekly } = await supabase
+      const { data: weekly, error: errWeekly } = await supabase
         .from('kunjungan')
         .select('tanggal')
         .gte('tanggal', sevenDaysAgo)
         .lte('tanggal', today)
         .neq('status', 'terjadwal');
 
+      if (errWeekly) throw errWeekly;
       const counts: Record<string, number> = {};
+      const urutan: string[] = [];
       for (let i = 6; i >= 0; i--) {
-        counts[addDaysWIB(-i)] = 0;
+        const t = addDaysWIB(-i);
+        urutan.push(t);
+        counts[t] = 0;
       }
       (weekly ?? []).forEach((w) => {
         if (counts[w.tanggal] !== undefined) counts[w.tanggal]++;
       });
-      setDailyVisitsState(
-        Object.entries(counts).map(([dateStr, kunjungan]) => ({
-          hari: days[new Date(dateStr + 'T12:00:00').getDay()],
-          kunjungan,
-        }))
-      );
 
       // --- 8. Breakdown per layanan hari ini (via tiket_antrean) ---
-      const { data: breakdown } = await supabase
+      const { data: breakdown, error: errBreakdown } = await supabase
         .from('tiket_antrean')
-        .select('layanan:layanan_id(nama)')
+        .select('status, layanan:layanan_id(nama)')
         .eq('tanggal', today)
         .in('status', ['menunggu', 'dilayani', 'selesai']);
 
-      const counts2: Record<string, number> = {};
-      (breakdown ?? []).forEach((b) => {
-        const layananObj = b.layanan;
-        const nama = !layananObj
-          ? null
-          : Array.isArray(layananObj)
-            ? (layananObj[0]?.nama ?? null)
-            : ((layananObj as { nama: string }).nama ?? null);
-        if (!nama) return;
-        counts2[nama] = (counts2[nama] ?? 0) + 1;
-      });
-      setLayananBreakdownState(
-        Object.entries(counts2)
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, 5)
-          .map(([nama, jumlah], idx) => ({ nama, jumlah, color: CHART_COLORS[idx % CHART_COLORS.length] }))
+      if (errBreakdown) throw errBreakdown;
+      const layananBaru = ringkasPerLayanan(
+        (breakdown ?? []).map((b) => ({ nama: namaDari(b.layanan), status: (b as { status?: string }).status })),
       );
+
+      // Semua kueri sukses: layar diganti sekali (tanpa keadaan setengah jadi).
+      if (muatan !== muatanRef.current) return;
+      setData({
+        totalHariIni: total ?? 0,
+        menunggu: waiting ?? 0,
+        selesai: done ?? 0,
+        rataLayan: layan.rata,
+        rataTunggu: tunggu.rata,
+        jumlahUkur: layan.jumlah,
+        recent: recentBaru,
+        harian: susunHarian(urutan, counts),
+        layanan: layananBaru,
+        diperbarui: new Date(),
+      });
+      adaDataRef.current = true;
+      setGalatMuat(null);
+      setGalatSegar(false);
     } catch {
-      toast('Gagal memuat data dashboard. Periksa koneksi Anda.', 'error');
+      if (muatan !== muatanRef.current) return;
+      if (adaDataRef.current) {
+        // Muat ulang senyap gagal: angka lama tetap tampil, diberi label "Data terakhir ..., mencoba lagi" (tanpa toast tiap 30 dtk).
+        setGalatSegar(true);
+      } else {
+        setGalatMuat('Data dashboard tidak dapat dimuat. Periksa koneksi Anda lalu coba lagi.');
+      }
     } finally {
-      setLoading(false);
+      if (muatan === muatanRef.current) setLoading(false);
     }
-  }, [toast]);
+  }, []);
+
+  // A5: hitungan SLA pengaduan dari v_pengaduan_kerja (dihitung server dalam hari kerja). Galat apa pun = baris SLA
+  // disembunyikan (nilai terakhir dipertahankan), tidak pernah ditampilkan sebagai 0 dan tidak membatalkan dasbor.
+  const muatSla = useCallback(async (peranBaru?: string) => {
+    const peran = peranBaru ?? roleRef.current;
+    if (!peran) return;
+    try {
+      const supabase = createClient();
+      const hitung = async (status: 'terlambat' | 'mendekati') => {
+        let q = supabase.from('v_pengaduan_kerja').select('id', { count: 'exact', head: true }).eq('sla_status', status);
+        if (peran === 'front_office') q = q.eq('jalur', 'layanan'); // FO tidak pernah melihat jalur integritas
+        const { count, error } = await q;
+        return { n: error ? null : (count ?? 0), kode: error?.code };
+      };
+      const [t, m] = await Promise.all([hitung('terlambat'), hitung('mendekati')]);
+      if (t.n === null || m.n === null) {
+        // 42P01 = view belum ada (migrasi belum diterapkan): sembunyikan baris SLA seperti di halaman Pengaduan.
+        if (t.kode === '42P01' || m.kode === '42P01') {
+          setSla(null);
+          setSlaMigrasi(true);
+        }
+        return;
+      }
+      setSlaMigrasi(false);
+      setSla({ terlambat: t.n, mendekati: m.n });
+    } catch {
+      /* baris SLA tidak tampil */
+    }
+  }, []);
+
+  const muatSenyap = useCallback(async () => {
+    await Promise.all([loadData(true), muatSla()]);
+  }, [loadData, muatSla]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadData();
   }, [loadData]);
 
+  // Peran dibaca sekali; hitungan SLA dimulai dari callback hasilnya (bukan dari efek) agar setState tidak sinkron di efek.
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      supabase.from('petugas').select('id, role, layanan_id').eq('auth_user_id', user.id).maybeSingle()
+        .then(({ data }) => {
+          if (data?.role === 'petugas') window.location.replace('/admin/antrian');
+          else if (data?.role) {
+            setWho({ role: data.role, petugasId: data.id ?? null, layananId: data.layanan_id ?? null });
+            void muatSla(data.role);
+          }
+        });
+    });
+  }, [muatSla]);
+
   // Fase 3: data menyegarkan sendiri via realtime + polling cadangan 30 dtk.
   // visit = arsip baca-saja sejak WP-24 (tak pernah berubah lagi): dengarkan tiket_antrean + penanganan (tabel yang
   // bergerak di alur FO/antrean; kunjungan sendiri tidak ada di publikasi realtime, perubahannya terjemput polling).
-  useRealtimeRefetch(loadData, { tables: ['tiket_antrean', 'penanganan'], pollMs: 30_000 });
+  useRealtimeRefetch(muatSenyap, { tables: ['tiket_antrean', 'penanganan'], pollMs: 30_000 });
 
+  const memuatAwal = loading && !data;
+  const harian = data?.harian ?? [];
+  const totalMinggu = jumlahKunjungan(harian);
+  const puncak = hariTersibuk(harian);
+  const irisan = irisanDonat(data?.layanan ?? []);
+  const totalTiket = irisan.reduce((j, i) => j + i.nilai, 0);
+  const jam = data ? formatWaktu(data.diperbarui) : null;
+
+  // Kesegaran data ("Data terakhir ... WIB") ada di meta kepala halaman; bilah ini memuat status lain.
+  const itemStatus: ItemBilahStatus[] = [];
+  if (memuatAwal) itemStatus.push({ kunci: 'segar', nada: 'netral', label: 'Memuat data hari ini' });
+  else if (galatMuat) itemStatus.push({ kunci: 'segar', nada: 'bahaya', label: 'Data hari ini belum dapat dimuat' });
+  if (data) {
+    const n = data.layanan.length;
+    itemStatus.push(
+      n > 0
+        ? { kunci: 'layanan', nada: 'sukses', label: `${n} Layanan menerima antrean hari ini` }
+        : { kunci: 'layanan', nada: 'netral', label: 'Belum ada antrean hari ini' },
+    );
+  }
+  if (slaMigrasi) itemStatus.push({ kunci: 'migrasi-sla', nada: 'info', label: 'Pemantauan SLA pengaduan menunggu migrasi' });
 
   return (
     <>
       <PageHeader
-        title="Dashboard Utama"
-        description="Ringkasan data kunjungan dan layanan hari ini"
-      />
+        title="Dasbor"
+        description={`Ringkasan pelayanan hari ini, ${formatTanggal(new Date(), { weekday: 'long' })} (WIB).`}
+        meta={
+          jam ? (
+            <span role={galatSegar ? 'status' : undefined}>
+              {galatSegar ? `Data terakhir ${jam} WIB, mencoba lagi` : `Data terakhir ${jam} WIB`}
+            </span>
+          ) : undefined
+        }
+      >
+        <Tombol href="/admin/fo/registrasi?tab=walkin" varian="utama" ikon={UserPlus} className={styles.walkin}>
+          Daftarkan Pengunjung Walk-in
+        </Tombol>
+      </PageHeader>
 
-      <div className={styles.dashboard} style={{ padding: 'var(--space-8)' }}>
-        <CalendarBanner />
-
-        <div className={styles.walkinTriggerContainer}>
-          <Link href="/admin/fo/registrasi?tab=walkin" className={styles.walkinTriggerBtn}>
-            <UserPlus size={20} />
-            Daftarkan Pengunjung Walk-in
-          </Link>
+      <div className={styles.dashboard}>
+        <div className={styles.pintasan} role="group" aria-label="Pintasan">
           {isAdmin && (
-            <Link href="/admin/petugas/invite" className="btn btn--secondary">
-              <UserPlus size={20} />
+            <Tombol href="/admin/petugas/invite" varian="sekunder" ikon={UserPlus}>
               Tambah Petugas
-            </Link>
+            </Tombol>
           )}
           {isAdmin && (
-            <Link href="/admin/data-governance" className="btn btn--secondary">
-              <ShieldCheck size={20} />
+            <Tombol href="/admin/data-governance" varian="sekunder" ikon={ShieldCheck}>
               Tata Kelola Data (DPO)
-            </Link>
+            </Tombol>
           )}
-          <Link href="/admin/pesan-perilaku" className="btn btn--secondary">
-            <ClipboardList size={20} />
+          <Tombol href="/admin/pesan-perilaku" varian="sekunder" ikon={ClipboardList}>
             Pesan Perilaku
-          </Link>
+          </Tombol>
           {isAdmin && (
-            <Link href="/admin/chat/ai-log" className="btn btn--secondary">
-              <Bot size={20} />
+            <Tombol href="/admin/chat/ai-log" varian="sekunder" ikon={Bot}>
               Log Asisten AI
-            </Link>
+            </Tombol>
           )}
         </div>
 
-        {loading ? (
-          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 'var(--space-16)' }}>
-            <div className="spinner" />
+        <div className={styles.atas}>
+          <PerluTindakan badges={badges} sla={sla} memuat={!badgeSiap} className={styles.perlu} />
+          <div className={styles.kolomStatus}>
+            <StatusHariIni item={itemStatus} adalahAdmin={isAdmin} className={styles.statusHariIni} />
+            <CalendarBanner />
+          </div>
+        </div>
+
+        <div className={styles.banner}>
+          <BannerEmailNotifikasi />
+        </div>
+
+        {galatMuat ? (
+          <div className={styles.galat}>
+            <Galat pesan={galatMuat} onRetry={() => { void loadData(); }} memuat={loading} />
           </div>
         ) : (
           <>
-            <div className={styles.statsGrid}>
-              <div className={styles.statCard}>
-                <div className={`${styles.statIcon} ${styles.statIconBlue}`}>
-                  <Users size={24} />
-                </div>
-                <div className={styles.statInfo}>
-                  <span className={styles.statValue}>{totalHariIni}</span>
-                  <span className={styles.statLabel}>Hadir Hari Ini (Walk-in + Reservasi)</span>
-                </div>
+            <section className={styles.kpi} aria-label="Statistik utama">
+              <KartuStatistik
+                label="Hadir hari ini"
+                ikon={Users}
+                nilai={data?.totalHariIni ?? 0}
+                pembanding="Walk-in dan reservasi"
+                href="/admin/kunjungan"
+                memuat={memuatAwal}
+              />
+              <KartuStatistik
+                label="Sedang menunggu"
+                ikon={Clock}
+                nilai={data?.menunggu ?? 0}
+                pembanding={data?.rataTunggu != null ? `Tunggu rata-rata ${data.rataTunggu} mnt (tiket selesai)` : 'Antrean hari ini'}
+                href="/admin/antrian"
+                memuat={memuatAwal}
+              />
+              <KartuStatistik
+                label="Selesai dilayani"
+                ikon={CheckCircle2}
+                nilai={data?.selesai ?? 0}
+                pembanding="Tiket selesai hari ini"
+                memuat={memuatAwal}
+              />
+              <KartuStatistik
+                label="Rata-rata waktu layan"
+                ikon={Timer}
+                nilai={data?.rataLayan != null ? `${data.rataLayan} mnt` : '—'}
+                pembanding={data && data.jumlahUkur > 0 ? `Dari ${formatAngka(data.jumlahUkur)} tiket selesai` : 'Belum ada tiket selesai'}
+                memuat={memuatAwal}
+              />
+            </section>
+
+            <div className={styles.utama}>
+              <div className={styles.kolom}>
+                <PanelGrafik
+                  judul="Tren kunjungan"
+                  meta="7 hari terakhir"
+                  nilaiUtama={
+                    <>
+                      {formatAngka(totalMinggu)} <span className={styles.satuan}>kunjungan</span>
+                    </>
+                  }
+                  legenda={[{ label: 'Kunjungan per hari', warna: 'var(--chart-1)' }]}
+                  tabel={{
+                    kolom: [{ kunci: 'tanggal', label: 'Tanggal' }, { kunci: 'kunjungan', label: 'Kunjungan' }],
+                    baris: harian.map((h) => ({ tanggal: `${h.hari}, ${h.tanggalPendek}`, kunjungan: h.kunjungan })),
+                  }}
+                  namaBerkas="kunjungan-7-hari"
+                  laporanHref="/admin/rekap"
+                  memuat={memuatAwal}
+                  kosong={
+                    totalMinggu === 0 ? (
+                      <CatatanKeadaan jenis="kosong">Belum ada kunjungan dalam 7 hari terakhir.</CatatanKeadaan>
+                    ) : undefined
+                  }
+                >
+                  <GrafikGaris
+                    label="Grafik garis kunjungan 7 hari terakhir"
+                    data={harian.map((h) => ({ label: h.label, kunjungan: h.kunjungan }))}
+                    sumbuX="label"
+                    seri={[{ kunci: 'kunjungan', label: 'Kunjungan', area: true }]}
+                  />
+                </PanelGrafik>
+
+                <TabelRingkas
+                  judul="Layanan tersibuk hari ini"
+                  kolom={KOLOM_LAYANAN}
+                  baris={data?.layanan ?? []}
+                  kunciBaris="nama"
+                  lihatSemua={{ href: '/admin/rekap', label: 'Lihat semua di Rekap' }}
+                  memuat={memuatAwal}
+                  kosong={<CatatanKeadaan jenis="kosong">Belum ada antrean hari ini.</CatatanKeadaan>}
+                />
               </div>
 
-              <div className={styles.statCard}>
-                <div className={`${styles.statIcon} ${styles.statIconAmber}`}>
-                  <Clock size={24} />
-                </div>
-                <div className={styles.statInfo}>
-                  <span className={styles.statValue}>{menunggu}</span>
-                  <span className={styles.statLabel}>Sedang Menunggu</span>
-                </div>
+              <div className={styles.samping}>
+                <PanelGrafik
+                  judul="Hari tersibuk"
+                  meta="7 hari terakhir"
+                  tabel={{
+                    kolom: [{ kunci: 'tanggal', label: 'Tanggal' }, { kunci: 'kunjungan', label: 'Kunjungan' }],
+                    baris: harian.map((h) => ({ tanggal: `${h.hari}, ${h.tanggalPendek}`, kunjungan: h.kunjungan })),
+                  }}
+                  namaBerkas="hari-tersibuk"
+                  memuat={memuatAwal}
+                  kosong={
+                    totalMinggu === 0 ? (
+                      <CatatanKeadaan jenis="kosong">Belum ada kunjungan dalam 7 hari terakhir.</CatatanKeadaan>
+                    ) : undefined
+                  }
+                  kaki={
+                    puncak ? (
+                      <p className={styles.kaki}>
+                        Tersibuk: {puncak.hariPanjang}, {puncak.tanggalPendek} ({formatAngka(puncak.kunjungan)} kunjungan)
+                      </p>
+                    ) : undefined
+                  }
+                >
+                  <GrafikBatang
+                    label="Grafik batang kunjungan per hari, 7 hari terakhir"
+                    data={harian.map((h) => ({ hari: h.hari, tanggal: h.tanggal, kunjungan: h.kunjungan }))}
+                    sumbuX="hari"
+                    nilai="kunjungan"
+                    labelNilai="Kunjungan"
+                    sorot={puncak ? (b) => b.tanggal === puncak.tanggal : []}
+                    tinggi={200}
+                  />
+                </PanelGrafik>
+
+                <PanelGrafik
+                  judul="Breakdown per Layanan"
+                  meta="hari ini"
+                  tabel={{
+                    kolom: [{ kunci: 'nama', label: 'Layanan' }, { kunci: 'nilai', label: 'Tiket' }],
+                    baris: irisan.map((i) => ({ nama: i.nama, nilai: i.nilai })),
+                  }}
+                  namaBerkas="breakdown-layanan"
+                  laporanHref="/admin/rekap"
+                  memuat={memuatAwal}
+                  kosong={
+                    irisan.length === 0 ? (
+                      <CatatanKeadaan jenis="kosong">Belum ada antrean hari ini.</CatatanKeadaan>
+                    ) : undefined
+                  }
+                >
+                  <GrafikDonat
+                    label="Grafik donat tiket per Layanan hari ini"
+                    data={irisan}
+                    tengah={{ nilai: formatAngka(totalTiket), label: 'tiket' }}
+                  />
+                </PanelGrafik>
               </div>
 
-              <div className={styles.statCard}>
-                <div className={`${styles.statIcon} ${styles.statIconGreen}`}>
-                  <CheckCircle2 size={24} />
-                </div>
-                <div className={styles.statInfo}>
-                  <span className={styles.statValue}>{selesai}</span>
-                  <span className={styles.statLabel}>Selesai Dilayani</span>
-                </div>
-              </div>
-
-              <div className={styles.statCard}>
-                <div className={`${styles.statIcon} ${styles.statIconRed}`}>
-                  <TrendingUp size={24} />
-                </div>
-                <div className={styles.statInfo}>
-                  <span className={styles.statValue}>
-                    {rataWaktu} <small style={{ fontSize: '0.5em', fontWeight: 400 }}>mnt</small>
-                  </span>
-                  <span className={styles.statLabel}>Rata-rata Waktu Layanan</span>
-                </div>
-              </div>
-            </div>
-
-            <div className={styles.chartsGrid}>
-              <div className={styles.chartCard}>
-                <h2 className={styles.chartTitle}>Volume Kunjungan Mingguan</h2>
-                <div className={styles.chartBody}>
-                  {dailyVisitsState.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={dailyVisitsState}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                        <XAxis dataKey="hari" fontSize={12} tickLine={false} />
-                        <YAxis fontSize={12} tickLine={false} axisLine={false} />
-                        <Tooltip
-                          contentStyle={{
-                            borderRadius: '8px',
-                            border: '1px solid #e2e8f0',
-                            boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
-                          }}
-                        />
-                        <Bar dataKey="kunjungan" fill="#6366f1" radius={[6, 6, 0, 0]} name="Kunjungan" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)' }}>
-                      Belum ada data mingguan
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              <div className={styles.chartCard}>
-                <h2 className={styles.chartTitle}>Breakdown per Layanan</h2>
-                <div className={styles.chartBody}>
-                  {layananBreakdownState.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={layananBreakdownState}
-                          dataKey="jumlah"
-                          nameKey="nama"
-                          cx="50%"
-                          cy="50%"
-                          outerRadius={90}
-                          innerRadius={50}
-                          paddingAngle={4}
-                        >
-                          {layananBreakdownState.map((entry) => (
-                            <Cell key={entry.nama} fill={entry.color} />
-                          ))}
-                        </Pie>
-                        <Legend verticalAlign="bottom" iconType="circle" iconSize={8} wrapperStyle={{ fontSize: '12px' }} />
-                        <Tooltip />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)' }}>
-                      Belum ada data layanan
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className={styles.recentSection}>
-              <div className={styles.recentHeader}>
-                <h2 className={styles.recentTitle}>Kunjungan Terbaru</h2>
-                <Link href="/admin/kunjungan" className="btn btn--ghost btn--sm">
-                  Lihat Semua <ArrowRight size={14} />
-                </Link>
-              </div>
-              <div className="table-wrapper" style={{ border: 'none', borderRadius: 0 }}>
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>No. Tiket</th>
-                      <th>Nama</th>
-                      <th>Layanan</th>
-                      <th>Waktu</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recentVisits.length > 0 ? (
-                      recentVisits.map((visit) => (
-                        <tr key={visit.id}>
-                          <td style={{ fontWeight: 600, color: 'var(--color-primary-700)' }}>{visit.nomor_display}</td>
-                          <td style={{ fontWeight: 500 }}>{visit.nama}</td>
-                          <td>{visit.layanan}</td>
-                          <td>{visit.waktu}</td>
-                          <td>
-                            <span className={`badge badge--${visit.status}`}>
-                              {visit.status === 'menunggu' ? '● Menunggu'
-                                : visit.status === 'dilayani' ? 'Sedang Dilayani'
-                                : '✓ Selesai'}
-                            </span>
-                          </td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: 'var(--space-6)' }}>
-                          Belum ada kunjungan hari ini
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+              <div className={styles.penuh}>
+                <TabelRingkas
+                  judul="Kunjungan Terbaru"
+                  kolom={KOLOM_RECENT}
+                  baris={data?.recent ?? []}
+                  kunciBaris="id"
+                  lihatSemua={{ href: '/admin/kunjungan', label: 'Lihat Semua' }}
+                  memuat={memuatAwal}
+                  kosong={<CatatanKeadaan jenis="kosong">Belum ada kunjungan hari ini.</CatatanKeadaan>}
+                />
               </div>
             </div>
           </>
         )}
-
       </div>
     </>
   );

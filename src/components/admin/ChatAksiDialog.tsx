@@ -10,7 +10,7 @@
 // FoTopikCatatan, TopikCatatanFields (fokus awal, Escape, focus trap, label terhubung, galat role=alert).
 // Hasil dikirim ke pemanggil lewat `onBerhasil`; galat sistem (sesi tidak sah / tampilan basi) lewat `onGalat`.
 import { useEffect, useId, useRef, useState } from 'react';
-import { ArrowRight, CheckCircle2, Loader2, UserCog } from 'lucide-react';
+import { ArrowRight, CheckCircle2, UserCog } from 'lucide-react';
 import {
   GalatAksiChat,
   MAKS_ALASAN_AMBIL_ALIH_CHAT,
@@ -27,6 +27,8 @@ import type { TopikFo } from '@/lib/fo-penanganan';
 import { susunJawabanMentah, validasiJawabanKhusus, type NilaiForm } from '@/lib/pendataan-khusus/jawaban';
 import { identitasBerubah, validasiIdentitasBerubah, type IdentitasForm, type KolomIdentitas } from '@/lib/pendataan-khusus/identitas';
 import FoDialog from './FoDialog';
+import Field from '@/components/ui/Field';
+import Tombol from '@/components/ui/Tombol';
 import FoTopikCatatan from './FoTopikCatatan';
 import IdentitasPengunjungFields, { useIdentitasKunjungan } from './IdentitasPengunjungFields';
 import PendataanKhususFields, { useFieldKhusus } from './PendataanKhususFields';
@@ -72,8 +74,6 @@ export function ChatAmbilAlihDialog({ sesiId, namaPengunjung, pemegang, onClose,
   const kunciRef = useRef(false);
   const idDasar = useId();
   const idAlasan = `${idDasar}-alasan`;
-  const idBantuan = `${idDasar}-bantuan`;
-  const idGalatAlasan = `${idDasar}-galat-alasan`;
 
   const kirim = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -112,16 +112,12 @@ export function ChatAmbilAlihDialog({ sesiId, namaPengunjung, pemegang, onClose,
       onSubmit={kirim}
       footer={
         <>
-          <button type="button" className="btn btn--ghost btn--sm" onClick={onClose} disabled={mengirim}>Batal</button>
-          <button type="submit" className="btn btn--primary btn--sm" disabled={mengirim} aria-busy={mengirim}>
-            {mengirim ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <UserCog size={14} aria-hidden="true" />}
-            {mengirim ? 'Mengambil alih…' : 'Ambil alih chat'}
-          </button>
+          <Tombol varian="hantu" ukuran="kecil" onClick={onClose} disabled={mengirim}>Batal</Tombol>
+          <Tombol type="submit" ukuran="kecil" ikon={UserCog} disabled={mengirim} memuat={mengirim}>Ambil alih chat</Tombol>
         </>
       }
     >
-      <div className={styles.field}>
-        <label htmlFor={idAlasan} className="form-label form-label--required">Alasan ambil alih</label>
+      <Field label="Alasan ambil alih" wajib galat={galatAlasan} bantuan={`Wajib, ${MIN_ALASAN_AMBIL_ALIH_CHAT}-${MAKS_ALASAN_AMBIL_ALIH_CHAT} karakter. ${alasan.length}/${MAKS_ALASAN_AMBIL_ALIH_CHAT}`}>
         <textarea
           id={idAlasan}
           className="form-textarea"
@@ -131,17 +127,11 @@ export function ChatAmbilAlihDialog({ sesiId, namaPengunjung, pemegang, onClose,
           disabled={mengirim}
           required
           aria-required="true"
-          aria-invalid={galatAlasan ? true : undefined}
-          aria-describedby={galatAlasan ? `${idBantuan} ${idGalatAlasan}` : idBantuan}
           data-autofocus=""
           placeholder="Mis. petugas sedang cuti / tidak membalas"
           onChange={(e) => { setAlasan(e.target.value); setGalatAlasan(null); }}
         />
-        <span id={idBantuan} className={styles.bantuan}>
-          Wajib, {MIN_ALASAN_AMBIL_ALIH_CHAT}-{MAKS_ALASAN_AMBIL_ALIH_CHAT} karakter. {alasan.length}/{MAKS_ALASAN_AMBIL_ALIH_CHAT}
-        </span>
-        {galatAlasan && <p id={idGalatAlasan} role="alert" className={styles.galat}>{galatAlasan}</p>}
-      </div>
+      </Field>
       {galat && <p role="alert" className={styles.galat}>{galat}</p>}
     </FoDialog>
   );
@@ -179,7 +169,6 @@ export function ChatTeruskanDialog({
   const kunciRef = useRef(false);
   const idDasar = useId();
   const idLayanan = `${idDasar}-layanan`;
-  const idGalatLayanan = `${idDasar}-galat-layanan`;
 
   const kirim = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -228,16 +217,12 @@ export function ChatTeruskanDialog({
       onSubmit={kirim}
       footer={
         <>
-          <button type="button" className="btn btn--ghost btn--sm" onClick={onClose} disabled={mengirim}>Batal</button>
-          <button type="submit" className="btn btn--primary btn--sm" disabled={mengirim || layanan.length === 0} aria-busy={mengirim}>
-            {mengirim ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <ArrowRight size={14} aria-hidden="true" />}
-            {mengirim ? 'Meneruskan…' : 'Teruskan chat'}
-          </button>
+          <Tombol varian="hantu" ukuran="kecil" onClick={onClose} disabled={mengirim}>Batal</Tombol>
+          <Tombol type="submit" ukuran="kecil" ikon={ArrowRight} disabled={mengirim || layanan.length === 0} memuat={mengirim}>Teruskan chat</Tombol>
         </>
       }
     >
-      <div className={styles.field}>
-        <label htmlFor={idLayanan} className="form-label form-label--required">Layanan tujuan</label>
+      <Field label="Layanan tujuan" wajib galat={galatLayanan} bantuan={layanan.length === 0 ? 'Tidak ada layanan aktif yang melayani chat.' : undefined}>
         <select
           id={idLayanan}
           className="form-select"
@@ -245,19 +230,13 @@ export function ChatTeruskanDialog({
           disabled={mengirim}
           required
           aria-required="true"
-          aria-invalid={galatLayanan ? true : undefined}
-          aria-describedby={galatLayanan ? idGalatLayanan : undefined}
           data-autofocus=""
           onChange={(e) => { setLayananId(e.target.value); setGalatLayanan(null); }}
         >
           <option value="">Pilih layanan…</option>
           {layanan.map((l) => <option key={l.id} value={l.id}>{l.nama}</option>)}
         </select>
-        {layanan.length === 0 && (
-          <span className={styles.galat}>Tidak ada layanan aktif yang melayani chat.</span>
-        )}
-        {galatLayanan && <p id={idGalatLayanan} role="alert" className={styles.galat}>{galatLayanan}</p>}
-      </div>
+      </Field>
 
       <FoTopikCatatan
         topik={topikFo}
@@ -386,16 +365,14 @@ export function ChatSelesaiDialog({
       onSubmit={kirim}
       footer={
         <>
-          <button type="button" className="btn btn--ghost btn--sm" onClick={onClose} disabled={mengirim}>Batal</button>
-          <button
+          <Tombol varian="hantu" ukuran="kecil" onClick={onClose} disabled={mengirim}>Batal</Tombol>
+          <Tombol
             type="submit"
-            className="btn btn--primary btn--sm"
+            ukuran="kecil"
+            ikon={CheckCircle2}
             disabled={mengirim || (peran === 'layanan' && topikLayanan.memuat) || khusus.memuat || (khusus.tersedia && identitasAwal.memuat)}
-            aria-busy={mengirim}
-          >
-            {mengirim ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <CheckCircle2 size={14} aria-hidden="true" />}
-            {mengirim ? 'Menyimpan…' : 'Selesaikan chat'}
-          </button>
+            memuat={mengirim}
+          >Selesaikan chat</Tombol>
         </>
       }
     >

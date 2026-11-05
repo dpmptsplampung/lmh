@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/server';
+import { tolakAkunAnonim, tolakBukanGoogle } from '@/lib/chat/gerbang-google';
 import { logServerEvent } from '@/lib/observability/logger';
 import { bolehAksesSesiStaf } from '@/lib/chat/akses';
 import { canAccessSesi, resolveActor } from '@/app/api/chat/messages/route';
@@ -26,6 +27,8 @@ export async function POST(request: NextRequest) {
   const server = await createClient();
   const { data: { user } } = await server.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const anonim = tolakAkunAnonim(user);
+  if (anonim) return anonim;
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -34,6 +37,9 @@ export async function POST(request: NextRequest) {
 
   const actor = await resolveActor(admin, user.id);
   if (!actor) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  // R1/R5: unggah lampiran = bagian dari chat; pengunjung wajib identitas Google, staf aktif boleh dengan sandi.
+  const bukanGoogle = tolakBukanGoogle(user, actor.kind === 'staff');
+  if (bukanGoogle) return bukanGoogle;
   const { data: sesi } = await admin.from('chat_sesi').select('id, status, pengunjung_id, layanan_id').eq('id', body.data.sesi_id).maybeSingle();
   const boleh = !!sesi && (actor.kind === 'staff'
     ? await bolehAksesSesiStaf(server, sesi.id, () => canAccessSesi(actor, sesi))

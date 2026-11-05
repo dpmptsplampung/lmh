@@ -1,5 +1,9 @@
 'use client';
 
+import Tombol from '@/components/ui/Tombol';
+
+import tampilan from './CobaTanyaBot.dasbor.module.css';
+
 import { useState } from 'react';
 import { Loader2, Send } from 'lucide-react';
 import styles from './settings.module.css';
@@ -53,11 +57,11 @@ export default function CobaTanyaBot({ layananId, layananNama }: { layananId: st
 
   return (
     <section className={`${styles.card} ${styles.botBox}`} aria-labelledby="coba-bot-judul">
-      <h2 id="coba-bot-judul" className={styles.cardTitle}>Coba tanya bot{layananNama ? ` — ${layananNama}` : ''}</h2>
+      <h2 id="coba-bot-judul" className={styles.cardTitle}>Coba tanya bot{layananNama ? ` untuk ${layananNama}` : ''}</h2>
       <p className={styles.hint}>
         Mencoba jawaban bot seperti yang dilihat pengunjung. Tidak ada pesan, sesi, atau log yang disimpan dan tidak ada eskalasi ke petugas.
       </p>
-      <div role="group" aria-label="Uji bot" style={{ marginTop: 'var(--space-3)' }}>
+      <div role="group" aria-label="Uji bot" className={tampilan.area1}>
         <label className="form-label" htmlFor="cobaPertanyaan">Teks uji untuk bot</label>
         <textarea
           id="cobaPertanyaan"
@@ -68,10 +72,10 @@ export default function CobaTanyaBot({ layananId, layananNama }: { layananId: st
           onChange={(e) => setPertanyaan(e.target.value)}
           placeholder="Contoh: Apa syarat membuat NIB?"
         />
-        <div className={styles.row} style={{ marginTop: 'var(--space-2)' }}>
-          <button type="button" onClick={kirim} className="btn btn--primary btn--sm" disabled={loading || !layananId} aria-busy={loading}>
+        <div className={[styles.row, tampilan.area2].filter(Boolean).join(' ')}>
+          <Tombol type="button" onClick={kirim} varian="utama" ukuran="kecil" disabled={loading || !layananId} aria-busy={loading}>
             {loading ? <><Loader2 size={14} className="animate-pulse" /> Menguji...</> : <><Send size={14} /> Kirim</>}
-          </button>
+          </Tombol>
         </div>
       </div>
 

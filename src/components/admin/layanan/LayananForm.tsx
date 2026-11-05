@@ -1,6 +1,12 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import Field from '@/components/ui/Field';
+
+import Tombol from '@/components/ui/Tombol';
+
+import tampilan from './LayananForm.dasbor.module.css';
+
+import { useEffect, useRef, useState } from 'react';
 import { Loader2, AlertTriangle } from 'lucide-react';
 import type { InstansiRow, LayananAdmin, LayananTautan } from '@/lib/layanan/schemas';
 import TautanEditor, { bersihkanTautan, validasiTautan } from './TautanEditor';
@@ -74,6 +80,16 @@ export default function LayananForm({
   const [localError, setLocalError] = useState('');
   const [galatLokal, setGalatLokal] = useState<Galat>({});
   const [konfirmasiNama, setKonfirmasiNama] = useState(false);
+  const peringatanNamaRef = useRef<HTMLDivElement>(null);
+
+  // Tombol Simpan ada di dasar form, sedangkan peringatan di bawah isian Nama (atas): gulir dan fokuskan
+  // peringatannya agar pengguna (dan pembaca layar) tahu klik tadi menunggu konfirmasi, bukan macet.
+  useEffect(() => {
+    if (!konfirmasiNama) return;
+    const el = peringatanNamaRef.current;
+    el?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+    el?.focus({ preventScroll: true });
+  }, [konfirmasiNama]);
 
   const tautanAwal = (layanan?.website_terkait ?? []);
 
@@ -174,14 +190,12 @@ export default function LayananForm({
     const g = galatDi(b);
     return g ? <p id={`ly${b[0].toUpperCase()}${b.slice(1)}Galat`} className="form-error" role="alert">{g}</p> : null;
   };
-  const kolom = { display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' } as const;
-  const subjudul = { fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--text-secondary)', margin: 'var(--space-2) 0 0' } as const;
 
   return (
-    <form ref={formRef} onSubmit={handle} noValidate style={{ ...kolom, gap: 'var(--space-4)' }}>
+    <form ref={formRef} onSubmit={handle} noValidate className={tampilan.area1}>
       {msg && <p className="form-error" role="alert">{msg}</p>}
 
-      <h3 style={subjudul}>Informasi layanan</h3>
+      <h3 className={tampilan.subjudul}>Informasi layanan</h3>
       <div className="form-group">
         <label className="form-label form-label--required" htmlFor="lyNama">Nama layanan</label>
         <input id="lyNama" className="form-input" value={nama} maxLength={100} {...ids('nama')}
@@ -189,10 +203,10 @@ export default function LayananForm({
         {pesanGalat('nama')}
       </div>
       {konfirmasiNama && (
-        <div role="alertdialog" aria-label="Konfirmasi ganti nama"
-          style={{ border: '1px solid var(--color-warning-500, #f59e0b)', borderRadius: 'var(--radius-md, 8px)', padding: 'var(--space-3)', display: 'flex', gap: 'var(--space-2)' }}>
-          <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 2 }} aria-hidden="true" />
-          <p style={{ margin: 0 }}>
+        <div ref={peringatanNamaRef} role="alert" aria-label="Konfirmasi ganti nama" tabIndex={-1}
+          className={tampilan.baris2}>
+          <AlertTriangle size={16} className={tampilan.area3}  aria-hidden="true" />
+          <p className={tampilan.teks4}>
             Beberapa fitur mencocokkan layanan berdasarkan <strong>nama</strong>. Mengganti nama dari
             {' '}<strong>{layanan?.nama}</strong> menjadi <strong>{nama.trim()}</strong> bisa memutus pencocokan tersebut. Lanjutkan?
           </p>
@@ -244,11 +258,10 @@ export default function LayananForm({
         {pesanGalat('urutan')}
       </div>
 
-      <h3 style={subjudul}>Loket, antrean, dan tampilan</h3>
-      <div className="form-group">
-        <label className="form-label" htmlFor="lyLoket">Nomor loket</label>
+      <h3 className={tampilan.subjudul}>Loket, antrean, dan tampilan</h3>
+      <Field label="Nomor loket">
         <input id="lyLoket" className="form-input" value={loket} maxLength={20} onChange={(e) => setLoket(e.target.value)} />
-      </div>
+      </Field>
       <div className="form-group">
         <label className="form-label" htmlFor="lyPrefiks">Prefiks antrean</label>
         <input id="lyPrefiks" className="form-input" value={prefiks} maxLength={2} autoCapitalize="characters" spellCheck={false}
@@ -259,15 +272,13 @@ export default function LayananForm({
         </p>
         {pesanGalat('prefiks')}
       </div>
-      <div className="form-group">
-        <label className="form-label" htmlFor="lyStatus">Di halaman utama / daftar layanan</label>
+      <Field label="Di halaman utama / daftar layanan" bantuan={<>Tidak memengaruhi penerbitan tiket atau check-in.</>}>
         <select id="lyStatus" className="form-input" value={status} onChange={(e) => setStatus(e.target.value as StatusTampilan)}>
           <option value="aktif">Tampil</option>
           <option value="coming_soon">Segera hadir</option>
           <option value="nonaktif">Disembunyikan</option>
         </select>
-        <p className="form-hint">Tidak memengaruhi penerbitan tiket atau check-in.</p>
-      </div>
+      </Field>
       <div className="form-group">
         <label className="form-label" htmlFor="lyForm">Formulir Pendataan</label>
         <select id="lyForm" className="form-input" value={form} onChange={(e) => setForm(e.target.value)}
@@ -280,27 +291,27 @@ export default function LayananForm({
           Bila memilih OSS atau Perizinan, petugas WAJIB mengisi formulir itu (semua field) sebelum tiket layanan dapat diselesaikan.
         </p>
       </div>
-      <label style={{ display: 'flex', gap: 'var(--space-2)' }}>
+      <label className={tampilan.baris5}>
         <input type="checkbox" checked={homepage} onChange={(e) => setHomepage(e.target.checked)} /> Tampil di homepage
       </label>
-      <label style={{ display: 'flex', gap: 'var(--space-2)' }}>
+      <label className={tampilan.baris5}>
         <input type="checkbox" checked={layar} onChange={(e) => setLayar(e.target.checked)} /> Tampil di layar TV
       </label>
-      <label style={{ display: 'flex', gap: 'var(--space-2)' }}>
+      <label className={tampilan.baris5}>
         <input type="checkbox" checked={antrean} onChange={(e) => setAntrean(e.target.checked)} /> Punya antrean
       </label>
-      <label style={{ display: 'flex', gap: 'var(--space-2)' }}>
+      <label className={tampilan.baris5}>
         <input type="checkbox" checked={chat} onChange={(e) => setChat(e.target.checked)} /> Punya chat
       </label>
 
       <TautanEditor value={tautan} onChange={setTautan} disabled={saving} tampilkanGalat={tampilkanGalatTautan} />
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)' }}>
-        <button type="button" className="btn btn--ghost" onClick={onCancel}>Batal</button>
-        <button type="submit" className="btn btn--primary" disabled={saving} aria-busy={saving}>
+      <div className={tampilan.baris6}>
+        <Tombol type="button" varian="hantu" onClick={onCancel}>Batal</Tombol>
+        <Tombol type="submit" varian="utama" disabled={saving} aria-busy={saving}>
           {saving ? <Loader2 size={16} className="animate-pulse" aria-hidden="true" /> : null}
           {konfirmasiNama ? 'Ya, ganti nama' : 'Simpan'}
-        </button>
+        </Tombol>
       </div>
     </form>
   );

@@ -1,0 +1,12 @@
+/* Koreksi data pelayanan: isi dialog (Dialog dari ui menyediakan kerangka, judul, dan kaki). */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.ringkas {
+  margin-right: auto;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+}

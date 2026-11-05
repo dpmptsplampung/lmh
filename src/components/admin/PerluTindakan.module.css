@@ -1,0 +1,85 @@
+.daftar {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.daftar > li + li {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.baris {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 6px 8px;
+  margin: 0 -8px;
+  border-radius: var(--radius-lg);
+  color: var(--text-primary);
+  font-size: var(--fs-body, 0.875rem);
+  text-decoration: none;
+}
+
+.baris:hover {
+  background: var(--bg-surface-hover);
+}
+
+.baris:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.angka {
+  min-width: 40px;
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.teks {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.panah {
+  flex: none;
+  color: var(--text-tertiary);
+}
+
+.baik {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.ikonBaik {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-lg);
+  background: var(--status-success-bg);
+  color: var(--status-success-fg);
+}
+
+.judulBaik {
+  margin: 0;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.isiBaik {
+  margin: 2px 0 0;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+@media (pointer: coarse) {
+  .baris {
+    min-height: 52px;
+  }
+}

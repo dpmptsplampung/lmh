@@ -1,0 +1,36 @@
+.form {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.judul {
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.kisi {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+}
+
+.lebar {
+  grid-column: 1 / -1;
+}
+
+.ringkasan {
+  margin: 0;
+  padding-left: var(--space-5);
+}
+
+.aksi {
+  display: flex;
+  justify-content: flex-end;
+}
+
+@media (max-width: 640px) {
+  .aksi .tombol {
+    width: 100%;
+  }
+}

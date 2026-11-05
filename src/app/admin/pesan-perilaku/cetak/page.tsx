@@ -1,13 +1,19 @@
 'use client';
 
-import { Suspense, useCallback, useEffect, useState } from 'react';
-import Link from 'next/link';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { ArrowLeft, Loader2, Printer } from 'lucide-react';
+import { ArrowLeft, Printer } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
+import Galat from '@/components/ui/Galat';
+import Skeleton from '@/components/ui/Skeleton';
+import Tombol from '@/components/ui/Tombol';
+import PemilihRentang from '@/components/ui/PemilihRentang';
+import CatatanKeadaan from '@/components/ui/CatatanKeadaan';
+import { formatTanggal, formatWaktu } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 import { toWIBDateString, todayWIB } from '@/lib/time';
-import { fmtIkm } from '@/lib/ikm';
+import { AMBANG_IKM, KETERANGAN_AMBANG_IKM, fmtIkm } from '@/lib/ikm';
+import { KODE_MIGRASI_BELUM, objekBelumAda } from '@/lib/akses-data/galat';
 import { fmtAngka, fmtPersen, jumlahPer, persen, type PengaduanBaris, type SaranBaris } from '@/lib/survei/laporan';
 import { rentangPreset } from '@/lib/survei/rentang';
 import type { RingkasanIkmGlobal, RingkasanSpakGlobal } from '@/lib/survei/ringkasan-global';
@@ -21,15 +27,30 @@ const STATUS_PENGADUAN: Record<string, string> = {
 };
 const SUMBER: Record<string, string> = { web: 'Formulir web', publik: 'Tautan publik', wizard: 'Pesan Perilaku', impor: 'Impor' };
 
-const tglId = (iso: string) => new Date(`${iso}T00:00:00+07:00`).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta' });
+const tglId = (iso: string) => formatTanggal(`${iso}T00:00:00+07:00`);
 
 const POLA_TANGGAL = /^\d{4}-\d{2}-\d{2}$/;
+const BATAS_SARAN = 300;
+
+/** Semua data satu laporan beserta periode yang benar-benar dimuat (label periode selalu mengikuti data, bukan isian filter). */
+interface Muatan {
+  dari: string;
+  sampai: string;
+  global: RingkasanGlobal;
+  /** null = migrasi pengaduan/saran belum diterapkan (bagian tertulis "belum tersedia", bukan nol). */
+  pengaduan: PengaduanBaris[] | null;
+  saranRingkas: SaranBaris[] | null;
+  saranIsi: SaranIsi[] | null;
+  /** Jumlah saran menurut query isi (count exact); cadangan bila RPC ringkasan belum ada. */
+  saranTotalQuery: number | null;
+  dicetakPada: string;
+}
 
 function Batang({ nilai, maks = 100 }: { nilai: number | null; maks?: number }) {
   const lebar = nilai === null ? 0 : Math.max(0, Math.min(100, (nilai / maks) * 100));
   return (
     <span className={styles.batang} role="img" aria-label={nilai === null ? 'tidak ada data' : `${nilai.toFixed(1)} dari ${maks}`}>
-      <span className={styles.batangIsi} style={{ width: `${lebar}%` }} />
+      <span className={styles.batangIsi} style={{ width: `${lebar}%` }} /><span className={styles.batangNilai}>{nilai === null ? '—' : nilai.toFixed(1)}</span>
     </span>
   );
 }
@@ -44,15 +65,18 @@ function CetakPesanPerilaku() {
   const [sampai, setSampai] = useState(urlSah ? sampaiUrl : awal.sampai);
   const [loading, setLoading] = useState(true);
   const [galat, setGalat] = useState('');
-  const [global, setGlobal] = useState<RingkasanGlobal | null>(null);
-  const [pengaduan, setPengaduan] = useState<PengaduanBaris[]>([]);
-  const [saranRingkas, setSaranRingkas] = useState<SaranBaris[]>([]);
-  const [saranIsi, setSaranIsi] = useState<SaranIsi[]>([]);
-  const [dicetakPada, setDicetakPada] = useState('');
+  const [belum, setBelum] = useState(false);
+  const [muatan, setMuatan] = useState<Muatan | null>(null);
+  const permintaanTerakhir = useRef(0);
 
   const muat = useCallback(async () => {
+    // Hanya jawaban permintaan terakhir yang dipakai: ganti periode cepat tidak boleh menampilkan respons basi.
+    const nomor = ++permintaanTerakhir.current;
     setLoading(true);
     setGalat('');
+    setBelum(false);
+    // Data periode sebelumnya dibuang: galat tidak boleh menyisakan angka lama di bawah label periode baru.
+    setMuatan(null);
     try {
       const supabase = createClient();
       const arg = { p_start: dari, p_end: sampai };
@@ -62,66 +86,86 @@ function CetakPesanPerilaku() {
         supabase.rpc('ringkasan_saran', arg),
         supabase
           .from('saran')
-          .select('id, isi, created_at, pelapor_nama, unit, layanan:layanan_id ( nama )')
+          .select('id, isi, created_at, pelapor_nama, unit, layanan:layanan_id ( nama )', { count: 'exact' })
           .gte('created_at', `${dari}T00:00:00+07:00`)
           .lt('created_at', `${toWIBDateString(new Date(new Date(`${sampai}T00:00:00+07:00`).getTime() + 86_400_000))}T00:00:00+07:00`)
           .order('created_at', { ascending: false })
-          .limit(300),
+          .limit(BATAS_SARAN),
       ]);
-      // Saran/pengaduan boleh belum tersedia (migrasi belum diterapkan): bagian itu kosong, laporan survei tetap tampil.
-      if (!g.ok) throw new Error(`ringkasan ${g.status}`);
-      setGlobal((await g.json()) as RingkasanGlobal);
-      setPengaduan((d.data ?? []) as PengaduanBaris[]);
-      setSaranRingkas((e.data ?? []) as SaranBaris[]);
-      setSaranIsi((f.data ?? []) as unknown as SaranIsi[]);
-      setDicetakPada(new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', dateStyle: 'long', timeStyle: 'short' }));
+      if (!g.ok) {
+        const isi = await g.json().catch(() => null);
+        if (isi?.code === KODE_MIGRASI_BELUM || isi?.error === KODE_MIGRASI_BELUM || objekBelumAda(isi)) throw { code: 'PGRST202' };
+        throw new Error(`ringkasan ${g.status}`);
+      }
+      // Saran/pengaduan boleh belum tersedia karena migrasi belum diterapkan (ditandai null, bukan nol).
+      // Galat lain (timeout, izin, jaringan) TIDAK boleh menjadi nol di kertas: laporan gagal seluruhnya.
+      for (const hasil of [d, e, f]) {
+        if (hasil.error && !objekBelumAda(hasil.error)) throw new Error(hasil.error.message);
+      }
+      const global = (await g.json()) as RingkasanGlobal;
+      if (nomor !== permintaanTerakhir.current) return;
+      setMuatan({
+        dari,
+        sampai,
+        global,
+        pengaduan: d.error ? null : ((d.data ?? []) as PengaduanBaris[]),
+        saranRingkas: e.error ? null : ((e.data ?? []) as SaranBaris[]),
+        saranIsi: f.error ? null : ((f.data ?? []) as unknown as SaranIsi[]),
+        saranTotalQuery: f.error ? null : (f.count ?? (f.data ?? []).length),
+        dicetakPada: `${formatTanggal(new Date())} ${formatWaktu(new Date())}`,
+      });
     } catch (err) {
+      if (nomor !== permintaanTerakhir.current) return;
       console.error('Laporan Pesan Perilaku:', err);
-      setGalat('Gagal memuat data laporan.');
+      setBelum(objekBelumAda(err));
+      setGalat('Gagal memuat data laporan. Laporan tidak dapat dicetak sampai semua bagian berhasil dimuat.');
     } finally {
-      setLoading(false);
+      if (nomor === permintaanTerakhir.current) setLoading(false);
     }
   }, [dari, sampai]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void muat();
+    void Promise.resolve().then(() => muat());
   }, [muat]);
 
+  const global = muatan?.global;
   const ikm = global?.ikm;
   const spak = global?.spak;
   const rrGab = global?.responseRate ?? { diundang: 0, mengisi: 0, persen: null };
+  const pengaduan = muatan?.pengaduan ?? [];
+  const saranIsi = muatan?.saranIsi ?? [];
+  const pengaduanBelum = muatan !== null && muatan.pengaduan === null;
+  const saranBelum = muatan !== null && muatan.saranIsi === null;
   const totalPengaduan = pengaduan.reduce((s, r) => s + r.jumlah, 0);
   const perStatus = jumlahPer(pengaduan, (r) => r.status);
   const perSumber = jumlahPer(pengaduan, (r) => r.sumber);
-  const totalSaran = saranRingkas.reduce((s, r) => s + r.jumlah, 0);
+  const totalSaran: number | null = muatan?.saranRingkas
+    ? muatan.saranRingkas.reduce((s, r) => s + r.jumlah, 0)
+    : muatan?.saranTotalQuery ?? null;
+  const saranTerpotong = totalSaran !== null && saranIsi.length < totalSaran;
 
   return (
     <>
-      {/* Cetak: hanya #laporan-cetak yang tampil (sidebar, header, dan kontrol disembunyikan). */}
-      <style>{`@media print {
-        body * { visibility: hidden !important; }
-        #laporan-cetak, #laporan-cetak * { visibility: visible !important; }
-        #laporan-cetak { position: absolute; left: 0; top: 0; width: 100%; max-width: none; border: 0; border-radius: 0; padding: 0; }
-        @page { size: A4; margin: 14mm 12mm; }
-      }`}</style>
-
-      <PageHeader title="Laporan Pesan Perilaku" description="Rekap survei (IKM, SPAK), saran, dan pengaduan untuk dicetak atau disimpan sebagai PDF">
-        <Link href="/admin/pesan-perilaku" className="btn btn--ghost btn--sm"><ArrowLeft size={16} /> Kembali</Link>
-      </PageHeader>
+      <div data-cetak="sembunyi">
+        <PageHeader title="Laporan Pesan Perilaku" description="Rekap survei (IKM, SPAK), saran, dan pengaduan untuk dicetak atau disimpan sebagai PDF">
+          <Tombol href="/admin/pesan-perilaku" varian="sekunder" ikon={ArrowLeft}>Kembali</Tombol>
+        </PageHeader>
+      </div>
 
       <div className={styles.layar}>
-        <div className={styles.alat}>
-          <label>Dari<input type="date" value={dari} max={sampai} onChange={(e) => e.target.value && setDari(e.target.value)} /></label>
-          <label>Sampai<input type="date" value={sampai} min={dari} onChange={(e) => e.target.value && setSampai(e.target.value)} /></label>
-          <button type="button" className="btn btn--primary" onClick={() => window.print()} disabled={loading}>
-            <Printer size={16} /> Cetak / Simpan PDF
-          </button>
+        <div className={styles.alat} data-cetak="sembunyi">
+          <PemilihRentang dari={dari} sampai={sampai} onUbah={(r) => { setDari(r.dari); setSampai(r.sampai); }} label="Rentang tanggal" />
+          <Tombol ikon={Printer} onClick={() => window.print()} disabled={loading || !muatan}>Cetak / Simpan PDF</Tombol>
         </div>
 
-        {galat && <p role="alert" style={{ color: 'var(--color-danger-600, #dc2626)' }}>{galat}</p>}
         {loading ? (
-          <p><Loader2 size={20} className="animate-pulse" aria-hidden="true" /> Memuat…</p>
+          <Skeleton bentuk="kartu" jumlah={3} label="Memuat laporan" />
+        ) : belum ? (
+          <CatatanKeadaan jenis="menunggu-migrasi" aksi={<Tombol varian="sekunder" onClick={() => void muat()}>Coba lagi</Tombol>}>
+            Data laporan belum tersedia; pembaruan basis data belum diterapkan.
+          </CatatanKeadaan>
+        ) : galat || !muatan ? (
+          <Galat pesan={galat || 'Data laporan belum tersedia.'} onRetry={() => void muat()} />
         ) : (
           <article id="laporan-cetak" className={styles.kertas}>
             <header className={styles.kop}>
@@ -129,7 +173,7 @@ function CetakPesanPerilaku() {
               <p>Provinsi Lampung</p>
             </header>
             <h2 className={styles.judul}>Laporan Pesan Perilaku</h2>
-            <p className={styles.periode}>Periode {tglId(dari)} s.d. {tglId(sampai)}</p>
+            <p className={styles.periode}>Periode {tglId(muatan.dari)} s.d. {tglId(muatan.sampai)}</p>
 
             <p className={styles.catatan}>Seluruh angka survei di laporan ini adalah gabungan seluruh pelayanan (tidak dipecah per Layanan).</p>
             {global?.terpotong && <p className={styles.catatan}>Catatan: jawaban melebihi batas baris dan terpotong; persempit periode agar lengkap.</p>}
@@ -140,8 +184,8 @@ function CetakPesanPerilaku() {
                 <div className={styles.kartu}><b>{fmtIkm(ikm?.ikm ?? null)}</b><span>IKM ({ikm?.ikm == null ? '—' : ikm.mutuLabel})</span></div>
                 <div className={styles.kartu}><b>{fmtAngka(spak?.indeks ?? null)}</b><span>Indeks SPAK (0–100)</span></div>
                 <div className={styles.kartu}><b>{fmtPersen(spak?.persenSetuju ?? null)}</b><span>SPAK: jawaban setuju</span></div>
-                <div className={styles.kartu}><b>{totalSaran}</b><span>Saran</span></div>
-                <div className={styles.kartu}><b>{totalPengaduan}</b><span>Pengaduan</span></div>
+                <div className={styles.kartu}><b>{totalSaran ?? '—'}</b><span>Saran</span></div>
+                <div className={styles.kartu}><b>{pengaduanBelum ? '—' : totalPengaduan}</b><span>Pengaduan</span></div>
               </div>
               <p className={styles.catatan}>
                 Responden SKM: {ikm?.responden ?? 0}. Responden SPAK: {spak?.responden ?? 0}. Undangan terkirim {rrGab.diundang}, mengisi {rrGab.mengisi} ({fmtPersen(rrGab.persen)}).
@@ -173,7 +217,7 @@ function CetakPesanPerilaku() {
                   </table>
                 </>
               )}
-              <p className={styles.catatan}>IKM = rata-rata nilai unsur yang terisi × 25 (skala 25–100). A ≥ 88; B ≥ 76; C ≥ 60; D di bawah 60.</p>
+              <p className={styles.catatan}>IKM = rata-rata nilai unsur yang terisi × 25 (skala 25–100). {KETERANGAN_AMBANG_IKM} ({AMBANG_IKM.rujukan}).</p>
             </section>
 
             <section className={styles.bagian} aria-label="Survei Persepsi Anti Korupsi">
@@ -232,7 +276,8 @@ function CetakPesanPerilaku() {
 
             <section className={styles.bagian} aria-label="Pengaduan">
               <h2>5. Pengaduan</h2>
-              {totalPengaduan === 0 ? <p className={styles.kosong}>Tidak ada pengaduan pada periode ini.</p> : (
+              {pengaduanBelum ? <CatatanKeadaan jenis="menunggu-migrasi">Data pengaduan belum tersedia (pembaruan basis data belum diterapkan); angka pengaduan tidak dapat dicetak.</CatatanKeadaan>
+                : totalPengaduan === 0 ? <p className={styles.kosong}>Tidak ada pengaduan pada periode ini.</p> : (
                 <table className={styles.tabel}>
                   <thead><tr><th>Kelompok</th><th>Rincian</th><th className={styles.angka}>Jumlah</th></tr></thead>
                   <tbody>
@@ -247,8 +292,11 @@ function CetakPesanPerilaku() {
 
             <section className={styles.bagian} aria-label="Saran">
               <h2>6. Saran</h2>
-              <p className={styles.catatan}>Jumlah saran pada periode ini: {totalSaran}.</p>
-              {saranIsi.length === 0 ? <p className={styles.kosong}>Tidak ada saran pada periode ini.</p> : (
+              {saranBelum ? <CatatanKeadaan jenis="menunggu-migrasi">Data saran belum tersedia (pembaruan basis data belum diterapkan); saran tidak dapat dicetak.</CatatanKeadaan> : (
+                <p className={styles.catatan}>Jumlah saran pada periode ini: {totalSaran ?? '—'}.</p>
+              )}
+              {saranTerpotong && <p className={styles.catatan}>Catatan: laporan ini menampilkan {saranIsi.length} dari {totalSaran} saran terbaru; sisanya dapat dilihat di menu Saran.</p>}
+              {saranBelum ? null : saranIsi.length === 0 ? <p className={styles.kosong}>Tidak ada saran pada periode ini.</p> : (
                 <ol className={styles.daftarSaran}>
                   {saranIsi.map((s) => {
                     const lay = Array.isArray(s.layanan) ? s.layanan[0]?.nama : s.layanan?.nama;
@@ -256,7 +304,7 @@ function CetakPesanPerilaku() {
                       <li key={s.id}>
                         {s.isi}
                         <div className={styles.meta}>
-                          {new Date(s.created_at).toLocaleDateString('id-ID', { timeZone: 'Asia/Jakarta' })} · {s.unit === 'fo' ? 'Front Office' : lay ?? 'Unit tidak diketahui'} · {s.pelapor_nama ?? 'Anonim'}
+                          {formatTanggal(s.created_at)} · {s.unit === 'fo' ? 'Front Office' : lay ?? 'Unit tidak diketahui'} · {s.pelapor_nama ?? 'Anonim'}
                         </div>
                       </li>
                     );
@@ -272,7 +320,7 @@ function CetakPesanPerilaku() {
                 (................................)
               </div>
             </div>
-            <p className={styles.catatan}>Dicetak dari Lampung Maju Hub pada {dicetakPada} WIB.</p>
+            <p className={styles.catatan}>Dicetak dari Lampung Maju Hub pada {muatan.dicetakPada} WIB.</p>
           </article>
         )}
       </div>
@@ -282,7 +330,7 @@ function CetakPesanPerilaku() {
 
 export default function CetakPesanPerilakuPage() {
   return (
-    <Suspense fallback={<p><Loader2 size={20} className="animate-pulse" aria-hidden="true" /> Memuat…</p>}>
+    <Suspense fallback={<Skeleton bentuk="kartu" label="Memuat laporan" />}>
       <CetakPesanPerilaku />
     </Suspense>
   );

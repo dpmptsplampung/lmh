@@ -1,0 +1,112 @@
+.form {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--pad-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+  background: var(--bg-surface-muted);
+}
+
+.judul {
+  margin: 0;
+  font-size: var(--fs-card-title);
+  font-weight: 600;
+}
+
+.status {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.legenda {
+  padding: 0;
+  margin-bottom: var(--space-2);
+  font-size: var(--fs-body);
+  font-weight: 500;
+}
+
+.pilihan {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.pilihanItem {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 40px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-button);
+  background: var(--bg-surface);
+  font-size: var(--fs-body);
+  cursor: pointer;
+}
+
+.pilihanItem:has(input:focus-visible) {
+  box-shadow: var(--focus-ring);
+}
+
+.pilihanAktif {
+  border-color: var(--color-primary-600);
+  background: var(--color-primary-50);
+  font-weight: 600;
+}
+
+.bantuan {
+  margin: var(--space-2) 0 0;
+  font-size: var(--fs-small);
+  color: var(--text-secondary);
+}
+
+.lampiran {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.hapusBerkas {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  min-height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.hapusBerkas:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.centang {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  min-height: 40px;
+  font-size: var(--fs-body);
+}
+
+.centangMati {
+  color: var(--text-tertiary);
+}
+
+.galat {
+  margin: 0;
+  font-size: var(--fs-body);
+  color: var(--status-danger-fg);
+}
+
+@media (pointer: coarse) {
+  .pilihanItem, .centang { min-height: 44px; }
+  .hapusBerkas { min-height: 44px; min-width: 44px; }
+}

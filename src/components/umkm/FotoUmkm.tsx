@@ -31,7 +31,7 @@ export default function FotoUmkm({ src, alt, width, height, fill = false, classN
         className={className}
         style={{
           ...ukuran, ...style, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column',
-          gap: 4, background: 'var(--color-neutral-100, #f3f4f6)', color: 'var(--text-tertiary, #6b7280)', fontSize: 11,
+          gap: 4, background: 'var(--color-neutral-100)', color: 'var(--text-tertiary)', fontSize: 11,
         }}
       >
         <ImageOff size={20} aria-hidden="true" />
@@ -40,7 +40,7 @@ export default function FotoUmkm({ src, alt, width, height, fill = false, classN
     );
   }
   return (
-    // eslint-disable-next-line @next/next/no-img-element
+    // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/no-noninteractive-element-interactions -- onError pada img = deteksi gagal muat, bukan interaksi pengguna
     <img
       src={src}
       alt={alt}

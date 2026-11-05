@@ -1,8 +1,15 @@
 'use client';
 
+import Tombol from '@/components/ui/Tombol';
+import Kartu from '@/components/ui/Kartu';
+import Field from '@/components/ui/Field';
+import Skeleton from '@/components/ui/Skeleton';
+import Galat from '@/components/ui/Galat';
+
+import tampilan from './page.dasbor.module.css';
+
 import { useState, useEffect } from 'react';
-import Link from 'next/link';
-import { Settings, Save, Globe, MessageCircle, ExternalLink, MapPin } from 'lucide-react';
+import { Save, ExternalLink } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/components/Toast';
@@ -17,9 +24,13 @@ export default function AdminSettingsPage() {
   const [contactEmail, setContactEmail] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const [percobaan, setPercobaan] = useState(0);
 
   useEffect(() => {
     async function fetchSettings() {
+      setLoading(true);
+      setLoadError('');
       try {
         const supabase = createClient();
         const { data, error } = await supabase
@@ -38,13 +49,14 @@ export default function AdminSettingsPage() {
           setContactEmail(settingsMap.get('contact_email') || '');
         }
       } catch {
+        setLoadError('Gagal memuat pengaturan.');
         toast('Gagal memuat pengaturan.', 'error');
       } finally {
         setLoading(false);
       }
     }
     fetchSettings();
-  }, [toast]);
+  }, [toast, percobaan]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,145 +88,50 @@ export default function AdminSettingsPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <>
-        <PageHeader
-          title="Pengaturan Website"
-          description="Kelola tautan eksternal dan konfigurasi global website"
-        />
-        <div style={{ padding: 'var(--space-8)' }}>
-          <p style={{ color: 'var(--text-tertiary)' }}>Memuat pengaturan...</p>
-        </div>
-      </>
-    );
-  }
-
   return (
     <>
-      <PageHeader
-        title="Pengaturan Website"
-        description="Kelola tautan eksternal dan konfigurasi global website"
-      />
-
-      <div style={{ padding: 'var(--space-8)', maxWidth: '640px' }}>
-        <form onSubmit={handleSave} style={{
-          background: 'var(--surface-elevated)',
-          padding: 'var(--space-6)',
-          borderRadius: 'var(--radius-xl)',
-          border: '1px solid var(--border-default)',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 'var(--space-8)',
-        }}>
-          <div>
-            <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, marginBottom: 'var(--space-5)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Settings size={20} /> Pengaturan Eksternal
-            </h3>
-
-            <div className="form-group">
-              <label className="form-label">URL Portal FOILA</label>
-              <div style={{ position: 'relative' }}>
-                <Globe size={18} style={{
-                  position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)',
-                  color: 'var(--text-tertiary)'
-                }} />
-                <input
-                  type="url"
-                  required
-                  className="form-input"
-                  style={{ paddingLeft: '40px' }}
-                  placeholder="https://..."
-                  value={foilaUrl}
-                  onChange={(e) => setFoilaUrl(e.target.value)}
-                />
+      <PageHeader title="Pengaturan Website" description="Kelola tautan eksternal dan konfigurasi global website" />
+      <div className={tampilan.isi}>
+        {loading ? <Skeleton bentuk="kartu" jumlah={3} label="Memuat pengaturan" /> : loadError ? (
+          <Galat pesan={loadError} onRetry={() => setPercobaan((n) => n + 1)} />
+        ) : (
+          <form onSubmit={handleSave} className={tampilan.form}>
+            <Kartu judul="Pengaturan Eksternal">
+              <Field label="URL Portal FOILA" wajib bantuan="Tautan ini akan digunakan di halaman Investment Gallery.">
+                <input id="set-foila" type="url" required placeholder="https://..." value={foilaUrl} onChange={(e) => setFoilaUrl(e.target.value)} />
+              </Field>
+            </Kartu>
+            <Kartu judul="Pengaturan Kontak">
+              <div className={tampilan.bidang}>
+                <Field label="Nomor WhatsApp" bantuan="Format internasional tanpa tanda + (contoh: 6281234567890).">
+                  <input id="set-wa" type="text" placeholder="6281234567890" value={waNumber} onChange={(e) => setWaNumber(e.target.value)} />
+                </Field>
+                <Field label="Pesan Default WhatsApp" bantuan="Pesan otomatis yang terisi saat pengguna mengklik tombol chat WhatsApp.">
+                  <textarea id="set-wa-pesan" placeholder="Halo, saya ingin bertanya..." rows={3} value={waDefaultMessage} onChange={(e) => setWaDefaultMessage(e.target.value)} />
+                </Field>
               </div>
-              <p className="form-hint">Tautan ini akan digunakan di halaman Investment Gallery.</p>
+            </Kartu>
+            <Kartu judul="Kontak Resmi" className={tampilan.kontak}>
+              <div className={tampilan.bidang}>
+                <Field label="Alamat Kantor" bantuan="Ditampilkan di footer landing page bila diisi.">
+                  <textarea id="set-alamat" placeholder="Jl. ... , Bandar Lampung" rows={2} value={contactAddress} onChange={(e) => setContactAddress(e.target.value)} />
+                </Field>
+                <Field label="Jam Layanan">
+                  <input id="set-jam" type="text" placeholder="Senin–Jumat, 08.00–16.00 WIB" value={contactHours} onChange={(e) => setContactHours(e.target.value)} />
+                </Field>
+                <Field label="Email Resmi" bantuan="Dipakai di footer landing dan halaman Investment Gallery.">
+                  <input id="set-email" type="email" placeholder="info@dpmptsp.lampungprov.go.id" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} />
+                </Field>
+              </div>
+            </Kartu>
+            <div className={tampilan.aksi}>
+              <Tombol type="submit" ikon={Save} disabled={saving} memuat={saving}>
+                {saving ? 'Menyimpan...' : 'Simpan Pengaturan'}
+              </Tombol>
+              <Tombol href="/admin/settings/landing" varian="sekunder" ikon={ExternalLink}>Edit Blok Homepage</Tombol>
             </div>
-          </div>
-
-          <div>
-            <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, marginBottom: 'var(--space-5)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <MessageCircle size={20} /> Pengaturan Kontak
-            </h3>
-
-            <div className="form-group" style={{ marginBottom: 'var(--space-5)' }}>
-              <label className="form-label">Nomor WhatsApp</label>
-              <input
-                type="text"
-                className="form-input"
-                placeholder="6281234567890"
-                value={waNumber}
-                onChange={(e) => setWaNumber(e.target.value)}
-              />
-              <p className="form-hint">Format internasional tanpa tanda + (contoh: 6281234567890).</p>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Pesan Default WhatsApp</label>
-              <textarea
-                className="form-textarea"
-                placeholder="Halo, saya ingin bertanya..."
-                rows={3}
-                value={waDefaultMessage}
-                onChange={(e) => setWaDefaultMessage(e.target.value)}
-              />
-              <p className="form-hint">Pesan otomatis yang terisi saat pengguna mengklik tombol chat WhatsApp.</p>
-            </div>
-          </div>
-
-          <div>
-            <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, marginBottom: 'var(--space-5)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <MapPin size={20} /> Kontak Resmi
-            </h3>
-
-            <div className="form-group" style={{ marginBottom: 'var(--space-5)' }}>
-              <label className="form-label">Alamat Kantor</label>
-              <textarea
-                className="form-textarea"
-                placeholder="Jl. ... , Bandar Lampung"
-                rows={2}
-                value={contactAddress}
-                onChange={(e) => setContactAddress(e.target.value)}
-              />
-              <p className="form-hint">Ditampilkan di footer landing page bila diisi.</p>
-            </div>
-
-            <div className="form-group" style={{ marginBottom: 'var(--space-5)' }}>
-              <label className="form-label">Jam Layanan</label>
-              <input
-                type="text"
-                className="form-input"
-                placeholder="Senin–Jumat, 08.00–16.00 WIB"
-                value={contactHours}
-                onChange={(e) => setContactHours(e.target.value)}
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Email Resmi</label>
-              <input
-                type="email"
-                className="form-input"
-                placeholder="info@dpmptsp.lampungprov.go.id"
-                value={contactEmail}
-                onChange={(e) => setContactEmail(e.target.value)}
-              />
-              <p className="form-hint">Dipakai di footer landing dan halaman Investment Gallery.</p>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
-            <button type="submit" className="btn btn--primary" disabled={saving}>
-              <Save size={16} />
-              {saving ? 'Menyimpan...' : 'Simpan Pengaturan'}
-            </button>
-            <Link href="/admin/settings/landing" className="btn btn--secondary">
-              <ExternalLink size={16} />
-              Edit Blok Homepage
-            </Link>
-          </div>
-        </form>
+          </form>
+        )}
       </div>
     </>
   );

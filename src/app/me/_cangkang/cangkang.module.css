@@ -1,0 +1,87 @@
+/* Cangkang /me: pembungkus kanvas + ruang untuk sidebar melayang dan bilah atas (sama dengan area admin). */
+.cangkang {
+  display: flex;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--bg-canvas);
+}
+
+.isi {
+  flex: 1;
+  min-width: 0;
+  margin-left: var(--sidebar-width, 280px);
+  padding-top: var(--appbar-height, 56px);
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.badan {
+  flex: 1;
+  width: 100%;
+  max-width: var(--content-max, 1200px);
+  margin: 0 auto;
+  padding: var(--space-8, 32px);
+}
+
+/* Kartu identitas pengunjung (tanpa menu: Profil staf tidak berlaku, Keluar ada di dasar sidebar). */
+.identitas {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  margin: 8px 0 12px;
+  padding: 8px 10px;
+  border-radius: var(--radius-lg, 12px);
+  background: var(--bg-surface-muted);
+}
+
+.avatar {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: var(--color-primary-100);
+  color: var(--color-primary-700);
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+
+.teks {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.nama,
+.peran {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nama {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.peran {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+}
+
+@media (max-width: 1024px) {
+  .isi {
+    margin-left: 0;
+  }
+
+  .badan {
+    padding: var(--space-4, 16px);
+    padding-bottom: max(var(--space-4, 16px), env(safe-area-inset-bottom, 0px));
+  }
+}

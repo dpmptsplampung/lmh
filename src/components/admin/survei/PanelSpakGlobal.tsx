@@ -86,7 +86,7 @@ export default function PanelSpakGlobal({ data, responseRate, periodeLabel }: Pr
                   <Tooltip formatter={(v, n) => [`${v}%`, String(n)]} />
                   <Legend iconType="square" wrapperStyle={{ fontSize: 12 }} />
                   {SKALA_SPAK.map((s, i) => (
-                    <Bar key={s.nilai} dataKey={`n${s.nilai}`} name={`${s.nilai} ${s.label}`} stackId="sebaran" fill={WARNA_SKALA_SPAK[i]} stroke="#ffffff" strokeWidth={1} />
+                    <Bar key={s.nilai} dataKey={`n${s.nilai}`} name={`${s.nilai} ${s.label}`} stackId="sebaran" fill={WARNA_SKALA_SPAK[i]} stroke="var(--bg-surface, var(--color-neutral-0))" strokeWidth={1} />
                   ))}
                 </BarChart>
               </ResponsiveContainer>

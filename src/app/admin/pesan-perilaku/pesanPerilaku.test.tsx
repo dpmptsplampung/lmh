@@ -53,11 +53,25 @@ function pasang(role: Role | null = 'admin', ikmRpc: Array<Record<string, unknow
 
 const urlRingkasan = () => fetchMock.mock.calls.map((c) => String(c[0])).filter((u) => u.startsWith('/api/admin/survei/ringkasan'));
 
+function pantauUnduhan() {
+  const buatUrl = vi.fn<(blob: Blob) => string>(() => 'blob:survei-uji');
+  const cabutUrl = vi.fn();
+  vi.stubGlobal('URL', class extends URL {
+    static createObjectURL = buatUrl;
+    static revokeObjectURL = cabutUrl;
+  });
+  const berkas: { href: string; nama: string }[] = [];
+  vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+    berkas.push({ href: this.href, nama: this.download });
+  });
+  return { buatUrl, cabutUrl, berkas };
+}
+
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date('2026-11-03T05:00:00Z')); // 12.00 WIB
   fetchMock.mockReset();
-  fetchMock.mockResolvedValue(new Response(JSON.stringify(GLOBAL), { status: 200 }));
+  fetchMock.mockImplementation(async () => new Response(JSON.stringify(GLOBAL), { status: 200 }));
   vi.stubGlobal('fetch', fetchMock);
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
@@ -97,18 +111,44 @@ describe('Hasil Survei: admin dan Front Office (global)', () => {
     expect(screen.getAllByText('75.0').length).toBeGreaterThan(0);
     expect(screen.getAllByText('60.0%').length).toBeGreaterThan(0);
     expect(screen.getAllByText('20.0%').length).toBeGreaterThan(0);
-    expect(screen.getByText('Tingkat pengisian').closest('div')).toHaveTextContent('40.0%');
-    const tabel = screen.getByRole('region', { name: 'Tabel SPAK per pernyataan' });
+    expect(screen.getByText('Tingkat pengisian')).toBeInTheDocument();
+    expect(screen.getByText('Tingkat pengisian').closest('div')?.parentElement).toHaveTextContent('40.0%');
+    expect(screen.getByText('4 mengisi dari 10 diundang')).toBeInTheDocument();
+    const tabel = screen.getByRole('table', { name: 'Tabel SPAK per pernyataan' });
     expect(within(tabel).getAllByRole('row')).toHaveLength(1 + 5 + 1); // header + 5 pernyataan + keseluruhan
     expect(screen.queryByText(/Rata-rata SPAK per Unit/)).toBeNull();
   });
 
-  it('filter tanggal: mengubah "Dari tanggal" memuat ulang dengan rentang baru; preset menyetel rentang', async () => {
+  it('PP-2: butir SPAK tanpa jawaban tidak digambar sebagai nol; nol yang terjawab tetap tampil', async () => {
+    pasang('admin');
+    const spak = hitungSpakGlobal([{ ...spakBaris([6, 6, 1, 6, 6]), p2_tanpa_kecurangan: null }], PERIODE);
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ ...GLOBAL, spak }), { status: 200 }));
+    render(<HasilSurveiPage />);
+    await screen.findByText('Nilai per unsur pelayanan');
+    fireEvent.click(screen.getByRole('tab', { name: 'SPAK' }));
+
+    const tabel = screen.getByRole('table', { name: 'Tabel SPAK per pernyataan' });
+    const kosong = within(tabel).getByRole('row', { name: /^P2 / });
+    expect(within(kosong).getAllByText('—')).toHaveLength(5);
+    expect(within(tabel).getByRole('row', { name: /^P3 / })).toHaveTextContent('0.0%');
+    for (const label of ['Persentase setuju per pernyataan', 'Sebaran jawaban per nilai 1 sampai 6']) {
+      const grafik = screen.getByRole('group', { name: label });
+      expect(within(grafik).getByText('P3')).toBeInTheDocument();
+      expect(within(grafik).queryByText('P2')).toBeNull();
+    }
+  });
+
+  it('filter kalender menerapkan rentang kustom; preset tetap menyetel rentang', async () => {
     pasang('admin');
     render(<HasilSurveiPage />);
     await screen.findByText('Nilai per unsur pelayanan');
 
-    fireEvent.change(screen.getByLabelText('Dari tanggal'), { target: { value: '2026-10-15' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Rentang tanggal:/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bulan sebelumnya' }));
+    fireEvent.click(screen.getByRole('button', { name: /^15 Oktober 2026/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bulan berikutnya' }));
+    fireEvent.click(screen.getByRole('button', { name: /^3 November 2026/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Terapkan' }));
     await waitFor(() => expect(urlRingkasan()).toContain('/api/admin/survei/ringkasan?dari=2026-10-15&sampai=2026-11-03'));
     expect((screen.getByLabelText('Periode') as HTMLSelectElement).value).toBe('kustom');
 
@@ -116,15 +156,32 @@ describe('Hasil Survei: admin dan Front Office (global)', () => {
     await waitFor(() => expect(urlRingkasan()).toContain('/api/admin/survei/ringkasan?dari=2026-10-28&sampai=2026-11-03'));
   });
 
-  it('rentang terbalik (dari setelah sampai) ditolak: tidak memuat ulang', async () => {
+  it('rentang belum lengkap dan Batal tidak memuat ulang', async () => {
     pasang('admin');
     render(<HasilSurveiPage />);
     await screen.findByText('Nilai per unsur pelayanan');
     const awal = urlRingkasan().length;
 
-    fireEvent.change(screen.getByLabelText('Dari tanggal'), { target: { value: '2026-12-01' } });
-    fireEvent.change(screen.getByLabelText('Sampai tanggal'), { target: { value: '2026-10-01' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Rentang tanggal:/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^10 November 2026/ }));
+    expect(screen.getByRole('button', { name: 'Terapkan' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Batal' }));
     expect(urlRingkasan()).toHaveLength(awal);
+  });
+
+  it('tanggal dipilih mundur dinormalkan kalender dan hanya dimuat setelah Terapkan', async () => {
+    pasang('admin');
+    render(<HasilSurveiPage />);
+    await screen.findByText('Nilai per unsur pelayanan');
+    const jumlah = urlRingkasan().length;
+
+    fireEvent.click(screen.getByRole('button', { name: /^Rentang tanggal:/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^20 November 2026/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^10 November 2026/ }));
+    expect(urlRingkasan()).toHaveLength(jumlah);
+    fireEvent.click(screen.getByRole('button', { name: 'Terapkan' }));
+    await waitFor(() => expect(urlRingkasan()).toHaveLength(jumlah + 1));
+    expect(urlRingkasan().at(-1)).toBe('/api/admin/survei/ringkasan?dari=2026-11-10&sampai=2026-11-20');
   });
 
   it('tautan Unduh Excel dan Cetak/PDF membawa rentang yang sedang dipilih', async () => {
@@ -133,7 +190,83 @@ describe('Hasil Survei: admin dan Front Office (global)', () => {
     await screen.findByText('Nilai per unsur pelayanan');
 
     expect(screen.getByRole('link', { name: /Unduh Excel/ })).toHaveAttribute('href', '/api/admin/survei/export?dari=2026-11-01&sampai=2026-11-03');
+    expect(screen.getByRole('link', { name: /Unduh Excel/ })).toHaveAttribute('download');
     expect(screen.getByRole('link', { name: /Cetak \/ PDF/ })).toHaveAttribute('href', '/admin/pesan-perilaku/cetak?dari=2026-11-01&sampai=2026-11-03');
+    expect(screen.getByRole('link', { name: 'Laporan & Cetak' })).toHaveAttribute('href', '/admin/pesan-perilaku/cetak');
+    expect(screen.getByRole('link', { name: 'Kembali ke Dasbor' })).toHaveAttribute('href', '/admin');
+    expect(screen.getByRole('link', { name: 'Saran' })).toHaveAttribute('href', '/admin/saran');
+    expect(screen.getByRole('link', { name: 'Pengaduan' })).toHaveAttribute('href', '/admin/pengaduan');
+  });
+
+  it.each([
+    { status: 409, tipe: 'application/json', isi: '{"kode":"MIGRASI_BELUM_DITERAPKAN"}', pesan: /pembaruan basis data belum diterapkan/ },
+    { status: 500, tipe: 'application/json', isi: '{"error":"galat"}', pesan: /Gagal mengunduh Excel/ },
+    { status: 200, tipe: 'application/json', isi: '{"error":"galat"}', pesan: /Gagal mengunduh Excel/ },
+    { status: 200, tipe: 'text/html', isi: '<html>Masuk kembali</html>', pesan: /Gagal mengunduh Excel/ },
+    { status: 200, tipe: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', isi: 'PK', pesan: /Gagal mengunduh Excel/ },
+    { status: 200, tipe: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', isi: '', lampiran: true, pesan: /Gagal mengunduh Excel/ },
+  ])('PP-3: unduhan $status $tipe menampilkan galat di halaman tanpa menyimpan respons', async ({ status, tipe, isi, pesan, lampiran }) => {
+    pasang('admin');
+    const { buatUrl, berkas } = pantauUnduhan();
+    render(<HasilSurveiPage />);
+    await screen.findByText('Nilai per unsur pelayanan');
+    fetchMock.mockResolvedValue(new Response(isi, { status, headers: { 'Content-Type': tipe, ...(lampiran ? { 'Content-Disposition': 'attachment; filename="survei.xlsx"' } : {}) } }));
+
+    fireEvent.click(screen.getByRole('link', { name: 'Unduh Excel' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(pesan);
+    expect(buatUrl).not.toHaveBeenCalled();
+    expect(berkas).toEqual([]);
+    expect(screen.getByText('Nilai per unsur pelayanan')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Unduh Excel' })).not.toHaveAttribute('aria-busy', 'true');
+  });
+
+  it('PP-3: gagal jaringan dapat dicoba lagi; hanya lampiran Excel valid yang diunduh dengan periode terpilih', async () => {
+    pasang('admin');
+    const { buatUrl, cabutUrl, berkas } = pantauUnduhan();
+    render(<HasilSurveiPage />);
+    await screen.findByText('Nilai per unsur pelayanan');
+    fireEvent.change(screen.getByLabelText('Periode'), { target: { value: 'tujuh' } });
+    await waitFor(() => expect(urlRingkasan()).toContain('/api/admin/survei/ringkasan?dari=2026-10-28&sampai=2026-11-03'));
+    await screen.findByText('Nilai per unsur pelayanan');
+    fetchMock.mockRejectedValueOnce(new TypeError('Network error'));
+    fireEvent.click(screen.getByRole('link', { name: 'Unduh Excel' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Gagal mengunduh Excel/);
+    expect(buatUrl).not.toHaveBeenCalled();
+
+    fetchMock.mockResolvedValueOnce(new Response(new Uint8Array([80, 75, 3, 4]), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': 'attachment; filename="survei.xlsx"',
+      },
+    }));
+    fireEvent.click(screen.getByRole('button', { name: 'Coba lagi' }));
+
+    await waitFor(() => expect(berkas).toEqual([{ href: 'blob:survei-uji', nama: 'survei-2026-10-28-sd-2026-11-03.xlsx' }]));
+    expect(fetchMock.mock.calls.at(-1)?.[0]).toBe('/api/admin/survei/export?dari=2026-10-28&sampai=2026-11-03');
+    expect(buatUrl).toHaveBeenCalledTimes(1);
+    expect(buatUrl.mock.calls[0][0]).toMatchObject({ size: 4, type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    await waitFor(() => expect(cabutUrl).toHaveBeenCalledWith('blob:survei-uji'));
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByRole('link', { name: 'Unduh Excel' })).not.toHaveAttribute('aria-busy', 'true');
+  });
+
+  it('PP-3: klik berulang saat unduhan berlangsung hanya mengirim satu permintaan', async () => {
+    pasang('admin');
+    const { buatUrl } = pantauUnduhan();
+    render(<HasilSurveiPage />);
+    await screen.findByText('Nilai per unsur pelayanan');
+    let selesai!: (res: Response) => void;
+    fetchMock.mockImplementationOnce(() => new Promise<Response>((resolve) => { selesai = resolve; }));
+    const tombol = screen.getByRole('link', { name: 'Unduh Excel' });
+    fireEvent.click(tombol);
+    expect(tombol).toHaveAttribute('aria-busy', 'true');
+    fireEvent.click(tombol);
+    expect(fetchMock.mock.calls.filter((c) => String(c[0]).startsWith('/api/admin/survei/export'))).toHaveLength(1);
+    selesai(new Response('{}', { status: 500 }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Gagal mengunduh Excel/);
+    expect(buatUrl).not.toHaveBeenCalled();
   });
 
   it('galat server menampilkan pesan dan tidak menampilkan angka lama', async () => {
@@ -142,6 +275,9 @@ describe('Hasil Survei: admin dan Front Office (global)', () => {
     render(<HasilSurveiPage />);
     expect(await screen.findByRole('alert')).toHaveTextContent('Gagal memuat hasil survei');
     expect(screen.queryByText('Nilai per unsur pelayanan')).toBeNull();
+    fetchMock.mockResolvedValue(new Response(JSON.stringify(GLOBAL), { status: 200 }));
+    fireEvent.click(screen.getByRole('button', { name: 'Coba lagi' }));
+    expect(await screen.findByText('Nilai per unsur pelayanan')).toBeInTheDocument();
   });
 
   it('data kosong: pesan belum ada data (bukan angka palsu)', async () => {
@@ -151,10 +287,41 @@ describe('Hasil Survei: admin dan Front Office (global)', () => {
     );
     render(<HasilSurveiPage />);
     expect(await screen.findByText('Belum ada data IKM pada periode ini.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'SPAK' }));
+    expect(screen.getByText('Belum ada data SPAK pada periode ini.')).toBeInTheDocument();
+  });
+
+  it('migrasi ringkasan belum tersedia ditandai khusus, tanpa angka nol dan bisa dicoba lagi', async () => {
+    pasang('admin');
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ code: 'MIGRASI_BELUM_DITERAPKAN' }), { status: 409 }));
+    render(<HasilSurveiPage />);
+    expect(await screen.findByRole('note')).toHaveTextContent(/pembaruan basis data belum diterapkan/);
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByText('Responden')).toBeNull();
+    expect(screen.queryByText('Belum ada data IKM pada periode ini.')).toBeNull();
+    fetchMock.mockResolvedValue(new Response(JSON.stringify(GLOBAL), { status: 200 }));
+    fireEvent.click(screen.getByRole('button', { name: 'Coba lagi' }));
+    expect(await screen.findByText('Nilai per unsur pelayanan')).toBeInTheDocument();
   });
 });
 
 describe('Hasil Survei: petugas layanan', () => {
+  it.each([
+    { code: 'PGRST202', message: 'no function', peran: 'note', pesan: /pembaruan basis data belum diterapkan/ },
+    { code: '57014', message: 'timeout', peran: 'alert', pesan: /Gagal memuat data IKM/ },
+  ])('galat RPC $code terpisah dari hasil kosong dan bisa dicoba lagi', async ({ code, message, peran, pesan }) => {
+    const { rpc } = pasang('petugas', [{ layanan_id: 'l-1', unit: 'layanan', nama: 'Helpdesk OSS', ikm: 90, responden: 12 }]);
+    rpc.mockRejectedValueOnce({ code, message });
+    render(<HasilSurveiPage />);
+    const catatan = await screen.findByText(pesan);
+    expect(catatan.closest('[role]')).toHaveAttribute('role', peran);
+    expect(screen.queryByText('Total Responden')).toBeNull();
+    expect(screen.queryByText('Belum ada data layanan')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Coba lagi' }));
+    expect(await screen.findByText('Total Responden')).toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: '12' })).toBeInTheDocument();
+  });
+
   it('hanya IKM Layanannya sendiri; tanpa tab SPAK, tanpa unduhan, tanpa memanggil rute global', async () => {
     const { rpc } = pasang('petugas', [
       { layanan_id: 'l-1', unit: 'layanan', nama: 'Helpdesk OSS', ikm: 90, responden: 12 },

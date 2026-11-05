@@ -110,3 +110,8 @@
     min-width: 0;
   }
 }
+
+.cakupanDaftar { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-card); padding: var(--space-2); }
+.cakupanItem { border-radius: var(--radius-md); }
+.cakupanItem:focus-visible, .geser button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+@media (pointer: coarse) { .cakupanItem, .geser button { min-height: 44px; } .geser button { min-width: 44px; } }

@@ -42,7 +42,7 @@ describe('kelola layanan', () => {
       fireEvent.click(await screen.findByRole('button', { name: 'Ubah Helpdesk OSS' }));
       fireEvent.change(screen.getByLabelText('Nama layanan'), { target: { value: 'Helpdesk OSS Baru' } });
       fireEvent.click(screen.getByRole('button', { name: 'Simpan' }));
-      expect(await screen.findByRole('alertdialog')).toBeTruthy();
+      expect(await screen.findByRole('alert', { name: /Konfirmasi ganti nama/ })).toBeTruthy(); // C3-07: alert biasa, bukan alertdialog
       expect(patchCalls()).toHaveLength(0);
       fireEvent.click(screen.getByRole('button', { name: 'Ya, ganti nama' }));
       await waitFor(() => expect(patchCalls()).toHaveLength(1));
@@ -234,7 +234,7 @@ describe('kelola layanan', () => {
     it('form memuat Instansi, Deskripsi, Urutan, Sumber konten, dan opsi "Tanpa formulir tetap"', async () => {
       render(<KelolaLayananPage />);
       fireEvent.click(await screen.findByRole('button', { name: 'Tambah layanan' }));
-      const instansi = screen.getByLabelText('Instansi') as HTMLSelectElement;
+      const instansi = within(screen.getByRole('dialog')).getByLabelText('Instansi') as HTMLSelectElement;
       expect(instansi.tagName).toBe('SELECT');
       expect(Array.from(instansi.options).map((o) => o.textContent)).toContain('Dinas Penanaman Modal (DPMPTSP)');
       expect(screen.getByLabelText('Deskripsi')).toBeTruthy();
@@ -370,7 +370,7 @@ describe('kelola layanan', () => {
       await waitFor(() => expect(panggilan('POST', '/api/admin/instansi')).toHaveLength(1));
       expect(JSON.parse(panggilan('POST', '/api/admin/instansi')[0][1].body)).toEqual({ nama: 'Bank Lampung', singkatan: 'BL' });
       fireEvent.click(await screen.findByRole('button', { name: 'Tambah layanan' }));
-      const instansi = screen.getByLabelText('Instansi') as HTMLSelectElement;
+      const instansi = within(screen.getByRole('dialog')).getByLabelText('Instansi') as HTMLSelectElement;
       await waitFor(() => expect(Array.from(instansi.options).map((o) => o.textContent)).toContain('Bank Lampung (BL)'));
     });
 

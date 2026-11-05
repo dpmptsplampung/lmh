@@ -1,0 +1,110 @@
+.wadah {
+  position: relative;
+  margin: 8px 0 12px;
+}
+
+.kartu {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--radius-lg, 12px);
+  background: var(--bg-surface-muted, #f5f7fa);
+  color: var(--text-primary, #0f172a);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.kartu:hover {
+  background: var(--bg-surface-hover, #f1f5f9);
+}
+
+.kartu:focus-visible,
+.butir:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring, 0 0 0 2px #fff, 0 0 0 4px #2563eb);
+}
+
+.avatar {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: var(--color-primary-600, #2563eb);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+
+.teks {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.nama,
+.peran {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nama {
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.peran {
+  font-size: 0.75rem;
+  color: var(--text-tertiary, #64748b);
+}
+
+.ikon {
+  flex: none;
+  color: var(--text-tertiary, #64748b);
+}
+
+.menu {
+  position: absolute;
+  z-index: 30;
+  left: 0;
+  right: 0;
+  top: calc(100% + 6px);
+  padding: 6px;
+  background: var(--bg-surface, #fff);
+  border: 1px solid var(--border-subtle, #e6eaf0);
+  border-radius: var(--radius-lg, 12px);
+  box-shadow: var(--shadow-overlay, 0 24px 48px -12px rgba(15, 23, 42, 0.18));
+}
+
+.butir {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: var(--target, 40px);
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-md, 8px);
+  background: transparent;
+  color: var(--text-primary, #0f172a);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.butir svg {
+  color: var(--text-tertiary, #64748b);
+}
+
+.butir:hover {
+  background: var(--bg-surface-hover, #f1f5f9);
+}

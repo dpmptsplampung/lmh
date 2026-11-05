@@ -1,13 +1,22 @@
 'use client';
 
+import Field from '@/components/ui/Field';
+
+import Tombol from '@/components/ui/Tombol';
+
+import tampilan from './page.dasbor.module.css';
+
 import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, Loader2, Plus, Save, Rocket, History, RotateCcw, Info } from 'lucide-react';
+import Skeleton from '@/components/ui/Skeleton';
+import Galat from '@/components/ui/Galat';
+import CatatanKeadaan from '@/components/ui/CatatanKeadaan';
+import Lencana from '@/components/ui/Lencana';
+import { formatTanggalWaktu } from '@/lib/utils';
 import PageHeader from '@/components/layout/PageHeader';
 import { useToast } from '@/components/Toast';
 import LlmEntryCard from '@/components/admin/settings/LlmEntryCard';
-import type {
-  HasilUjiRingkas, LlmEntry, LlmState, UjiDetail,
-} from '@/components/admin/settings/llm-types';
+import type { HasilUjiRingkas, LlmEntry, LlmState, UjiDetail } from '@/components/admin/settings/llm-types';
 import bs from '@/components/admin/settings/settings.module.css';
 import styles from './ai.module.css';
 
@@ -27,7 +36,7 @@ async function call(path: string, init?: RequestInit) {
 const post = (path: string, body: unknown) =>
   call(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
-const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString('id-ID') : '-');
+const fmt = (iso: string | null) => (iso ? formatTanggalWaktu(iso) : '-');
 
 export default function PengaturanAiPage() {
   const { toast } = useToast();
@@ -260,32 +269,28 @@ export default function PengaturanAiPage() {
     <>
       <PageHeader
         title="Pengaturan AI"
+        meta="Waktu ditampilkan dalam WIB"
         description="Atur penyedia model chat (Gemini, gateway, API kustom), uji, lalu aktifkan. Hanya Admin."
       />
       <div className={styles.page}>
-        {load === 'loading' && <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-10)' }} role="status" aria-label="Memuat pengaturan"><div className="spinner" /></div>}
+        {load === 'loading' && <Skeleton bentuk="kartu" jumlah={3} label="Memuat pengaturan" />}
 
         {load === 'forbidden' && (
-          <div className={`${bs.banner} ${bs.bannerErr}`} role="alert">Halaman ini hanya untuk Admin.</div>
+          <CatatanKeadaan jenis="lingkup">Halaman ini hanya untuk Admin.</CatatanKeadaan>
         )}
 
-        {load === 'error' && (
-          <div className={`${bs.banner} ${bs.bannerErr}`} role="alert">
-            Gagal memuat pengaturan AI.{' '}
-            <button type="button" className="btn btn--secondary btn--sm" onClick={() => { setLoad('loading'); muat(); }}>Coba lagi</button>
-          </div>
-        )}
+        {load === 'error' && <Galat pesan="Gagal memuat pengaturan AI." onRetry={() => { setLoad('loading'); void muat(); }} />}
 
         {load === 'ready' && state && (
           <>
             {tampilEnk && (
               <div className={`${bs.banner} ${bs.bannerWarn}`} role="alert" data-testid="peringatan-enkripsi">
-                <AlertTriangle size={18} aria-hidden="true" style={{ flexShrink: 0 }} />
+                <AlertTriangle size={18} aria-hidden="true" className={tampilan.area2}  />
                 <span>{ENC_HINT}</span>
               </div>
             )}
             <div className={bs.banner} role="note">
-              <Info size={18} aria-hidden="true" style={{ flexShrink: 0 }} />
+              <Info size={18} aria-hidden="true" className={tampilan.area2}  />
               <span>
                 Embedding FAQ dan Dokumen Peraturan tetap memakai GEMINI_API_KEY di server; mengganti model chat di sini tidak mengubah embedding.
                 Base URL kustom hanya boleh https. Perubahan yang diaktifkan berlaku paling lambat sekitar 1 menit.
@@ -294,9 +299,9 @@ export default function PengaturanAiPage() {
 
             <div className={bs.cardHead}>
               <h2 className={bs.cardTitle}>Rantai penyedia chat (urutan = prioritas)</h2>
-              <span className={`badge ${state.aktif ? 'badge--selesai' : 'badge--draft'}`}>
+              <Lencana nada={state.aktif ? 'sukses' : 'netral'}>
                 {statusAktif}{draftVersi !== null ? ` · Draf v${draftVersi}${dirty ? ' (ada perubahan belum disimpan)' : ''}` : dirty ? ' · belum disimpan' : ''}
-              </span>
+              </Lencana>
             </div>
 
             {entries.length === 0 ? (
@@ -313,7 +318,7 @@ export default function PengaturanAiPage() {
                 </div>
               </div>
             ) : (
-              <ol className={bs.list} aria-label="Daftar penyedia" style={{ padding: 0 }}>
+              <ol className={[bs.list, tampilan.area3].filter(Boolean).join(' ')} aria-label="Daftar penyedia">
                 {entries.map((e, i) => (
                   <LlmEntryCard
                     key={e.id}
@@ -331,15 +336,15 @@ export default function PengaturanAiPage() {
               </ol>
             )}
 
-            <div className={bs.row} style={{ marginBottom: 'var(--space-6)' }}>
-              <label className="form-label" htmlFor="presetBaru" style={{ margin: 0 }}>Tambah penyedia</label>
-              <select id="presetBaru" className="form-select" style={{ maxWidth: 320 }} value={presetId} onChange={(ev) => setPresetId(ev.target.value)}>
+            <div className={[bs.row, tampilan.area4].filter(Boolean).join(' ')}>
+              <label className={["form-label", tampilan.area5].filter(Boolean).join(' ')} htmlFor="presetBaru" >Tambah penyedia</label>
+              <select id="presetBaru" className={["form-select", tampilan.area6].filter(Boolean).join(' ')}  value={presetId} onChange={(ev) => setPresetId(ev.target.value)}>
                 {state.preset.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
               </select>
-              <button type="button" className="btn btn--secondary btn--sm" onClick={tambah} disabled={!presetId}><Plus size={14} /> Tambah</button>
-              <button type="button" className="btn btn--primary btn--sm" onClick={() => { void simpanDraf(); }} disabled={saving || entries.length === 0 || (!dirty && draftVersi !== null)} aria-busy={saving}>
+              <Tombol type="button" varian="sekunder" ukuran="kecil" onClick={tambah} disabled={!presetId}><Plus size={14} /> Tambah</Tombol>
+              <Tombol type="button" varian="utama" ukuran="kecil" onClick={() => { void simpanDraf(); }} disabled={saving || entries.length === 0 || (!dirty && draftVersi !== null)} aria-busy={saving}>
                 {saving ? <Loader2 size={14} className="animate-pulse" /> : <Save size={14} />} Simpan draf
-              </button>
+              </Tombol>
             </div>
 
             <section className={bs.card} aria-labelledby="aktifkan-judul">
@@ -355,22 +360,21 @@ export default function PengaturanAiPage() {
               ) : (
                 <div>
                   <p className={bs.hint}>Uji tiap penyedia aktif sampai lulus, atau aktifkan tanpa uji dengan alasan tercatat.</p>
-                  <label style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', cursor: 'pointer', margin: 'var(--space-2) 0' }}>
+                  <label className={tampilan.baris7}>
                     <input type="checkbox" checked={tanpaUji} onChange={(ev) => setTanpaUji(ev.target.checked)} />
                     Aktifkan tanpa uji (berisiko)
                   </label>
                   {tanpaUji && (
-                    <div className="form-group">
-                      <label className="form-label" htmlFor="alasanAktif">Alasan (minimal 5 karakter)</label>
+                    <Field label="Alasan (minimal 5 karakter)">
                       <textarea id="alasanAktif" className="form-textarea" rows={2} value={alasanAktif} onChange={(ev) => setAlasanAktif(ev.target.value)} />
-                    </div>
+                    </Field>
                   )}
                 </div>
               )}
-              <div className={bs.row} style={{ marginTop: 'var(--space-3)' }}>
-                <button type="button" className="btn btn--accent btn--sm" onClick={aktifkan} disabled={!tombolAktifOk} aria-busy={aktifBusy}>
+              <div className={[bs.row, tampilan.area8].filter(Boolean).join(' ')}>
+                <Tombol type="button" varian="hantu" ukuran="kecil" onClick={aktifkan} disabled={!tombolAktifOk} aria-busy={aktifBusy}>
                   {aktifBusy ? <Loader2 size={14} className="animate-pulse" /> : <Rocket size={14} />} Aktifkan{draftVersi !== null ? ` v${draftVersi}` : ''}
-                </button>
+                </Tombol>
               </div>
               {aksiErr && <p className={bs.errText} role="alert">{aksiErr}</p>}
             </section>
@@ -388,24 +392,24 @@ export default function PengaturanAiPage() {
                         {v.alasan ? <span className={bs.hint}> — {v.alasan}</span> : null}
                       </span>
                       {v.status === 'arsip' && (
-                        <button type="button" className="btn btn--secondary btn--sm" onClick={() => { setRollbackVersi(v.versi); setAlasanRollback(''); }}>
+                        <Tombol type="button" varian="sekunder" ukuran="kecil" onClick={() => { setRollbackVersi(v.versi); setAlasanRollback(''); }}>
                           <RotateCcw size={14} /> Rollback ke v{v.versi}
-                        </button>
+                        </Tombol>
                       )}
                     </li>
                   ))}
                 </ul>
               )}
               {rollbackVersi !== null && (
-                <div className={`${bs.banner} ${bs.bannerWarn}`} role="group" aria-label="Konfirmasi rollback" style={{ marginTop: 'var(--space-3)', flexDirection: 'column' }}>
+                <div className={[`${bs.banner} ${bs.bannerWarn}`, tampilan.area9].filter(Boolean).join(' ')} role="group" aria-label="Konfirmasi rollback">
                   <strong>Kembalikan ke v{rollbackVersi}? Versi ini akan disalin menjadi versi baru yang langsung aktif.</strong>
                   <label className="form-label" htmlFor="alasanRollback">Alasan rollback (minimal 5 karakter)</label>
                   <textarea id="alasanRollback" className="form-textarea" rows={2} value={alasanRollback} onChange={(ev) => setAlasanRollback(ev.target.value)} />
                   <div className={bs.row}>
-                    <button type="button" className="btn btn--danger btn--sm" onClick={rollback} disabled={alasanRollback.trim().length < 5 || rollbackBusy} aria-busy={rollbackBusy}>
+                    <Tombol type="button" varian="bahaya" ukuran="kecil" onClick={rollback} disabled={alasanRollback.trim().length < 5 || rollbackBusy} aria-busy={rollbackBusy}>
                       Ya, rollback
-                    </button>
-                    <button type="button" className="btn btn--ghost btn--sm" onClick={() => setRollbackVersi(null)}>Batal</button>
+                    </Tombol>
+                    <Tombol type="button" varian="hantu" ukuran="kecil" onClick={() => setRollbackVersi(null)}>Batal</Tombol>
                   </div>
                 </div>
               )}

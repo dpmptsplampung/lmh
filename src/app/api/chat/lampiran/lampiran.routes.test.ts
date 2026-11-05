@@ -9,7 +9,8 @@ const PESAN = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const UUID_OBJ = '99999999-9999-4999-8999-999999999999';
 
 const h = vi.hoisted(() => ({
-  user: { id: 'auth-1' } as { id: string } | null,
+  user: { id: 'auth-1', is_anonymous: false, identities: [{ provider: 'google' }] } as Record<string, unknown> | null,
+  staf: false,
   pengunjungId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' as string | null,
   sesi: null as Record<string, unknown> | null,
   pesan: null as Record<string, unknown> | null,
@@ -17,12 +18,12 @@ const h = vi.hoisted(() => ({
 }));
 
 vi.mock('@/lib/supabase/server', () => ({
-  createClient: async () => ({ auth: { getUser: async () => ({ data: { user: h.user } }) }, rpc: vi.fn(), from: vi.fn() }),
+  createClient: async () => ({ auth: { getUser: async () => ({ data: { user: h.user } }) }, rpc: async () => ({ data: true, error: null }), from: vi.fn() }),
 }));
 vi.mock('@supabase/supabase-js', () => ({
   createClient: () => ({
     from: (t: string) => {
-      if (t === 'petugas') return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null }) }) }) };
+      if (t === 'petugas') return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: h.staf ? { id: 'pt-1', role: 'admin', layanan_id: null, aktif: true } : null }) }) }) };
       if (t === 'pengunjung') return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: h.pengunjungId ? { id: h.pengunjungId } : null }) }) }) };
       if (t === 'chat_sesi') return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: h.sesi }) }) }) };
       if (t === 'chat_pesan') {
@@ -59,7 +60,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://x.supabase.co');
   vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'k');
-  h.user = { id: 'auth-1' };
+  h.user = { id: 'auth-1', is_anonymous: false, identities: [{ provider: 'google' }] };
+  h.staf = false;
   h.pengunjungId = PENGUNJUNG;
   h.sesi = { id: SESI, status: 'bot', pengunjung_id: PENGUNJUNG, layanan_id: null, ditangani_oleh: null };
   h.pesan = null;
@@ -71,6 +73,26 @@ describe('POST /api/chat/lampiran/presign', () => {
     const res = await presign(req({ sesi_id: SESI, mime: 'image/png', ukuran: 1000 }));
     expect(res.status).toBe(200);
     expect((await res.json()).kunci).toMatch(new RegExp(`^chat-lampiran/${SESI}/[0-9a-f-]{36}\\.png$`));
+  });
+  it('R1: akun anonim pemilik sesi ditolak 403 LOGIN_GOOGLE dan tidak ada URL unggah diterbitkan', async () => {
+    h.user = { id: 'auth-1', is_anonymous: true, identities: [] };
+    const res = await presign(req({ sesi_id: SESI, mime: 'image/png', ukuran: 1000 }));
+    expect(res.status).toBe(403);
+    expect((await res.json()).kode).toBe('LOGIN_GOOGLE');
+    expect(r2.presignPut).not.toHaveBeenCalled();
+  });
+  it('R5: pengunjung nonanonim tanpa identitas Google (sandi) ditolak 403 LOGIN_GOOGLE', async () => {
+    h.user = { id: 'auth-1', is_anonymous: false, identities: [{ provider: 'email' }], app_metadata: { provider: 'email' } };
+    const res = await presign(req({ sesi_id: SESI, mime: 'image/png', ukuran: 1000 }));
+    expect(res.status).toBe(403);
+    expect((await res.json()).kode).toBe('LOGIN_GOOGLE');
+    expect(r2.presignPut).not.toHaveBeenCalled();
+  });
+  it('R5: STAF sah (petugas aktif) dengan sandi tetap boleh meminta URL unggah', async () => {
+    h.user = { id: 'auth-1', is_anonymous: false, identities: [{ provider: 'email' }] };
+    h.staf = true;
+    const res = await presign(req({ sesi_id: SESI, mime: 'image/png', ukuran: 1000 }));
+    expect(res.status).toBe(200);
   });
   it('pengunjung lain -> 403', async () => {
     h.sesi = { ...h.sesi!, pengunjung_id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd' };

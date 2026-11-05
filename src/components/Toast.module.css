@@ -1,0 +1,117 @@
+/* Rupa toast memakai token tema; [data-toast] menandai elemen yang disembunyikan saat cetak. */
+.wadah {
+  position: fixed;
+  right: 1.5rem;
+  bottom: 1.5rem;
+  z-index: var(--z-toast, 1400);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  pointer-events: none;
+}
+
+.kartu {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 300px;
+  max-width: 400px;
+  padding: 1rem 1.25rem;
+  border-left: 4px solid var(--toast-garis);
+  border-radius: 0.5rem;
+  background: var(--toast-bg);
+  box-shadow: var(--shadow-overlay, var(--shadow-lg));
+  pointer-events: auto;
+  animation: toastSlideIn 0.3s ease-out;
+}
+
+.success {
+  --toast-bg: var(--color-success-50);
+  --toast-garis: var(--color-success-500);
+  --toast-teks: var(--color-success-700);
+  --toast-ikon: var(--color-success-500);
+}
+
+.error {
+  --toast-bg: var(--color-danger-50);
+  --toast-garis: var(--color-danger-500);
+  --toast-teks: var(--color-danger-700);
+  --toast-ikon: var(--color-danger-500);
+}
+
+.warning {
+  --toast-bg: var(--color-warning-50);
+  --toast-garis: var(--color-warning-500);
+  --toast-teks: var(--color-warning-600);
+  --toast-ikon: var(--color-warning-500);
+}
+
+.info {
+  --toast-bg: var(--color-primary-50);
+  --toast-garis: var(--color-primary-500);
+  --toast-teks: var(--color-primary-700);
+  --toast-ikon: var(--color-primary-500);
+}
+
+.ikon {
+  flex: none;
+  color: var(--toast-ikon);
+}
+
+.pesan {
+  flex: 1;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--toast-teks);
+  overflow-wrap: anywhere;
+}
+
+.tutup {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--radius-md, 8px);
+  background: none;
+  color: var(--color-neutral-400);
+  cursor: pointer;
+}
+
+.tutup:hover {
+  color: var(--toast-teks);
+}
+
+.tutup:focus-visible {
+  outline: 2px solid var(--toast-garis);
+  outline-offset: 0;
+}
+
+@keyframes toastSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (max-width: 640px) {
+  .wadah {
+    right: 1rem;
+    left: 1rem;
+  }
+
+  .kartu {
+    min-width: 0;
+    max-width: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kartu {
+    animation: none;
+  }
+}

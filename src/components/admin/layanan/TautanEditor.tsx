@@ -1,5 +1,9 @@
 'use client';
 
+import Tombol from '@/components/ui/Tombol';
+
+import tampilan from './TautanEditor.dasbor.module.css';
+
 import { useId, useRef, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { TAUTAN_MAKS, tautanSchema, type LayananTautan } from '@/lib/layanan/schemas';
@@ -63,10 +67,10 @@ export default function TautanEditor({
   return (
     <fieldset className={styles.fieldset} disabled={disabled} aria-describedby={idBantuan}>
       <legend className={styles.legend}>Website terkait</legend>
-      <p id={idBantuan} className="form-hint" style={{ margin: 0 }}>
+      <p id={idBantuan} className={["form-hint", tampilan.teks1].filter(Boolean).join(' ')}>
         Tautan resmi yang berguna bagi pemohon, misalnya portal perizinan. Alamat harus diawali https://. Maksimal {TAUTAN_MAKS} website.
       </p>
-      {value.length === 0 && <p className="form-hint" style={{ margin: 0 }}>Belum ada website terkait.</p>}
+      {value.length === 0 && <p className={["form-hint", tampilan.teks1].filter(Boolean).join(' ')} >Belum ada website terkait.</p>}
       {value.map((t, i) => {
         const n = i + 1;
         const g = tampil(i) ? galat[i] : null;
@@ -79,27 +83,27 @@ export default function TautanEditor({
                 value={t.label} maxLength={80}
                 aria-invalid={g?.label ? true : undefined} aria-describedby={g?.label ? idLabel : undefined}
                 onChange={(e) => ubah(i, { label: e.target.value })} onBlur={() => sentuh(i)} />
-              {g?.label && <p id={idLabel} className="form-error" role="alert" style={{ margin: 0 }}>{g.label}</p>}
+              {g?.label && <p id={idLabel} className={["form-error", tampilan.teks1].filter(Boolean).join(' ')} role="alert" >{g.label}</p>}
             </div>
             <div className={styles.tautanField}>
               <input className="form-input" type="url" inputMode="url" aria-label={`Alamat website ${n}`}
                 placeholder="https://" value={t.url} maxLength={500} spellCheck={false} autoCapitalize="none"
                 aria-invalid={g?.url ? true : undefined} aria-describedby={g?.url ? idUrl : undefined}
                 onChange={(e) => ubah(i, { url: e.target.value })} onBlur={() => sentuh(i)} />
-              {g?.url && <p id={idUrl} className="form-error" role="alert" style={{ margin: 0 }}>{g.url}</p>}
+              {g?.url && <p id={idUrl} className={["form-error", tampilan.teks1].filter(Boolean).join(' ')} role="alert" >{g.url}</p>}
             </div>
-            <button type="button" className="btn btn--ghost btn--sm" aria-label={`Hapus website ${n}`} onClick={() => hapus(i)}>
+            <Tombol type="button" varian="hantu" ukuran="kecil" aria-label={`Hapus website ${n}`} onClick={() => hapus(i)}>
               <Trash2 size={16} aria-hidden="true" />
-            </button>
+            </Tombol>
           </div>
         );
       })}
       <div>
-        <button ref={tombolTambah} type="button" className="btn btn--secondary btn--sm" disabled={penuh}
+        <Tombol ref={tombolTambah} type="button" varian="sekunder" ukuran="kecil" disabled={penuh}
           onClick={() => onChange([...value, { label: '', url: '' }])}>
           <Plus size={16} aria-hidden="true" /> Tambah website
-        </button>
-        {penuh && <span className="form-hint" style={{ marginLeft: 'var(--space-2)' }}>Sudah mencapai batas {TAUTAN_MAKS} website.</span>}
+        </Tombol>
+        {penuh && <span className={["form-hint", tampilan.teks2].filter(Boolean).join(' ')} >Sudah mencapai batas {TAUTAN_MAKS} website.</span>}
       </div>
     </fieldset>
   );

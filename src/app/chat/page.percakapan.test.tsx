@@ -56,7 +56,7 @@ describe('chat pengunjung: daftar percakapan dan riwayat (Fase 5)', () => {
     const bpjs = screen.getByRole('button', { name: /^buka percakapan bpjs kesehatan$/i });
     expect(bpjs).toHaveTextContent('Sesi selesai');
     expect(bpjs).not.toHaveTextContent('Belum dibaca');
-    expect(screen.queryByLabelText('Layanan yang Ditanyakan')).toBeNull(); // bukan formulir
+    expect(screen.queryByLabelText(/^Layanan yang Ditanyakan/)).toBeNull(); // bukan formulir
   });
 
   it('membuka percakapan memuat riwayat lintas sesi dari sesi terakhir dan menampilkan semua pesan urut', async () => {
@@ -164,7 +164,7 @@ describe('chat pengunjung: daftar percakapan dan riwayat (Fase 5)', () => {
   it('tanpa percakapan: langsung formulir; ?layanan= untuk Layanan yang sudah punya percakapan membukanya', async () => {
     harness({ rpcDaftar: [] });
     render(<PublicChatPage />);
-    expect(await screen.findByLabelText('Layanan yang Ditanyakan')).toBeInTheDocument();
+    expect(await screen.findByLabelText(/^Layanan yang Ditanyakan/)).toBeInTheDocument();
     cleanup();
 
     harness({ rpcDaftar: [barisRpc()], status: STATUS_BUKA, messages: () => ({ status: 'bot', ada_lebih: false, messages: [] }) });

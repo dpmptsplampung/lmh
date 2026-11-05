@@ -1,0 +1,311 @@
+.isi {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-grid, 20px);
+}
+
+.statistik {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--gap-grid, 20px);
+}
+
+@media (max-width: 1024px) {
+  .statistik {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Bilah cari + filter status */
+.bilah {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.cari {
+  flex: 1 1 240px;
+  max-width: 420px;
+}
+
+/* Label kolom cari hanya untuk pembaca layar; kotak tetap berdiri sendiri seperti di pratinjau. */
+.cariField > label:first-child {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.filter {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+  background: var(--bg-surface);
+}
+
+.filterTombol {
+  min-height: 32px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.filterTombol:hover {
+  background: var(--bg-surface-hover);
+}
+
+.filterTombol:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.filterAktif,
+.filterAktif:hover {
+  background: var(--nav-active-bg);
+  color: var(--nav-active-fg);
+}
+
+.ringkasan {
+  margin: 0 0 0 auto;
+  align-self: center;
+  font-size: var(--fs-body);
+  color: var(--text-secondary);
+}
+
+.jumlah {
+  margin-left: 6px;
+  font-size: var(--fs-small, 0.75rem);
+  font-weight: 600;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.nonaktif {
+  opacity: 0.7;
+}
+
+.akun {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.akunNama {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.akunSub {
+  font-size: var(--fs-small, 0.75rem);
+  font-weight: 400;
+  color: var(--text-tertiary);
+}
+
+.kolLogin {
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+/* Saklar Koordinator: netral saat mati, hijau saat menyala (disertai tanda centang, bukan warna saja) */
+.koordinator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.koordinator:hover:not(:disabled) {
+  border-color: var(--border-hover);
+  background: var(--bg-surface-hover);
+}
+
+.koordinator:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.koordinator:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.koordinatorNyala,
+.koordinatorNyala:hover:not(:disabled) {
+  border-color: var(--status-success-border);
+  background: var(--status-success-bg);
+  color: var(--status-success-fg);
+}
+
+@media (pointer: coarse) {
+  .koordinator,
+  .filterTombol {
+    min-height: 44px;
+  }
+}
+
+/* Dialog Kelola: ringkasan akun */
+.rincian {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 8px 16px;
+  margin: 0 0 16px;
+  font-size: var(--fs-body);
+}
+
+.rincian dt {
+  color: var(--text-tertiary);
+}
+
+.rincian dd {
+  margin: 0;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+/* Saklar Operator harian di dialog Kelola */
+.operator {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface-muted);
+}
+
+.operatorTeks {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.operatorJudul {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.hint {
+  font-size: var(--fs-small, 0.75rem);
+  color: var(--text-secondary);
+}
+
+.saklar {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 64px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.saklar:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.saklar:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.saklarNyala,
+.saklarNyala:hover:not(:disabled) {
+  border-color: var(--status-success-border);
+  background: var(--status-success-bg);
+  color: var(--status-success-fg);
+}
+
+.galat {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--status-danger-border);
+  border-radius: var(--radius-md);
+  background: var(--status-danger-bg);
+  color: var(--status-danger-fg);
+  font-size: var(--fs-body);
+}
+
+.peringatan {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid var(--status-warning-border);
+  border-radius: var(--radius-md);
+  background: var(--status-warning-bg);
+  color: var(--status-warning-fg);
+}
+
+.peringatan svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.sandiBaris {
+  display: flex;
+  gap: 8px;
+  margin: 16px 0 0;
+}
+
+.sandiInput {
+  flex: 1;
+  min-width: 0;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-muted);
+  color: var(--text-primary);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--fs-body);
+}
+
+.sandiInput:focus-visible {
+  outline: none;
+  border-color: var(--border-focus);
+  box-shadow: var(--focus-ring);
+}
+
+.alasan {
+  margin-top: 12px;
+}
+
+.tengah {
+  padding: 8px 0;
+}
+
+.isi { padding: 0 var(--pad-page) var(--pad-page); min-width: 0; }
+.aksiBaris { display: flex; flex-wrap: wrap; gap: var(--space-2); min-width: 160px; }

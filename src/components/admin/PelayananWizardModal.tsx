@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef, useCallback, useId } from 'react';
 import {
   X,
-  Loader2,
   Save,
   CheckCircle2,
   FileText,
@@ -16,6 +15,11 @@ import {
   ChevronLeft,
 } from 'lucide-react';
 import { useToast } from '@/components/Toast';
+import Tombol from '@/components/ui/Tombol';
+import Lencana from '@/components/ui/Lencana';
+import Skeleton from '@/components/ui/Skeleton';
+import { cn } from '@/lib/utils';
+import styles from './PelayananWizardModal.module.css';
 import { useDialogFokus } from '@/components/admin/useDialogFokus';
 import { useTopikLayanan } from '@/components/admin/TopikCatatanFields';
 import {
@@ -67,7 +71,6 @@ const LANGKAH_FIELD: Record<string, 1 | 2 | 3> = {
   catatan_petugas: 3,
 };
 
-const GAYA_GALAT: React.CSSProperties = { color: 'var(--color-danger-600)', fontSize: 12, marginTop: 4 };
 
 // Kepemilikan tiket (migrasi 202610140002): hanya pemilik tiket yang sedang 'dilayani' (initialData.boleh_ubah)
 // yang boleh menyimpan draf dan menyelesaikan. Selain itu wizard BACA-SAJA (tanpa autosave, tanpa tombol simpan).
@@ -100,6 +103,10 @@ export default function PelayananWizardModal({
   // Ada isian yang belum tersimpan sebagai draf (autosave tertunda / gagal) -> Escape meminta konfirmasi.
   const [adaPerubahan, setAdaPerubahan] = useState(false);
   const [konfirmasiTutup, setKonfirmasiTutup] = useState(false);
+  // Menutup dialog sedang menunggu hasil simpan draf (C3-10): kunci tombol tutup agar tidak ganda.
+  const [menutup, setMenutup] = useState(false);
+  // Autosave latar gagal (jaringan / server): tampilkan di status agar isian yang belum tersimpan tidak hilang diam-diam.
+  const [gagalSimpan, setGagalSimpan] = useState(false);
 
   // Form State — Prapopulasi / Umum
   const [namaPemohon, setNamaPemohon] = useState('');
@@ -141,17 +148,40 @@ export default function PelayananWizardModal({
   const hanyaSuntingDraf = !bacaSaja && initialData?.boleh_selesaikan === false;
   const formType: FormPelayananType | null = initialData?.form_type ?? null;
   const autosaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Versi isian: naik tiap perubahan; `tersimpanVersiRef` = versi terakhir yang sudah diterima server.
+  // "Belum tersimpan" = keduanya berbeda (bukan sekadar ada simpan yang selesai: ketikan susulan tidak boleh terhapus).
+  const versiRef = useRef(0);
+  const tersimpanVersiRef = useRef(0);
+  // PATCH diserialkan (satu per satu) agar respons yang datang terlambat tidak menimpa draf yang lebih baru.
+  const antrianSimpanRef = useRef<Promise<unknown>>(Promise.resolve());
+  // Selalu menunjuk simpanDraf dari render terbaru: timer debounce memegang ref ini, bukan closure lama (C3-09).
+  const simpanTerbaruRef = useRef<(opsi?: { senyap?: boolean }) => Promise<boolean>>(async () => true);
+  const menutupRef = useRef(false);
+  // Generasi pembukaan: naik tiap isOpen/tiketId berubah. Hasil simpan dari generasi lama (tiket A yang sudah ditutup)
+  // tidak boleh mengubah ref/status milik tiket B (R3): modal ini tetap terpasang di induk tanpa `key`.
+  const generasiRef = useRef(0);
+
+  const batalkanTimerSimpan = useCallback(() => {
+    if (autosaveTimeoutRef.current) {
+      clearTimeout(autosaveTimeoutRef.current);
+      autosaveTimeoutRef.current = null;
+    }
+  }, []);
 
   // Bersihkan autosave tertunda saat komponen unmount agar tidak ada PATCH
   // liar terpicu setelah modal ditutup / komponen dibongkar.
+  useEffect(() => batalkanTimerSimpan, [batalkanTimerSimpan]);
+
   useEffect(() => {
-    return () => {
-      if (autosaveTimeoutRef.current) {
-        clearTimeout(autosaveTimeoutRef.current);
-        autosaveTimeoutRef.current = null;
-      }
-    };
-  }, []);
+    generasiRef.current += 1;
+    versiRef.current = 0;
+    tersimpanVersiRef.current = 0;
+  }, [isOpen, tiketId]);
+
+  // Komponen tetap terpasang saat isOpen=false (return null): timer juga harus berhenti di sini (F-01).
+  useEffect(() => {
+    if (!isOpen) batalkanTimerSimpan();
+  }, [isOpen, batalkanTimerSimpan]);
 
   // 1. Fetch data saat modal dibuka
   const loadData = useCallback(
@@ -161,7 +191,11 @@ export default function PelayananWizardModal({
         setValidationErrors({});
         setDitolakServer(false);
         setAdaPerubahan(false);
+        setGagalSimpan(false);
+        setSavingDraft(false);
         setKonfirmasiTutup(false);
+        versiRef.current = 0;
+        tersimpanVersiRef.current = 0;
         const res = await fetch(`/api/admin/pelayanan/${idTiket}`);
         if (!res.ok) {
           const err = await res.json();
@@ -262,12 +296,15 @@ export default function PelayananWizardModal({
     [toast, onDataBasi],
   );
 
-  // 2. Autosave Function (Debounced)
-  const saveDraftNow = useCallback(async () => {
-    if (!tiketId || bacaSaja || !formType) return;
-    try {
-      setSavingDraft(true);
-      const payload =
+  // 2. Simpan draf. Mengembalikan true bila tidak ada yang perlu disimpan atau server menerima; false bila gagal/ditolak.
+  // `senyap`: autosave latar (galat ditandai di status, tanpa toast tiap detik); aksi eksplisit (Simpan/Tutup) memberi toast.
+  const simpanDraf = useCallback(async (opsi?: { senyap?: boolean }): Promise<boolean> => {
+    if (!tiketId || bacaSaja || !formType) return true;
+    const senyap = opsi?.senyap ?? false;
+    const versiKirim = versiRef.current;
+    const generasi = generasiRef.current;
+    const basi = () => generasi !== generasiRef.current;
+    const payload =
         formType === 'oss'
           ? {
               nama_pemohon: namaPemohon,
@@ -299,28 +336,50 @@ export default function PelayananWizardModal({
               lokasi_usaha: lokasiUsahaPerizinan || null,
             };
 
-      const res = await fetch(`/api/admin/pelayanan/${tiketId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+    const kerja = async (): Promise<boolean> => {
+      // Tiket sudah ditutup/diganti sejak simpan ini diantre: draf lama sengaja dilepas, jangan kirim.
+      if (basi()) return true;
+      try {
+        setSavingDraft(true);
+        const res = await fetch(`/api/admin/pelayanan/${tiketId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
 
-      if (res.ok) {
-        const d = new Date();
-        setLastSavedTime(
-          d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-        );
-        setAdaPerubahan(false);
-      } else {
+        // Respons milik generasi lama: jangan mengakui/menolak apa pun atas nama tiket yang sedang terbuka.
+        if (basi()) return true;
+        if (res.ok) {
+          const d = new Date();
+          setLastSavedTime(
+            d.toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+          );
+          tersimpanVersiRef.current = Math.max(tersimpanVersiRef.current, versiKirim);
+          setGagalSimpan(false);
+          // Masih ada ketikan sesudah payload ini dikirim -> tetap "belum tersimpan".
+          if (versiRef.current === versiKirim) setAdaPerubahan(false);
+          return true;
+        }
         const err = await res.json().catch(() => ({}));
-        tanganiPenolakan(res.status, (err as { error?: unknown }).error);
+        const pesan = (err as { error?: unknown }).error;
+        if (tanganiPenolakan(res.status, pesan)) return false;
+        setGagalSimpan(true);
+        if (!senyap) toast('Draf belum tersimpan: server gagal memprosesnya. Coba lagi.', 'error');
+        return false;
+      } catch {
+        if (basi()) return true;
+        setGagalSimpan(true);
+        if (!senyap) toast('Draf belum tersimpan: koneksi terputus. Isian masih ada di layar, coba lagi.', 'error');
+        return false;
+      } finally {
+        if (!basi()) setSavingDraft(false);
       }
-    } catch {
-      // Autosave fail silently or log
-    } finally {
-      setSavingDraft(false);
-    }
+    };
+    const hasil = antrianSimpanRef.current.then(kerja);
+    antrianSimpanRef.current = hasil;
+    return hasil;
   }, [
+    toast,
     tiketId,
     bacaSaja,
     tanganiPenolakan,
@@ -347,19 +406,38 @@ export default function PelayananWizardModal({
     lokasiUsahaPerizinan,
   ]);
 
+  useEffect(() => {
+    simpanTerbaruRef.current = simpanDraf;
+  });
+
+  // Jadwalkan simpan 1 dtk lagi. Timer memanggil simpanDraf dari render TERBARU (lewat ref), sehingga nilai yang
+  // baru saja diketik (state belum dirender saat onChange memanggil ini) ikut payload.
+  const jadwalkanSimpan = useCallback(() => {
+    batalkanTimerSimpan();
+    autosaveTimeoutRef.current = setTimeout(() => {
+      autosaveTimeoutRef.current = null;
+      void simpanTerbaruRef.current({ senyap: true });
+    }, 1000);
+  }, [batalkanTimerSimpan]);
+
   const triggerAutosave = useCallback(() => {
     if (bacaSaja || loading) return;
+    versiRef.current += 1;
     setAdaPerubahan(true);
-    if (autosaveTimeoutRef.current) clearTimeout(autosaveTimeoutRef.current);
-    autosaveTimeoutRef.current = setTimeout(() => {
-      saveDraftNow();
-    }, 1000);
-  }, [bacaSaja, loading, saveDraftNow]);
+    // Sedang menutup: tutupDenganSimpan yang menyimpan versi terbaru, jangan jadwalkan timer lagi (R2).
+    if (!menutupRef.current) jadwalkanSimpan();
+  }, [bacaSaja, loading, jadwalkanSimpan]);
+
+  // Semua jalur tutup memakai ini: timer tertunda dibatalkan dulu supaya tidak ada PATCH basi sesudah dialog tutup.
+  const tutupTanpaSimpan = () => {
+    batalkanTimerSimpan();
+    onClose();
+  };
 
   // Escape: tutup langsung bila tak ada yang hilang; bila ada perubahan belum tersimpan, minta konfirmasi dulu.
   const perubahanBelumTersimpan = !bacaSaja && adaPerubahan;
   useDialogFokus(isOpen, dialogRef, () => {
-    if (finalizing) return;
+    if (finalizing || menutupRef.current) return;
     if (konfirmasiTutup) {
       setKonfirmasiTutup(false);
       return;
@@ -368,7 +446,7 @@ export default function PelayananWizardModal({
       setKonfirmasiTutup(true);
       return;
     }
-    onClose();
+    tutupTanpaSimpan();
   });
 
   // Saat konfirmasi tutup muncul, fokus ke pilihan aman ("Lanjut mengisi").
@@ -433,6 +511,10 @@ export default function PelayananWizardModal({
 
     try {
       setFinalizing(true);
+      // Draf tertunda tak lagi dibutuhkan (POST membawa seluruh isian) dan tidak boleh mendarat sesudah data dikunci:
+      // batalkan timer dan tunggu PATCH yang sudah terbang selesai sebelum POST.
+      batalkanTimerSimpan();
+      await antrianSimpanRef.current;
       // Lolos validasi di atas: hasilForm.success true (semua field terisi, sudah di-trim).
       const isiForm = hasilForm.success ? hasilForm.data : isiMentah;
       // Topik dikirim bila dipilih (Fase 4). Catatan penanganan TIDAK dikirim: DB menurunkannya dari Pendataan
@@ -446,15 +528,18 @@ export default function PelayananWizardModal({
 
       const result = await res.json();
       if (!res.ok) {
+        if (versiRef.current !== tersimpanVersiRef.current) jadwalkanSimpan();
         if (tanganiPenolakan(res.status, result.error)) return;
         throw new Error(result.error || 'Gagal menyelesaikan pelayanan');
       }
 
       toast('Pelayanan selesai & data berhasil dikunci', 'success');
       onSuccess?.();
-      onClose();
+      tutupTanpaSimpan();
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Gagal menyelesaikan pelayanan', 'error');
+      // Selesai gagal: isian yang belum sempat tersimpan dijadwalkan lagi.
+      if (versiRef.current !== tersimpanVersiRef.current) jadwalkanSimpan();
     } finally {
       setFinalizing(false);
     }
@@ -465,7 +550,7 @@ export default function PelayananWizardModal({
   // Galat field: pesan role=alert, dirujuk aria-describedby pada field-nya.
   const galat = (kunci: string) =>
     validationErrors[kunci] ? (
-      <p id={id(`${kunci}-galat`)} role="alert" className="form-error" style={GAYA_GALAT}>
+      <p id={id(`${kunci}-galat`)} role="alert" className={cn('form-error', styles.galatField)}>
         {validationErrors[kunci]}
       </p>
     ) : null;
@@ -486,13 +571,13 @@ export default function PelayananWizardModal({
 
   const tombolCepat = (slug: string, cepat: IsianCepat[] | undefined, set: (v: string) => void) =>
     !bacaSaja && cepat && cepat.length > 0 ? (
-      <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', marginTop: 4 }}>
+      <div className={styles.cepat}>
         {cepat.map((c) => (
           <button
             key={c.label}
             type="button"
-            className="btn btn--ghost btn--sm"
-            style={{ fontSize: 12, padding: '2px 8px' }}
+            className={cn('btn btn--ghost btn--sm', styles.cepatTombol)}
+            disabled={menutup}
             aria-describedby={id(`${slug}-label`)}
             onClick={() => {
               set(c.nilai);
@@ -529,7 +614,7 @@ export default function PelayananWizardModal({
           className="form-textarea"
           rows={o.rows}
           value={o.nilai}
-          disabled={bacaSaja}
+          disabled={bacaSaja || menutup}
           aria-required="true"
           {...atributGalat(o.kunci)}
           onChange={(e) => {
@@ -545,7 +630,7 @@ export default function PelayananWizardModal({
           list={o.daftar}
           className="form-input"
           value={o.nilai}
-          disabled={bacaSaja}
+          disabled={bacaSaja || menutup}
           aria-required="true"
           {...atributGalat(o.kunci)}
           onChange={(e) => {
@@ -577,7 +662,7 @@ export default function PelayananWizardModal({
         id={id(o.slug)}
         className="form-select"
         value={o.nilai}
-        disabled={bacaSaja}
+        disabled={bacaSaja || menutup}
         aria-required="true"
         {...atributGalat(o.kunci)}
         onChange={(e) => {
@@ -596,9 +681,40 @@ export default function PelayananWizardModal({
     </div>
   );
 
-  const tutupDenganSimpan = () => {
-    saveDraftNow();
-    onClose();
+  // C3-10: tutup menunggu hasil simpan. Gagal/ditolak = dialog tetap terbuka (isian utuh, ditandai belum tersimpan);
+  // jalan keluar tetap ada lewat Esc -> "Tutup tanpa menyimpan".
+  const tutupDenganSimpan = async () => {
+    if (menutupRef.current) return;
+    menutupRef.current = true;
+    setMenutup(true);
+    const generasi = generasiRef.current;
+    try {
+      // R2: ketikan yang masuk selama PATCH terbang menaikkan versi lagi -> simpan ulang sampai versi tersimpan
+      // sama dengan versi terkini, baru menutup. Batas putaran mencegah loop tak berujung.
+      for (let putaran = 0; ; putaran++) {
+        batalkanTimerSimpan();
+        await antrianSimpanRef.current; // PATCH yang sudah terbang selesai dulu
+        if (generasi !== generasiRef.current) return; // induk sudah menutup/mengganti tiket: jangan menutup yang baru
+        if (bacaSaja || versiRef.current === tersimpanVersiRef.current) break;
+        if (putaran >= 5) {
+          setAdaPerubahan(true);
+          return;
+        }
+        const versiDikirim = versiRef.current;
+        const berhasil = await simpanTerbaruRef.current();
+        if (generasi !== generasiRef.current) return;
+        if (!berhasil) {
+          setAdaPerubahan(true);
+          return;
+        }
+        // Berhasil dan tak ada ketikan baru sejak dikirim: selesai (juga bila simpanDraf tak punya apa pun untuk dikirim).
+        if (versiRef.current === versiDikirim) break;
+      }
+      onClose();
+    } finally {
+      menutupRef.current = false;
+      setMenutup(false);
+    }
   };
 
   return (
@@ -608,93 +724,38 @@ export default function PelayananWizardModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby={idJudul}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        backgroundColor: 'rgba(15, 23, 42, 0.45)',
-        zIndex: 1000,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 'var(--space-4)',
-        outline: 'none',
-      }}
+      className={styles.latar}
     >
-      <div
-        style={{
-          background: '#ffffff',
-          borderRadius: 'var(--radius-2xl, 16px)',
-          width: '100%',
-          maxWidth: '760px',
-          maxHeight: 'calc(100dvh - 2rem)',
-          display: 'flex',
-          flexDirection: 'column',
-          boxShadow: '0 10px 40px rgba(15, 23, 42, 0.12), 0 2px 6px rgba(15, 23, 42, 0.04)',
-          border: '1px solid var(--border-default, #e2e8f0)',
-          overflow: 'hidden',
-        }}
-      >
-        {/* Header — bersih, aksen primary halus */}
-        <div
-          style={{
-            padding: 'var(--space-5) var(--space-6)',
-            borderBottom: '1px solid var(--border-default, #e2e8f0)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
-          }}
-        >
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-              <h2
-                id={idJudul}
-                style={{
-                  fontSize: 'var(--text-lg, 1.125rem)',
-                  fontWeight: 700,
-                  margin: 0,
-                  color: 'var(--text-primary, #0f172a)',
-                }}
-              >
+      <div className={styles.kotak}>
+        {/* Header */}
+        <div className={styles.kepala}>
+          <div className={styles.kepalaIsi}>
+            <div className={styles.judulBaris}>
+              <h2 id={idJudul} className={styles.judul}>
                 Pendataan Pelayanan — {initialData?.layanan_nama || 'Loket'}
               </h2>
               {isLocked ? (
-                <span className="badge badge--aktif" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                  <Lock size={12} aria-hidden="true" /> Terkunci (Selesai)
-                </span>
+                <Lencana nada="sukses" ikon={Lock}>Terkunci (Selesai)</Lencana>
               ) : bacaSaja ? (
-                <span className="badge badge--nonaktif" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                  <Lock size={12} aria-hidden="true" /> Baca saja
-                </span>
+                <Lencana nada="netral" ikon={Lock}>Baca saja</Lencana>
               ) : (
-                <span className="badge badge--draft">Sedang Dilayani</span>
+                <Lencana nada="info">Sedang Dilayani</Lencana>
               )}
             </div>
-            <p
-              style={{
-                fontSize: 'var(--text-xs, 0.75rem)',
-                color: 'var(--text-tertiary, #64748b)',
-                margin: '2px 0 0 0',
-              }}
-            >
-              Nomor Tiket: <strong style={{ color: 'var(--color-primary-700, #0369a1)' }}>{initialData?.nomor_display}</strong>
+            <p className={styles.meta}>
+              Nomor Tiket: <strong className={styles.nomorTiket}>{initialData?.nomor_display}</strong>
               {lastSavedTime && !bacaSaja && ` · Draft tersimpan ${lastSavedTime}`}
               {savingDraft && ' · Menyimpan draft…'}
+              {gagalSimpan && !savingDraft && !bacaSaja && ' · Draf BELUM tersimpan. Tekan Simpan untuk mencoba lagi'}
             </p>
             {!loading && initialData && hanyaSuntingDraf && (
-              <p
-                role="status"
-                style={{ fontSize: 'var(--text-xs, 0.75rem)', color: 'var(--color-warning-600, #d97706)', margin: '4px 0 0 0' }}
-              >
+              <p role="status" className={styles.peringatan}>
                 Pendataan ini diambil alih {initialData.dilayani_oleh_nama ?? 'Koordinator'}. Anda masih dapat menyunting
                 draf; penyelesaian dilakukan oleh Koordinator.
               </p>
             )}
             {!loading && initialData && bacaSaja && !isLocked && (
-              <p
-                role="status"
-                style={{ fontSize: 'var(--text-xs, 0.75rem)', color: 'var(--color-warning-600, #d97706)', margin: '4px 0 0 0' }}
-              >
+              <p role="status" className={styles.peringatan}>
                 {bukanPemilik || ditolakServer
                   ? `Tiket ini sedang dilayani ${initialData.dilayani_oleh_nama ?? 'petugas lain'}. Hanya petugas yang memulai yang dapat mengubah dan menyelesaikan data ini.`
                   : 'Formulir hanya dapat diisi setelah layanan dimulai, oleh petugas yang memulainya.'}
@@ -702,27 +763,21 @@ export default function PelayananWizardModal({
             )}
           </div>
 
-          <button
-            type="button"
-            onClick={tutupDenganSimpan}
-            className="btn btn--ghost btn--sm"
-            style={{ borderRadius: '50%', padding: '6px' }}
+          <Tombol
+            varian="hantu"
+            ukuran="kecil"
+            ikon={X}
+            onClick={() => void tutupDenganSimpan()}
+            disabled={menutup}
+            className={styles.tutup}
             aria-label="Tutup"
           >
-            <X size={18} aria-hidden="true" />
-          </button>
+            {''}
+          </Tombol>
         </div>
 
         {/* Steps Navigation */}
-        <div
-          role="group"
-          aria-label="Langkah formulir pendataan"
-          style={{
-            display: 'flex',
-            borderBottom: '1px solid var(--border-default, #e2e8f0)',
-            background: '#ffffff',
-          }}
-        >
+        <div role="group" aria-label="Langkah formulir pendataan" className={styles.langkah}>
           {[
             { s: 1, label: '1. Profil Pemohon', icon: User },
             { s: 2, label: '2. Data Usaha & Lokasi', icon: Building2 },
@@ -736,26 +791,9 @@ export default function PelayananWizardModal({
                 type="button"
                 onClick={() => setStep(item.s as 1 | 2 | 3)}
                 aria-current={isActive ? 'step' : undefined}
-                style={{
-                  flex: 1,
-                  padding: 'var(--space-3) var(--space-4)',
-                  fontSize: 'var(--text-sm, 0.875rem)',
-                  fontWeight: isActive ? 700 : 500,
-                  color: isActive ? 'var(--color-primary-700, #0369a1)' : 'var(--text-secondary, #475569)',
-                  borderBottom: isActive ? '2px solid var(--color-primary-600, #0284c7)' : '2px solid transparent',
-                  background: isActive ? 'var(--color-primary-50, #f0f9ff)' : 'transparent',
-                  borderTop: 'none',
-                  borderLeft: 'none',
-                  borderRight: 'none',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '6px',
-                  transition: 'all 0.15s ease',
-                }}
+                className={cn(styles.langkahTombol, isActive && styles.langkahAktif)}
               >
-                <Icon size={16} aria-hidden="true" />
+                <Icon size={16} strokeWidth={1.75} aria-hidden="true" />
                 {item.label}
               </button>
             );
@@ -763,28 +801,13 @@ export default function PelayananWizardModal({
         </div>
 
         {/* Modal Body (Scrollable) */}
-        <div
-          style={{
-            padding: 'var(--space-6)',
-            overflowY: 'auto',
-            flex: 1,
-          }}
-        >
+        <div className={styles.badan}>
           {loading ? (
-            <div style={{ textAlign: 'center', padding: 'var(--space-12)', color: 'var(--text-secondary)' }}>
-              <Loader2 size={32} className="animate-spin" style={{ margin: '0 auto var(--space-3)' }} aria-hidden="true" />
-              <p>Memuat formulir pendataan…</p>
-            </div>
+            <Skeleton bentuk="baris" jumlah={5} label="Memuat formulir pendataan…" />
           ) : (
             <form onSubmit={(e) => e.preventDefault()}>
               {!bacaSaja && (
-                <p
-                  style={{
-                    fontSize: 'var(--text-xs, 0.75rem)',
-                    color: 'var(--text-secondary, #475569)',
-                    margin: '0 0 var(--space-4) 0',
-                  }}
-                >
+                <p className={styles.petunjuk}>
                   Semua isian wajib diisi sebelum layanan diselesaikan. Bila memang tidak ada, pakai tombol isian cepat
                   di bawah kolom (&quot;Tidak berlaku&quot; / &quot;Belum ada&quot;; untuk catatan &quot;-&quot;) atau
                   pilih opsi &quot;Tidak berlaku&quot; pada daftar pilihan.
@@ -793,7 +816,7 @@ export default function PelayananWizardModal({
 
               {/* STEP 1: PROFIL PEMOHON */}
               {step === 1 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+                <div className={styles.kolom}>
                   {medanTeks({
                     kunci: 'nama_pemohon', slug: 'nama-pemohon', label: 'Nama Pemohon',
                     nilai: namaPemohon, set: setNamaPemohon, placeholder: 'Nama lengkap pemohon',
@@ -803,15 +826,15 @@ export default function PelayananWizardModal({
                     nilai: alamatPemohon, set: setAlamatPemohon, cepat: CEPAT_TIDAK_BERLAKU,
                     placeholder: 'Kabupaten/Kota atau alamat domisili pemohon',
                   })}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
+                  <div className={styles.dua}>
                     {medanTeks({
                       kunci: 'no_hp', slug: 'no-hp', label: 'Nomor Handphone / WhatsApp', tipe: 'tel',
-                      ikon: <Phone size={14} aria-hidden="true" style={{ display: 'inline', marginRight: 4 }} />,
+                      ikon: <Phone size={14} aria-hidden="true" className={styles.ikonInline} />,
                       nilai: noHp, set: setNoHp, cepat: CEPAT_TIDAK_BERLAKU, placeholder: '081234567890',
                     })}
                     {medanTeks({
                       kunci: 'email', slug: 'email', label: 'Alamat Email', tipe: 'email',
-                      ikon: <Mail size={14} aria-hidden="true" style={{ display: 'inline', marginRight: 4 }} />,
+                      ikon: <Mail size={14} aria-hidden="true" className={styles.ikonInline} />,
                       nilai: email, set: setEmail, placeholder: 'nama@email.com (wajib, email yang valid)',
                     })}
                   </div>
@@ -825,13 +848,13 @@ export default function PelayananWizardModal({
 
               {/* STEP 2: DATA PELAYANAN TEKNIS */}
               {step === 2 && formType === 'oss' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+                <div className={styles.kolom}>
                   {medanTeks({
                     kunci: 'nama_usaha', slug: 'nama-usaha', label: 'Nama Usaha / Merk Usaha',
                     nilai: namaUsaha, set: setNamaUsaha, cepat: CEPAT_USAHA,
                     placeholder: 'Nama PT / CV / Toko / Usaha Perorangan',
                   })}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
+                  <div className={styles.dua}>
                     {medanPilihan({
                       kunci: 'tipe_pelaku_usaha', slug: 'tipe-pelaku', label: 'Tipe Pelaku Usaha',
                       nilai: tipePelakuUsaha, set: setTipePelakuUsaha,
@@ -848,7 +871,7 @@ export default function PelayananWizardModal({
                     nilai: lokasiUsaha, set: setLokasiUsaha, cepat: CEPAT_USAHA,
                     placeholder: 'Kabupaten/Kota atau wilayah lokasi kegiatan usaha (mis. Bandar Lampung)',
                   })}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
+                  <div className={styles.dua}>
                     {medanPilihan({
                       kunci: 'skala_usaha', slug: 'skala-usaha', label: 'Skala Usaha',
                       nilai: skalaUsaha, set: setSkalaUsaha, opsi: SKALA_USAHA_OPTIONS,
@@ -863,7 +886,7 @@ export default function PelayananWizardModal({
               )}
 
               {step === 2 && formType === 'perizinan' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+                <div className={styles.kolom}>
                   {medanTeks({
                     kunci: 'nama_perusahaan', slug: 'nama-perusahaan', label: 'Nama Perusahaan / Pemohon',
                     nilai: namaPerusahaan, set: setNamaPerusahaan, cepat: CEPAT_USAHA,
@@ -894,7 +917,7 @@ export default function PelayananWizardModal({
 
               {/* STEP 3: TINDAKAN & SOLUSI */}
               {step === 3 && !bacaSaja && daftarTopik.length > 0 && (
-                <div className="form-group" style={{ marginBottom: 'var(--space-4)' }}>
+                <div className={cn('form-group', styles.topik)}>
                   <label htmlFor={id('topik')} className="form-label form-label--required">Topik penanganan</label>
                   <select
                     id={id('topik')}
@@ -911,7 +934,7 @@ export default function PelayananWizardModal({
                 </div>
               )}
               {step === 3 && formType === 'oss' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+                <div className={styles.kolom}>
                   {medanTeks({
                     kunci: 'tindak_lanjut', slug: 'tindak-lanjut-oss', label: 'Tindakan / Tindak Lanjut',
                     daftar: 'list-tindakan-oss', nilai: tindakLanjutOss, set: setTindakLanjutOss,
@@ -936,7 +959,7 @@ export default function PelayananWizardModal({
               )}
 
               {step === 3 && formType === 'perizinan' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+                <div className={styles.kolom}>
                   {medanTeks({
                     kunci: 'tindak_lanjut', slug: 'tindak-lanjut-perizinan', label: 'Tindak Lanjut',
                     daftar: 'list-tindakan-perizinan', nilai: tindakLanjutPerizinan, set: setTindakLanjutPerizinan,
@@ -965,109 +988,71 @@ export default function PelayananWizardModal({
             role="alertdialog"
             aria-labelledby={id('konfirmasi-judul')}
             aria-describedby={id('konfirmasi-desk')}
-            style={{
-              padding: 'var(--space-4) var(--space-6)',
-              borderTop: '1px solid var(--color-warning-500, #f59e0b)',
-              background: 'var(--color-warning-50, #fffbeb)',
-            }}
+            className={styles.konfirmasi}
           >
-            <p id={id('konfirmasi-judul')} style={{ margin: 0, fontWeight: 700 }}>Tutup formulir?</p>
-            <p id={id('konfirmasi-desk')} style={{ margin: '2px 0 var(--space-3)', fontSize: 'var(--text-sm)' }}>
+            <p id={id('konfirmasi-judul')} className={styles.konfirmasiJudul}>Tutup formulir?</p>
+            <p id={id('konfirmasi-desk')} className={styles.konfirmasiDesk}>
               Ada isian yang belum tersimpan.
             </p>
-            <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
-              <button ref={tombolLanjutRef} type="button" className="btn btn--primary btn--sm" onClick={() => setKonfirmasiTutup(false)}>
+            <div className={styles.konfirmasiAksi}>
+              <Tombol ref={tombolLanjutRef} varian="utama" ukuran="kecil" onClick={() => setKonfirmasiTutup(false)}>
                 Lanjut mengisi
-              </button>
-              <button type="button" className="btn btn--secondary btn--sm" onClick={tutupDenganSimpan}>
-                Simpan draf &amp; tutup
-              </button>
-              <button
-                type="button"
-                className="btn btn--ghost btn--sm"
-                onClick={() => {
-                  if (autosaveTimeoutRef.current) {
-                    clearTimeout(autosaveTimeoutRef.current);
-                    autosaveTimeoutRef.current = null;
-                  }
-                  onClose();
-                }}
-              >
+              </Tombol>
+              <Tombol varian="sekunder" ukuran="kecil" disabled={menutup} onClick={() => void tutupDenganSimpan()}>
+                {menutup ? 'Menyimpan…' : 'Simpan draf & tutup'}
+              </Tombol>
+              <Tombol varian="hantu" ukuran="kecil" disabled={menutup} onClick={tutupTanpaSimpan}>
                 Tutup tanpa menyimpan
-              </button>
+              </Tombol>
             </div>
           </div>
         )}
 
         {/* Footer Actions */}
-        <div
-          style={{
-            padding: 'var(--space-4) var(--space-6)',
-            borderTop: '1px solid var(--border-default, #e2e8f0)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            background: '#ffffff',
-            gap: 'var(--space-3)',
-          }}
-        >
+        <div className={styles.kaki}>
           <div>
             {step > 1 ? (
-              <button
-                type="button"
-                className="btn btn--ghost btn--sm"
-                onClick={() => setStep((s) => (s - 1) as 1 | 2 | 3)}
-              >
-                <ChevronLeft size={16} aria-hidden="true" /> Sebelumnya
-              </button>
+              <Tombol varian="hantu" ukuran="kecil" ikon={ChevronLeft} onClick={() => setStep((s) => (s - 1) as 1 | 2 | 3)}>
+                Sebelumnya
+              </Tombol>
             ) : (
-              <button
-                type="button"
-                className="btn btn--ghost btn--sm"
-                onClick={tutupDenganSimpan}
-              >
+              <Tombol varian="hantu" ukuran="kecil" disabled={menutup} onClick={() => void tutupDenganSimpan()}>
                 {bacaSaja ? 'Tutup' : 'Tutup (Draf tersimpan)'}
-              </button>
+              </Tombol>
             )}
           </div>
 
-          <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center' }}>
+          <div className={styles.kakiKanan}>
             {!bacaSaja && (
-              <button
-                type="button"
-                className="btn btn--secondary btn--sm"
+              <Tombol
+                varian="sekunder"
+                ukuran="kecil"
+                ikon={Save}
                 disabled={savingDraft}
-                onClick={saveDraftNow}
-                title="Simpan data tanpa menyelesaikan antrian. Anda bisa lanjut mengisi nanti."
+                onClick={() => void simpanDraf()}
+                title="Simpan data tanpa menyelesaikan antrean. Anda bisa lanjut mengisi nanti."
               >
-                <Save size={16} aria-hidden="true" /> {savingDraft ? 'Menyimpan…' : 'Simpan'}
-              </button>
+                {savingDraft ? 'Menyimpan…' : 'Simpan'}
+              </Tombol>
             )}
 
             {step < 3 ? (
-              <button
-                type="button"
-                className="btn btn--primary btn--sm"
-                onClick={() => setStep((s) => (s + 1) as 1 | 2 | 3)}
-              >
-                Selanjutnya <ChevronRight size={16} aria-hidden="true" />
-              </button>
+              <Tombol varian="utama" ukuran="kecil" onClick={() => setStep((s) => (s + 1) as 1 | 2 | 3)}>
+                <span className={styles.berikut}>Selanjutnya <ChevronRight size={16} aria-hidden="true" /></span>
+              </Tombol>
             ) : (
               !bacaSaja && !hanyaSuntingDraf && (
-                <button
-                  type="button"
-                  className="btn btn--primary btn--sm"
+                <Tombol
+                  varian="utama"
+                  ukuran="kecil"
+                  ikon={CheckCircle2}
                   disabled={finalizing}
-                  aria-busy={finalizing}
+                  memuat={finalizing}
                   onClick={handleFinalize}
-                  title="Kunci data & selesaikan antrian. Tidak dapat diubah kembali."
-                  style={{
-                    backgroundColor: 'var(--color-success-600, #16a34a)',
-                    borderColor: 'var(--color-success-600, #16a34a)',
-                  }}
+                  title="Kunci data & selesaikan antrean. Tidak dapat diubah kembali."
                 >
-                  <CheckCircle2 size={16} aria-hidden="true" /> {finalizing ? 'Menyelesaikan…' : 'Selesaikan Antrian'}
-                </button>
+                  {finalizing ? 'Menyelesaikan…' : 'Selesaikan Antrean'}
+                </Tombol>
               )
             )}
           </div>

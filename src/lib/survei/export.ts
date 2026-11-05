@@ -1,21 +1,24 @@
-// Unduhan XLSX "Pesan Perilaku" (survei terpadu Fase A, spec §9): sheet SPAK, SKM, Ringkasan, Legenda.
-// Kolom identitas HANYA tanggal kunjungan, unit, kategori pengunjung, dan kode kunjungan; tanpa nama, HP, atau email
-// (kolom itu memang tidak dibaca dari database, jadi tidak mungkin bocor lewat berkas). Teks yang berasal dari database
-// (nama layanan, kategori) dinetralkan dari injeksi rumus lewat `amanSel`.
+// Unduhan XLSX Pesan Perilaku: hasil survei dan lembar Data responden.
+// Identitas hanya berasal dari relasi yang terlihat oleh klien sesi pengguna (RLS).
+// Semua teks dari database dinetralkan dari injeksi rumus lewat amanSel.
 // Ringkasan (IKM, SPAK, response rate) bersifat GLOBAL (seluruh pelayanan digabung, tanpa pemecahan per unit; keputusan pemilik
 // 2026-11-03): IKM dan SPAK dihitung dari jawaban yang sama dengan sheet data (`ringkasan-global.ts`); response rate datang dari
 // RPC `ringkasan_response_rate` yang HARUS dipanggil dengan klien sesi pengguna (dijaga peran_saya()): pemanggil menyuplainya.
 import ExcelJS from 'exceljs';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { fetchAllPages } from '@/lib/rekap/exportAll';
+import { fetchAllPages, type FetchAllPagesResult } from '@/lib/rekap/exportAll';
 import { awalHariBerikutnyaWIB, awalHariWIB, formatTanggalId } from '@/lib/rekap/format';
+import { KETERANGAN_PREDIKAT_IKM } from '@/lib/ikm';
+import { toWIBDateString } from '@/lib/time';
+import { objekBelumAda } from '@/lib/akses-data/galat';
+import { validasiIdentitas } from '@/lib/pendataan-khusus/identitas';
 import { PERTANYAAN_SPAK, SKALA_SKM, SKALA_SPAK, UNSUR_SKM } from './pertanyaan';
 import { hitungIkmGlobal, hitungSpakGlobal, persen as hitungPersen, type BarisMentah } from './ringkasan-global';
 
-/** Teks diawali = + - @ tab/CR diberi apostrof agar tidak dieksekusi Excel sebagai rumus (formula injection). */
+/** Rumus, termasuk setelah spasi/kontrol, diberi apostrof agar aman saat dibuka/disalin dari Excel. */
 export function amanSel(v: string | null | undefined): string {
   const s = v ?? '';
-  return /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
+  return /^(?:\s*[=+\-@]|[\t\r\n])/.test(s) ? `'${s}` : s;
 }
 
 export const LABEL_UNIT_FO = 'Front Office';
@@ -23,7 +26,20 @@ export const LABEL_UNIT_TIDAK_DIKETAHUI = 'Tidak terklasifikasi (data lama/impor
 
 export type UnitJawaban = 'layanan' | 'fo' | 'tidak_diketahui';
 type Relasi<T> = T | T[] | null | undefined;
-interface RefKunjungan { tanggal: string | null; kategori: string | null }
+interface RefKunjungan {
+  tanggal: string | null;
+  kategori: string | null;
+  nama?: string | null;
+  asal_instansi?: string | null;
+  kontak_hp?: string | null;
+  email?: string | null;
+  keperluan?: string | null;
+  tujuan?: string | null;
+  nama_yang_ditemui?: string | null;
+  asal?: string | null;
+  pengunjung?: Relasi<{ email: string | null }>;
+  chat?: Relasi<{ kontak_pengunjung: string | null; pengunjung?: Relasi<{ email: string | null }> }>;
+}
 interface RefLayanan { nama: string | null }
 
 interface BarisDasar {
@@ -32,6 +48,8 @@ interface BarisDasar {
   layanan_id: string | null;
   unit: UnitJawaban;
   created_at: string;
+  jenis_kelamin?: string | null;
+  pendidikan?: string | null;
   kunjungan?: Relasi<RefKunjungan>;
   layanan?: Relasi<RefLayanan>;
 }
@@ -71,6 +89,17 @@ export interface DataSurvei {
   ringkasanRate: RingkasanRateRow[];
   /** Data jawaban melebihi batas baris ekspor dan dipotong (diberi catatan di sheet Ringkasan). */
   terpotong?: boolean;
+  /** Tabel Pendataan Khusus belum diterapkan: cadangan email dari sumber itu dilewati (diberi catatan di Ringkasan). */
+  cadanganKhususTidakTersedia?: boolean;
+}
+
+/**
+ * Objek database yang dibutuhkan ekspor belum ada (migrasi belum diterapkan): fungsi/kolom/tabel hilang dari cache skema
+ * (`objekBelumAda`) atau relasi embed tidak ditemukan (PGRST200). Route menjawab 409, bukan 500.
+ */
+export function objekSurveiBelumAda(err: unknown): boolean {
+  if (objekBelumAda(err)) return true;
+  return !!err && typeof err === 'object' && (err as { code?: unknown }).code === 'PGRST200';
 }
 
 // Urutan kolom = urutan PERTANYAAN_SPAK / UNSUR_SKM (p1..p5, u1..u11); pemetaan nama kolom database ada di sini saja.
@@ -82,9 +111,9 @@ const KOLOM_SKM = [
   'u7_perilaku', 'u8_sarana', 'u9_pengaduan', 'u10_transparansi', 'u11_integritas',
 ] as const satisfies readonly (keyof BarisSkm)[];
 
-const KOLOM_DASAR = ['id', 'kunjungan_id', 'layanan_id', 'unit', 'created_at'];
-const RELASI = 'kunjungan:kunjungan_id(tanggal, kategori), layanan:layanan_id(nama)';
-// Kolom dipilih eksplisit (bukan '*'): saran teks bebas, visit_id, jenis kelamin, dan pendidikan tidak ikut dibaca.
+const KOLOM_DASAR = ['id', 'kunjungan_id', 'layanan_id', 'unit', 'created_at', 'jenis_kelamin', 'pendidikan'];
+const RELASI = 'kunjungan:kunjungan_id(tanggal, kategori, nama, asal_instansi, kontak_hp, email, keperluan, tujuan, nama_yang_ditemui, asal, pengunjung:pengunjung_id(email), chat:chat_sesi!chat_sesi_id(kontak_pengunjung, pengunjung:pengunjung_id(email))), layanan:layanan_id(nama)';
+// Kolom eksplisit: saran bebas, isi chat, token survei, dan data akun petugas tidak dibaca.
 const SELECT_SPAK = [...KOLOM_DASAR, ...KOLOM_SPAK, RELASI].join(', ');
 const SELECT_SKM = [...KOLOM_DASAR, ...KOLOM_SKM, RELASI].join(', ');
 
@@ -105,8 +134,12 @@ function labelUnit(r: BarisDasar): string {
 
 function tanggalBaris(r: BarisDasar): string {
   const tanggal = satu(r.kunjungan)?.tanggal;
-  // Baris impor tidak punya kunjungan: pakai waktu jawab (formatTanggalId menggeser ke WIB).
-  return tanggal ? formatTanggalId(tanggal.slice(0, 10)) : formatTanggalId(r.created_at);
+  // Baris impor tidak punya kunjungan: pakai tanggal jawaban menurut helper WIB.
+  return tanggal ? formatTanggalId(tanggal.slice(0, 10)) : tanggalWIB(r.created_at);
+}
+
+function tanggalWIB(iso: string): string {
+  return formatTanggalId(toWIBDateString(new Date(iso)));
 }
 
 function identitas(r: BarisDasar): (string | null)[] {
@@ -161,6 +194,27 @@ function buatSheetSkm(wb: ExcelJS.Workbook, rows: BarisSkm[]) {
   for (const r of rows) ws.addRow([...identitas(r), ...KOLOM_SKM.map((k) => r[k] ?? null)]);
 }
 
+function buatSheetResponden(wb: ExcelJS.Workbook, d: DataSurvei) {
+  const ws = wb.addWorksheet('Data responden');
+  sheetData(ws, [
+    'Jenis survei', 'ID jawaban', 'ID kunjungan', 'Tanggal kunjungan (WIB)', 'Tanggal jawaban (WIB)',
+    'Unit', 'Nama pengunjung', 'Asal instansi', 'Email', 'Nomor HP', 'Kategori', 'Keperluan',
+    'Tujuan', 'Nama yang ditemui', 'Asal kunjungan', 'Jenis kelamin', 'Pendidikan',
+  ]);
+  for (const [jenis, rows] of [['SPAK', d.spak], ['SKM', d.skm]] as const) {
+    for (const r of rows) {
+      const k = satu(r.kunjungan);
+      const identitas = k?.nama?.trim().toLowerCase() === '[anonim]' ? null : k;
+      ws.addRow([
+        jenis, teks(r.id), teks(r.kunjungan_id), tanggalBaris(r), tanggalWIB(r.created_at), teks(labelUnit(r)),
+        teks(k?.nama), teks(identitas?.asal_instansi), teks(identitas?.email), teks(identitas?.kontak_hp),
+        teks(k?.kategori), teks(identitas?.keperluan), teks(identitas?.tujuan), teks(identitas?.nama_yang_ditemui),
+        teks(k?.asal), teks(r.jenis_kelamin), teks(r.pendidikan),
+      ]);
+    }
+  }
+}
+
 function buatSheetRingkasan(wb: ExcelJS.Workbook, d: DataSurvei) {
   const ws = wb.addWorksheet('Ringkasan');
   [44, 52, 14, 16, 18, 14, 14, 14, 10, 10, 10, 10, 10, 10].forEach((w, i) => { ws.getColumn(i + 1).width = w; });
@@ -174,6 +228,12 @@ function buatSheetRingkasan(wb: ExcelJS.Workbook, d: DataSurvei) {
   ws.addRow(['Cakupan', 'Seluruh pelayanan digabung (tidak dipecah per Layanan)']);
   if (d.terpotong) {
     ws.addRow(['Catatan', 'Data jawaban terpotong pada batas baris ekspor; persempit periode agar lengkap.']).getCell(1).font = { bold: true };
+  }
+  if (d.cadanganKhususTidakTersedia) {
+    ws.addRow([
+      'Catatan',
+      'Pendataan Khusus belum tersedia di database, sehingga email dari isian itu tidak ikut dicari. Sel Email dapat kosong untuk pengunjung yang hanya mengisinya di sana.',
+    ]).getCell(1).font = { bold: true };
   }
 
   ws.addRow([]);
@@ -234,10 +294,11 @@ function buatSheetLegenda(wb: ExcelJS.Workbook) {
   blok('Unsur SKM', ['Kode', 'Unsur'], UNSUR_SKM.map((u) => [u.kunci.toUpperCase(), u.teks] as const));
   blok('Catatan', ['Istilah', 'Penjelasan'], [
     ['IKM', 'Rata-rata nilai unsur yang terisi dikali 25 (skala 25-100). Data lama memuat 9 unsur; unsur 10 dan 11 kosong.'],
-    ['Predikat IKM', 'A (88-100) Sangat Baik; B (76-87,99) Baik; C (60-75,99) Kurang Baik; D (di bawah 60) Tidak Baik.'],
+    ['Predikat IKM', KETERANGAN_PREDIKAT_IKM],
     ['Unit (sheet data)', 'Nama layanan, Front Office, atau "Tidak terklasifikasi (data lama/impor)". Hanya ada di sheet data mentah; sheet Ringkasan selalu gabungan seluruh pelayanan.'],
     ['Indeks SPAK', 'Rata-rata jawaban dibagi 6 dikali 100. Setuju = nilai 5-6, netral = 3-4, tidak setuju = 1-2.'],
-    ['Kode Kunjungan', '8 karakter pertama id kunjungan; "—" bila tidak ada kunjungan (data impor). Berkas tidak memuat nama, HP, atau email.'],
+    ['Kode Kunjungan', '8 karakter pertama ID kunjungan; tanda pisah bila tidak ada kunjungan (data impor). ID lengkap tersedia di lembar Data responden.'],
+    ['Data responden', 'Satu baris per jawaban SKM atau SPAK, dengan identitas sesuai hak akses akun pengunduh. Sel kosong dapat berarti data belum diisi, data impor, data teranonimkan, atau akses dibatasi.'],
     ['Response Rate', 'Mengisi dibagi diundang dikali 100; undangan dihitung menurut tanggal dibuat (WIB).'],
   ]);
 }
@@ -250,6 +311,7 @@ export async function buildSurveiWorkbook(data: DataSurvei): Promise<Buffer> {
   buatSheetSkm(wb, data.skm);
   buatSheetRingkasan(wb, data);
   buatSheetLegenda(wb);
+  buatSheetResponden(wb, data);
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
@@ -260,7 +322,7 @@ export async function buildSurveiWorkbook(data: DataSurvei): Promise<Buffer> {
 export async function muatDataSurvei(
   supabase: SupabaseClient,
   periode: { dari: string; sampai: string },
-): Promise<{ spak: BarisSpak[]; skm: BarisSkm[]; terpotong: boolean }> {
+): Promise<{ spak: BarisSpak[]; skm: BarisSkm[]; terpotong: boolean; cadanganKhususTidakTersedia: boolean }> {
   const dari = awalHariWIB(periode.dari);
   const sebelum = awalHariBerikutnyaWIB(periode.sampai);
   const ambil = <T,>(tabel: 'spak_respons' | 'skm_respons', kolom: string) =>
@@ -278,5 +340,97 @@ export async function muatDataSurvei(
     ambil<BarisSpak>('spak_respons', SELECT_SPAK),
     ambil<BarisSkm>('skm_respons', SELECT_SKM),
   ]);
-  return { spak: spak.rows, skm: skm.rows, terpotong: spak.truncated || skm.truncated };
+  const email = await muatEmailPendataan(supabase, [...spak.rows, ...skm.rows]);
+  const lengkapi = <T extends BarisDasar>(r: T): T => {
+    const k = satu(r.kunjungan);
+    if (!k || k.nama?.trim().toLowerCase() === '[anonim]') return r;
+    const chat = satu(k.chat);
+    return {
+      ...r,
+      kunjungan: {
+        ...k,
+        email: emailNyata(k.email) ?? email.peta.get(r.kunjungan_id ?? '')
+          ?? emailNyata(satu(k.pengunjung)?.email) ?? emailNyata(chat?.kontak_pengunjung)
+          ?? emailNyata(satu(chat?.pengunjung)?.email),
+      },
+    };
+  };
+  return {
+    spak: spak.rows.map(lengkapi), skm: skm.rows.map(lengkapi),
+    terpotong: spak.truncated || skm.truncated || email.terpotong,
+    cadanganKhususTidakTersedia: email.khususTidakTersedia,
+  };
+}
+
+function emailNyata(nilai: string | null | undefined): string | undefined {
+  const email = nilai?.trim().toLowerCase();
+  if (!email) return undefined;
+  // Pakai validasi identitas yang juga dipakai formulir FO/petugas.
+  return validasiIdentitas({ nama: '', kontak_hp: '', email, asal_instansi: '', kategori: '', keperluan: '' }).email
+    ? undefined : email;
+}
+
+interface EmailFormulir { id: string; kunjungan_id: string; email: string | null; updated_at: string }
+interface EmailKhusus {
+  id: string;
+  label_snapshot: string;
+  nilai: unknown;
+  created_at: string;
+  penanganan: Relasi<{ kunjungan_id: string }>;
+}
+
+/**
+ * Cadangan untuk data sebelum penulisan balik identitas diterapkan. Hanya kunjungan yang terlihat oleh RLS,
+ * belum teranonimkan, dan belum punya email. Maksimal 100 ID per batch; semua hasil dipaginasi, termasuk
+ * ketika server membatasi halaman di bawah 1.000 baris. Batas ekspor tambahan ikut menandai terpotong.
+ * Klien service-role tidak boleh dipakai di sini.
+ */
+async function muatEmailPendataan(supabase: SupabaseClient, rows: BarisDasar[]) {
+  const ids = [...new Set(rows.filter((r) => {
+    const k = satu(r.kunjungan);
+    return r.kunjungan_id && k && k.nama?.trim().toLowerCase() !== '[anonim]' && !emailNyata(k.email);
+  }).map((r) => r.kunjungan_id!))];
+  const peta = new Map<string, string>();
+  let terpotong = false;
+  // Tabel Pendataan Khusus berasal dari migrasi yang bisa saja belum diterapkan: sumber itu dilewati (tidak diulang
+  // per batch) dan ekspor ditandai; galat lain tetap dilempar.
+  let khususTidakTersedia = false;
+  const kosong: FetchAllPagesResult<EmailKhusus> = { rows: [], truncated: false };
+  for (let offset = 0; offset < ids.length; offset += 100) {
+    const batch = ids.slice(offset, offset + 100);
+    const formulir = (tabel: 'pelayanan_oss' | 'pelayanan_perizinan') => fetchAllPages<EmailFormulir>((from, to) =>
+      supabase.from(tabel).select('id, kunjungan_id, email, updated_at')
+        .in('kunjungan_id', batch).eq('status_draft', 'selesai')
+        .order('updated_at', { ascending: false }).order('id', { ascending: true }).range(from, to),
+    );
+    const [oss, izin, khusus] = await Promise.all([
+      formulir('pelayanan_oss'), formulir('pelayanan_perizinan'),
+      khususTidakTersedia ? Promise.resolve(kosong) : fetchAllPages<EmailKhusus>((from, to) => supabase.from('pendataan_khusus_jawaban')
+        .select('id, label_snapshot, nilai, created_at, penanganan:penanganan_id!inner(kunjungan_id)')
+        .in('penanganan.kunjungan_id', batch).eq('penanganan.status', 'selesai')
+        .or('label_snapshot.ilike.*email*,label_snapshot.ilike.*e-mail*')
+        .order('created_at', { ascending: false }).order('id', { ascending: true }).range(from, to)
+      ).catch((err: unknown) => {
+        if (!objekSurveiBelumAda(err)) throw err;
+        khususTidakTersedia = true;
+        return kosong;
+      }),
+    ]);
+    terpotong ||= oss.truncated || izin.truncated || khusus.truncated;
+    // Formulir selesai terbaru yang punya email nyata menang, bukan nilai pengganti pada formulir lebih baru.
+    const semuaFormulir = [...oss.rows, ...izin.rows].sort((a, b) =>
+      b.updated_at.localeCompare(a.updated_at) || a.id.localeCompare(b.id));
+    for (const r of semuaFormulir) {
+      const email = emailNyata(r.email);
+      if (email && !peta.has(r.kunjungan_id)) peta.set(r.kunjungan_id, email);
+    }
+    for (const r of khusus.rows) {
+      // Hanya kolom yang jelas bernama email; jangan menambang alamat dari teks bebas/saran.
+      if (!/^(?:alamat\s+)?e-?mail$/i.test(r.label_snapshot.trim()) || typeof r.nilai !== 'string') continue;
+      const id = satu(r.penanganan)?.kunjungan_id;
+      const email = emailNyata(r.nilai);
+      if (id && email && !peta.has(id)) peta.set(id, email);
+    }
+  }
+  return { peta, terpotong, khususTidakTersedia };
 }

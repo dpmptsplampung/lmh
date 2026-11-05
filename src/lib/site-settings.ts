@@ -12,6 +12,9 @@ const SITE_SETTING_DEFAULTS: Record<string, string> = {
   contact_address: '',
   contact_hours: '',
   contact_email: CONTACT_EMAIL_FALLBACK,
+  running_text_layar: '',
+  running_text_layar_2: '',
+  running_text_layar_3: '',
 };
 
 /**

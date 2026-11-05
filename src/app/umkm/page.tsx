@@ -749,12 +749,10 @@ export default function UMKMPage() {
       {editModalListing && (
         <div
           className={styles.editModalOverlay}
-          onClick={closeEditModal}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Minta link edit UMKM"
+          role="presentation"
+          onClick={(e) => { if (e.target === e.currentTarget) closeEditModal(); }}
         >
-          <div className={styles.editModal} onClick={(e) => e.stopPropagation()}>
+          <div className={styles.editModal} role="dialog" aria-modal="true" aria-label="Minta link edit UMKM">
             <button
               ref={editCloseRef}
               type="button"
@@ -790,7 +788,6 @@ export default function UMKMPage() {
                     onChange={(e) => setEditEmail(e.target.value)}
                     required
                     disabled={editSending}
-                    autoFocus
                   />
                   <button
                     type="submit"
@@ -832,12 +829,10 @@ export default function UMKMPage() {
       {inquiryModalListing && (
         <div
           className={styles.editModalOverlay}
-          onClick={closeInquiryModal}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Kirim pesan ke pemilik listing UMKM"
+          role="presentation"
+          onClick={(e) => { if (e.target === e.currentTarget) closeInquiryModal(); }}
         >
-          <div className={styles.editModal} onClick={(e) => e.stopPropagation()}>
+          <div className={styles.editModal} role="dialog" aria-modal="true" aria-label="Kirim pesan ke pemilik listing UMKM">
             <button
               ref={inquiryCloseRef}
               type="button"
@@ -901,7 +896,6 @@ export default function UMKMPage() {
                     maxLength={2000}
                     rows={4}
                     disabled={inquirySending}
-                    autoFocus
                   />
                   <button
                     type="submit"

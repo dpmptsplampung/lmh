@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { punyaIdentitasGoogle, tolakAkunAnonim, tolakBukanGoogle } from '@/lib/chat/gerbang-google';
 import { createClient as createServiceClient, type SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { createClient as createServerClient } from '@/lib/supabase/server';
@@ -158,6 +159,16 @@ export async function POST(request: NextRequest) {
   const { data: { user: caller } } = await serverClient.auth.getUser();
   if (!caller) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  const anonim = tolakAkunAnonim(caller);
+  if (anonim) return anonim;
+  // R5: pengunjung wajib identitas Google (data Auth). Staf aktif boleh dengan sandi; baris `petugas` dicek HANYA
+  // pada jalur non-Google supaya jalur normal tidak menambah query.
+  if (!punyaIdentitasGoogle(caller)) {
+    const { data: staf } = await adminClient.from('petugas').select('role, aktif').eq('auth_user_id', caller.id).maybeSingle();
+    const adalahStaf = !!staf && staf.aktif !== false && ['admin', 'petugas', 'front_office'].includes(String(staf.role));
+    const bukanGoogle = tolakBukanGoogle(caller, adalahStaf);
+    if (bukanGoogle) return bukanGoogle;
   }
 
   const { data: pengunjungRow, error: pengunjungErr } = await adminClient

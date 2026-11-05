@@ -19,6 +19,8 @@ const m = vi.hoisted(() => ({
   push: vi.fn(),
   replace: vi.fn(),
   h: null as unknown as FakeH,
+  /** Hasil fo_pratinjau_reservasi; null = RPC belum ada (migrasi 202611030015 belum diterapkan: kueri lama). */
+  pratinjau: null as null | ((args: Record<string, unknown>) => { data: unknown; error: { code?: string; message: string } | null }),
   pemindai: [] as PemindaiPalsu[],
   kameraGagal: false,
 }));
@@ -79,10 +81,24 @@ async function pindaiManual(token = 'tok-1') {
   fireEvent.keyDown(input, { key: 'Enter' });
 }
 
+// Log RPC tanpa panggilan pratinjau (diuji terpisah) agar asersi alur lama tetap tentang RPC mutasi/status.
+const rpcLog = () => m.h.rpcLog.filter((l) => l.nama !== 'fo_pratinjau_reservasi');
+
 const tombolCheckin = () => screen.findByRole('button', { name: /Check-in & mulai layani/ });
 
 beforeEach(() => {
   m.h = buatH();
+  m.pratinjau = null;
+  // Pembungkus: tes lama mengganti `m.h.rpc` untuk RPC lain; fo_pratinjau_reservasi dipisahkan lewat m.pratinjau.
+  let rpcLain: FakeH['rpc'] = m.h.rpc;
+  Object.defineProperty(m.h, 'rpc', {
+    get: () => (nama: string, args: Record<string, unknown>) => {
+      if (nama !== 'fo_pratinjau_reservasi') return rpcLain(nama, args);
+      return m.pratinjau ? m.pratinjau(args) : { data: null, error: { code: 'PGRST202', message: 'fungsi tidak ada' } };
+    },
+    set: (fn: FakeH['rpc']) => { rpcLain = fn; },
+    configurable: true,
+  });
   m.toast.mockClear();
   m.push.mockClear();
   m.replace.mockClear();
@@ -118,7 +134,7 @@ describe('Scan QR: pratinjau reservasi (baca kunjungan, bukan visit)', () => {
     m.h.rpc = (nama) => ({ data: nama === 'fo_status_qr' ? 'tanggal_lain' : null, error: null });
     await pindaiManual('tok-besok');
     expect(await screen.findByText('Reservasi Tanggal Lain')).toBeInTheDocument();
-    expect(m.h.rpcLog).toContainEqual({ nama: 'fo_status_qr', args: { p_qr_token: 'tok-besok' } });
+    expect(rpcLog()).toContainEqual({ nama: 'fo_status_qr', args: { p_qr_token: 'tok-besok' } });
   });
 
   it('Fase 3: fo_status_qr tidak_berlaku -> "QR Sudah Hangus"; RPC belum ada -> pesan tidak ditemukan/tidak berlaku hari ini', async () => {
@@ -193,7 +209,7 @@ describe('Scan QR: check-in (fo_checkin_reservasi)', () => {
     fireEvent.click(await tombolCheckin());
 
     await waitFor(() => expect(m.push).toHaveBeenCalledWith('/admin/fo/penanganan'));
-    expect(m.h.rpcLog).toEqual([{ nama: 'fo_checkin_reservasi', args: { p_qr_token: 'tok-1' } }]);
+    expect(rpcLog()).toEqual([{ nama: 'fo_checkin_reservasi', args: { p_qr_token: 'tok-1' } }]);
     expect(await screen.findByText('Check-in Berhasil')).toBeInTheDocument();
     expect(m.toast).toHaveBeenCalledWith(expect.stringContaining('Budi'), 'success');
     // alur lama (UPDATE visit) tidak boleh dipakai lagi: builder palsu tak punya update(), dan visit tak diubah
@@ -210,7 +226,7 @@ describe('Scan QR: check-in (fo_checkin_reservasi)', () => {
 
     await waitFor(() => expect(tombol).toBeDisabled());
     expect(tombol).toHaveAttribute('aria-busy', 'true');
-    expect(m.h.rpcLog).toHaveLength(1);
+    expect(rpcLog()).toHaveLength(1);
 
     selesai({ data: hasilCheckin, error: null });
     await waitFor(() => expect(m.push).toHaveBeenCalledTimes(1));
@@ -289,7 +305,7 @@ describe('Scan QR: tolak reservasi (fo_tolak_reservasi)', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Tolak pengunjung' }));
     expect(within(dialog).getByRole('alert')).toHaveTextContent(/Alasan wajib diisi/);
     expect(alasan).toHaveAttribute('aria-invalid', 'true');
-    expect(m.h.rpcLog).toHaveLength(0);
+    expect(rpcLog()).toHaveLength(0);
   });
 
   it('berhasil: memanggil RPC dengan token + alasan ter-trim, menutup dialog, menampilkan "Reservasi Ditolak"', async () => {
@@ -301,7 +317,7 @@ describe('Scan QR: tolak reservasi (fo_tolak_reservasi)', () => {
 
     expect(await screen.findByText('Reservasi Ditolak')).toBeInTheDocument();
     expect(screen.queryByRole('dialog')).toBeNull();
-    expect(m.h.rpcLog).toEqual([
+    expect(rpcLog()).toEqual([
       { nama: 'fo_tolak_reservasi', args: { p_qr_token: 'tok-1', p_alasan: 'Identitas tidak sesuai' } },
     ]);
     expect(m.push).not.toHaveBeenCalled();
@@ -325,7 +341,7 @@ describe('Scan QR: tolak reservasi (fo_tolak_reservasi)', () => {
     fireEvent.keyDown(document, { key: 'Escape' });
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(pemicu).toHaveFocus();
-    expect(m.h.rpcLog).toHaveLength(0);
+    expect(rpcLog()).toHaveLength(0);
   });
 
   it('focus trap: Tab dari tombol terakhir kembali ke tombol tutup, Shift+Tab dari yang pertama ke terakhir', async () => {
@@ -387,5 +403,50 @@ describe('Scan QR: siklus hidup kamera (audit T9)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Coba Lagi' }));
     await waitFor(() => expect(m.pemindai.length).toBeGreaterThanOrEqual(2));
     await waitFor(() => expect(screen.queryByText(/Gagal mengakses kamera/)).toBeNull());
+  });
+});
+
+describe('Scan QR: pratinjau aman fo_pratinjau_reservasi (akses FO, migrasi 202611030015)', () => {
+  const pratinjauAman = (o: Record<string, unknown> = {}) => ({
+    id: 'k-1', nama: 'Budi', tanggal: todayWIB(), status: 'terjadwal', jam_rencana: '09:30:00',
+    layanan_saran_id: 'l-1', layanan_nama: 'Helpdesk OSS', ...o,
+  });
+
+  it('memakai RPC dan TIDAK membaca tabel kunjungan/layanan; kontak, instansi, dan keperluan tidak tampil', async () => {
+    m.pratinjau = () => ({ data: pratinjauAman(), error: null });
+    await pindaiManual('tok-1');
+    expect(await screen.findByText('Budi')).toBeInTheDocument();
+    expect(screen.getByText('Helpdesk OSS')).toBeInTheDocument();
+    expect(screen.getByText('09:30 WIB')).toBeInTheDocument();
+    expect(m.h.rpcLog).toContainEqual({ nama: 'fo_pratinjau_reservasi', args: { p_qr_token: 'tok-1' } });
+    expect(m.h.log.some((l) => l.tabel === 'kunjungan' || l.tabel === 'layanan')).toBe(false);
+    expect(screen.queryByText(/CV Maju/)).toBeNull();
+    expect(screen.queryByText('Urus NIB')).toBeNull();
+    expect(screen.getByText(/tampil setelah check-in/i)).toBeInTheDocument();
+    expect(await tombolCheckin()).toBeInTheDocument();
+  });
+
+  it('token tidak dikenal (RPC null) -> kategori dari fo_status_qr, tetap tanpa membaca tabel kunjungan', async () => {
+    m.pratinjau = () => ({ data: null, error: null });
+    m.h.rpc = (nama) => ({ data: nama === 'fo_status_qr' ? 'tanggal_lain' : null, error: null });
+    await pindaiManual('tok-besok');
+    expect(await screen.findByText('Reservasi Tanggal Lain')).toBeInTheDocument();
+    expect(m.h.log.some((l) => l.tabel === 'kunjungan')).toBe(false);
+  });
+
+  it('reservasi no_show -> "QR Sudah Hangus" tanpa tombol check-in', async () => {
+    m.pratinjau = () => ({ data: pratinjauAman({ status: 'no_show' }), error: null });
+    await pindaiManual('tok-1');
+    expect(await screen.findByText('QR Sudah Hangus')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Check-in & mulai layani/ })).toBeNull();
+  });
+
+  it('galat RPC (bukan objek belum ada) tampil sebagai gagal membaca, tidak jatuh ke kueri tabel', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    m.pratinjau = () => ({ data: null, error: { code: '42501', message: 'FORBIDDEN: bukan staf' } });
+    await pindaiManual('tok-1');
+    expect(await screen.findByText(/Gagal membaca reservasi/)).toBeInTheDocument();
+    expect(m.h.log.some((l) => l.tabel === 'kunjungan')).toBe(false);
+    spy.mockRestore();
   });
 });

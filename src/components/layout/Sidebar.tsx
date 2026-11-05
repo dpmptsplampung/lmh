@@ -11,10 +11,7 @@ import {
   Store,
   FileText,
   BookOpen,
-  Menu,
   X,
-  LogOut,
-  ChevronRight,
   ChevronDown,
   QrCode,
   Globe,
@@ -23,7 +20,6 @@ import {
   LayoutTemplate,
   TrendingUp,
   BarChart3,
-  MessageSquareHeart,
   Lightbulb,
   ShieldCheck,
   ShieldAlert,
@@ -44,14 +40,7 @@ import {
   Tags,
   FileSpreadsheet,
   Gauge,
-  ConciergeBell,
-  ListOrdered,
-  Headset,
-  FileBarChart,
-  SlidersHorizontal,
-  Handshake,
-  FolderOpen,
-  Cog,
+  LogOut,
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
@@ -63,58 +52,51 @@ import {
   findGroupForPath,
   type AdminNavEntry,
   type AdminNavGroupKey,
+  type AdminNavTreeItem,
 } from '@/lib/admin-nav';
 import { totalBadge, useJudulTabBadge, useNavBadges, type NavBadge } from '@/lib/hooks/useNavBadges';
+import AppBar from './AppBar';
+import KartuIdentitas from './KartuIdentitas';
+import WidgetSidebar from './WidgetSidebar';
 import styles from './Sidebar.module.css';
 
 const ICONS: Record<AdminNavEntry['iconKey'], React.ReactNode> = {
-  dashboard: <LayoutDashboard size={20} />,
-  kunjungan: <ClipboardCheck size={20} />,
-  scan: <QrCode size={20} />,
-  antrian: <Users size={20} />,
-  absensi: <BookOpen size={20} />,
-  chat: <MessageSquare size={20} />,
-  faq: <HelpCircle size={20} />,
-  umkm: <Store size={20} />,
-  gallery: <FileText size={20} />,
-  leads: <TrendingUp size={20} />,
-  skm: <BarChart3 size={20} />,
-  aiLog: <Bot size={20} />,
-  governance: <ShieldCheck size={20} />,
-  petugas: <UserPlus size={20} />,
-  jadwal: <CalendarDays size={20} />,
-  settings: <Settings size={20} />,
-  landing: <LayoutTemplate size={20} />,
-  public: <Globe size={20} />,
-  pengaduan: <ShieldAlert size={20} />,
-  layar:     <Monitor size={20} />,
-  rekap:     <TableProperties size={20} />,
-  dokumen:   <ScrollText size={20} />,
-  profil:    <UserCircle size={20} />,
-  kelolaLayanan: <Layers size={20} />,
-  bukuTamu:  <BookUser size={20} />,
-  riwayat:   <History size={20} />,
-  ai:        <Sparkles size={20} />,
-  kotakMasuk: <Inbox size={20} />,
-  penanganan: <ClipboardList size={20} />,
-  daftarFo:  <ListChecks size={20} />,
-  topik:     <Tags size={20} />,
-  rekapFo:   <FileSpreadsheet size={20} />,
-  performa:  <Gauge size={20} />,
-  saran:     <Lightbulb size={20} />,
+  dashboard: <LayoutDashboard size={18} strokeWidth={1.75} />,
+  kunjungan: <ClipboardCheck size={18} strokeWidth={1.75} />,
+  scan: <QrCode size={18} strokeWidth={1.75} />,
+  antrian: <Users size={18} strokeWidth={1.75} />,
+  absensi: <BookOpen size={18} strokeWidth={1.75} />,
+  chat: <MessageSquare size={18} strokeWidth={1.75} />,
+  faq: <HelpCircle size={18} strokeWidth={1.75} />,
+  umkm: <Store size={18} strokeWidth={1.75} />,
+  gallery: <FileText size={18} strokeWidth={1.75} />,
+  leads: <TrendingUp size={18} strokeWidth={1.75} />,
+  skm: <BarChart3 size={18} strokeWidth={1.75} />,
+  aiLog: <Bot size={18} strokeWidth={1.75} />,
+  governance: <ShieldCheck size={18} strokeWidth={1.75} />,
+  petugas: <UserPlus size={18} strokeWidth={1.75} />,
+  jadwal: <CalendarDays size={18} strokeWidth={1.75} />,
+  settings: <Settings size={18} strokeWidth={1.75} />,
+  landing: <LayoutTemplate size={18} strokeWidth={1.75} />,
+  public: <Globe size={18} strokeWidth={1.75} />,
+  pengaduan: <ShieldAlert size={18} strokeWidth={1.75} />,
+  layar:     <Monitor size={18} strokeWidth={1.75} />,
+  rekap:     <TableProperties size={18} strokeWidth={1.75} />,
+  dokumen:   <ScrollText size={18} strokeWidth={1.75} />,
+  profil:    <UserCircle size={18} strokeWidth={1.75} />,
+  kelolaLayanan: <Layers size={18} strokeWidth={1.75} />,
+  bukuTamu:  <BookUser size={18} strokeWidth={1.75} />,
+  riwayat:   <History size={18} strokeWidth={1.75} />,
+  ai:        <Sparkles size={18} strokeWidth={1.75} />,
+  kotakMasuk: <Inbox size={18} strokeWidth={1.75} />,
+  penanganan: <ClipboardList size={18} strokeWidth={1.75} />,
+  daftarFo:  <ListChecks size={18} strokeWidth={1.75} />,
+  topik:     <Tags size={18} strokeWidth={1.75} />,
+  rekapFo:   <FileSpreadsheet size={18} strokeWidth={1.75} />,
+  performa:  <Gauge size={18} strokeWidth={1.75} />,
+  saran:     <Lightbulb size={18} strokeWidth={1.75} />,
 };
 
-const GROUP_ICONS: Record<AdminNavGroupKey, React.ReactNode> = {
-  frontOffice: <ConciergeBell size={20} />,
-  antrean: <ListOrdered size={20} />,
-  layananOnline: <Headset size={20} />,
-  pesanPerilaku: <MessageSquareHeart size={20} />,
-  laporan: <FileBarChart size={20} />,
-  pengelolaan: <SlidersHorizontal size={20} />,
-  kemitraan: <Handshake size={20} />,
-  konten: <FolderOpen size={20} />,
-  sistem: <Cog size={20} />,
-};
 
 // Kelompok yang terbuka bertahan saat muat ulang (per tab). Bentuk: {open, pathGroup};
 // dipulihkan hanya bila kelompok halaman aktif masih sama dengan saat disimpan.
@@ -153,9 +135,11 @@ function NavBadgeView({ count, label }: { count: number; label: string }) {
   );
 }
 
+const LABEL_PERAN: Record<string, string> = { admin: 'Admin', front_office: 'Front Office', petugas: 'Petugas' };
+
 export default function Sidebar() {
   const pathname = usePathname();
-  // Laci mobile. Pindah halaman (link, Back/Forward) menutupnya: reset saat
+  // Laci HP/tablet. Pindah halaman (link, Back/Forward) menutupnya: reset saat
   // render (pola resmi React "adjust state on prop change", tanpa effect).
   const [mobileOpen, setMobileOpen] = useState(false);
   const [prevPath, setPrevPath] = useState(pathname);
@@ -164,17 +148,37 @@ export default function Sidebar() {
     setMobileOpen(false);
   }
 
-  // Accordion: satu kelompok terbuka. Render awal deterministik (kelompok halaman aktif);
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const [userRole, setUserRole] = useState<string | null | undefined>(undefined);
+  const [userName, setUserName] = useState<string>('');
+  const [namaLayanan, setNamaLayanan] = useState<string | null>(null);
+  const [staf, setStaf] = useState<{ id: string | null; layananId: string | null }>({ id: null, layananId: null });
+
+  // P1: Admin (+-32 menu) memakai akordeon satu kelompok terbuka; Petugas dan Front Office (<=12 menu)
+  // membuka semua kelompok bawaannya dan hanya mencatat yang dilipat sendiri.
+  const akordeon = userRole === 'admin';
+
+  // Accordion (Admin): satu kelompok terbuka. Render awal deterministik (kelompok halaman aktif);
   // sessionStorage dibaca di efek agar tidak ada hydration mismatch.
   const pathGroup = findGroupForPath(pathname);
   const [openGroup, setOpenGroup] = useState<AdminNavGroupKey | null>(pathGroup);
   const [prevGroup, setPrevGroup] = useState<AdminNavGroupKey | null>(pathGroup);
   const [storageReady, setStorageReady] = useState(false);
+  const [dilipat, setDilipat] = useState<ReadonlySet<AdminNavGroupKey>>(() => new Set());
   if (prevGroup !== pathGroup) {
     // Pindah ke kelompok lain: buka kelompok baru (yang lain tertutup). Kelompok yang
     // sama: state tidak disentuh. Halaman tautan tunggal: kelompok terbuka dibiarkan.
     setPrevGroup(pathGroup);
-    if (pathGroup) setOpenGroup(pathGroup);
+    if (pathGroup) {
+      setOpenGroup(pathGroup);
+      setDilipat((cur) => {
+        if (!cur.has(pathGroup)) return cur;
+        const baru = new Set(cur);
+        baru.delete(pathGroup);
+        return baru;
+      });
+    }
   }
   useEffect(() => {
     const stored = readStored();
@@ -188,20 +192,26 @@ export default function Sidebar() {
   useEffect(() => {
     if (storageReady) writeStored(openGroup, pathGroup);
   }, [storageReady, openGroup, pathGroup]);
-  const toggleGroup = (key: AdminNavGroupKey) =>
-    setOpenGroup((cur) => (cur === key ? null : key));
-
-  const toggleRef = useRef<HTMLButtonElement>(null);
-  const sidebarRef = useRef<HTMLElement>(null);
-  const [userRole, setUserRole] = useState<string | null | undefined>(undefined);
-  const [userName, setUserName] = useState<string>('');
-  const [staf, setStaf] = useState<{ id: string | null; layananId: string | null }>({ id: null, layananId: null });
+  const terbuka = (key: AdminNavGroupKey) => (akordeon ? openGroup === key : !dilipat.has(key));
+  const toggleGroup = (key: AdminNavGroupKey) => {
+    if (akordeon) {
+      setOpenGroup((cur) => (cur === key ? null : key));
+      return;
+    }
+    setDilipat((cur) => {
+      const baru = new Set(cur);
+      if (baru.has(key)) baru.delete(key);
+      else baru.add(key);
+      return baru;
+    });
+  };
 
   // Badge notifikasi per menu (satu instance hook) + awalan jumlah di judul tab.
   const badges = useNavBadges(
     userRole ? { role: userRole, petugasId: staf.id, layananId: staf.layananId } : null,
   );
-  useJudulTabBadge(totalBadge(badges));
+  const total = totalBadge(badges);
+  useJudulTabBadge(total);
 
   useEffect(() => {
     const supabase = createClient();
@@ -222,6 +232,15 @@ export default function Sidebar() {
         setUserRole(petugas.role);
         setUserName(petugas.nama ?? '');
         setStaf({ id: petugas.id ?? null, layananId: petugas.layanan_id ?? null });
+        // Nama Layanan untuk kartu identitas: kueri terpisah dan tidak fatal (menu tidak boleh hilang karenanya).
+        if (petugas.layanan_id) {
+          try {
+            const { data: lay } = await supabase.from('layanan').select('nama').eq('id', petugas.layanan_id).maybeSingle();
+            setNamaLayanan((lay as { nama?: string } | null)?.nama ?? null);
+          } catch {
+            /* tanpa nama Layanan */
+          }
+        }
       } else {
         setUserRole(null);
       }
@@ -229,28 +248,22 @@ export default function Sidebar() {
     getUserRole();
   }, []);
 
-  // Laci terbuka: kunci scroll halaman, Esc menutup (fokus kembali ke tombol),
-  // dan menutup bila layar melebar jadi desktop (>1024px).
+  // Laci terbuka: kunci scroll halaman, Esc menutup, dan menutup bila layar melebar jadi desktop (>1024px).
+  // Konten di belakang laci (termasuk AppBar) diberi inert: tak bisa difokus/dibaca (aria-modal setara).
   useEffect(() => {
     if (!mobileOpen) return;
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    const toggle = toggleRef.current;
-    sidebarRef.current?.focus();
-    // Konten di belakang laci tak bisa difokus/dibaca (aria-modal setara):
-    // semua saudara aside selain tombol & overlay diberi inert.
     const aside = sidebarRef.current;
+    aside?.focus();
     const inerted = aside
       ? Array.from(aside.parentElement?.children ?? []).filter(
-          (el) => el !== aside && el !== toggle && !el.hasAttribute('data-sidebar-overlay'),
+          (el) => el !== aside && !el.hasAttribute('data-sidebar-overlay'),
         )
       : [];
     inerted.forEach((el) => el.setAttribute('inert', ''));
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setMobileOpen(false);
-        toggle?.focus();
-      }
+      if (e.key === 'Escape') setMobileOpen(false);
     };
     const mq = window.matchMedia('(min-width: 1025px)');
     const onMq = () => { if (mq.matches) setMobileOpen(false); };
@@ -264,27 +277,42 @@ export default function Sidebar() {
     };
   }, [mobileOpen]);
 
+  // Fokus kembali ke tombol menu sesudah laci tertutup (efek ini jalan setelah cleanup di atas melepas inert).
+  const pernahBuka = useRef(false);
+  useEffect(() => {
+    if (mobileOpen) {
+      pernahBuka.current = true;
+    } else if (pernahBuka.current) {
+      pernahBuka.current = false;
+      toggleRef.current?.focus();
+    }
+  }, [mobileOpen]);
+
   // Tepat satu entri aktif: exact, lalu prefiks terpanjang ('/' dan '/admin' hanya exact).
-  const activeHref = findActiveNavEntry(pathname)?.href;
+  const aktif = findActiveNavEntry(pathname);
+  const activeHref = aktif?.href;
   const isActive = (href: string) => href === activeHref;
 
   const tree = buildNavTree(userRole);
+  const bawah = tree.filter((t): t is Extract<AdminNavTreeItem, { type: 'link' }> => t.type === 'link' && t.entry.slot === 'bawah');
+  const utama = tree.filter((t) => !(t.type === 'link' && t.entry.slot === 'bawah'));
 
-  const renderLink = (entry: AdminNavEntry, nested = false) => {
+  const tutupLaci = () => setMobileOpen(false);
+
+  const renderLink = (entry: AdminNavEntry) => {
     const active = isActive(entry.href);
     const badge = entry.badgeKey ? badges[entry.badgeKey] : undefined;
     return (
       <Link
         key={entry.href}
         href={entry.href}
-        className={cn(styles.navItem, nested && styles.navItemNested, active && styles.navItemActive)}
+        className={cn(styles.navItem, active && styles.navItemActive)}
         aria-current={active ? 'page' : undefined}
-        onClick={() => setMobileOpen(false)}
+        onClick={tutupLaci}
       >
         <span className={styles.navIcon}>{ICONS[entry.iconKey]}</span>
         <span className={styles.navLabel}>{entry.label}</span>
         {badge && <NavBadgeView count={badge.count} label={badge.label} />}
-        {active && <ChevronRight size={16} className={styles.navArrow} />}
       </Link>
     );
   };
@@ -300,113 +328,116 @@ export default function Sidebar() {
 
   return (
     <>
-      {/* Mobile toggle button */}
-      <button
-        ref={toggleRef}
-        type="button"
-        className={styles.mobileToggle}
-        onClick={() => setMobileOpen(!mobileOpen)}
-        aria-label={mobileOpen ? 'Tutup menu' : 'Buka menu'}
-        aria-expanded={mobileOpen}
-        aria-controls="admin-sidebar"
-      >
-        {mobileOpen ? <X size={24} /> : <Menu size={24} />}
-      </button>
+      <AppBar
+        role={userRole}
+        judul={aktif?.label ?? 'Admin'}
+        total={total}
+        laciTerbuka={mobileOpen}
+        onToggleLaci={() => setMobileOpen((o) => !o)}
+        toggleRef={toggleRef}
+      />
 
-      {/* Overlay for mobile */}
+      {/* Latar redup laci (HP/tablet) */}
       {mobileOpen && (
         <div
           className={styles.overlay}
           data-sidebar-overlay
+          data-cetak="sembunyi"
           aria-hidden="true"
-          onClick={() => {
-            setMobileOpen(false);
-            toggleRef.current?.focus();
-          }}
+          onClick={tutupLaci}
         />
       )}
 
       <aside
-        id="admin-sidebar"
+        id="sidebar"
         ref={sidebarRef}
         tabIndex={-1}
         className={cn(styles.sidebar, mobileOpen && styles.sidebarOpen)}
+        {...(mobileOpen ? { role: 'dialog', 'aria-modal': true, 'aria-label': 'Navigasi utama' } : {})}
       >
-        {/* Brand */}
+        {/* Merek */}
         <div className={styles.brand}>
-          <Image
-            src="/logo.png"
-            alt="Lampung Maju Hub Logo"
-            width={180}
-            height={80}
-            className={styles.brandLogo}
-            style={{ objectFit: 'contain', width: 'auto', height: 'auto' }}
-            priority
-          />
+          <Image src="/logo.png" alt="" width={334} height={267} className={styles.brandLogo} priority />
+          <span className={styles.brandName}>Lampung Maju Hub</span>
+          {mobileOpen && (
+            <button type="button" className={styles.tutup} aria-label="Tutup menu" onClick={tutupLaci}>
+              <X size={20} strokeWidth={1.75} aria-hidden="true" />
+            </button>
+          )}
         </div>
 
-        {/* Navigation */}
-        <nav className={styles.nav} aria-label="Menu admin">
-          {tree.map((item) => {
-            if (item.type === 'link') return renderLink(item.entry);
-            const { group, children } = item;
-            const open = openGroup === group.key;
-            const listId = `sidebar-grup-${group.key}`;
-            const containsActive = children.some((c) => isActive(c.href));
-            // Grup tertutup: jumlah total badge anak tetap terlihat; terbuka: badge ada di tiap anak.
-            const anak = children
-              .map((c) => (c.badgeKey ? badges[c.badgeKey] : undefined))
-              .filter((b): b is NavBadge => !!b && b.count > 0);
-            const jumlahGrup = anak.reduce((n, b) => n + b.count, 0);
-            return (
-              <div key={group.key} className={styles.group}>
-                <button
-                  type="button"
-                  className={cn(styles.groupHeader, containsActive && styles.groupHeaderActive)}
-                  aria-expanded={open}
-                  aria-controls={listId}
-                  onClick={() => toggleGroup(group.key)}
-                >
-                  <span className={styles.navIcon}>{GROUP_ICONS[group.iconKey]}</span>
-                  <span className={styles.navLabel}>{group.label}</span>
-                  {!open && jumlahGrup > 0 && (
-                    <NavBadgeView count={jumlahGrup} label={anak.map((b) => b.label).join('; ')} />
-                  )}
-                  <ChevronDown
-                    size={16}
-                    aria-hidden="true"
-                    className={cn(styles.groupChevron, open && styles.groupChevronOpen)}
-                  />
-                </button>
-                <ul id={listId} className={styles.groupList} hidden={!open}>
-                  {children.map((entry) => (
-                    <li key={entry.href}>{renderLink(entry, true)}</li>
-                  ))}
-                </ul>
-              </div>
-            );
-          })}
-        </nav>
+        {userRole && (
+          <KartuIdentitas
+            nama={userName}
+            peran={LABEL_PERAN[userRole] ?? 'Petugas'}
+            layanan={userRole === 'petugas' ? namaLayanan : null}
+            onKeluar={handleLogout}
+            onNavigasi={tutupLaci}
+          />
+        )}
 
-        {/* Footer */}
-        <div className={styles.footer}>
+        {/* <=1024px: seluruh isi di bawah ini satu area gulir, sehingga widget ikut menggulir setelah menu terakhir. */}
+        <div className={styles.isi}>
+          <nav className={styles.nav} aria-label="Menu admin">
+            {utama.map((item) => {
+              if (item.type === 'link') return renderLink(item.entry);
+              const { group, children } = item;
+              const open = terbuka(group.key);
+              const listId = `sidebar-grup-${group.key}`;
+              const containsActive = children.some((c) => isActive(c.href));
+              // Grup tertutup: jumlah total badge anak tetap terlihat; terbuka: badge ada di tiap anak.
+              const anak = children
+                .map((c) => (c.badgeKey ? badges[c.badgeKey] : undefined))
+                .filter((b): b is NavBadge => !!b && b.count > 0);
+              const jumlahGrup = anak.reduce((n, b) => n + b.count, 0);
+              return (
+                <div key={group.key} className={styles.group}>
+                  <button
+                    type="button"
+                    className={cn(styles.groupHeader, containsActive && styles.groupHeaderActive)}
+                    aria-expanded={open}
+                    aria-controls={listId}
+                    onClick={() => toggleGroup(group.key)}
+                  >
+                    <span className={styles.navLabel}>{group.label}</span>
+                    {!open && jumlahGrup > 0 && (
+                      <NavBadgeView count={jumlahGrup} label={anak.map((b) => b.label).join('; ')} />
+                    )}
+                    <ChevronDown
+                      size={14}
+                      strokeWidth={1.75}
+                      aria-hidden="true"
+                      className={cn(styles.groupChevron, open && styles.groupChevronOpen)}
+                    />
+                  </button>
+                  <ul id={listId} className={styles.groupList} hidden={!open}>
+                    {children.map((entry) => (
+                      <li key={entry.href}>{renderLink(entry)}</li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
+          </nav>
+
           {userRole && (
-            <div style={{ padding: 'var(--space-3) var(--space-4)', marginBottom: 'var(--space-2)' }}>
-              <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)', color: 'var(--text-primary)' }}>
-                {userName || '—'}
-              </div>
-              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-                {userRole === 'admin' ? 'Admin' : userRole === 'front_office' ? 'Front Office' : 'Petugas'}
-              </div>
-            </div>
+            <WidgetSidebar
+              role={userRole}
+              petugasId={staf.id}
+              layanan={namaLayanan}
+              badges={badges}
+              onNavigasi={tutupLaci}
+            />
           )}
-          <button
-            className={cn('btn btn--ghost', styles.logoutBtn)}
-            onClick={handleLogout}
-          >
-            <LogOut size={18} />
-            <span>Keluar</span>
-          </button>
+
+          <div className={styles.bawah}>
+            {bawah.map((item) => renderLink(item.entry))}
+            {/* Keluar tetap terlihat langsung (tombol esensial); menu kartu identitas menyediakan jalur kedua. */}
+            <button type="button" className={cn(styles.navItem, styles.keluarBtn)} onClick={handleLogout}>
+              <span className={styles.navIcon}><LogOut size={18} aria-hidden="true" /></span>
+              <span className={styles.navLabel}>Keluar</span>
+            </button>
+          </div>
         </div>
       </aside>
     </>

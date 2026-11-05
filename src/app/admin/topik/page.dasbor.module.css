@@ -1,0 +1,4 @@
+.area1 {
+  padding: 0 var(--pad-page) var(--pad-page);
+  min-width: 0;
+}

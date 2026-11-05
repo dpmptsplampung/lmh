@@ -12,7 +12,7 @@ const serverState = vi.hoisted(() => ({
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(async () => ({
     auth: {
-      getUser: vi.fn(async () => ({ data: { user: serverState.callerId ? { id: serverState.callerId } : null }, error: null })),
+      getUser: vi.fn(async () => ({ data: { user: serverState.callerId ? { id: serverState.callerId, is_anonymous: false, identities: [{ provider: 'google' }] } : null }, error: null })),
     },
     rpc: serverState.rpc,
     from: (t: string) => serverState.from(t),

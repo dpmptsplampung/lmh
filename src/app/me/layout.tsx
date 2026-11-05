@@ -2,10 +2,11 @@ import type { Metadata } from 'next';
 import { APP_NAME } from '@/lib/constants';
 
 import ProfileCompletenessGate from '@/components/ProfileCompletenessGate';
+import CangkangPengunjung from './_cangkang/CangkangPengunjung';
 
 export const metadata: Metadata = {
-  title: `Dashboard Saya | ${APP_NAME}`,
-  description: 'Dashboard pengunjung — akses layanan, buat reservasi, dan lihat QR code kunjungan.',
+  title: `Dasbor Saya | ${APP_NAME}`,
+  description: 'Dasbor pengunjung: akses layanan, buat reservasi, dan lihat QR code kunjungan.',
 };
 
 export default function MeLayout({
@@ -15,7 +16,7 @@ export default function MeLayout({
 }) {
   return (
     <ProfileCompletenessGate>
-      {children}
+      <CangkangPengunjung>{children}</CangkangPengunjung>
     </ProfileCompletenessGate>
   );
 }

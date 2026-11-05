@@ -1,5 +1,9 @@
 'use client';
 
+import Tombol from '@/components/ui/Tombol';
+
+import tampilan from './page.dasbor.module.css';
+
 // Kelola Topik Penanganan (Admin; kontrak docs/analysis/FO-ESKALASI-KONTRAK-RPC.md §1.6 dan §6.5).
 // Topik dipilih FO saat menyelesaikan/mengeskalasi kunjungan (layanan_id NULL = topik Front Office) dan oleh petugas
 // layanan saat menyelesaikan tiket hasil eskalasi (topik milik layanannya). Admin menulis LANGSUNG lewat PostgREST
@@ -8,7 +12,12 @@
 // Penyuntingan langsung di tabel (tanpa dialog): nama diklik lalu diketik, urutan lewat tombol naik/turun, status lewat
 // saklar, topik baru lewat baris terakhir. "Lainnya" (urutan >= 99) tetap di bawah.
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, Loader2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, List } from 'lucide-react';
+import Kartu from '@/components/ui/Kartu';
+import { BISA_DIFOKUS } from '@/components/ui/fokus';
+import Skeleton from '@/components/ui/Skeleton';
+import Galat from '@/components/ui/Galat';
+import StatusKosong from '@/components/ui/StatusKosong';
 import PageHeader from '@/components/layout/PageHeader';
 import RoleNote from '@/components/admin/RoleNote';
 import { BarisTambah, SelTeksInline } from '@/components/admin/SuntingInline';
@@ -218,7 +227,7 @@ export default function KelolaTopikPage() {
         description="Daftar topik yang dipilih Front Office dan petugas layanan saat menyelesaikan penanganan"
       />
 
-      <div style={{ padding: 'clamp(var(--space-4), 4vw, var(--space-8))' }}>
+      <div className={tampilan.area1}>
         <RoleNote>
           Hanya Admin yang dapat mengelola topik. Topik yang sudah pernah dipakai tidak dihapus: nonaktifkan agar tidak
           muncul lagi di pilihan. Riwayat penanganan menyimpan salinan nama topik, jadi mengubah nama atau
@@ -234,10 +243,9 @@ export default function KelolaTopikPage() {
                     type="button"
                     className={`${styles.cakupanItem} ${cakupan === c.id ? styles.cakupanAktif : ''}`}
                     aria-current={cakupan === c.id ? 'true' : undefined}
-                    onClick={() => setCakupan(c.id)}
-                  >
+                    onClick={() => setCakupan(c.id)}>
                     <span className={styles.cakupanNama}>{c.nama}</span>{' '}
-                    <span className={styles.cakupanJumlah}>{jumlahPerCakupan.get(c.id) ?? 0}</span>
+                    <span className={styles.cakupanJumlah}>{loading || galatMuat ? '—' : jumlahPerCakupan.get(c.id) ?? 0}</span>
                   </button>
                 </li>
               ))}
@@ -249,25 +257,20 @@ export default function KelolaTopikPage() {
               className="form-select"
               aria-label="Cakupan topik"
               value={cakupan}
-              onChange={(e) => setCakupan(e.target.value)}
-            >
+              onChange={(e) => setCakupan(e.target.value)}>
               {pilihanCakupan.map((c) => (
-                <option key={c.id} value={c.id}>{c.nama} ({jumlahPerCakupan.get(c.id) ?? 0})</option>
+                <option key={c.id} value={c.id}>{c.nama} ({loading || galatMuat ? '—' : jumlahPerCakupan.get(c.id) ?? 0})</option>
               ))}
             </select>
           </div>
 
-          <div className={`table-wrapper ${styles.tabel}`}>
+          <Kartu judul={`Topik ${namaCakupan}`} padding="tanpa" className={styles.tabel}>
             {loading ? (
-              <div style={{ padding: 'var(--space-8)', textAlign: 'center' }} role="status" aria-label="Memuat">
-                <Loader2 size={24} className="animate-spin" style={{ margin: '0 auto' }} aria-hidden="true" />
-              </div>
+              <Skeleton bentuk="baris" jumlah={5} label="Memuat topik" />
             ) : galatMuat ? (
-              <div style={{ padding: 'var(--space-8)', textAlign: 'center' }} role="alert" className="form-error">
-                {galatMuat}
-              </div>
+              <Galat pesan={galatMuat} onRetry={() => { setLoading(true); void muat(); }} />
             ) : (
-              <table className="table">
+              <div className="table-wrapper" role="region" aria-label={`Topik penanganan ${namaCakupan}`} {...BISA_DIFOKUS}><table className="table">
                 <caption className="sr-only">Topik penanganan {namaCakupan}</caption>
                 <thead>
                   <tr>
@@ -280,7 +283,7 @@ export default function KelolaTopikPage() {
                   {daftar.length === 0 && (
                     <tr>
                       <td colSpan={3} className="kosong-sel">
-                        Belum ada topik untuk {namaCakupan}. Tulis namanya di baris paling bawah untuk membuatnya.
+                        <StatusKosong ikon={List} judul={`Belum ada topik untuk ${namaCakupan}.`} isi="Tulis namanya di baris paling bawah untuk membuatnya." />
                       </td>
                     </tr>
                   )}
@@ -299,26 +302,24 @@ export default function KelolaTopikPage() {
                         </td>
                         <td>
                           <div className={styles.geser}>
-                            <button
+                            <Tombol
                               type="button"
                               id={`${idDasar}-${t.id}-naik`}
-                              className="btn btn--ghost btn--sm"
+                              varian="hantu" ukuran="kecil"
                               aria-label={`Naikkan ${t.nama}`}
                               disabled={!bisaGeser(daftar, i, -1) || sedang}
-                              onClick={() => void geser(i, -1)}
-                            >
+                              onClick={() => void geser(i, -1)}>
                               <ArrowUp size={14} aria-hidden="true" />
-                            </button>
-                            <button
+                            </Tombol>
+                            <Tombol
                               type="button"
                               id={`${idDasar}-${t.id}-turun`}
-                              className="btn btn--ghost btn--sm"
+                              varian="hantu" ukuran="kecil"
                               aria-label={`Turunkan ${t.nama}`}
                               disabled={!bisaGeser(daftar, i, 1) || sedang}
-                              onClick={() => void geser(i, 1)}
-                            >
+                              onClick={() => void geser(i, 1)}>
                               <ArrowDown size={14} aria-hidden="true" />
-                            </button>
+                            </Tombol>
                           </div>
                         </td>
                         <td>
@@ -347,9 +348,9 @@ export default function KelolaTopikPage() {
                     onTambah={tambah}
                   />
                 </tbody>
-              </table>
+              </table></div>
             )}
-          </div>
+          </Kartu>
         </div>
       </div>
 

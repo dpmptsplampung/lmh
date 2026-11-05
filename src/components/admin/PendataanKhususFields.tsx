@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client';
 import { objekBelumAda } from '@/lib/akses-data/galat';
 import { petaFieldKhusus, type FieldKhusus } from '@/lib/pendataan-khusus/jenis';
 import type { NilaiForm } from '@/lib/pendataan-khusus/jawaban';
+import styles from './FormAntrean.module.css';
 
 const KOLOM = 'id, layanan_id, label, jenis, wajib, opsi, urut, tersembunyi, pernah_diisi';
 
@@ -71,7 +72,6 @@ interface Props {
 // "(Opsional)" seperti input lain.
 const teksWajib = (wajib: boolean) => (wajib ? ' (wajib)' : ' (Opsional)');
 
-const GAYA_GALAT: React.CSSProperties = { color: 'var(--color-danger-600)', fontSize: 12, margin: '4px 0 0' };
 
 export default function PendataanKhususFields({ idDasar, fields, nilai, onNilai, galat, disabled }: Props) {
   const tampil = fields.filter((f) => !f.tersembunyi);
@@ -94,10 +94,10 @@ export default function PendataanKhususFields({ idDasar, fields, nilai, onNilai,
         if (f.jenis === 'pilihan_ganda') {
           const dipilih = Array.isArray(v) ? v : [];
           kontrol = (
-            <fieldset id={idIsian} style={{ border: 0, padding: 0, margin: 0 }} {...ariaGrup}>
+            <fieldset id={idIsian} className={styles.grup} {...ariaGrup}>
               <legend className={`form-label${f.wajib ? ' form-label--required' : ''}`}>{f.label}{teksWajib(f.wajib)}</legend>
               {f.opsi.map((o) => (
-                <label key={o} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4 }}>
+                <label key={o} className={styles.cek}>
                   <input
                     type="checkbox"
                     checked={dipilih.includes(o)}
@@ -111,10 +111,10 @@ export default function PendataanKhususFields({ idDasar, fields, nilai, onNilai,
           );
         } else if (f.jenis === 'ya_tidak') {
           kontrol = (
-            <fieldset id={idIsian} style={{ border: 0, padding: 0, margin: 0 }} {...ariaGrup}>
+            <fieldset id={idIsian} className={styles.grup} {...ariaGrup}>
               <legend className={`form-label${f.wajib ? ' form-label--required' : ''}`}>{f.label}{teksWajib(f.wajib)}</legend>
               {(['ya', 'tidak'] as const).map((p) => (
-                <label key={p} style={{ display: 'inline-flex', gap: 6, alignItems: 'center', marginRight: 16 }}>
+                <label key={p} className={styles.radio}>
                   <input type="radio" name={idIsian} value={p} checked={teks === p} disabled={disabled} onChange={() => onNilai(f.id, p)} />
                   {p === 'ya' ? 'Ya' : 'Tidak'}
                 </label>
@@ -160,7 +160,7 @@ export default function PendataanKhususFields({ idDasar, fields, nilai, onNilai,
         return (
           <div className="form-group" key={f.id}>
             {kontrol}
-            {pesan && <p id={idGalat} role="alert" style={GAYA_GALAT}>{pesan}</p>}
+            {pesan && <p id={idGalat} role="alert" className={styles.galat}>{pesan}</p>}
           </div>
         );
       })}

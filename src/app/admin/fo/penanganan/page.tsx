@@ -12,8 +12,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, CheckCircle2, RotateCcw, UserRound, X } from 'lucide-react';
+import { ArrowRight, CheckCircle2, UserRound, X } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
+import CatatanKeadaan from '@/components/ui/CatatanKeadaan';
+import Galat from '@/components/ui/Galat';
+import { BISA_DIFOKUS } from '@/components/ui/fokus';
+import KartuStatistik from '@/components/ui/KartuStatistik';
+import Lencana from '@/components/ui/Lencana';
+import Skeleton from '@/components/ui/Skeleton';
+import StatusKosong from '@/components/ui/StatusKosong';
 import AmbilAlihTiketModal, { type TiketAmbilAlih } from '@/components/admin/AmbilAlihTiketModal';
 import PemberitahuanAmbilAlih from '@/components/admin/PemberitahuanAmbilAlih';
 import { bolehKoordinatorAmbilAlihFo, muatKoordinator } from '@/lib/akses-data/lingkup';
@@ -305,6 +312,13 @@ export default function PenangananFoPage() {
       />
       <div className={styles.halaman}>
         <PemberitahuanAmbilAlih petugasId={petugasSaya} />
+        {(!galatMuat || berjalan.length + berjalanLain.length + riwayat.length > 0) && (
+          <div className={styles.statistik} aria-label="Ringkasan penanganan">
+            <KartuStatistik label="Dalam penanganan saya" nilai={berjalan.length} memuat={memuat} pembanding="Pengunjung yang sedang dilayani" />
+            <KartuStatistik label="Dalam penanganan rekan" nilai={berjalanLain.length} memuat={memuat} pembanding="Pengunjung di Front Office lain" />
+            <KartuStatistik label="Penanganan ditutup" nilai={riwayat.length} memuat={memuat} pembanding={riwayatSemua ? 'Hari ini, semua Front Office' : 'Hari ini, milik Anda'} />
+          </div>
+        )}
         {/* Pengumuman hasil tindakan; bertahan sampai ditutup agar nomor tiket tidak hilang seperti toast. */}
         <div role="status" aria-live="polite">
           {hasil && (
@@ -335,26 +349,20 @@ export default function PenangananFoPage() {
         )}
 
         {galatMuat && (
-          <p role="alert" className={styles.galatMuat}>
-            <span>{galatMuat}</span>
-            <button type="button" className="btn btn--secondary btn--sm" onClick={() => { setMemuat(true); void muat(); }}>
-              <RotateCcw size={14} aria-hidden="true" /> Coba lagi
-            </button>
-          </p>
+          <Galat pesan={galatMuat} onRetry={() => { setMemuat(true); void muat(); }} memuat={memuat} />
         )}
 
         <section className={styles.seksi} aria-labelledby="judul-berjalan">
           <h2 id="judul-berjalan" className={styles.judulSeksi}>
             <UserRound size={18} aria-hidden="true" /> Sedang ditangani
-            <span className={styles.jumlah}>{berjalan.length}</span>
+            {!memuat && !galatMuat && <Lencana nada="netral">{berjalan.length}</Lencana>}
           </h2>
           {memuat ? (
-            <p role="status" className={styles.kosong}>Memuat penanganan…</p>
+            <Skeleton bentuk="kartu" jumlah={2} label="Memuat penanganan…" />
           ) : berjalan.length === 0 && !galatMuat ? (
-            <p className={styles.kosong}>
-              Belum ada pengunjung yang sedang Anda tangani. Ambil dari <Link href="/admin/fo/kotak-masuk">Kotak Masuk</Link>{' '}
-              atau pindai QR reservasi di <Link href="/admin/fo/registrasi?tab=scan">Scan QR</Link>.
-            </p>
+            <StatusKosong ikon={UserRound} judul="Belum ada pengunjung yang sedang Anda tangani." isi={
+              <>Ambil dari <Link href="/admin/fo/kotak-masuk">Kotak Masuk</Link> atau pindai QR reservasi di <Link href="/admin/fo/registrasi?tab=scan">Scan QR</Link>.</>
+            } />
           ) : (
             <ul className={styles.daftar}>
               {berjalan.map((b) => {
@@ -369,7 +377,7 @@ export default function PenangananFoPage() {
                         <p className={styles.meta}>{k?.asal_instansi ?? 'Instansi tidak tercatat'}</p>
                       </div>
                       <div>
-                        <span className={styles.lencana}>{labelSaluran(b.saluran)}</span>
+                        <Lencana nada={b.saluran === 'chat' ? 'info' : 'netral'}>{labelSaluran(b.saluran)}</Lencana>
                         <p className={styles.meta}>Mulai {formatJamWIB(b.mulai_at)} WIB</p>
                       </div>
                     </div>
@@ -416,16 +424,16 @@ export default function PenangananFoPage() {
           )}
         </section>
 
-        {!memuat && (
+        {!memuat && (!galatMuat || berjalanLain.length > 0) && (
           <section className={styles.seksi} aria-labelledby="judul-berjalan-lain">
             <h2 id="judul-berjalan-lain" className={styles.judulSeksi}>
               Sedang ditangani Front Office lain
-              <span className={styles.jumlah}>{berjalanLain.length}</span>
+              {!memuat && !galatMuat && <Lencana nada="netral">{berjalanLain.length}</Lencana>}
             </h2>
             {berjalanLain.length === 0 ? (
-              <p className={styles.kosong}>Tidak ada pengunjung yang sedang ditangani Front Office lain.</p>
+              <StatusKosong ikon={UserRound} judul="Tidak ada pengunjung yang sedang ditangani Front Office lain." />
             ) : (
-              <div className={styles.tabelWadah}>
+              <div className={styles.tabelWadah} role="region" {...BISA_DIFOKUS} aria-label="Penanganan Front Office lain">
                 <table className={styles.tabel}>
                   <caption>Pengunjung yang sedang ditangani Front Office lain (hanya dapat dilihat)</caption>
                   <thead>
@@ -474,12 +482,17 @@ export default function PenangananFoPage() {
         <section className={styles.seksi} aria-labelledby="judul-riwayat">
           <h2 id="judul-riwayat" className={styles.judulSeksi}>
             {riwayatSemua ? 'Riwayat hari ini (semua Front Office)' : 'Riwayat hari ini (milik Anda)'}
-            <span className={styles.jumlah}>{riwayat.length}</span>
+            {!memuat && !galatMuat && <Lencana nada="netral">{riwayat.length}</Lencana>}
           </h2>
-          {riwayat.length === 0 ? (
-            <p className={styles.kosong}>Belum ada penanganan yang selesai hari ini.</p>
+          <CatatanKeadaan jenis="lingkup">{riwayatSemua ? 'Riwayat seluruh Front Office hari ini (WIB).' : 'Riwayat penanganan milik Anda hari ini (WIB).'}</CatatanKeadaan>
+          {memuat ? (
+            <Skeleton jumlah={4} label="Memuat riwayat…" />
+          ) : galatMuat && riwayat.length === 0 ? (
+            <CatatanKeadaan jenis="info">Riwayat belum dapat ditampilkan. Gunakan Coba lagi di atas.</CatatanKeadaan>
+          ) : riwayat.length === 0 ? (
+            <StatusKosong ikon={CheckCircle2} judul="Belum ada penanganan yang selesai hari ini." />
           ) : (
-            <div className={styles.tabelWadah}>
+            <div className={styles.tabelWadah} role="region" {...BISA_DIFOKUS} aria-label="Riwayat penanganan Front Office">
               <table className={styles.tabel}>
                 <caption>Riwayat penanganan Front Office hari ini</caption>
                 <thead>
