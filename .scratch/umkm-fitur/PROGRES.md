@@ -6,7 +6,8 @@ Diperbarui 2026-11-09. Pengganti catatan pukul 12.15 WIB saat worker berhenti ka
 
 - Branch `feat/umkm`. Kode G1 ada di commit `16f1795`, perbaikan uji kalender di `205ed4e`. Dokumen rencana di `91f4888`. Kode G2 ada di commit `9469df2`. Kode G3 ada di commit `13d9c98`. Kode G4 (tahap B) ada di commit `ef0a686`. Kode G5 (tahap C) ada di commit sesudahnya.
 - **Belum ada push**, jadi commit ini hanya ada di mesin ini.
-- Migrasi `202611090001` sampai `0011` belum diterapkan ke database mana pun, termasuk staging.
+- Migrasi `202611090001` sampai `0012` DITERAPKAN ke produksi 2026-11-09 21.25 WIB dalam satu transaksi, sesudah dry run bersih, atas persetujuan pemilik (staging belum ada). Migrasi `0012` memperbaiki deteksi tautan kontak agar hanya kata utuh, hasil tinjauan akhir `.tim/umkm-fitur/TINJAUAN-AKHIR-KODE.md` dan `TINJAUAN-AKHIR-RILIS.md`.
+- Belum: penjadwal `POST /api/umkm-katalog/bersihkan-draf` dan pemeriksaan "Yang belum terbukti" di produksi.
 - Worker: semua sudah dilepas. Run Orca G1: `run_f7c5c7375d19`, transkrip worker yang dihentikan: `.tim/umkm-fitur/transkrip-g1/`. Run Orca G2: `run_8d70cd1fda1b`. Run Orca G3: `run_2f77f9b64789`. Run Orca G4: `run_04b9a929c500`. Run Orca G5: `run_16db8e43a7e8`.
 
 ## Gelombang G5, tahap C (tiket 16 sampai 19)

@@ -1565,3 +1565,12 @@ Bucket privat/publik sama menonaktifkan draf dan publikasi foto. Ketiga migrasi 
   `tel:`, dan `mailto:` tidak berubah. Tidak mengubah data.
 - Terapkan sesudah 0011 dengan `--atomic`. Rollback: `docs/rollback-umkm-kontak-kata-utuh-202611090012.sql`
   mengembalikan fungsi versi 0002.
+
+### Penerapan UMKM 0001 sampai 0012 ke produksi, 9 November 2026
+
+- Diterapkan 21.25 WIB ke `aws-1-ap-southeast-1.pooler.supabase.com` atas persetujuan pemilik, dalam SATU
+  transaksi (`apply-migration.mjs <gabungan 0001..0012> --atomic --yes`) sesudah dry run gabungan yang sama bersih.
+- Staging belum ada (konfigurasi `stg` kosong); pemilik memutuskan langsung ke produksi sesudah dry run.
+- `verify-migration-ledger.mjs` sesudahnya: 202611090001 sampai 202611090012 berstatus terpasang.
+  Ledger `supabase_migrations.schema_migrations` tidak diisi, sama seperti migrasi sebelumnya lewat skrip ini.
+- Rollback berurutan terbalik memakai `docs/rollback-umkm-*` (0012 lalu 0011 sampai 0001), data lama tidak tersentuh.
