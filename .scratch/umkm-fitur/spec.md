@@ -1,4 +1,4 @@
-# UMKM feature: implementation spec (Phase A and B)
+# UMKM feature: implementation spec (Phase A, B, and C)
 
 Source of truth: `docs/umkm/` (`KEPUTUSAN-PEMILIK.md` = P-01..36, `KEBUTUHAN.md` = K-* requirements, `SISTEM.md`, `SISTEM-STATISTIK.md`, `MIGRASI-RILIS-UJI.md` = U-* tests, `ALUR-DAN-PERAN.md`). Read only the parts a ticket names. If code and docs disagree, raise it; do not invent a rule. P-36: keep it simple. A rule stays only if the owner decided it, it stops a number leak or legal breach, or the system does it silently.
 
@@ -6,7 +6,9 @@ Source of truth: `docs/umkm/` (`KEPUTUSAN-PEMILIK.md` = P-01..36, `KEBUTUHAN.md`
 
 Phase A: reviewed public catalog, short contact form, likes, officer task list, FO supervision. **No UMKM number reaches a company, visitor, or FO in Phase A** (K-A-25).
 
-Phase B (added 2026-11-09, owner: finish all three phases): companies with individual accounts, Needs, contact requests, one "Setujui" that checks consent and opens the number only in the requester's account. **The number reaches only the original requester's account, never FO, chat, cache, logs, or notifications** (K-B-12). Phase B becomes active when its migration is applied; before that every page behaves as Phase A. Phase C (wave G5, tickets 16 to 19) starts after G4.
+Phase B (added 2026-11-09, owner: finish all three phases): companies with individual accounts, Needs, contact requests, one "Setujui" that checks consent and opens the number only in the requester's account. **The number reaches only the original requester's account, never FO, chat, cache, logs, or notifications** (K-B-12). Phase B becomes active when its migration is applied; before that every page behaves as Phase A.
+
+Phase C (wave G5, tickets 16 to 19): verified UMKM owners register, claim, edit through private drafts, see own statistics and receiving company names, and revoke their own number consent. **An account becomes an owner only after an officer confirms it** (K-C-03). Owners revoke consent but never grant number access to anyone.
 
 ## Tickets
 

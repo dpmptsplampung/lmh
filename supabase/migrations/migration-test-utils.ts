@@ -124,6 +124,8 @@ export const FORWARD_MIGRATION_FILES = [
   '202611090007_umkm_retensi.sql',
   '202611090008_umkm_permintaan.sql',
   '202611090009_umkm_permintaan_petugas.sql',
+  '202611090010_umkm_pemilik.sql',
+  '202611090011_umkm_pemilik_integrasi.sql',
 ] as const;
 
 export function listMigrationFiles(): string[] {

@@ -27,6 +27,7 @@ export default function ProfilForm({ detail, onSaved, onCancel }: { detail?: Det
   const uploadRequest = useRef(0);
   const mounted = useRef(true);
   const rev = detail?.revisi;
+  const mandiri = detail?.sumber === 'mandiri';
   useLayoutEffect(() => {
     mounted.current = true;
     form.current?.querySelector<HTMLElement>('select, input')?.focus();
@@ -75,7 +76,8 @@ export default function ProfilForm({ detail, onSaved, onCancel }: { detail?: Det
     setError(''); setErrors({});
     const data = new FormData(event.currentTarget);
     const value = (key: string) => String(data.get(key) ?? '').trim();
-    const source = value('sumber');
+    // Profil mandiri dikirim sebagai 'kurasi'. Basis data mempertahankan sumber mandiri dan pendaftarnya.
+    const source = mandiri ? 'kurasi' : value('sumber');
     const payload: Record<string, unknown> = {
       nama: value('nama'), deskripsi: value('deskripsi'), alamat: value('alamat') || null,
       jenis: value('jenis'), kategori: value('kategori'), spesifik: value('spesifik') || null,
@@ -118,7 +120,9 @@ export default function ProfilForm({ detail, onSaved, onCancel }: { detail?: Det
       className={styles.form} autoComplete="off">
       {error && <p role="alert" className={styles.galat}>{error}</p>}
       <div className={styles.bidang}>
-        <Field label="Sumber data"><select name="sumber" defaultValue={detail?.sumber ?? 'kurasi'}><option value="kurasi">Data kurasi</option><option value="satudata">Satudata</option><option value="loket">Tamu loket</option></select></Field>
+        {mandiri
+          ? <p className={styles.lebar}>Sumber: didaftarkan pemilik</p>
+          : <Field label="Sumber data"><select name="sumber" defaultValue={detail?.sumber ?? 'kurasi'}><option value="kurasi">Data kurasi</option><option value="satudata">Satudata</option><option value="loket">Tamu loket</option></select></Field>}
         <Field label="Nama usaha" galat={warning('nama')}><input name="nama" defaultValue={rev?.nama} maxLength={200} /></Field>
         <Field label="Jenis" galat={warning('jenis')}><input name="jenis" defaultValue={rev?.jenis} maxLength={100} /></Field>
         <Field label="Kategori" galat={warning('kategori')}><input name="kategori" defaultValue={rev?.kategori} maxLength={100} /></Field>

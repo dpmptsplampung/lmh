@@ -781,3 +781,33 @@
 - Tahan menolak status tertutup, sedangkan ambil/lepas tetap menerima butir ditahan yang kemudian batal.
 - Rollback 0009 tetap membersihkan rincian tahap B, mempertahankan hitungan dan menutup pembacaan nomor.
   Bukti per butir: `.tim/umkm-fitur/PROGRES-PERBAIKAN-G4-backend.md`; belum menerapkan ke database nyata.
+
+## [2026-11-09] UMKM tahap C G5: pemilik, klaim dan revisi mandiri
+
+- Migrasi baru `202611090010_umkm_pemilik.sql` dan `202611090011_umkm_pemilik_integrasi.sql`.
+  Migrasi sampai 0009 tetap. Tabel kepemilikan RLS tanpa grant langsung, RPC memakai JWT akun dan
+  verifikasi petugas, termasuk saat dipanggil langsung lewat database.
+- Registrasi membuat profil mandiri diajukan dan revisi pertama. Penolakan revisi tetap mempertahankan
+  pendaftar diajukan dan mengizinkan perbaikan; Terbit pertama mengesahkan pemilik pada transaksi yang sama.
+  Draf menjaga pointer revisi terbit. Perubahan nomor membuat versi kontak baru dan mencabut izin versi lama.
+- Revisi, kontak dan izin dapat mencatat UID pemilik tanpa FK historis, dengan CHECK satu pelaku;
+  riwayat memakai aktor_uid G4. Nomor, HP/email/nama akun dan isi alasan klaim tidak masuk riwayat.
+- Klaim profil terbit mengikuti antrean mendesak lalu tertua dan putusan pemeriksa pemegang.
+  FO hanya mendapat hitungan; rincian registran hanya di detail pemeriksa, tanpa perluasan ekspor.
+- Statistik sendiri memakai tabel G3/G4: 30 hari WIB, Views null saat sakelar mati, penerima keyset 20
+  perusahaan/tanggal saja. Suka aktif pemilik sendiri dinonaktifkan ketika kepemilikan disetujui.
+- R2 tetap area umkm-draf privat, prefix profil diperiksa sebelum presign dan konfirmasi.
+  Pendaftar mandiri boleh memperbaiki/mengunggah sebelum disetujui; pengklaim menunggu persetujuan.
+  Publikasi memakai bukti, rencana dan salinan G2, tanpa jalur unggahan publik baru.
+- Rollback 0011 lalu 0010 menutup RPC C dan memulihkan proyeksi G4, mempertahankan tabel/bukti dan tahap B.
+  Belum ada penerapan ke database nyata. Bukti per butir: `.tim/umkm-fitur/PROGRES-G5-backend.md`.
+
+## [2026-11-09] Perbaikan UMKM tahap C G5
+
+- Draf pemilik ditolak `KONFLIK_STATUS` selama profil disembunyikan; status lain tidak berubah.
+- Pemicu BEFORE UPDATE mempertahankan `sumber`/`sumber_ref` profil mandiri; terbit pertama tetap mengesahkan.
+- Daftar/detail pemilik menambah `perubahan` (`menunggu`/`ditolak`/null); catatan petugas hanya untuk pembuat
+  revisi terakhir yang ditolak; detail tidak mengirim `dibuat_oleh`, `aktor_uid`, `diperiksa_oleh`.
+- Pemeriksa dapat mencabut kepemilikan disetujui (`umkm_cabut_kepemilikan`), riwayat `cabut_kepemilikan` tanpa
+  data akun; detail tugas memuat `pemilik_terdaftar` paling banyak 20. Jejak FO: peran `pemilik` berlabel
+  "Pemilik usaha". Bukti: `.tim/umkm-fitur/PROGRES-PERBAIKAN-G5-backend.md`; belum diterapkan ke database nyata.

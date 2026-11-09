@@ -4,10 +4,45 @@ Diperbarui 2026-11-09. Pengganti catatan pukul 12.15 WIB saat worker berhenti ka
 
 ## Keadaan repo
 
-- Branch `feat/umkm`. Kode G1 ada di commit `16f1795`, perbaikan uji kalender di `205ed4e`. Dokumen rencana di `91f4888`. Kode G2 ada di commit `9469df2`. Kode G3 ada di commit `13d9c98`.
+- Branch `feat/umkm`. Kode G1 ada di commit `16f1795`, perbaikan uji kalender di `205ed4e`. Dokumen rencana di `91f4888`. Kode G2 ada di commit `9469df2`. Kode G3 ada di commit `13d9c98`. Kode G4 (tahap B) ada di commit `ef0a686`. Kode G5 (tahap C) ada di commit sesudahnya.
 - **Belum ada push**, jadi commit ini hanya ada di mesin ini.
-- Migrasi `202611090001` sampai `0007` belum diterapkan ke database mana pun, termasuk staging.
-- Worker: semua sudah dilepas. Run Orca G1: `run_f7c5c7375d19`, transkrip worker yang dihentikan: `.tim/umkm-fitur/transkrip-g1/`. Run Orca G2: `run_8d70cd1fda1b`. Run Orca G3: `run_2f77f9b64789`.
+- Migrasi `202611090001` sampai `0011` belum diterapkan ke database mana pun, termasuk staging.
+- Worker: semua sudah dilepas. Run Orca G1: `run_f7c5c7375d19`, transkrip worker yang dihentikan: `.tim/umkm-fitur/transkrip-g1/`. Run Orca G2: `run_8d70cd1fda1b`. Run Orca G3: `run_2f77f9b64789`. Run Orca G4: `run_04b9a929c500`. Run Orca G5: `run_16db8e43a7e8`.
+
+## Gelombang G5, tahap C (tiket 16 sampai 19)
+
+**Kode selesai dan lulus gate, di-commit lokal, belum di-push.** Migrasi `202611090010` dan `0011` belum diterapkan ke database mana pun. Tahap C aktif hanya sesudah migrasinya diterapkan; sebelum itu tombol "Ini usaha saya" dan halaman Usaha saya tidak tampil.
+
+Run Orca `run_16db8e43a7e8`. Kontrak: `.tim/umkm-fitur/KONTRAK-G5.md` (termasuk bagian Persetujuan PM). Tinjauan: `.tim/umkm-fitur/TINJAUAN-G5-KEAMANAN.md` (0 kritis, 1 tinggi, 1 sedang, 2 rendah, 6 catatan) dan `TINJAUAN-G5-KODE.md` (2 tinggi, 2 sedang, 4 rendah), diperbaiki sesuai `.tim/umkm-fitur/PERBAIKAN-G5.md`. Bukti merah: `.scratch/umkm-fitur/qa-merah-g5.txt` dan `qa-merah-g5-perbaikan.txt`.
+
+Keputusan PM yang disampaikan ke pemilik:
+
+- Profil mandiri yang ditolak sebelum pernah terbit tetap bisa diperbaiki pendaftarnya. Terbit pertama sekaligus menyetujui pendaftar sebagai pemilik.
+- Pendaftar boleh mengunggah foto sesudah pendaftaran pertama terkirim, karena foto butuh ID profil. Pengklaim profil lain menunggu disetujui.
+- Petugas bisa mencabut kepemilikan yang sudah disetujui, dengan alasan wajib. Perubahan yang sudah dikirim akun itu tidak ikut ditolak otomatis; petugas menolaknya dari layar yang sama.
+- Profil yang disembunyikan tidak menerima perubahan dari pemilik sampai petugas memulihkannya.
+- Sumber "didaftarkan pemilik" tidak berubah saat petugas menyimpan ulang profil.
+- Tidak diubah: tanpa batas laju untuk tanda tangan unggah foto pemilik (hanya biaya R2), beberapa pemilik disetujui pada satu profil saling melihat nomor.
+
+### Hasil gate terakhir G5
+
+| Uji | Hasil |
+|---|---|
+| `npx eslint . --max-warnings=0 --ignore-pattern '.tim/**'` | lulus |
+| `npm run typecheck` | lulus |
+| `npm run build` | lulus |
+| `npm test` | 6586 lulus, 0 gagal, 6 dilewati |
+| Skenario A1, A2, A3 | 69, 16, 6 PASS, 0 FAIL |
+| `node scripts/lokal-rantai/skenario-umkm-b1.mjs` | 18 PASS, 0 FAIL |
+| `node scripts/lokal-rantai/skenario-umkm-c1.mjs` | 11 PASS, 0 FAIL |
+| `node scripts/lokal-rantai/beban-umkm.mjs` | exit 0 |
+| Manifest migrasi | cocok, 119 berkas |
+
+Satu warna cadangan heksadesimal di `pemilik.module.css` dihapus agar lolos uji kebersihan dasbor.
+
+### Yang belum terbukti G5
+
+Butuh staging: hak bawaan Supabase pada objek baru, tidak ada akses PostgREST langsung ke `umkm_pemilik`, kebijakan bucket R2 privat dan CORS serta ikatan tipe dan ukuran pada unggahan bertanda tangan, klaim JWT asli dan login Google atau magic-link untuk akun pemilik, cache Vercel pada route `private, no-store`, serta publikasi foto draf berawalan profil ke `umkm-photos`.
 
 ## Gelombang G4, tahap B (tiket 11 sampai 15)
 
@@ -42,8 +77,6 @@ Dua uji lama formulir dan satu uji statistik dibuat menunggu efek layar, karena 
 
 Butuh staging: penghapusan akun lewat Supabase Auth dengan FK `ON DELETE SET NULL`, hak bawaan Supabase dan skema `umkm_private` tidak terekspos, klaim `is_anonymous` JWT asli, `extensions.digest` dan `gen_random_bytes`, jadwal `pg_cron` retensi, log gateway tidak merekam body RPC, CDN menghormati `private, no-store`, serta perlombaan dua koneksi sungguhan.
 
-Tahap C menyusul sebagai G5 (tiket 16 sampai 19).
-
 ## Gelombang G3 (tiket 08, 09, 10)
 
 **Di-commit di `13d9c98`, belum di-push.** Migrasi `202611090005`, `0006`, `0007` belum diterapkan ke database mana pun. Sakelar statistik bawaannya mati.
@@ -76,10 +109,10 @@ Keputusan PM yang disampaikan ke pemilik:
 
 Butuh staging, lihat tiket 10: hak nyata Supabase, Auth dan penghapusan akun, `pg_cron`, penjadwal `bersihkan-draf`, R2 sungguhan termasuk `ListObjects` dan `StartAfter`, `revalidateTag` lintas instance, dan Excel wilayah Indonesia.
 
-## Langkah rilis tahap A (semua butuh persetujuan pemilik)
+## Langkah rilis tahap A, B, dan C (semua butuh persetujuan pemilik)
 
-1. Pemilik membaca teks privasi bagian 6. Tinjauan DPO disarankan.
-2. Terapkan migrasi `0001` sampai `0007` ke staging, lalu jalankan pemeriksaan staging tiket 10.
+1. Pemilik membaca teks privasi bagian 6, termasuk paragraf tahap B dan C. Tinjauan DPO disarankan.
+2. Terapkan migrasi `0001` sampai `0011` ke staging, lalu jalankan pemeriksaan staging tiket 10 dan daftar "Yang belum terbukti" G4 dan G5.
 3. Pasang penjadwal `POST /api/umkm-katalog/bersihkan-draf` sesuai `docs/DEPLOY_RUNBOOK.md`.
 4. Terapkan ke produksi lewat prosedur resmi, dengan host dan daftar migrasi ditampilkan lebih dulu.
 5. Pembersihan harus berjalan sebelum formulir dibuka untuk publik. Sakelar statistik dinyalakan terpisah sesudah kebijakan terbit.

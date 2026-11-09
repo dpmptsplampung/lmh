@@ -1529,3 +1529,30 @@ Bucket privat/publik sama menonaktifkan draf dan publikasi foto. Ketiga migrasi 
   Rollback 0008 tidak menggantinya, tidak membuka nomor dan tidak mengembalikan rincian yang dibersihkan.
 - Saat akun dihapus, tahan darurat permintaannya ikut dikosongkan agar butir keluar antrean,
   termasuk pembukaan yang pernah ditahan. Pembatalan biasa tetap menunggu pelepasan tahan oleh petugas.
+
+### UMKM tahap C G5, 9 November 2026, belum diterapkan
+
+- `202611090010_umkm_pemilik.sql`: kepemilikan berdasarkan UID akun nonanon dan persetujuan petugas,
+  registrasi mandiri privat, perbaikan setelah ditolak, revisi draf dan pencabutan izin nomor sendiri.
+  Terbit pertama mengesahkan pendaftar atomik; penolakan revisi tidak menolak pendaftarnya.
+  Kolom UID pelaku mempertahankan bukti tanpa meniru identitas petugas; nomor tidak masuk riwayat.
+- `202611090011_umkm_pemilik_integrasi.sql`: klaim dalam antrean yang sama, putusan manual idempoten,
+  detail akun hanya bagi pemeriksa, statistik profil sendiri dengan tren 30 hari WIB dan penerima
+  paling banyak 20 nama perusahaan/tanggal per halaman. Suka pemilik sendiri tidak dihitung.
+- Kedua migrasi maju dari 0009 dan diuji di PGlite. Tidak mengubah migrasi 0001 sampai 0009,
+  data nyata, konfigurasi deployment atau kredensial. Manifest dan daftar migrasi menyertakan keduanya.
+- Rollback berurutan: `rollback-umkm-pemilik-integrasi-202611090011.sql`, lalu
+  `rollback-umkm-pemilik-202611090010.sql`, bersama pemulihan aplikasi tahap B.
+  RPC tahap C ditutup; tabel, kolom pelaku dan bukti tetap disimpan. Tahap B tetap berjalan.
+
+### Perbaikan UMKM tahap C G5, 9 November 2026, belum diterapkan
+
+- 0010 dan 0011 diperbaiki langsung karena belum di-commit dan belum diterapkan; entri manifest keduanya
+  dihapus lalu diregenerasi. Migrasi 0001 sampai 0009 tetap.
+- 0010: draf pemilik pada profil disembunyikan ditolak `KONFLIK_STATUS`; pemicu `umkm_jaga_sumber_mandiri`
+  mempertahankan sumber mandiri saat petugas menyimpan; `perubahan` pada daftar/detail pemilik; catatan petugas
+  hanya dari penolakan revisi terakhir milik akun itu; detail pemilik tanpa UID/ID pelaku dan pemeriksa foto.
+- 0011: RPC `umkm_cabut_kepemilikan` bagi pemeriksa, `pemilik_terdaftar` di detail tugas (maksimal 20),
+  keterangan pemilik dengan LEFT JOIN, jejak FO berlabel "Pemilik usaha" tanpa data akun.
+- Rollback 0011 menambah stub `MODUL_BELUM_TERSEDIA` untuk RPC cabut dan mengembalikan jejak versi 0009;
+  rollback 0010 melepas pemicu sumber mandiri.

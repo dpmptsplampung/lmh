@@ -1,0 +1,2 @@
+FAIL inisialisasi: fungsi tahap C belum tersedia: 42883 function public.umkm_tahap_c() does not exist
+HASIL: 0 PASS, 1 FAIL

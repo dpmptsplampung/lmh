@@ -240,3 +240,21 @@ maksimal 500 per putaran. Hitungan, status dan pembukaan tetap disimpan; tidak a
 Jika rilis dikembalikan, pulihkan aplikasi G3 bersama rollback SQL 0009 lalu 0008. Pembacaan nomor
 ditutup segera dan penanda tahap B menjadi tidak aktif; tabel/bukti tetap. Rincian yang sudah
 dibersihkan retensi tidak dipulihkan. Berkas rollback diuji di PGlite, belum dijalankan di server nyata.
+
+## UMKM tahap C: pemilik usaha, belum diterapkan
+
+Prasyarat: migrasi tahap A dan B sampai `202611090009`. Terapkan `202611090010_umkm_pemilik.sql`
+lalu `202611090011_umkm_pemilik_integrasi.sql` di staging melalui prosedur migrasi resmi.
+Publikasikan paragraf privasi tahap C pada halaman dan dokumen PDP bersama rilis aplikasi.
+Catatan ini bukan persetujuan atau bukti penerapan database nyata.
+
+Uji registrasi mandiri, Tolak lalu perbaikan, dan Terbit pertama yang mengesahkan pemilik.
+Uji klaim yang belum disetujui, pemilik lain dan FO: tidak boleh mengakses draf, kontak atau statistik.
+Pendaftar mandiri boleh mengunggah foto ke R2 privat sesudah profilnya mendapat ID, termasuk sebelum
+disetujui. Pengklaim profil lama menunggu disetujui. Kunci foto berawalan profil; publikasi memakai G2.
+Pastikan bucket publik/privat terpisah; tanpa R2, foto tetap privat/placeholder dan keputusan tetap tersimpan.
+
+Uji pencabutan pemilik dan penggantian nomor menutup pembukaan tahap B segera. Statistik menampilkan
+tren 30 hari WIB; penerima hanya nama perusahaan/tanggal, tanpa data pribadi pemohon. Tidak ada job baru.
+Sebelum migrasi, route pemilik memberi 503 tenang bila RPC belum ada; tidak ada fallback service-role.
+Untuk pemulihan, gunakan aplikasi tahap B dan rollback 0011 lalu 0010. Bukti dipertahankan, tahap B tetap aktif.

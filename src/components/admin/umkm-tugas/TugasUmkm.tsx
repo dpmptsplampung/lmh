@@ -18,6 +18,8 @@ import ProfilForm from './ProfilForm';
 import DetailPermintaanLayar from './DetailPermintaan';
 import BantuPermintaan from './BantuPermintaan';
 import type { DetailPermintaan, TugasPermintaan } from './permintaan-types';
+import DetailKlaimLayar from './DetailKlaim';
+import type { DetailKlaim } from '@/lib/umkm-katalog/types-g5';
 import styles from './umkm-tugas.module.css';
 
 type Butir = TugasCampuran | TugasPermintaan;
@@ -32,8 +34,9 @@ export default function TugasUmkm() {
   const [query, setQuery] = useState('');
   const [detail, setDetail] = useState<Detail | null>(null);
   const [permintaan, setPermintaan] = useState<DetailPermintaan | null>(null);
+  const [klaim, setKlaim] = useState<DetailKlaim | null>(null);
   const [work, setWork] = useState<DetailPesan | DetailLaporan | null>(null);
-  const [mode, setMode] = useState<'list' | 'detail' | 'work' | 'new' | 'edit' | 'permintaan' | 'bantu'>('list');
+  const [mode, setMode] = useState<'list' | 'detail' | 'work' | 'new' | 'edit' | 'permintaan' | 'klaim' | 'bantu'>('list');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<TugasError | null>(null);
   const offline = useSyncExternalStore(subscribeNetwork, () => !navigator.onLine, () => false);
@@ -131,6 +134,32 @@ export default function TugasUmkm() {
       if (!request.signal.aborted) setError(e instanceof TugasError ? e : new TugasError('GAGAL_INTERNAL', 500));
     } finally { if (!request.signal.aborted) setLoading(false); }
   };
+  const openKlaim = async (id: string, claim = true) => {
+    detailRequest.current?.abort(); listRequest.current?.abort();
+    const request = new AbortController(); detailRequest.current = request;
+    currentId.current = id; currentKind.current = 'klaim';
+    setKlaim(null); setWork(null); setDetail(null); setPermintaan(null); setMode('klaim'); setLoading(true); setError(null);
+    try {
+      let result = await tugasRequest<DetailKlaim>(`/klaim/${id}`, { signal: request.signal });
+      if (request.signal.aborted) return;
+      if (claim && !result.petugas_id && result.status === 'diajukan') {
+        const signature = JSON.stringify(['klaim', id, result.versi]);
+        if (claimOperation.current?.signature !== signature) {
+          claimOperation.current = { signature, id: crypto.randomUUID() };
+        }
+        await kirimTugas(`/klaim/${id}/ambil`, {
+          expected_version: result.versi, operasi_id: claimOperation.current.id,
+        }, request.signal);
+        claimOperation.current = null;
+        if (request.signal.aborted) return;
+        result = await tugasRequest<DetailKlaim>(`/klaim/${id}`, { signal: request.signal });
+      }
+      if (!request.signal.aborted) setKlaim(result);
+    } catch (e) {
+      if (!hasilBelumPasti(e)) claimOperation.current = null;
+      if (!request.signal.aborted) setError(e instanceof TugasError ? e : new TugasError('GAGAL_INTERNAL', 500));
+    } finally { if (!request.signal.aborted) setLoading(false); }
+  };
   const openWork = async (jenis: 'pesan' | 'laporan', id: string, claim = true) => {
     detailRequest.current?.abort(); listRequest.current?.abort();
     const request = new AbortController(); detailRequest.current = request;
@@ -158,7 +187,7 @@ export default function TugasUmkm() {
     } finally { if (!request.signal.aborted) setLoading(false); }
   };
   const back = () => {
-    detailRequest.current?.abort(); currentId.current = null; setDetail(null); setWork(null); setPermintaan(null); setMode('list');
+    detailRequest.current?.abort(); currentId.current = null; setDetail(null); setWork(null); setPermintaan(null); setKlaim(null); setMode('list');
     returnFocus.current = true;
     void load();
   };
@@ -196,8 +225,9 @@ export default function TugasUmkm() {
         : <Galat pesan={error.message} onRetry={() => {
           if (mode === 'detail' && currentId.current) void open(currentId.current, false);
           else if (mode === 'permintaan' && currentId.current) void openPermintaan(currentId.current, false);
+          else if (mode === 'klaim' && currentId.current) void openKlaim(currentId.current, false);
           else if (mode === 'work' && currentId.current && currentKind.current !== 'profil'
-            && currentKind.current !== 'permintaan') {
+            && currentKind.current !== 'permintaan' && currentKind.current !== 'klaim') {
             void openWork(currentKind.current, currentId.current, false);
           } else back();
         }} />)}
@@ -213,17 +243,19 @@ export default function TugasUmkm() {
             : 'Profil yang perlu diperiksa akan muncul di sini. Anda dapat menambahkan profil baru.'} />
           : <ol className={styles.daftar}>
           {(list.items as Butir[]).map((task) => <li key={`${task.jenis}:${task.id}`}><div className={styles.baris}>
-            <div className={styles.identitas}><strong>{task.jenis === 'permintaan' ? `Permintaan ${task.kode}: ${task.profil_nama}` : task.nama}</strong>
+            <div className={styles.identitas}><strong>{task.jenis === 'permintaan' ? `Permintaan ${task.kode}: ${task.profil_nama}`
+              : task.jenis === 'klaim' ? `Klaim profil: ${task.profil_nama}` : task.nama}</strong>
               <span className={styles.meta}>{task.jenis === 'profil' ? 'Profil' : task.jenis === 'pesan' ? 'Pesan'
-                : task.jenis === 'permintaan' ? 'Permintaan kontak' : 'Laporan'}.
+                : task.jenis === 'permintaan' ? 'Permintaan kontak' : task.jenis === 'klaim' ? 'Klaim pemilik' : 'Laporan'}.
                 {task.mendesak ? ' Mendesak. ' : ' '}{task.status}. Masuk {formatTanggal(task.dibuat_pada)}</span>
               {task.petugas_nama && <span className={styles.meta}>sedang dipegang {task.petugas_nama}</span>}
               {task.jenis === 'profil' && task.tanpa_nomor && <span className={styles.meta}>Belum ada WhatsApp</span>}
             </div>
             <Tombol varian="sekunder" onClick={() => task.jenis === 'profil' ? void open(task.id)
-              : task.jenis === 'permintaan' ? void openPermintaan(task.id) : void openWork(task.jenis, task.id)}
+              : task.jenis === 'permintaan' ? void openPermintaan(task.id)
+                : task.jenis === 'klaim' ? void openKlaim(task.id) : void openWork(task.jenis, task.id)}
               aria-label={task.jenis === 'permintaan' ? `Periksa Permintaan ${task.kode}: ${task.profil_nama}`
-                : `Periksa ${task.nama}`}>Periksa</Tombol>
+                : task.jenis === 'klaim' ? `Periksa Klaim profil: ${task.profil_nama}` : `Periksa ${task.nama}`}>Periksa</Tombol>
           </div></li>)}
         </ol>}
         <div className={styles.aksi}>{list.next_cursor && <Tombol varian="sekunder" onClick={() => load(list.next_cursor!)}>Halaman berikutnya</Tombol>}{list.items.length > 0 && <Tombol varian="hantu" onClick={() => load()}>Ke awal daftar</Tombol>}</div>
@@ -236,6 +268,13 @@ export default function TugasUmkm() {
         setNotice(pesan);
         if (tutup) back(); else await openPermintaan(permintaan.id, false);
       }} />}
+    {!restricted && !loading && mode === 'klaim' && klaim && <DetailKlaimLayar
+      key={`${klaim.id}:${klaim.versi}`} detail={klaim} onBack={back}
+      onRefresh={() => void openKlaim(klaim.id, false)} onProfil={(id) => void open(id, false)}
+      onChanged={async (pesan, tutup) => {
+        setNotice(pesan);
+        if (tutup) back(); else await openKlaim(klaim.id, false);
+      }} />}
     {!restricted && mode === 'bantu' && <BantuPermintaan onBatal={back} onSelesai={(id) => {
       setNotice('Permintaan bantuan dicatat.');
       if (id) void openPermintaan(id, false); else back();
@@ -247,7 +286,7 @@ export default function TugasUmkm() {
         else await openWork(work.jenis, work.id, false);
       }} />}
     {!restricted && !loading && (mode === 'new' || mode === 'edit') && <ProfilForm key={mode === 'new' ? 'new' : detail?.id} detail={mode === 'edit' ? detail ?? undefined : undefined} onSaved={(result) => void changed(result)} onCancel={back} />}
-    {!restricted && !loading && (mode === 'detail' || mode === 'work' || mode === 'permintaan') && !detail && !work && !permintaan && error &&
+    {!restricted && !loading && (mode === 'detail' || mode === 'work' || mode === 'permintaan' || mode === 'klaim') && !detail && !work && !permintaan && !klaim && error &&
       <Tombol varian="hantu" onClick={back}>Kembali ke daftar</Tombol>}
   </div>;
 }

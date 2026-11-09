@@ -4,8 +4,9 @@ import type { DaftarTugas, Detail, Mutasi, ProfilPublik, DetailPesan, DetailLapo
   StatusStatistik, LaporanStatistik } from './types';
 import type { ProfilInput } from './schemas';
 import type { RpcG4 } from './rpc-g4';
+import type { RpcG5 } from './rpc-g5';
 type Versi = { p_profil_id: string; p_expected_version: number; p_operasi_id: string };
-export type RpcKontrak = RpcG4 & {
+export type RpcKontrak = RpcG4 & RpcG5 & {
   umkm_suka: { args: { p_profil_id: string; p_aktif: boolean };
     hasil: { profil_id: string; suka_saya: boolean; suka: number } };
   umkm_status_suka: { args: { p_profil_id: string }; hasil: { suka_saya: boolean } };

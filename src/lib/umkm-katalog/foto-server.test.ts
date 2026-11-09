@@ -39,6 +39,18 @@ beforeEach(() => {
   });
 });
 describe('publikasi foto sesudah keputusan commit', () => {
+  it('foto draf berawalan profil pemilik memakai publikasi G2', async () => {
+    const semula = rpc.getMockImplementation()!;
+    rpc.mockImplementation(async (nama: string) => {
+      const result = await semula(nama);
+      if (nama === 'umkm_detail_tugas' && result.data?.foto_disetujui)
+        result.data.foto_disetujui[0].r2_key = `umkm-draf/${id}/${fotoId}.jpg`;
+      return result;
+    });
+    expect((await publikasiFoto(client(), id)).tertunda).toBe(0);
+    expect(copyObject).toHaveBeenCalledWith('private', `umkm-draf/${id}/${fotoId}.jpg`,
+      'public', expect.stringMatching(/^umkm-katalog\//), '"abcd"');
+  });
   it('salin bersyarat bukti ETag lalu tautkan dahulu sebelum hapus copy lama', async () => {
     expect(await publikasiFoto(client(), id)).toEqual({ status: 'selesai', tertunda: 0, hapus_tertunda: 0 });
     expect(rpc).toHaveBeenCalledWith('umkm_bukti_foto', {

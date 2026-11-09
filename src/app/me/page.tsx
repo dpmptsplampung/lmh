@@ -231,6 +231,7 @@ export default function MeDashboard() {
     { label: 'Info Layanan', href: '/standar-pelayanan', ikon: BookOpen, nada: 'primer' },
     { label: 'Peta Potensi', href: '/peta-potensi', ikon: Map, nada: 'info' },
     { label: 'UMKM Saya', href: '/me/umkm', ikon: Store, nada: 'sukses' },
+    { label: 'Usaha Saya', href: '/me/usaha', ikon: Store, nada: 'primer' },
     { label: 'Buat Pengaduan', href: '/pengaduan', ikon: AlertCircle, nada: 'bahaya' },
   ];
 

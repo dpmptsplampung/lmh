@@ -15,6 +15,7 @@ import UmkmSerupa from './UmkmSerupa';
 import PencatatStatistik from './PencatatStatistik';
 import HubungiUmkm from '@/components/umkm-perusahaan/HubungiUmkm';
 import { useTahapB } from '@/components/umkm-perusahaan/useTahapB';
+import KlaimUsaha from '@/components/umkm-pemilik/KlaimUsaha';
 import styles from './katalog.module.css';
 
 export default function ProfilKatalog({ id }: { id: string }) {
@@ -76,6 +77,7 @@ export default function ProfilKatalog({ id }: { id: string }) {
             Hubungi lewat petugas</Tombol>
           <Tombol varian="sekunder" onClick={() => open('laporan')}>Laporkan</Tombol>
         </div>
+        <KlaimUsaha profilId={id} profilNama={profile.nama} />
       </section>
       {(profile.instagram || profile.tiktok) && <nav className={styles.aksi} aria-label="Media sosial usaha">
         {profile.instagram && <a href={profile.instagram} target="_blank" rel="noopener noreferrer">

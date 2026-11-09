@@ -9,6 +9,8 @@ import type { Detail, Mutasi } from '@/lib/umkm-katalog/types';
 import { formatTanggal } from '@/lib/utils';
 import { hasilBelumPasti, kirimTugas, TugasError } from './api';
 import NomorTugas from './NomorTugas';
+import KeteranganPemilik from './KeteranganPemilik';
+import PemilikTerdaftarBagian from './PemilikTerdaftar';
 import FotoKatalog from '@/components/umkm-katalog/FotoKatalog';
 import styles from './umkm-tugas.module.css';
 
@@ -68,7 +70,9 @@ export default function DetailTugas({ detail, onChanged, onEdit, onBack, onRefre
     <div className={styles.form}>
       <div className={styles.aksi}><Tombol varian="hantu" onClick={onBack}>Kembali ke daftar</Tombol><Lencana>{detail.status}</Lencana>{detail.mendesak && <Lencana nada="peringatan">Mendesak</Lencana>}</div>
       <h2 ref={titleRef} tabIndex={-1}>{revision.nama}</h2>
-      <p className={styles.meta}>Masuk {formatTanggal(detail.dibuat_pada)}. Sumber: {detail.sumber === 'loket' ? 'tamu loket' : detail.sumber === 'kurasi' ? 'data kurasi' : 'satudata'}.</p>
+      <p className={styles.meta}>Masuk {formatTanggal(detail.dibuat_pada)}. Sumber: {detail.sumber === 'mandiri' ? 'Didaftarkan pemilik' : detail.sumber === 'loket' ? 'tamu loket' : detail.sumber === 'kurasi' ? 'data kurasi' : 'satudata'}.</p>
+      {detail.pemilik && <KeteranganPemilik pemilik={detail.pemilik} />}
+      <PemilikTerdaftarBagian daftar={detail.pemilik_terdaftar ?? []} onSelesai={onRefresh} />
       <div className={styles.aksi}>
         <p>{detail.petugas_nama ? `sedang dipegang ${detail.petugas_nama}` : 'Belum dipegang petugas'}</p>
         {!detail.dipegang_saya && <Tombol varian="sekunder" memuat={busy} onClick={() => mutate('ambil', {})}>{detail.petugas_id ? 'Ambil alih' : 'Ambil tugas'}</Tombol>}

@@ -77,7 +77,13 @@ describe('kebijakan-privasi page', () => {
       'Nama, email, dan HP diambil dari profil akun.',
       'Nomor UMKM hanya dibuka bila pemiliknya sudah memberi izin dan petugas menyetujui permintaan.',
       'Nomor hanya tampil di akun pemohon itu, tidak dikirim lewat WhatsApp, email, atau notifikasi.',
-      'Pemilik UMKM dapat mencabut izin kapan saja dengan menghubungi petugas UMKM atau lewat formulir di LMH.',
+      'Pemilik UMKM dapat mencabut izin kapan saja dengan menghubungi petugas UMKM, lewat formulir di LMH, atau dari halaman Usaha saya.',
+      'Tahap C, pemilik usaha. Pemilik usaha yang mendaftarkan atau mengklaim profil memakai akun pribadi. ' +
+        'Pendaftar profil baru dapat memperbaiki profil dan fotonya selama pemeriksaan. Pengklaim profil yang ' +
+        'sudah ada mendapat hak mengubah sesudah petugas memastikan penanggung jawab usaha. Untuk memastikan ' +
+        'penanggung jawab usaha, petugas pemeriksa melihat nama, HP, dan email akun serta alasan klaim, dan dapat ' +
+        'menghubungi Anda. Pemilik melihat nama perusahaan penerima nomor dan tanggalnya, tanpa data pribadi pemohon. Perubahan profil diperiksa ' +
+        'petugas sebelum tampil.',
       'perusahaan yang sudah mencatatnya mungkin masih menyimpannya.',
       'Petugas memakai WhatsApp pribadinya untuk menanyakan izin kepada UMKM dan memberi tahu pemohon.',
       'Riwayat chat di ponsel petugas berada di luar sistem LMH.',

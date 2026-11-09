@@ -1,6 +1,6 @@
 # 16 db pemilik umkm
 
-Status: ready-for-agent
+Status: ready-for-human
 Wave: G5
 Blocked by: 11
 
@@ -21,7 +21,7 @@ U-02 (owner part), U-10 (owner part), U-11 in `docs/umkm/MIGRASI-RILIS-UJI.md`. 
 Dasar: `docs/umkm/SISTEM.md` bagian 3, 5, 7, 8 dan `docs/umkm/ALUR-DAN-PERAN.md`. Prinsip P-36. Pakai ulang alur tinjauan profil tahap A; jangan membuat antrean atau status baru di luar yang perlu.
 
 - **Pemilik.** Tabel `umkm_pemilik`: profil, UID akun (bukan anonim), status `diajukan/disetujui/ditolak`, alasan, petugas pemeriksa, waktu. Hanya status `disetujui` memberi hak. Login, email lama, atau HP saja tidak memberi hak (K-C-03). Satu profil boleh punya lebih dari satu pemilik yang disetujui; tidak ada pengalihan otomatis dari pasar lama `listing_umkm`.
-- **Daftar sendiri (K-C-01).** Akun login mengajukan profil baru: masuk sebagai `umkm_profil` `diajukan` sumber baru `mandiri`, revisi pertama, kontak WhatsApp opsional, dan baris pemilik `diajukan`. Petugas memeriksa profil dan pemilik di layar yang sama; Terbitkan juga menyetujui pemilik, Tolak juga menolak pemilik. Pemilik melihat status, tanggal ajuan, dan catatan petugas, tanpa posisi antrean atau tanggal selesai.
+- **Daftar sendiri (K-C-01).** Akun login mengajukan profil baru: masuk sebagai `umkm_profil` `diajukan` sumber baru `mandiri`, revisi pertama, kontak WhatsApp opsional, dan baris pemilik `diajukan`. Petugas memeriksa profil dan pemilik di layar yang sama; Terbitkan pertama juga menyetujui pemilik. Tolak berfungsi sebagai catatan: pemilik tetap diajukan dan boleh mengirim draf perbaikan selama profilnya belum pernah terbit (keputusan PM 2026-11-09, sesuai cerita tahap C di `docs/umkm/RENCANA.md`). Pendaftar boleh mengunggah foto draf untuk profil mandiri miliknya sebelum disetujui. Pemilik melihat status, tanggal ajuan, dan catatan petugas, tanpa posisi antrean atau tanggal selesai.
 - **Klaim (K-C-03).** Akun login mengklaim profil `terbit` dengan alasan singkat. Masuk daftar tugas sebagai `jenis = 'klaim'`. Petugas memastikan penanggung jawab (telepon lewat WhatsApp pribadi bila perlu) lalu Setujui atau Tolak.
 - **Draf (K-C-04).** Pemilik yang disetujui mengubah lewat revisi pribadi baru. Versi terbit tetap tampil sampai revisi disetujui petugas lewat alur tinjauan tahap A. Foto draf memakai area R2 tertutup `umkm-draf` (perluas izin area untuk pemilik dengan kunci berawalan profil miliknya), publikasi foto memakai mekanisme G2. TikTok dan Instagram mengikuti validasi tahap A. Perubahan nomor WhatsApp membuat versi kontak baru, sehingga izin lama otomatis tidak berlaku.
 - **Kolom pelaku.** Kolom yang sekarang wajib berisi `petugas.id` (revisi, versi kontak, izin, riwayat) perlu cara mencatat pemilik sebagai pelaku. Pilih cara paling kecil, misalnya kolom UID pemilik opsional dengan CHECK salah satu terisi, lewat migrasi baru.
@@ -31,3 +31,5 @@ Dasar: `docs/umkm/SISTEM.md` bagian 3, 5, 7, 8 dan `docs/umkm/ALUR-DAN-PERAN.md`
 - **Route.** `src/app/api/umkm-pemilik/**` untuk pemilik, `src/app/api/admin/umkm-tugas/klaim/**` untuk petugas. 503 tenang sebelum migrasi.
 
 ## Comments
+
+2026-11-09: kode, tinjauan, dan perbaikan G5 selesai, gate lulus, di-commit lokal. Perbaikan tambahan dari tinjauan ada di `.tim/umkm-fitur/PERBAIKAN-G5.md` (antara lain Cabut kepemilikan oleh petugas). Migrasi belum diterapkan; pemeriksaan staging tercatat di `.scratch/umkm-fitur/PROGRES.md`.

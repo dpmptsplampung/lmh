@@ -183,12 +183,18 @@ Tahap B, permintaan nomor oleh perusahaan. Perusahaan yang meminta nomor UMKM wa
 dan mengisi nama perusahaan dan jabatan. Nama, email, dan HP diambil dari profil akun. Nomor UMKM hanya dibuka
 bila pemiliknya sudah memberi izin dan petugas menyetujui permintaan. Nomor hanya tampil di akun pemohon itu,
 tidak dikirim lewat WhatsApp, email, atau notifikasi. Pemilik UMKM dapat mencabut izin kapan saja dengan
-menghubungi petugas UMKM atau lewat formulir di LMH. Sesudah dicabut, nomor tidak lagi tampil di akun perusahaan, tetapi perusahaan yang sudah mencatatnya mungkin masih
+menghubungi petugas UMKM, lewat formulir di LMH, atau dari halaman Usaha saya. Sesudah dicabut, nomor tidak lagi tampil di akun perusahaan, tetapi perusahaan yang sudah mencatatnya mungkin masih
 menyimpannya. Petugas memakai WhatsApp pribadinya untuk menanyakan izin kepada UMKM dan memberi tahu pemohon.
 Riwayat chat di ponsel petugas berada di luar sistem LMH. Nama perusahaan dan jabatan disimpan selama akun Anda
 ada. Catatan permintaan dan Kebutuhan disimpan sampai 730 hari sesudah ditutup, sesudah izin dicabut, atau sesudah
 akun dihapus. Sesudah itu teks Kebutuhan, kontak yang dicatat petugas, serta nama dan jabatan perusahaan yang tidak
 terhubung ke akun dihapus.
+
+Tahap C, pemilik usaha. Pemilik usaha yang mendaftarkan atau mengklaim profil memakai akun pribadi. Pendaftar
+profil baru dapat memperbaiki profil dan fotonya selama pemeriksaan. Pengklaim profil yang sudah ada mendapat hak
+mengubah sesudah petugas memastikan penanggung jawab usaha. Untuk memastikan penanggung jawab usaha, petugas
+pemeriksa melihat nama, HP, dan email akun serta alasan klaim, dan dapat menghubungi Anda. Pemilik melihat nama
+perusahaan penerima nomor dan tanggalnya, tanpa data pribadi pemohon. Perubahan profil diperiksa petugas sebelum tampil.
 
 ### Statistik opsional
 

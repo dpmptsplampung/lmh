@@ -1,6 +1,6 @@
 # 18 layar petugas klaim
 
-Status: ready-for-agent
+Status: ready-for-human
 Wave: G5
 Blocked by: 16 (contract)
 
@@ -21,3 +21,5 @@ Screen tests: claim approve and reject in at most two clicks; registrant data sh
 Kontrak backend tiket 16 mengikat. Profil mandiri dan revisi pemilik memakai layar tinjauan profil yang sudah ada, ditambah keterangan pemilik (nama akun, HP, email dari profil pengunjung). Klaim: profil, akun pengklaim, alasan, tombol Setujui dan Tolak dengan alasan singkat. FO tetap hanya hitungan.
 
 ## Comments
+
+2026-11-09: kode, tinjauan, dan perbaikan G5 selesai, gate lulus, di-commit lokal. Perbaikan tambahan dari tinjauan ada di `.tim/umkm-fitur/PERBAIKAN-G5.md` (antara lain Cabut kepemilikan oleh petugas). Migrasi belum diterapkan; pemeriksaan staging tercatat di `.scratch/umkm-fitur/PROGRES.md`.

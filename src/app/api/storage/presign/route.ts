@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { bolehUnggahDraf } from '@/lib/umkm-katalog/akses-server';
 import { logServerEvent } from '@/lib/observability/logger';
-import { ATURAN_AREA, adalahArea, kunciObjek, type Area } from '@/lib/storage/area';
+import { ATURAN_AREA, adalahArea, kunciObjek, profilDrafDariPath, type Area } from '@/lib/storage/area';
 import { presignPut, r2Tersedia, bucketTerpisah } from '@/lib/storage/r2';
 
 export const dynamic = 'force-dynamic';
@@ -22,6 +22,12 @@ const bodySchema = z.object({
 const AREA_DILAYANI = (a: Area) => a !== 'chat-lampiran';
 
 export async function POST(request: NextRequest) {
+  const response = await proses(request);
+  response.headers.set('Cache-Control', 'private, no-store');
+  return response;
+}
+
+async function proses(request: NextRequest) {
   const body = bodySchema.safeParse(await request.json().catch(() => null));
   if (!body.success || !adalahArea(body.data.area) || !AREA_DILAYANI(body.data.area)) {
     return NextResponse.json({ error: 'Permintaan tidak valid' }, { status: 400 });
@@ -35,10 +41,10 @@ export async function POST(request: NextRequest) {
 
   const { data: staf } = await supabase.from('petugas').select('role, aktif').eq('auth_user_id', user.id).maybeSingle();
   const aturan = ATURAN_AREA[area];
-  if (!staf || staf.aktif === false || !aturan.peran.includes(staf.role as never)) {
+  if (area !== 'umkm-draf' && (!staf || staf.aktif === false || !aturan.peran.includes(staf.role as never))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
-  if (area === 'umkm-draf' && !(await bolehUnggahDraf(supabase, user))) {
+  if (area === 'umkm-draf' && !(await bolehUnggahDraf(supabase, user, path))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403, headers: { 'Cache-Control': 'private, no-store' } });
   }
   if (!aturan.mime.includes(mime)) return NextResponse.json({ error: 'Tipe berkas tidak diizinkan' }, { status: 400 });
@@ -47,7 +53,9 @@ export async function POST(request: NextRequest) {
   let kunci: string;
   try {
     const ekstensi = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }[mime];
-    kunci = kunciObjek(area, area === 'umkm-draf' ? `${randomUUID()}.${ekstensi}` : path);
+    const profil = !staf ? profilDrafDariPath(path) : null;
+    const nama = `${profil ? `${profil}/` : ''}${randomUUID()}.${ekstensi}`;
+    kunci = kunciObjek(area, area === 'umkm-draf' ? nama : path);
   } catch {
     return NextResponse.json({ error: 'Path berkas tidak valid' }, { status: 400 });
   }

@@ -36,6 +36,13 @@ export function kunciObjek(area: Area, path: string): string {
   return `${area}/${path}`;
 }
 
+export function profilDrafDariPath(path?: string): string | null {
+  if (!path) return null;
+  try { kunciObjek('umkm-draf', path); } catch { return null; }
+  const cocok = /^([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\/.+$/i.exec(path);
+  return cocok?.[1].toLowerCase() ?? null;
+}
+
 /** Pemeriksaan tanda tangan berkas (magic bytes) agar tipe yang diklaim klien tidak sekadar dipercaya. */
 export function cocokMagicBytes(mime: string, head: Uint8Array): boolean {
   const s = (...b: number[]) => b.every((v, i) => head[i] === v);

@@ -16,6 +16,7 @@ const ACTIONS: Record<string, string> = {
   atur_pemeriksa: 'Pemeriksa diperbarui', selesai: 'Tugas selesai',
   darurat_sembunyikan: 'Profil disembunyikan', darurat_catat_pencabutan: 'Pencabutan izin dicatat',
   selesai_mendesak: 'Pemeriksaan mendesak selesai',
+  cabut_kepemilikan: 'Kepemilikan dicabut',
 };
 
 export default function JejakKerja({ refresh, onTahan }: {
@@ -57,7 +58,7 @@ export default function JejakKerja({ refresh, onTahan }: {
         <p>{item.profil_nama}{permintaan?.permintaan_kode ? `. Permintaan ${permintaan.permintaan_kode}` : ''}</p>
         {permintaan?.permintaan_status && <p>Status permintaan sekarang: {LABEL_PERMINTAAN[permintaan.permintaan_status]}</p>}
         <p className={styles.meta}>{item.aktor_nama} · {item.peran === 'front_office' ? 'Front Office'
-          : item.peran === 'admin' ? 'Admin' : 'Petugas'} · <time dateTime={item.dibuat_pada}>
+          : item.peran === 'admin' ? 'Admin' : item.peran === 'pemilik' ? 'Pemilik usaha' : 'Petugas'} · <time dateTime={item.dibuat_pada}>
           {formatTanggalWaktu(item.dibuat_pada)} WIB</time></p>
         {(item.status_lama || item.status_baru) && <p>Status: {item.status_lama ?? 'belum ada'} →
           {' '}{item.status_baru ?? 'tidak berubah'}</p>}

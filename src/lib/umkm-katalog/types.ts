@@ -3,7 +3,8 @@ export type Revisi = {
   id: string; profil_id: string; versi: number; nama: string; deskripsi: string; alamat: string | null;
   jenis: string; kategori: string; spesifik: string | null; kabupaten_kota: string;
   memiliki_nib: boolean | null; instagram: string | null; tiktok: string | null;
-  dibuat_oleh: string; dibuat_pada: string; keputusan: 'terbit' | 'ditolak' | null;
+  dibuat_oleh: string | null; aktor_uid?: string | null;
+  dibuat_pada: string; keputusan: 'terbit' | 'ditolak' | null;
 };
 export type Foto = {
   id: string; revisi_id: string; asal: 'satudata' | 'eksternal' | 'unggahan'; url: string | null;
@@ -18,11 +19,13 @@ export type Tugas = {
   peringatan_kontak: string[];
 };
 export type Detail = Tugas & {
-  dipegang_saya: boolean; sumber: 'kurasi' | 'satudata' | 'loket'; sumber_ref: string | null;
+  dipegang_saya: boolean; sumber: 'kurasi' | 'satudata' | 'loket' | 'mandiri'; sumber_ref: string | null;
   revisi: Revisi; foto: Foto[]; izin_status: 'diberikan' | 'dicabut' | null;
   foto_publikasi_tertunda?: number;
   foto_hapus_tertunda?: number;
   foto_disetujui?: Foto[];
+  pemilik?: import('./types-g5').AkunPemilik | null;
+  pemilik_terdaftar?: import('./types-g5').PemilikTerdaftar[];
 };
 export type Mutasi = {
   id: string; versi: number; status: Status; revisi_id?: string; peringatan_kontak?: string[];
@@ -52,7 +55,8 @@ type DasarPekerjaan = {
 };
 export type TugasPesan = DasarPekerjaan & { jenis: 'pesan'; alasan: null };
 export type TugasLaporan = DasarPekerjaan & { jenis: 'laporan'; alasan: AlasanLaporan };
-export type TugasCampuran = Tugas | TugasPesan | TugasLaporan | import('./types-g4').TugasPermintaan;
+export type TugasCampuran = Tugas | TugasPesan | TugasLaporan | import('./types-g4').TugasPermintaan
+  | import('./types-g5').TugasKlaim;
 export type DetailPesan = TugasPesan & {
   nama_pengirim: string; perusahaan: string; nomor: string; pesan: string; kata_kunci: string | null;
   dipegang_saya: boolean; pemeriksa_nama: string; dibalas_pada: string | null;

@@ -37,7 +37,7 @@ export async function publikasiFoto(client: SupabaseClient, id: string): Promise
   let tertunda = foto.length;
   if (r2Tersedia() && bucketTerpisah() && detail.status === 'terbit') for (const f of foto) {
     try {
-      if (!f.r2_key || !/^umkm-draf\/[a-f0-9-]{36}\.(jpg|png|webp)$/.test(f.r2_key)) continue;
+      if (!f.r2_key || !/^umkm-draf\/(?:[a-f0-9-]{36}\/)?[a-f0-9-]{36}\.(jpg|png|webp)$/.test(f.r2_key)) continue;
       const head = await headObject('private', f.r2_key);
       const ekstensi = f.r2_key.split('.').at(-1)!;
       const tipe = ({ jpg: 'image/jpeg', png: 'image/png', webp: 'image/webp' })[ekstensi];
