@@ -15,9 +15,11 @@ import StatusKosong from '@/components/ui/StatusKosong';
 import { formatTanggal, formatWaktu } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/components/Toast';
-import AkunForm, { AkunDialog, type AkunRow, type LayananOption } from '@/components/admin/AkunForm';
+import AkunForm, { AkunDialog, type AkunRow as AkunBase, type LayananOption } from '@/components/admin/AkunForm';
 import AkunBaruForm, { type AkunBaruInput } from '@/components/admin/AkunBaruForm';
 import styles from './petugas.module.css';
+
+type AkunRow = AkunBase & { pemeriksa_umkm?: boolean };
 
 type Dialog =
   | { kind: 'kelola'; akun: AkunRow }
@@ -70,6 +72,10 @@ function kelompokkan(rows: AkunRow[]): Kelompok[] {
   return hasil;
 }
 
+class AkunApiError extends Error {
+  constructor(message: string, public code?: string) { super(message); }
+}
+
 async function api(url: string, method: string, body?: unknown) {
   const res = await fetch(url, {
     method,
@@ -77,7 +83,9 @@ async function api(url: string, method: string, body?: unknown) {
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const json = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(json.error ?? 'Permintaan gagal');
+  if (!res.ok) throw new AkunApiError(
+    typeof json.error === 'string' ? json.error : json.error?.message ?? 'Permintaan gagal', json.error?.code,
+  );
   return json;
 }
 
@@ -103,6 +111,8 @@ export default function AdminPetugasPage() {
   const [alasan, setAlasan] = useState('');
   // Fase 3: penanda Koordinator tersedia setelah migrasi 202610290001 (server mengirim koordinator_tersedia).
   const [koordinatorTersedia, setKoordinatorTersedia] = useState(false);
+  const [pemeriksaTersedia, setPemeriksaTersedia] = useState(false);
+  const [mengubahPemeriksa, setMengubahPemeriksa] = useState<string | null>(null);
   const [mengubahKoordinator, setMengubahKoordinator] = useState<string | null>(null);
   // Saklar Operator harian tersedia setelah migrasi 202611030014 (server mengirim operator_aktif_tersedia).
   const [operatorTersedia, setOperatorTersedia] = useState(false);
@@ -120,6 +130,7 @@ export default function AdminPetugasPage() {
       ]);
       setRows((daftar.akun ?? []) as AkunRow[]);
       setKoordinatorTersedia(daftar.koordinator_tersedia === true);
+      setPemeriksaTersedia(daftar.pemeriksa_umkm_tersedia === true);
       setOperatorTersedia(daftar.operator_aktif_tersedia === true);
       setLayananList((layanan?.data ?? []) as LayananOption[]);
       setSelfId(me?.profil?.id ?? null);
@@ -213,6 +224,23 @@ export default function AdminPetugasPage() {
     }
   };
 
+  const ubahPemeriksa = async (akun: AkunRow) => {
+    if (mengubahPemeriksa) return;
+    setMengubahPemeriksa(akun.id);
+    try {
+      await api(`/api/admin/petugas/${akun.id}/pemeriksa-umkm`, 'PATCH', {
+        pemeriksa_umkm: !akun.pemeriksa_umkm, operasi_id: crypto.randomUUID(),
+      });
+      toast(akun.pemeriksa_umkm ? `Akses pemeriksa UMKM ${akun.nama} dicabut.` : `${akun.nama} kini pemeriksa UMKM.`, 'success');
+      await load();
+    } catch (e) {
+      const selfDenied = e instanceof AkunApiError && e.code === 'DILARANG' && akun.id === selfId;
+      toast(selfDenied ? 'Penanda untuk akun sendiri diberikan oleh admin lain.'
+        : e instanceof Error ? e.message : 'Gagal mengubah pemeriksa UMKM', 'error');
+    }
+    finally { setMengubahPemeriksa(null); }
+  };
+
   const buatAkun = (data: AkunBaruInput) =>
     jalankan(async () => {
       const json = await api('/api/admin/petugas', 'POST', data);
@@ -278,6 +306,16 @@ export default function AdminPetugasPage() {
           ? <Lencana nada="peringatan">Belum pernah login</Lencana>
           : <span className={styles.kolLogin}>{fmtLogin(row.last_sign_in_at)}</span>,
     },
+    ...(pemeriksaTersedia ? [{
+      kunci: 'pemeriksa_umkm', judul: 'Pemeriksa UMKM',
+      render: (row: AkunRow) => row.role === 'front_office' ? null : (
+        <button type="button" className={`${styles.koordinator} ${row.pemeriksa_umkm ? styles.koordinatorNyala : ''}`}
+          aria-pressed={row.pemeriksa_umkm === true} aria-label={`Pemeriksa UMKM ${row.nama}`}
+          disabled={mengubahPemeriksa !== null || !row.aktif} onClick={() => void ubahPemeriksa(row)}>
+          {row.pemeriksa_umkm && <Check size={14} aria-hidden="true" />}Pemeriksa UMKM
+        </button>
+      ),
+    } as KolomTabel<AkunRow>] : []),
     ...(koordinatorTersedia
       ? [{
           kunci: 'koordinator',

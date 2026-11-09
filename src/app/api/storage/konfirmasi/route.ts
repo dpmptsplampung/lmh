@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
+import { bolehUnggahDraf } from '@/lib/umkm-katalog/akses-server';
 import { logServerEvent } from '@/lib/observability/logger';
 import { ATURAN_AREA, adalahArea, cocokMagicBytes, kunciObjek, type Area } from '@/lib/storage/area';
 import { deleteObjects, getObjectRange, headObject, r2Tersedia, urlPublik } from '@/lib/storage/r2';
@@ -27,6 +28,9 @@ export async function POST(request: NextRequest) {
   if (!staf || staf.aktif === false || !aturan.peran.includes(staf.role as never)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
+  if (area === 'umkm-draf' && !(await bolehUnggahDraf(supabase, user))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403, headers: { 'Cache-Control': 'private, no-store' } });
+  }
 
   let kunci: string;
   try {
@@ -47,7 +51,8 @@ export async function POST(request: NextRequest) {
         logServerEvent('warn', { operation: 'storage.konfirmasi.hapus_gagal', route: ROUTE, error }));
       return NextResponse.json({ error: 'Berkas tidak sesuai aturan' }, { status: 422 });
     }
-    return NextResponse.json({ kunci, ...(aturan.bucket === 'public' ? { url: urlPublik(kunci) } : {}) });
+    return NextResponse.json({ kunci, ...(aturan.bucket === 'public' ? { url: urlPublik(kunci) } : {}) },
+      area === 'umkm-draf' ? { headers: { 'Cache-Control': 'private, no-store' } } : undefined);
   } catch (error) {
     logServerEvent('error', { operation: 'storage.konfirmasi', route: ROUTE, error });
     return NextResponse.json({ error: 'Gagal memeriksa berkas' }, { status: 500 });

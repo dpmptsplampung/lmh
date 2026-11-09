@@ -46,7 +46,7 @@ describe('survei_undangan: berkas, urutan, atomik', () => {
     // (202611020001-202611020004; Task 3-5 menambah yang lain sesudahnya).
     const daftar = [...FORWARD_MIGRATION_FILES];
     expect(daftar).toEqual([...daftar].sort());
-    const luarSeri = listMigrationFiles().filter((nama) => nama !== BERKAS && !/^20261(?:1020|1030|1040)\d{3}_/.test(nama));
+    const luarSeri = listMigrationFiles().filter((nama) => nama !== BERKAS && !/^20261(?:1020|1030|1040|1090)\d{3}_/.test(nama));
     for (const nama of luarSeri) expect(nama < BERKAS).toBe(true);
     // Nomor di atas paket audit (202610260001) agar urutan tetap sah bila kedua cabang digabung.
     expect(BERKAS > '202610260001').toBe(true);
@@ -406,8 +406,9 @@ describe('survei_undangan: pencatatan (docs/ATURAN_MIGRASI.md #4)', () => {
     expect(entri).toMatch(/PGlite/);
     expect(entri).toContain(BERKAS_ROLLBACK);
     expect(entri).toContain('skenario-survei-undangan.mjs');
-    // Entri berikutnya (bila ada) hanya milik seri ini (0002-0004), bukan pekerjaan lain.
+    // Entri berikutnya tetap berurutan: seri ini (0002-0004) lebih dulu, baru pekerjaan sesudahnya.
     const nomorBerikut = [...entri.slice(5).matchAll(/\n### [^\n]*\(M-(\d{12})_/g)].map((m) => m[1]);
-    for (const nomor of nomorBerikut) expect(['202611020002', '202611020003', '202611020004']).toContain(nomor);
+    expect(nomorBerikut).toEqual([...nomorBerikut].sort());
+    expect(nomorBerikut.slice(0, 3)).toEqual(['202611020002', '202611020003', '202611020004']);
   });
 });

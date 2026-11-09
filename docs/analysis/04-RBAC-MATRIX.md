@@ -266,3 +266,36 @@ Mengganti baca langsung `kunjungan` oleh klien untuk autofill (yang menyusut sej
 | `hp_normal(text)` | authenticated, service_role (anon dicabut) | fungsi murni, tanpa akses data |
 
 Celah yang TIDAK ditutup Fase 6: `buku_tamu` terbaca semua FO untuk semua tanggal (tidak dipakai fitur ini).
+
+## 11. UMKM tahap A G1, 2026-11-09 (belum diterapkan)
+
+Flag `petugas.pemeriksa_umkm` terpisah dari role utama dan Layanan. Database memeriksa akun aktif serta
+`sesi_valid()` setiap panggilan, tidak mempercayai flag di browser/JWT metadata pengguna.
+Perubahan role atau auth_user_id mencabut flag dan diaudit dengan nilai lama/baru, termasuk tanpa sesi pengguna;
+perubahan layanan_id mempertahankannya. INSERT memaksa false, perubahan langsung ditolak, dan aktivasi diri
+sendiri ditolak oleh RPC penanda. Front Office selalu ditolak oleh RPC pemeriksa walaupun flag bernilai true.
+
+| Data/aksi | Anon/pengunjung | Petugas tanpa flag | Pemeriksa aktif pemegang tugas | Pemeriksa lain | FO | Admin tanpa flag |
+|---|---|---|---|---|---|---|
+| Proyeksi revisi terbit yang disetujui | Ya | Ya | Ya | Ya | Ya | Ya |
+| Tabel dasar, nomor lewat SELECT langsung | Tidak | Tidak | Tidak | Tidak | Tidak | Tidak |
+| Daftar/pencarian/detail privat melalui RPC | Tidak | Tidak | Ya | Ya | Tidak | Tidak |
+| Simpan profil baru | Tidak | Tidak | Ya | Ya, otomatis memegang profil baru | Tidak | Tidak |
+| Ambil alih tugas | Tidak | Tidak | Ya | Ya, versi dan riwayat | Tidak | Tidak |
+| Koreksi/putusan/izin/visibilitas | Tidak | Tidak | Ya, versi terbaru | Tidak sebelum ambil alih | Tidak | Tidak |
+| Kontak tunggal lewat RPC tercatat | Tidak | Tidak | Ya, revisi belum diputuskan atau mendesak | Tidak | Tidak | Tidak |
+| Atur flag pemeriksa | Tidak | Tidak | Hanya bila juga Admin | Hanya bila juga Admin | Tidak | Ya |
+
+Admin dengan flag mengikuti hak pemeriksa, termasuk syarat memegang tugas untuk nomor/mutasi. Tidak ada pemberian nomor kepada perusahaan/pengunjung pada tahap A. Tidak ada hak operasi darurat/pengawasan baru di G1; itu ditambahkan tiket 06.
+
+Antrean memakai keputusan revisi terakhir IS NULL OR mendesak; profil tersembunyi yang sudah diputuskan dicari
+melalui pencarian semua status. Pencarian memakai nama revisi terakhir, q trim 2..200, wildcard literal,
+id ASC dan cursor eksklusif, maksimal 20 hasil tanpa nomor. Izin tidak mengubah mendesak, dan G1 tidak menyalakannya.
+Ambil alih tetap diperbolehkan sesudah keputusan. service_role tidak memiliki hak langsung pada enam tabel UMKM.
+
+Proyeksi publik hanya field bisnis allowlist, tanpa NIB, alamat rinci, nomor, R2 key atau data staf. Draf koreksi tidak mengganti snapshot terbit sampai keputusan baru; profil disembunyikan ditolak langsung oleh RPC publik. Foto draf R2 private dipratinjau melalui JWT dan URL bertanda tangan 60 detik, bukan alamat publik tetap.
+
+Definer memakai search_path pg_catalog, pg_temp dan semua relasi schema-qualified. PUBLIC EXECUTE dicabut;
+schema/helper/rahasia privat tidak memiliki grant pengguna. UUID operasi + HMAC body dalam riwayat mendukung
+retry tanpa menyimpan payload privat; pengulangan body berbeda konflik. Alasan audit menolak kontak.
+Uji DB langsung menggunakan role dan UID ada pada skenario lokal, bukan hanya mock route/menu.

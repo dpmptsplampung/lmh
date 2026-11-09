@@ -6,8 +6,9 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Search } from 'lucide-react';
-import { buildNavTree, canAccessAdminPath, type AdminRole } from '@/lib/admin-nav';
+import { buildNavTree, canAccessAdminPath, type AdminRole, type AdminNavContext } from '@/lib/admin-nav';
 import styles from './PerintahCepat.module.css';
+import { usePemeriksaUmkm } from '@/components/admin/umkm-tugas/PemeriksaContext';
 
 export interface Perintah {
   id: string;
@@ -28,12 +29,12 @@ const TINDAKAN: (Perintah & { roles: AdminRole[] })[] = [
 ];
 
 /** Daftar perintah untuk satu peran: tindakan dulu, lalu semua entri menu yang terlihat di sidebar peran itu. */
-export function susunPerintah(role: string | null | undefined): Perintah[] {
+export function susunPerintah(role: string | null | undefined, context: AdminNavContext = {}): Perintah[] {
   if (role !== 'admin' && role !== 'petugas' && role !== 'front_office') return [];
   const hasil: Perintah[] = TINDAKAN.filter(
-    (t) => t.roles.includes(role) && canAccessAdminPath(role, t.href.split('?')[0]),
+    (t) => t.roles.includes(role) && canAccessAdminPath(role, t.href.split('?')[0], context),
   ).map((t) => ({ id: t.id, label: t.label, href: t.href, kelompok: t.kelompok, kata: t.kata }));
-  for (const item of buildNavTree(role)) {
+  for (const item of buildNavTree(role, context)) {
     if (item.type === 'link') {
       hasil.push({ id: `menu-${item.entry.href}`, label: item.entry.label, href: item.entry.href, kelompok: 'Menu' });
     } else {
@@ -76,6 +77,7 @@ export interface PerintahCepatProps {
 }
 
 export default function PerintahCepat({ role, pembukaRef, buka: bukaLuar, onUbah, onTutup }: PerintahCepatProps) {
+  const pemeriksaUmkm = usePemeriksaUmkm();
   const [bukaDalam, setBukaDalam] = useState(false);
   const buka = bukaLuar ?? bukaDalam;
   const atur = (v: boolean) => {
@@ -90,7 +92,7 @@ export default function PerintahCepat({ role, pembukaRef, buka: bukaLuar, onUbah
   const idDaftar = useId();
   const idJudul = useId();
 
-  const semua = useMemo(() => susunPerintah(role), [role]);
+  const semua = useMemo(() => susunPerintah(role, { pemeriksa_umkm: pemeriksaUmkm }), [role, pemeriksaUmkm]);
   const hasil = useMemo(() => saring(semua, kueri), [semua, kueri]);
   const aktifAman = hasil.length === 0 ? -1 : Math.min(aktif, hasil.length - 1);
 

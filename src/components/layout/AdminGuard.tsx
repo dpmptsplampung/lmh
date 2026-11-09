@@ -31,7 +31,17 @@ export default function AdminGuard({ children }: { children: React.ReactNode }) 
         return;
       }
 
-      if (!canAccessAdminPath(petugas.role as AdminRole, pathname)) {
+      // Kegagalan kolom modul baru tidak mengunci halaman staf yang sudah berjalan.
+      let pemeriksaUmkm = false;
+      try {
+        const { data: flag, error } = await supabase.from('petugas')
+          .select('pemeriksa_umkm').eq('auth_user_id', user.id).maybeSingle();
+        pemeriksaUmkm = !error && flag?.pemeriksa_umkm === true;
+      } catch { /* modul belum tersedia */ }
+      // Halaman tugas menjelaskan penolakan API kepada staf; FO tetap ditolak di pintu ini.
+      const halamanTugas = pathname === '/admin/umkm-tugas' || pathname.startsWith('/admin/umkm-tugas/');
+      const stafTugas = halamanTugas && (petugas.role === 'admin' || petugas.role === 'petugas');
+      if (!stafTugas && !canAccessAdminPath(petugas.role as AdminRole, pathname, { pemeriksa_umkm: pemeriksaUmkm })) {
         router.replace('/admin/antrian');
         return;
       }

@@ -1384,3 +1384,30 @@ Perbaikan hasil tinjauan keamanan, QA, dan UI 2026-11-04. Prasyarat: 20261103001
 - Rekap: FO non-Koordinator dipaksa unit `fo` di fungsi inti; ringkasan "dilayani" hanya menghitung pelayanan berpenangan (sama dengan tabel Kinerja).
 - Operator: `operator_aktif` masuk audit; mematikan izin mengosongkan `operator_default`.
 - Rollback: `docs/rollback-perbaikan-tinjauan-akhir-202611040001.sql`, dijalankan SEBELUM rollback 0015/0014/0013. Skenario bukti: `node scripts/lokal-rantai/skenario-tinjauan-akhir.mjs` (102 cek).
+
+## 202611090001_umkm_inti: UMKM tahap A G1 (belum diterapkan)
+
+- Enam tabel baru privat dengan RLS dan tanpa hak langsung anon/authenticated/service_role;
+  penanda `petugas.pemeriksa_umkm`, rahasia HMAC satu baris di schema privat tanpa grant.
+- RPC pemeriksa: simpan revisi, daftar maksimal 20 (mendesak lalu tertua), pencarian nama semua status,
+  detail, ambil alih, putusan, visibilitas, kontak tunggal tercatat, izin; RPC Admin untuk penanda.
+  Identitas dan sesi diverifikasi DB; FO selalu ditolak untuk pekerjaan pemeriksa, termasuk nomor.
+- `umkm_cari_profil(text,uuid)` mencocokkan bagian nama revisi terakhir tanpa peka kapital dengan wildcard literal,
+  q trim 2..200 karakter, maksimal 20 hasil, id ASC dan cursor eksklusif; route GET `/api/admin/umkm-tugas/cari`.
+  Antrean hanya revisi belum diputuskan atau mendesak. Kontak mensyaratkan pemegang dan pekerjaan terbuka tersebut;
+  ambil alih tetap tersedia setelah putusan. Pencatatan izin mempertahankan nilai mendesak.
+- Penanda hanya diubah RPC; aktivasi diri sendiri ditolak, INSERT memaksa false.
+  Perubahan role/auth_user_id mencabut penanda dan mengisi nilai lama/baru audit, termasuk tanpa sesi pengguna;
+  perubahan layanan_id mempertahankannya. Semua fungsi baru memakai `search_path = pg_catalog, pg_temp`.
+- Empat status profil, snapshot publik tetap saat koreksi, pemulihan melalui review. Nomor baru membatalkan izin lama tanpa menghapus riwayat. Semua mutasi memakai UUID operasi/HMAC dan versi dengan row lock singkat; riwayat hanya referensi/status serta alasan bebas kontak.
+- Proyeksi `umkm_profil_publik` hanya snapshot disetujui; tanpa NIB, alamat, kontak, kunci R2 atau data staf. Semua field teks publik/URL diperiksa kontak sebelum terbit. Foto lama tersembunyi tetap tersembunyi saat daftar penuh disalin; hide pada koreksi juga segera menyembunyikan foto cocok pada snapshot terbit. Riwayat memuat UUID foto/versi/penangan dan enum tindakan, tanpa payload privat.
+- Foto unggahan di R2 private `umkm-draf`, maksimal 2 MiB; preview melalui JWT dan signed URL 60 detik. Presign dan konfirmasi draf memeriksa aktif/flag/role/sesi terkini, gagal tertutup bila kolom atau sesi belum tersedia; area lain tetap memakai aturan lama. Publikasi foto unggahan diselesaikan tiket 04, di luar G1.
+- Bukti lokal: contract statis adjacency, test route JWT/no-store/validasi/galat, test perilaku `src/lib/umkm-katalog/database.test.ts`, dan skenario QA `scripts/lokal-rantai/skenario-umkm-a1.mjs`. Harness PGlite menerapkan seluruh rantai; tidak menyambung database nyata. Dua koneksi simultan diuji pada tiket 10; G1 membuktikan versi stale berurutan.
+- Rollback operasional: `docs/rollback-umkm-inti-202611090001.sql` menutup sebelas RPC dan melepas pemicu penjaga
+  penanda, mempertahankan data, audit dan bukti. Presign/konfirmasi draf tetap terbuka bagi akun yang memenuhi
+  syarat; penanda tidak dikosongkan dan pencabutan otomatis role/auth berhenti. Gelombang berikutnya dikembalikan
+  lebih dahulu. Rollback belum dijalankan pada produksi; pengaktifan ulang melalui migrasi maju baru.
+- Perintah rilis sesudah persetujuan pemilik dan uji staging, belum dijalankan:
+  `node scripts/apply-migration.mjs supabase/migrations/202611090001_umkm_inti.sql --atomic --dry-run`,
+  lalu `node scripts/apply-migration.mjs supabase/migrations/202611090001_umkm_inti.sql --atomic`.
+- Status: BELUM DITERAPKAN ke staging atau produksi. Tidak ada commit, push, atau perubahan data nyata dalam pekerjaan ini.

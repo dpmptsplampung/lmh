@@ -115,6 +115,7 @@ export const FORWARD_MIGRATION_FILES = [
   '202611030014_profil_ubah_nama.sql',
   '202611030015_akses_fo_antrean.sql',
   '202611040001_perbaikan_tinjauan_akhir.sql',
+  '202611090001_umkm_inti.sql',
 ] as const;
 
 export function listMigrationFiles(): string[] {

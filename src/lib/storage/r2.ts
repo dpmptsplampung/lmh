@@ -130,21 +130,32 @@ export async function deleteObjects(bucket: Bucket, keys: string[]): Promise<voi
   }
 }
 
-/** URL PUT bertanda tangan; ContentType dan ContentLength ikut ditandatangani sehingga klien tidak bisa mengganti ukuran/tipe. */
+/** URL PUT bertanda tangan; penguncian content-type dinyalakan hanya untuk area yang memerlukannya. */
 export async function presignPut(
   bucket: Bucket,
   key: string,
-  opts: { contentType: string; contentLength: number; ttlDetik?: number },
+  opts: { contentType: string; contentLength: number; ttlDetik?: number; tandatanganiContentType?: boolean },
 ): Promise<string> {
   return getSignedUrl(
     s3(),
     new PutObjectCommand({ Bucket: namaBucket(bucket), Key: key, ContentType: opts.contentType, ContentLength: opts.contentLength }),
-    { expiresIn: opts.ttlDetik ?? 120 },
+    {
+      expiresIn: opts.ttlDetik ?? 120,
+      ...(opts.tandatanganiContentType ? { signableHeaders: new Set(['content-type']) } : {}),
+    },
   );
 }
 
-export async function presignGet(bucket: Bucket, key: string, ttlDetik = 60): Promise<string> {
-  return getSignedUrl(s3(), new GetObjectCommand({ Bucket: namaBucket(bucket), Key: key }), { expiresIn: ttlDetik });
+export async function presignGet(
+  bucket: Bucket,
+  key: string,
+  ttlDetik = 60,
+  opts?: { contentType: string; contentDisposition: string },
+): Promise<string> {
+  return getSignedUrl(s3(), new GetObjectCommand({
+    Bucket: namaBucket(bucket), Key: key,
+    ...(opts ? { ResponseContentType: opts.contentType, ResponseContentDisposition: opts.contentDisposition } : {}),
+  }), { expiresIn: ttlDetik });
 }
 
 export function urlPublik(key: string): string {

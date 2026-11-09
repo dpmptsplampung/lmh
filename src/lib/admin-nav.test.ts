@@ -22,7 +22,7 @@ describe('canAccessAdminPath', () => {
   it('admin can open every registered admin page', () => {
     for (const entry of ADMIN_NAV) {
       if (entry.href === '/') continue;
-      expect(canAccessAdminPath('admin', entry.href)).toBe(true);
+      expect(canAccessAdminPath('admin', entry.href, { pemeriksa_umkm: true })).toBe(true);
     }
   });
 
@@ -182,8 +182,8 @@ const bentuk = (role: string) =>
 
 describe('pengelompokan menu: data', () => {
   it('setiap href lama muncul tepat sekali dan role-nya tidak berubah', () => {
-    expect(ADMIN_NAV.map((e) => e.href).sort()).toEqual(Object.keys(ROLES_SEBELUM).sort());
-    for (const e of ADMIN_NAV) expect(e.roles, e.href).toEqual(ROLES_SEBELUM[e.href]);
+    expect(ADMIN_NAV.filter((e) => !e.requiresPemeriksaUmkm).map((e) => e.href).sort()).toEqual(Object.keys(ROLES_SEBELUM).sort());
+    for (const e of ADMIN_NAV.filter((e) => !e.requiresPemeriksaUmkm)) expect(e.roles, e.href).toEqual(ROLES_SEBELUM[e.href]);
   });
 
   it('urutan grup (atas ke bawah) sesuai prioritas pemakaian harian', () => {
@@ -201,7 +201,7 @@ describe('pengelompokan menu: data', () => {
     expect(anak('pesanPerilaku')).toEqual(['Hasil Survei', 'Saran', 'Pengaduan']);
     expect(anak('laporan')).toEqual(['Rekap', 'Performa Pelayanan']);
     expect(anak('pengelolaan')).toEqual(['Jadwal Layanan', 'Kelola Layanan', 'Topik Penanganan', 'Kelola Layar']);
-    expect(anak('kemitraan')).toEqual(['UMKM', 'Lead Investasi', 'Investment Gallery']);
+    expect(anak('kemitraan')).toEqual(['Tugas UMKM', 'UMKM', 'Lead Investasi', 'Investment Gallery']);
     expect(anak('konten')).toEqual(['Dokumen Peraturan', 'Konten Landing']);
     expect(anak('sistem')).toEqual(['Kelola Petugas', 'Pengaturan', 'Pengaturan AI', 'Tata Kelola Data', 'Riwayat Perubahan']);
   });
@@ -386,5 +386,21 @@ describe('entri tersembunyi (halaman lama digabung ke Registrasi Pengunjung)', (
   it('/admin/rekap-fo dipetakan ke Rekap terpadu (grup Laporan)', () => {
     expect(findGroupForPath('/admin/rekap-fo')).toBe('laporan');
     expect(findActiveNavEntry('/admin/rekap-fo')?.href).toBe('/admin/rekap');
+  });
+});
+
+
+describe('penanda pemeriksa UMKM', () => {
+  it.each(['admin', 'petugas'] as const)('menu dan rute %s memerlukan flag', (role) => {
+    const hrefs = (flag: boolean) => urutanHref(buildNavTree(role, { pemeriksa_umkm: flag }));
+    expect(hrefs(false)).not.toContain('/admin/umkm-tugas');
+    expect(hrefs(true)).toContain('/admin/umkm-tugas');
+    expect(canAccessAdminPath(role, '/admin/umkm-tugas')).toBe(false);
+    expect(canAccessAdminPath(role, '/admin/umkm-tugas/lanjut', { pemeriksa_umkm: true })).toBe(true);
+    expect(canAccessAdminPath(role, '/admin/umkm-tugas/lanjut', { pemeriksa_umkm: false })).toBe(false);
+  });
+  it('FO selalu ditolak meskipun flag menyala', () => {
+    expect(urutanHref(buildNavTree('front_office', { pemeriksa_umkm: true }))).not.toContain('/admin/umkm-tugas');
+    expect(canAccessAdminPath('front_office', '/admin/umkm-tugas', { pemeriksa_umkm: true })).toBe(false);
   });
 });

@@ -645,3 +645,32 @@
 - Dry-run      : belum dijalankan (DB nyata tidak disentuh). Pemilik menjalankan dry-run sebelum penerapan; itulah verifikasi terhadap skema nyata (fungsi `queue_notifikasi`, `site_settings`, kolom `pengunjung`).
 - Uji perilaku : Tidak ada skenario PGlite terkomit untuk migrasi ini: fungsi ini tidak bisa dijalankan di stub PGlite repositori (`scripts/lokal/pglite-stub.sql` tidak memuat `queue_notifikasi`, `site_settings`, kolom `pengunjung` yang dibaca, maupun trigger-nya). Verifikasi STATIS: `supabase/migrations/survei_notifikasi.test.ts` (27 tes): urutan tiga pernyataan (DO penjaga, fungsi, REVOKE), penjaga PRASYARAT, signature/atribut/REVOKE identik dengan 0007, DECLARE hanya bertambah dua variabel, bagian sebelum dan sesudah cabang selesai identik dengan 0007 setelah spasi dinormalkan, cabang selesai = cabang 0007 dengan TEPAT tiga perubahan, tanpa `/skm` dan `qr_token` di fungsi baru, trigger tidak disentuh, rollback = salinan 0007 persis dan penjaganya membedakan kedua versi pada teks nyata. Sebagai pemeriksaan tambahan SEKALI PAKAI (skrip di luar repositori, TIDAK dikomit, stub tambahan `queue_notifikasi`/`site_settings`/kolom `pengunjung` di atas stub dan migrasi 0001): 30 lolos, 0 gagal. Mencakup: penjaga maju (tanpa fungsi 0007; tanpa ensure_undangan); fungsi 0007 mengirim tautan lama; setelah 0004 email dan push memuat `<host>/survei/<token>` (host bawaan dan `public_url` dari site_settings), `payload.url` relatif hanya pada push, token = token undangan 64 heksadesimal, judul/jenis tidak berubah, tidak ada `qr_token` di notifikasi; walk-in FO tanpa akun hanya email FO; tanpa kontak tidak ada notifikasi tetapi undangan terbit; status batal tanpa notifikasi dan tanpa undangan; selesai ulang tidak menggeser token/batas; cabang reservasi tidak berubah; penerapan ulang idempoten; trigger tetap satu; anon/authenticated tanpa EXECUTE; rollback 0001 ditolak selama fungsi baru terpasang; rollback 0004 memulihkan isi identik dengan 0007 (md5 sama), idempoten, tautan lama kembali, ditolak untuk isi asing dan untuk fungsi yang tidak ada; urutan rollback 0004 lalu 0001 berhasil. Pemeriksaan itu BUKAN pengganti dry-run pemilik di DB nyata (stub tidak memuat `queue_notifikasi` produksi, idempotensi per kunjungan+jenis, atau Resend/web-push).
 - Status       : DITULIS, BELUM DITERAPKAN
+
+### [2026-11-09] UMKM tahap A G1 (M-202611090001_umkm_inti), BELUM DITERAPKAN
+
+- WP/Migrasi: tiket `.scratch/umkm-fitur/issues/01-db-inti.md` dan API tiket 02; `supabase/migrations/202611090001_umkm_inti.sql` beserta test adjacency.
+- Jenis: DDL aditif, enam tabel privat, flag pemeriksa, schema privat dengan rahasia HMAC satu baris, indeks dan RPC baru. Marketplace lama tidak diubah.
+- Objek: `umkm_profil`, `umkm_revisi`, `umkm_foto`, `umkm_kontak_versi`, `umkm_izin`, `umkm_riwayat`;
+  `petugas.pemeriksa_umkm`; `umkm_private.rahasia` dan helper internal; sebelas RPC publik
+  (sepuluh khusus authenticated, satu proyeksi publik), termasuk `umkm_cari_profil(text,uuid)`.
+- Menyentuh data pengunjung: tidak. Migrasi hanya membuat objek dan rahasia baru. Nomor operasional hanya masuk versi kontak immutable melalui RPC pemeriksa; tidak disalin ke audit, galat, atau retry data. Tidak ada tabel fase B/C.
+- Prasyarat: rantai sampai `202611040001`, termasuk `sesi_valid()`, petugas aktif dan role FO; dibuktikan melalui harness PGlite seluruh rantai.
+- Otorisasi: DB memeriksa UID/sesi/aktif/flag dan role admin atau petugas. FO ditolak meski flag salah;
+  Admin tanpa flag hanya mengatur flag, tidak mengaktifkan diri sendiri. Kontak tunggal hanya pemegang tugas
+  dengan revisi belum diputuskan atau mendesak, tercatat otomatis; ambil alih tetap tersedia setelah putusan.
+  Hak langsung enam tabel dicabut dari PUBLIC, anon, authenticated dan service_role.
+- Perbaikan G1: izin tidak mengubah mendesak, antrean memakai keputusan IS NULL OR mendesak; pencarian nama
+  revisi terakhir mencakup semua status, q trim 2..200, wildcard literal, id ASC/cursor eksklusif, maksimal 20.
+  Flag hanya melalui RPC, INSERT memaksa false; role/auth_user_id mencabutnya dan mengisi audit nilai lama/baru
+  termasuk tanpa sesi pengguna, layanan_id tidak mencabutnya. search_path semua fungsi baru pg_catalog, pg_temp.
+- Klien: route baru `force-dynamic`, zod allowlist, JWT pengguna, `private, no-store`, envelope aman; modul belum dipasang menjadi 503. GET petugas toleran kolom belum tersedia, galat lain tidak disamarkan. Preview foto redirect ke signed URL R2 60 detik; publikasi R2 tiket 04.
+- Bukti awal: test kontrak merah (3 gagal, 1 lulus), kemudian hijau; foto tersembunyi saat tambah foto,
+  nomor pada label, dan hide foto saat koreksi masing-masing merah lalu hijau.
+  Perbaikan G1: skenario QA dari 53 PASS/16 FAIL menjadi 69 PASS/0 FAIL, tanpa mengubah skenario;
+  test sempit 14 file/113 test lulus, lint/typecheck bersih dan manifest 109 cocok.
+  Test tanpa jaringan/database nyata; dua transaksi simultan ditunda ke tiket 10 oleh PM.
+- Cara mengembalikan: `docs/rollback-umkm-inti-202611090001.sql` menutup sebelas RPC dan melepas pemicu penjaga
+  penanda tanpa menghapus data/bukti/audit; rollback G2 lebih dahulu jika terpasang. Presign/konfirmasi R2 draf
+  tetap tersedia, penanda tetap tersimpan dan pencabutan otomatis role/auth berhenti.
+  Pengaktifan ulang melalui migrasi maju baru. Rilis wajib mode --atomic sesuai `docs/MIGRATIONS.md`.
+- Status: BELUM DITERAPKAN. Tidak menjalankan skrip produksi, membaca `.env*`, commit atau push.

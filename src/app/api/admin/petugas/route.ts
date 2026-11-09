@@ -30,9 +30,16 @@ export async function GET() {
   const operatorTersedia = !eOperator && Array.isArray(operator);
   const petaOperator = new Map<string, boolean>(operatorTersedia
     ? (operator as { id: string; operator_aktif: boolean }[]).map((p) => [p.id, p.operator_aktif === true]) : []);
+  const { data: pemeriksa, error: ePemeriksa } = await g.service.from('petugas').select('id, pemeriksa_umkm');
+  if (ePemeriksa && !objekBelumAda(ePemeriksa)) {
+    return json({ error: 'Gagal memuat penanda pemeriksa UMKM' }, 500);
+  }
+  const pemeriksaTersedia = !ePemeriksa && Array.isArray(pemeriksa);
+  const petaPemeriksa = new Map<string, boolean>(pemeriksaTersedia
+    ? (pemeriksa as { id: string; pemeriksa_umkm: boolean }[]).map((p) => [p.id, p.pemeriksa_umkm === true]) : []);
   const akun = ((data ?? []) as { id: string }[]).map((a) => ({ ...a, koordinator: peta.get(a.id) ?? false,
-    operator_aktif: petaOperator.get(a.id) ?? false }));
-  return json({ akun, koordinator_tersedia: tersedia, operator_aktif_tersedia: operatorTersedia });
+    operator_aktif: petaOperator.get(a.id) ?? false, pemeriksa_umkm: petaPemeriksa.get(a.id) ?? false }));
+  return json({ akun, koordinator_tersedia: tersedia, operator_aktif_tersedia: operatorTersedia, pemeriksa_umkm_tersedia: pemeriksaTersedia });
 }
 
 const createSchema = z

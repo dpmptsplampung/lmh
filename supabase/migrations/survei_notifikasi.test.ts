@@ -82,7 +82,7 @@ describe('survei_notifikasi: berkas, urutan, atomik, aditif', () => {
     const daftar = [...FORWARD_MIGRATION_FILES];
     expect(daftar).toEqual([...daftar].sort());
     expect(daftar.indexOf(BERKAS)).toBe(daftar.indexOf(BERKAS_RPC) + 1);
-    for (const nama of listMigrationFiles().filter((n) => n !== BERKAS && !/^2026110[34]/.test(n))) expect(nama < BERKAS).toBe(true);
+    for (const nama of listMigrationFiles().filter((n) => n !== BERKAS && !/^2026110[349]/.test(n))) expect(nama < BERKAS).toBe(true);
     expect(BERKAS > '202610260001').toBe(true);
   });
 
@@ -128,7 +128,7 @@ describe('survei_notifikasi: berkas, urutan, atomik, aditif', () => {
   });
 
   it('objek yang dikonsumsi didefinisikan migrasi sebelumnya; satu-satunya definisi lama fungsi ini adalah 0007 (yang disalin), tidak ada migrasi lain di antaranya', () => {
-    const pendefinisi = listMigrationFiles().filter((nama) => !/^2026110[34]/.test(nama)).filter((nama) => /CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+public\.notify_kunjungan_status\s*\(/i.test(stripSqlComments(baca(nama))));
+    const pendefinisi = listMigrationFiles().filter((nama) => !/^2026110[349]/.test(nama)).filter((nama) => /CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+public\.notify_kunjungan_status\s*\(/i.test(stripSqlComments(baca(nama))));
     expect(pendefinisi).toEqual([BERKAS_ASLI, BERKAS]);
     const undangan = stripSqlComments(baca(BERKAS_UNDANGAN));
     expect(undangan).toMatch(/CREATE OR REPLACE FUNCTION public\.ensure_undangan\(p_kunjungan_id uuid\)\s+RETURNS uuid/);
@@ -361,8 +361,12 @@ describe('survei_notifikasi: pencatatan (docs/ATURAN_MIGRASI.md #4)', () => {
     const md = bacaDocs('analysis', 'DB-CHANGES.md');
     const i = md.lastIndexOf('202611020004_survei_notifikasi');
     expect(i).toBeGreaterThan(md.lastIndexOf('202611020003_survei_rpc'));
-    const entri = md.slice(md.lastIndexOf('\n### ', i));
-    expect(md.lastIndexOf('\n### ')).toBe(md.lastIndexOf('\n### ', i)); // tidak ada entri lain sesudahnya
+    const awalEntri = md.lastIndexOf('\n### ', i);
+    const entriBerikut = md.indexOf('\n### ', i);
+    const entri = md.slice(awalEntri, entriBerikut === -1 ? undefined : entriBerikut);
+    // Entri ini terakhir dalam seri survei; entri sesudahnya hanya milik pekerjaan bernomor lebih besar.
+    const nomorBerikut = [...md.slice(i).matchAll(/\n### [^\n]*\(M-(\d{12})_/g)].map((m) => m[1]);
+    for (const nomor of nomorBerikut) expect(nomor > '202611020004').toBe(true);
     expect(entri).toContain('Status       : DITULIS, BELUM DITERAPKAN');
     expect(entri).toContain(BERKAS_ROLLBACK);
     expect(entri).toMatch(/tidak (?:bisa|dapat) dijalankan di (?:stub )?PGlite/);
