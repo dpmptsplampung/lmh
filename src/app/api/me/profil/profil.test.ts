@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 
 vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn() }));
@@ -16,8 +16,12 @@ const req = (body: unknown) => new Request('http://localhost/api/me/profil', {
   method: 'PATCH', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' },
 }) as NextRequest;
 
+afterEach(() => { vi.unstubAllEnvs(); });
+
 beforeEach(() => {
   vi.clearAllMocks();
+  // Env dari berkas uji lain bisa terbawa di worker yang sama dan membuat jalur email menyentuh jaringan.
+  vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', '');
   flag = { data: { operator_aktif: false }, error: null };
   user = { id: 'auth-1' };
   currentMe = { ...me };

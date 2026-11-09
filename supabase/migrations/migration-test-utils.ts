@@ -115,6 +115,18 @@ export const FORWARD_MIGRATION_FILES = [
   '202611030014_profil_ubah_nama.sql',
   '202611030015_akses_fo_antrean.sql',
   '202611040001_perbaikan_tinjauan_akhir.sql',
+  '202611090001_umkm_inti.sql',
+  '202611090002_umkm_katalog.sql',
+  '202611090003_umkm_pesan_laporan.sql',
+  '202611090004_umkm_pengawasan_darurat.sql',
+  '202611090005_umkm_statistik.sql',
+  '202611090006_umkm_urutan.sql',
+  '202611090007_umkm_retensi.sql',
+  '202611090008_umkm_permintaan.sql',
+  '202611090009_umkm_permintaan_petugas.sql',
+  '202611090010_umkm_pemilik.sql',
+  '202611090011_umkm_pemilik_integrasi.sql',
+  '202611090012_umkm_kontak_kata_utuh.sql',
 ] as const;
 
 export function listMigrationFiles(): string[] {

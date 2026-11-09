@@ -20,6 +20,11 @@ afterEach(() => {
 const label = (role: string) => susunPerintah(role).map((p) => p.label);
 
 describe('susunPerintah: hak akses mengikuti peran', () => {
+  it('laporan UMKM tersedia untuk admin dan petugas', () => {
+    expect(label('admin')).toContain('Laporan UMKM');
+    expect(label('petugas')).toContain('Laporan UMKM');
+    expect(label('front_office')).not.toContain('Laporan UMKM');
+  });
   it('petugas: tanpa tindakan Front Office/Admin dan tanpa menu admin-saja', () => {
     const l = label('petugas');
     expect(l).not.toContain('Registrasi Walk-in');
@@ -72,7 +77,7 @@ describe('saring', () => {
     expect(saring(daftar, 'chat log').map((p) => p.label)).toEqual(['Log AI Chat']);
   });
   it('mencocokkan nama kelompok dan kata tambahan tindakan', () => {
-    expect(saring(daftar, 'kemitraan').map((p) => p.label)).toEqual(['UMKM', 'Lead Investasi', 'Investment Gallery']);
+    expect(saring(daftar, 'kemitraan').map((p) => p.label)).toEqual(['Pengawasan UMKM', 'UMKM', 'Lead Investasi', 'Investment Gallery']);
     expect(saring(daftar, 'tv').map((p) => p.label)).toContain('Buka layar TV');
   });
   it('tidak ada yang cocok = kosong', () => expect(saring(daftar, 'zzzz')).toEqual([]));

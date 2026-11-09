@@ -50,7 +50,9 @@ Data **tidak** digunakan untuk pemasaran komersial, profiling otomatis, atau dib
 
 ## Consent (Persetujuan)
 
-Persetujuan eksplisit diperlukan sebelum pengolahan data pribadi. Implementasi:
+Alur berikut memakai persetujuan eksplisit. Formulir katalog UMKM tahap A memakai pemberitahuan
+tanpa kotak centang tambahan, sebagaimana dijelaskan pada bagian katalog UMKM di bawah.
+Pemakaian pemberitahuan tanpa kotak centang pada formulir UMKM perlu ditinjau DPO sebelum formulir dibuka.
 
 | Titik consent | Tabel | `tujuan` |
 |---------------|-------|----------|
@@ -124,9 +126,89 @@ Bagian di atas (keputusan 2026-10-14) dibalik sebagian oleh keputusan berikut. B
 
 ## Versi Kebijakan
 
+Pembaruan naskah UMKM tahap A, 9 November 2026, disiapkan untuk dibaca pemilik sebelum rilis.
+Peninjauan oleh DPO disarankan sebelum formulir dibuka. Formulir tidak dibuka sebelum naskah
+ini terbit. Sakelar statistik tetap mati sampai naskah ini terbit.
+
+Versi persetujuan tetap `1.0`, selaras dengan `CONSENT_VERSION` pada reservasi dan chat.
+Naskah ini tidak mengubah alur persetujuan layanan tersebut. Kenaikan versi persetujuan
+harus dibahas dengan PM dan diselaraskan dengan layanan yang mencatatnya.
+
 | Versi | Tanggal | Perubahan |
 |-------|---------|-----------|
 | 1.0 | Fase 1 / I8 | Kebijakan awal — audit log, consent checkin/chat, retensi 730 hari, DPO dashboard |
+| 1.0, pembaruan naskah | 2026-11-09 | Katalog UMKM tahap A, formulir, laporan, WhatsApp pribadi, dan retensi awal |
+| 1.0, pembaruan naskah | 2026-11-09 | Tahap B: data perusahaan, izin nomor, nomor hanya di akun pemohon, retensi 730 hari |
+
+## Katalog UMKM tahap A
+
+### Profil yang ditampilkan
+
+Profil katalog berasal dari data yang diperiksa petugas, satudata, dan tamu loket.
+Petugas memeriksa agar nomor telepon, email, alamat rinci, atau nama pemilik usaha tidak tampil di halaman publik.
+LMH tidak membagikan nomor UMKM kepada pengunjung atau Front Office. Nomor hanya dapat dibuka ke akun perusahaan dengan izin pemilik usaha, seperti dijelaskan pada bagian permintaan nomor di bawah.
+Ketentuan ini khusus katalog baru; marketplace lama tetap merupakan layanan terpisah.
+
+### Formulir kontak dan laporan
+
+Formulir **Hubungi lewat petugas** mengumpulkan nama, perusahaan, nomor kontak, dan pesan.
+Profil atau kata kunci yang sedang dilihat ikut terlampir tanpa isian tambahan.
+Tujuannya agar petugas dapat membalas pengirim. Formulir **Laporkan** menerima alasan,
+catatan opsional, serta konteks profil atau foto untuk menindaklanjuti masalah katalog.
+Isi formulir hanya dibaca pemeriksa UMKM yang berwenang; FO dan admin tanpa penanda
+pemeriksa hanya melihat angka. Isi formulir tidak dimasukkan ke jejak kerja atau log.
+Kedua formulir menggunakan pemberitahuan singkat dan tautan `/kebijakan-privasi`,
+tanpa kotak centang persetujuan tambahan.
+Pengiriman formulir memakai sesi anonim untuk menahan kiriman berlebihan.
+
+**Retensi awal:** 180 hari setelah ditangani, atau setelah aktivitas terakhir bila belum ditangani. Pembersihan otomatis dijadwalkan pada tiket 09 dan tidak boleh
+diklaim telah berjalan sebelum pekerjaan itu selesai. Foto draf disimpan sampai
+30 hari setelah pengajuan dibatalkan atau 90 hari tanpa aktivitas.
+
+### WhatsApp pribadi petugas
+
+Petugas membalas melalui WhatsApp pribadi di ponselnya sendiri. Percakapan dan nomor kontak
+yang tersimpan di sana berada di luar LMH. LMH tidak dapat menghapus percakapan tersebut.
+Petugas yang berhenti bertugas diminta menghapus percakapan kerja, tetapi LMH tidak dapat
+membuktikan penghapusan itu. Jejak LMH hanya mencatat tindakan di dalam LMH, bukan isi,
+pengiriman, atau penghapusan percakapan di WhatsApp.
+
+Nomor UMKM yang disimpan untuk meminta izin hanya dapat dibaca petugas yang sedang
+menangani tugas tersebut. Pembacaannya dicatat dalam jejak kerja tanpa nomor mentah.
+Pembacaan ini tidak memberi izin membagikan nomor UMKM pada tahap A.
+
+### Permintaan nomor perusahaan (tahap B)
+
+Tahap B, permintaan nomor oleh perusahaan. Perusahaan yang meminta nomor UMKM wajib masuk dengan akun pribadi
+dan mengisi nama perusahaan dan jabatan. Nama, email, dan HP diambil dari profil akun. Nomor UMKM hanya dibuka
+bila pemiliknya sudah memberi izin dan petugas menyetujui permintaan. Nomor hanya tampil di akun pemohon itu,
+tidak dikirim lewat WhatsApp, email, atau notifikasi. Pemilik UMKM dapat mencabut izin kapan saja dengan
+menghubungi petugas UMKM, lewat formulir di LMH, atau dari halaman Usaha saya. Sesudah dicabut, nomor tidak lagi tampil di akun perusahaan, tetapi perusahaan yang sudah mencatatnya mungkin masih
+menyimpannya. Petugas memakai WhatsApp pribadinya untuk menanyakan izin kepada UMKM dan memberi tahu pemohon.
+Riwayat chat di ponsel petugas berada di luar sistem LMH. Nama perusahaan dan jabatan disimpan selama akun Anda
+ada. Catatan permintaan dan Kebutuhan disimpan sampai 730 hari sesudah ditutup, sesudah izin dicabut, atau sesudah
+akun dihapus. Sesudah itu teks Kebutuhan, kontak yang dicatat petugas, serta nama dan jabatan perusahaan yang tidak
+terhubung ke akun dihapus.
+
+Tahap C, pemilik usaha. Pemilik usaha yang mendaftarkan atau mengklaim profil memakai akun pribadi. Pendaftar
+profil baru dapat memperbaiki profil dan fotonya selama pemeriksaan. Pengklaim profil yang sudah ada mendapat hak
+mengubah sesudah petugas memastikan penanggung jawab usaha. Untuk memastikan penanggung jawab usaha, petugas
+pemeriksa melihat nama, HP, dan email akun serta alasan klaim, dan dapat menghubungi Anda. Pemilik melihat nama
+perusahaan penerima nomor dan tanggalnya, tanpa data pribadi pemohon. Perubahan profil diperiksa petugas sebelum tampil.
+
+### Statistik opsional
+
+Statistik katalog meliputi tampilan profil, jumlah pencarian tanpa hasil tanpa
+menyimpan kata pencarian, klik membuka formulir, dan tanda suka. Pencatatan opsional
+berjalan ketika sakelarnya aktif, dengan pemberitahuan. Pencatatan ini tidak memakai cookie iklan.
+Untuk pengunjung yang belum login, LMH memakai cookie statistik acak yang berlaku 24 jam agar kunjungan
+yang sama tidak terhitung dua kali. Bila Anda login, penanda harian dibuat dari ID akun dengan kunci rahasia.
+Penanda ini tidak menampilkan ID akun, tetapi LMH masih dapat mengaitkannya dengan akun selama 7 hari.
+Penanda harian kami simpan 7 hari, angka harian 95 hari, ringkasan pencarian tanpa hasil 24 bulan,
+dan jumlah total selama profil ada. Tanda suka dan tanggal pertama Anda menyukai tersimpan sampai akun dihapus.
+Membatalkan suka menonaktifkan tanda itu dan mengeluarkannya dari jumlah suka.
+Sakelar tetap mati sampai teks kebijakan diterbitkan. Statistik dan tanda suka mengikuti
+gelombang implementasinya, bukan dinyatakan sudah aktif oleh pembaruan naskah ini.
 
 ## Referensi
 

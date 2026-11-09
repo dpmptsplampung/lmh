@@ -2,13 +2,14 @@
 // Hak akses yang dulu ada di policy storage.objects Supabase kini dijaga route /api/storage/*.
 import type { Bucket } from './r2';
 
-export type Area = 'investment-docs' | 'umkm-photos' | 'absensi-foto' | 'pengaduan-bukti' | 'umkm-legalitas' | 'chat-lampiran';
+export type Area = 'investment-docs' | 'umkm-photos' | 'absensi-foto' | 'pengaduan-bukti' | 'umkm-legalitas' | 'chat-lampiran' | 'umkm-draf';
 export type PeranStaf = 'admin' | 'petugas' | 'front_office';
 
 const GAMBAR = ['image/jpeg', 'image/png', 'image/webp'] as const;
 
 export const ATURAN_AREA: Record<Area, { bucket: Bucket; mime: readonly string[]; maksByte: number; peran: readonly PeranStaf[] }> = {
   'investment-docs': { bucket: 'private', mime: ['application/pdf'], maksByte: 50 * 1024 * 1024, peran: ['admin'] },
+  'umkm-draf': { bucket: 'private', mime: GAMBAR, maksByte: 2 * 1024 * 1024, peran: ['admin', 'petugas'] },
   'umkm-photos': { bucket: 'public', mime: GAMBAR, maksByte: 2 * 1024 * 1024, peran: ['admin', 'petugas'] },
   'absensi-foto': { bucket: 'private', mime: GAMBAR, maksByte: 5 * 1024 * 1024, peran: ['admin', 'front_office'] },
   'pengaduan-bukti': { bucket: 'private', mime: [...GAMBAR, 'application/pdf'], maksByte: 5 * 1024 * 1024, peran: ['admin', 'front_office'] },
@@ -33,6 +34,13 @@ export function kunciObjek(area: Area, path: string): string {
     throw new Error('path penyimpanan tidak valid');
   }
   return `${area}/${path}`;
+}
+
+export function profilDrafDariPath(path?: string): string | null {
+  if (!path) return null;
+  try { kunciObjek('umkm-draf', path); } catch { return null; }
+  const cocok = /^([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\/.+$/i.exec(path);
+  return cocok?.[1].toLowerCase() ?? null;
 }
 
 /** Pemeriksaan tanda tangan berkas (magic bytes) agar tipe yang diklaim klien tidak sekadar dipercaya. */

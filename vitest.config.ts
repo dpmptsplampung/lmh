@@ -1,6 +1,12 @@
 import { configDefaults, defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import path from "node:path";
+import { existsSync } from "node:fs";
+
+// Uji *database.test.ts menjalankan rantai migrasi di PGlite, yang dipasang manual dengan
+// `npm i --no-save @electric-sql/pglite` (sengaja tidak di package.json). Tanpa paket itu, misalnya di CI,
+// uji tersebut tidak dijalankan; pre-push di mesin yang memasangnya tetap menjalankannya.
+const adaPglite = existsSync(path.resolve(__dirname, "node_modules/@electric-sql/pglite/package.json"));
 
 export default defineConfig({
   plugins: [react()],
@@ -19,6 +25,7 @@ export default defineConfig({
       "**/coverage/**",
       "**/playwright-report/**",
       "**/test-results/**",
+      ...(adaPglite ? [] : ["**/*.database.test.ts", "src/lib/umkm-katalog/database.test.ts"]),
     ],
     coverage: {
       provider: "v8",

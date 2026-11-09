@@ -373,3 +373,64 @@ describe('saklar Operator harian (Admin)', () => {
     expect(within(dialog).getByRole('switch', { name: /Operator harian/ }).getAttribute('aria-checked')).toBe('false');
   });
 });
+
+
+describe('penanda pemeriksa UMKM', () => {
+  it('admin yang menandai diri sendiri mendapat arahan meminta admin lain', async () => {
+    const original = fetchMock.getMockImplementation() as (url: string, init?: RequestInit) => Promise<unknown>;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/api/admin/petugas' && init?.method === 'GET') {
+        return ok({ pemeriksa_umkm_tersedia: true, akun: DAFTAR });
+      }
+      if (url === '/api/admin/petugas/me/pemeriksa-umkm') {
+        return Promise.resolve({ ok: false, json: async () => ({
+          error: { code: 'DILARANG', message: 'Akses ditolak' },
+        }) });
+      }
+      return original(url, init);
+    });
+    render(<AdminPetugasPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Pemeriksa UMKM Admin Satu' }));
+    await waitFor(() => expect(toastMock).toHaveBeenCalledWith(
+      'Penanda untuk akun sendiri diberikan oleh admin lain.', 'error',
+    ));
+    expect(screen.getByRole('button', { name: 'Pemeriksa UMKM Admin Satu' }).getAttribute('aria-pressed'))
+      .toBe('false');
+  });
+  it('tanpa migrasi sakelar pemeriksa tidak tampil', async () => {
+    render(<AdminPetugasPage />);
+    await screen.findByText('petugas-oss');
+    expect(screen.queryByRole('button', { name: /^Pemeriksa UMKM/ })).toBeNull();
+  });
+  it('sakelar admin dan petugas satu klik, FO tidak dapat mengaktifkannya', async () => {
+    let flag = false;
+    const original = fetchMock.getMockImplementation() as (url: string, init?: RequestInit) => Promise<unknown>;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/api/admin/petugas' && init?.method === 'GET') return ok({ pemeriksa_umkm_tersedia: true, akun: DAFTAR_RAMAI.map((a) => ({ ...a, pemeriksa_umkm: a.id === 'u2' && flag })) });
+      if (url === '/api/admin/petugas/u2/pemeriksa-umkm') { flag = true; return ok({ data: { id: 'u2', pemeriksa_umkm: true } }); }
+      return original(url, init);
+    });
+    render(<AdminPetugasPage />);
+    const button = await screen.findByRole('button', { name: 'Pemeriksa UMKM Petugas OSS' });
+    expect(screen.getByRole('button', { name: 'Pemeriksa UMKM Admin Satu' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Pemeriksa UMKM Koord FO' })).toBeNull();
+    expect(button.getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(button);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Pemeriksa UMKM Petugas OSS' }).getAttribute('aria-pressed')).toBe('true'));
+    const mutation = fetchMock.mock.calls.find(([url]) => url === '/api/admin/petugas/u2/pemeriksa-umkm')!;
+    expect(mutation[1].method).toBe('PATCH');
+    expect(JSON.parse(mutation[1].body as string)).toEqual({ pemeriksa_umkm: true, operasi_id: expect.any(String) });
+  });
+  it('kegagalan API tidak menyalakan sakelar', async () => {
+    const original = fetchMock.getMockImplementation() as (url: string, init?: RequestInit) => Promise<unknown>;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/api/admin/petugas' && init?.method === 'GET') return ok({ pemeriksa_umkm_tersedia: true, akun: DAFTAR });
+      if (url.endsWith('/pemeriksa-umkm')) return Promise.resolve({ ok: false, json: async () => ({ error: { code: 'DILARANG', message: 'Akses ditolak' } }) });
+      return original(url, init);
+    });
+    render(<AdminPetugasPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Pemeriksa UMKM Petugas OSS' }));
+    await waitFor(() => expect(toastMock).toHaveBeenCalledWith('Akses ditolak', 'error'));
+    expect(screen.getByRole('button', { name: 'Pemeriksa UMKM Petugas OSS' }).getAttribute('aria-pressed')).toBe('false');
+  });
+});

@@ -130,6 +130,8 @@ describe('/me (dashboard pengunjung) membaca kunjungan, bukan visit', () => {
     expect(href(/Info Layanan/)).toBe('/standar-pelayanan');
     expect(href(/Peta Potensi/)).toBe('/peta-potensi');
     expect(href(/^Buat Pengaduan$/)).toBe('/pengaduan');
+    expect(href(/^UMKM Saya$/)).toBe('/me/umkm');
+    expect(href(/^Usaha Saya$/)).toBe('/me/usaha');
     expect(href(/Buat Reservasi Sekarang/)).toBe('/me/reservasi');
   });
 

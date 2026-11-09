@@ -59,6 +59,7 @@ import AppBar from './AppBar';
 import KartuIdentitas from './KartuIdentitas';
 import WidgetSidebar from './WidgetSidebar';
 import styles from './Sidebar.module.css';
+import { PemeriksaContext } from '@/components/admin/umkm-tugas/PemeriksaContext';
 
 const ICONS: Record<AdminNavEntry['iconKey'], React.ReactNode> = {
   dashboard: <LayoutDashboard size={18} strokeWidth={1.75} />,
@@ -138,6 +139,7 @@ function NavBadgeView({ count, label }: { count: number; label: string }) {
 const LABEL_PERAN: Record<string, string> = { admin: 'Admin', front_office: 'Front Office', petugas: 'Petugas' };
 
 export default function Sidebar() {
+  const [pemeriksaUmkm, setPemeriksaUmkm] = useState(false);
   const pathname = usePathname();
   // Laci HP/tablet. Pindah halaman (link, Back/Forward) menutupnya: reset saat
   // render (pola resmi React "adjust state on prop change", tanpa effect).
@@ -232,6 +234,12 @@ export default function Sidebar() {
         setUserRole(petugas.role);
         setUserName(petugas.nama ?? '');
         setStaf({ id: petugas.id ?? null, layananId: petugas.layanan_id ?? null });
+        // Kolom tambahan tidak boleh menghalangi menu staf sebelum migrasi tersedia.
+        try {
+          const { data: flag, error: flagError } = await supabase.from('petugas')
+            .select('pemeriksa_umkm').eq('auth_user_id', user.id).maybeSingle();
+          setPemeriksaUmkm(!flagError && flag?.pemeriksa_umkm === true && petugas.role !== 'front_office');
+        } catch { setPemeriksaUmkm(false); }
         // Nama Layanan untuk kartu identitas: kueri terpisah dan tidak fatal (menu tidak boleh hilang karenanya).
         if (petugas.layanan_id) {
           try {
@@ -293,7 +301,7 @@ export default function Sidebar() {
   const activeHref = aktif?.href;
   const isActive = (href: string) => href === activeHref;
 
-  const tree = buildNavTree(userRole);
+  const tree = buildNavTree(userRole, { pemeriksa_umkm: pemeriksaUmkm });
   const bawah = tree.filter((t): t is Extract<AdminNavTreeItem, { type: 'link' }> => t.type === 'link' && t.entry.slot === 'bawah');
   const utama = tree.filter((t) => !(t.type === 'link' && t.entry.slot === 'bawah'));
 
@@ -327,7 +335,7 @@ export default function Sidebar() {
   };
 
   return (
-    <>
+    <PemeriksaContext.Provider value={pemeriksaUmkm}>
       <AppBar
         role={userRole}
         judul={aktif?.label ?? 'Admin'}
@@ -440,6 +448,6 @@ export default function Sidebar() {
           </div>
         </div>
       </aside>
-    </>
+    </PemeriksaContext.Provider>
   );
 }

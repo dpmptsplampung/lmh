@@ -1,0 +1,61 @@
+PASS 01 akses tabel profil privat dan kontak
+PASS 02 nomor hanya untuk pemegang tugas
+PASS 03 konflik versi berurutan dan pengambilalihan tercatat
+PASS 04 kontak dalam empat field menghalangi terbit
+PASS 05 retry identik dan konflik isi berbeda
+PASS 06 nomor baru mencabut izin dan mempertahankan riwayat
+PASS 07 revisi publik dan pemulihan melalui review
+PASS 08 riwayat dan audit tanpa nomor mentah
+PASS 09 listing_umkm tidak berubah
+FAIL 10 kontak NBSP diblokir: {"ok":true,"rows":[{"j":{"id":"26263c13-393e-4a6d-8805-7fa9df2591a4","versi":2,"status":"terbit","revisi_id":"ae7af10b-a456-4f0a-9aae-d4718da43652","peringatan_kontak":[]}}]}
+FAIL 11 alasan NBSP ditolak: {"ok":true,"rows":[{"j":{"id":"01b66bca-a448-4e3b-b0db-944cdebde37b","versi":2,"status":"ditolak","revisi_id":"6834900a-f802-4647-b8fa-2cced4f70db4","peringatan_kontak":[]}}]}
+FAIL 10 kontak en dash diblokir: {"ok":true,"rows":[{"j":{"id":"7d9735ae-7616-43cc-9d8d-eaac63c20670","versi":2,"status":"terbit","revisi_id":"0ff8e6c9-db6a-4fcd-b243-b1c5540ba81b","peringatan_kontak":[]}}]}
+FAIL 11 alasan en dash ditolak: {"ok":true,"rows":[{"j":{"id":"b587bc88-10cc-46c4-97f8-2f72ec09d866","versi":2,"status":"ditolak","revisi_id":"cc13e5cf-81f9-4685-9419-125f6b622291","peringatan_kontak":[]}}]}
+FAIL 10 kontak baris baru diblokir: {"ok":true,"rows":[{"j":{"id":"03c7d631-26da-4fda-9ab4-7a72bfa621bc","versi":2,"status":"terbit","revisi_id":"a3e53b37-a600-422e-9e6a-393360bb3c5d","peringatan_kontak":[]}}]}
+FAIL 11 alasan baris baru ditolak: {"ok":true,"rows":[{"j":{"id":"0fae10a8-2a71-4e18-9085-62ccdc176ea8","versi":2,"status":"ditolak","revisi_id":"d5234bf5-b1a4-4a9e-a532-e36a209831d7","peringatan_kontak":[]}}]}
+FAIL 10 kontak tab diblokir: {"ok":true,"rows":[{"j":{"id":"14b74697-635d-49f9-9aba-8a86f4d15f92","versi":2,"status":"terbit","revisi_id":"65e34aa9-5998-4816-9952-0313e2b338ed","peringatan_kontak":[]}}]}
+FAIL 11 alasan tab ditolak: {"ok":true,"rows":[{"j":{"id":"aab49d98-6ec2-454e-93db-4a530de702fa","versi":2,"status":"ditolak","revisi_id":"fda0b6cf-800c-457b-85ba-0f991c9d87ec","peringatan_kontak":[]}}]}
+FAIL 10 kontak zero width diblokir: {"ok":true,"rows":[{"j":{"id":"fe368c30-c7d5-481f-9d58-f64b77579286","versi":2,"status":"terbit","revisi_id":"977febd3-e5dc-46dd-8b6e-bd88e39e222e","peringatan_kontak":[]}}]}
+FAIL 11 alasan zero width ditolak: {"ok":true,"rows":[{"j":{"id":"013fdc9d-2076-4337-a716-a1bed3aeac47","versi":2,"status":"ditolak","revisi_id":"a6b98c11-a578-4fe7-aa44-c395f673ba64","peringatan_kontak":[]}}]}
+FAIL 10 kontak garis bawah diblokir: {"ok":true,"rows":[{"j":{"id":"59a03fe0-6d0d-456e-ab4c-a123b238ceea","versi":2,"status":"terbit","revisi_id":"a982c44f-a423-4ece-8701-d669a4111a4d","peringatan_kontak":[]}}]}
+FAIL 11 alasan garis bawah ditolak: {"ok":true,"rows":[{"j":{"id":"28bff7da-68b7-4685-a7d1-6489b4d11a7a","versi":2,"status":"ditolak","revisi_id":"68bf9bf8-d210-4959-92a0-2b2e3a24fc0e","peringatan_kontak":[]}}]}
+FAIL 10 kontak koma diblokir: {"ok":true,"rows":[{"j":{"id":"da93d778-b0d4-4bb7-b64b-68ed5484e045","versi":2,"status":"terbit","revisi_id":"92c1d159-2b1a-493e-abfc-ea0e6358b5e3","peringatan_kontak":[]}}]}
+FAIL 11 alasan koma ditolak: {"ok":true,"rows":[{"j":{"id":"17e5e4ee-afb3-4bd2-b0a5-ca0a6bc692ac","versi":2,"status":"ditolak","revisi_id":"d676c97a-0b79-4be0-9781-bcc02e7bcc34","peringatan_kontak":[]}}]}
+FAIL 10 kontak angka lebar penuh diblokir: {"ok":true,"rows":[{"j":{"id":"16aadbf9-1842-460c-bf5a-a7b9da4ce9a3","versi":2,"status":"terbit","revisi_id":"bc4aa547-019e-4cba-b721-06ef2347faf7","peringatan_kontak":[]}}]}
+FAIL 11 alasan angka lebar penuh ditolak: {"ok":true,"rows":[{"j":{"id":"437f4954-633b-48e4-a313-92452edd1ac5","versi":2,"status":"ditolak","revisi_id":"8c8b475e-5345-463e-9d2c-bd20be2b7bb4","peringatan_kontak":[]}}]}
+FAIL 10 kontak angka Arab diblokir: {"ok":true,"rows":[{"j":{"id":"c8268796-8bb2-4cda-b02f-987b12a2380b","versi":2,"status":"terbit","revisi_id":"7dc8177b-120f-4c88-b1d5-6b0ee14b1e67","peringatan_kontak":[]}}]}
+FAIL 11 alasan angka Arab ditolak: {"ok":true,"rows":[{"j":{"id":"b7dbc602-b6c1-495a-b573-3a299cdfe84d","versi":2,"status":"ditolak","revisi_id":"d01cb47f-563f-478c-8226-56826ce339a6","peringatan_kontak":[]}}]}
+FAIL 10 kontak angka Devanagari diblokir: {"ok":true,"rows":[{"j":{"id":"d2c19795-602d-49f5-b1e6-95dac6459a41","versi":2,"status":"terbit","revisi_id":"90508fb9-8ced-4d29-a343-701fd467ba39","peringatan_kontak":[]}}]}
+FAIL 11 alasan angka Devanagari ditolak: {"ok":true,"rows":[{"j":{"id":"bef8ea39-6467-4e91-b470-201ce4f763c4","versi":2,"status":"ditolak","revisi_id":"58ebec61-7506-41a0-9868-249997567324","peringatan_kontak":[]}}]}
+FAIL 10 kontak URL persen diblokir: {"ok":true,"rows":[{"j":{"id":"2ca8e8e9-06be-469d-99e4-a9962f73c9b5","versi":2,"status":"terbit","revisi_id":"0eeddd83-0b33-44d2-b771-264d093d5c53","peringatan_kontak":[]}}]}
+FAIL 11 alasan URL persen ditolak: {"ok":true,"rows":[{"j":{"id":"546a2951-0faa-4786-adf9-8a9403303a67","versi":2,"status":"ditolak","revisi_id":"47f83e8a-7b70-4824-821e-0409b391439c","peringatan_kontak":[]}}]}
+FAIL 10 kontak wa.link diblokir: {"ok":true,"rows":[{"j":{"id":"f960d4e4-34c6-4057-a423-a17c1062804e","versi":2,"status":"terbit","revisi_id":"b350222a-4bba-4920-8fcb-5d0f5c6acf63","peringatan_kontak":[]}}]}
+FAIL 11 alasan wa.link ditolak: {"ok":true,"rows":[{"j":{"id":"7a326cbf-e271-4d0f-8db1-bf825eb7c88f","versi":2,"status":"ditolak","revisi_id":"ffc5c8a6-674e-4949-a02b-3285c3105f73","peringatan_kontak":[]}}]}
+FAIL 10 kontak t.me diblokir: {"ok":true,"rows":[{"j":{"id":"a47f7170-626e-444a-8666-52430fafb5b4","versi":2,"status":"terbit","revisi_id":"b63aa24d-2e87-4315-8fc9-99c8a3a50cb0","peringatan_kontak":[]}}]}
+FAIL 11 alasan t.me ditolak: {"ok":true,"rows":[{"j":{"id":"ff48d271-2901-450d-be15-e5ab4bec404c","versi":2,"status":"ditolak","revisi_id":"5adc4937-e75f-4155-8295-842aecb6fbc6","peringatan_kontak":[]}}]}
+FAIL 10 kontak linktr.ee diblokir: {"ok":true,"rows":[{"j":{"id":"09248e78-b95d-46af-a775-6ccf0805225e","versi":2,"status":"terbit","revisi_id":"4a07e484-d8e8-4f93-a3c3-9e429b961a29","peringatan_kontak":[]}}]}
+FAIL 11 alasan linktr.ee ditolak: {"ok":true,"rows":[{"j":{"id":"07f9c04b-65d5-4512-a7c2-6c26e3168efe","versi":2,"status":"ditolak","revisi_id":"a6076f33-37e0-4411-90da-bd68bb15c17c","peringatan_kontak":[]}}]}
+FAIL 10 kontak titik berspasi diblokir: {"ok":true,"rows":[{"j":{"id":"290d2827-ff49-441f-9614-6f2f2b4e5631","versi":2,"status":"terbit","revisi_id":"e3670068-15ab-4e31-af27-b4e10ab27c9b","peringatan_kontak":[]}}]}
+FAIL 11 alasan titik berspasi ditolak: {"ok":true,"rows":[{"j":{"id":"a0f7f0aa-4a01-46d2-8c82-f3ff3e65e280","versi":2,"status":"ditolak","revisi_id":"b8ac78a4-46db-462d-af3d-c9870958e1e7","peringatan_kontak":[]}}]}
+PASS 12 Instagram berisi nomor diblokir
+FAIL 13 teks wajar Rp 10.000.000 dapat terbit: Rp 10.000.000: {"ok":false,"pesan":"KONTAK_PUBLIK","kode":"40001"}
+FAIL 13 teks wajar Rp 1.000.000.000 dapat terbit: Rp 1.000.000.000: {"ok":false,"pesan":"KONTAK_PUBLIK","kode":"40001"}
+PASS 13 teks wajar sejak 2010 dapat terbit
+FAIL 13 teks wajar foto_1699999999.jpg dapat terbit: foto_1699999999.jpg: {"ok":false,"pesan":"KONTAK_PUBLIK","kode":"40001"}
+PASS 13 teks wajar kode pos 35141 dapat terbit
+FAIL 13 teks wajar NIB 1234567890123 dapat terbit: NIB 1234567890123: {"ok":false,"pesan":"KONTAK_PUBLIK","kode":"40001"}
+FAIL 14 nomor di alamat tidak memblokir terbit: terbit alamat: {"ok":false,"pesan":"KONTAK_PUBLIK","kode":"40001"}
+FAIL 15 admin tidak mengaktifkan penanda diri sendiri: {"ok":true,"rows":[{"j":{"id":"c20e25ce-fd71-4774-a585-7128a71c7e37","pemeriksa_umkm":true}}]}
+FAIL 16 UPDATE langsung penanda ditolak: {"ok":true,"rows":[]}
+FAIL 17 INSERT FO memaksa penanda false: [{"pemeriksa_umkm":true}]
+FAIL 18 ganti auth mengosongkan dan mencatat penanda: penanda tetap aktif
+FAIL 20 pemegang profil terbit tidak dapat membaca nomor: {"ok":true,"rows":[{"j":{"nomor":"081234567890"}}]}
+FAIL 21 service_role tanpa hak enam tabel: umkm_profil SELECT
+FAIL 22 pencabutan izin tidak membuat mendesak: [{"mendesak":true}]
+FAIL 23 foto tersembunyi tidak memblokir terbit: terbit: {"ok":false,"pesan":"KONTAK_PUBLIK","kode":"40001"}
+FAIL 24 pencarian hanya pemeriksa aktif: pencarian pemeriksa: {"ok":false,"pesan":"function public.umkm_cari_profil(text, uuid) does not exist","kode":"42883"}
+FAIL 25 pencarian minimal dua karakter: {"ok":false,"pesan":"function public.umkm_cari_profil(text, uuid) does not exist","kode":"42883"}
+FAIL 19 ganti layanan mempertahankan penanda: [{"pemeriksa_umkm":false}]
+
+12 PASS, 46 FAIL
+Butir 03 menguji versi berurutan; uji dua koneksi dipindahkan ke tiket 10.

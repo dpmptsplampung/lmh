@@ -1384,3 +1384,193 @@ Perbaikan hasil tinjauan keamanan, QA, dan UI 2026-11-04. Prasyarat: 20261103001
 - Rekap: FO non-Koordinator dipaksa unit `fo` di fungsi inti; ringkasan "dilayani" hanya menghitung pelayanan berpenangan (sama dengan tabel Kinerja).
 - Operator: `operator_aktif` masuk audit; mematikan izin mengosongkan `operator_default`.
 - Rollback: `docs/rollback-perbaikan-tinjauan-akhir-202611040001.sql`, dijalankan SEBELUM rollback 0015/0014/0013. Skenario bukti: `node scripts/lokal-rantai/skenario-tinjauan-akhir.mjs` (102 cek).
+
+## 202611090001_umkm_inti: UMKM tahap A G1 (belum diterapkan)
+
+- Enam tabel baru privat dengan RLS dan tanpa hak langsung anon/authenticated/service_role;
+  penanda `petugas.pemeriksa_umkm`, rahasia HMAC satu baris di schema privat tanpa grant.
+- RPC pemeriksa: simpan revisi, daftar maksimal 20 (mendesak lalu tertua), pencarian nama semua status,
+  detail, ambil alih, putusan, visibilitas, kontak tunggal tercatat, izin; RPC Admin untuk penanda.
+  Identitas dan sesi diverifikasi DB; FO selalu ditolak untuk pekerjaan pemeriksa, termasuk nomor.
+- `umkm_cari_profil(text,uuid)` mencocokkan bagian nama revisi terakhir tanpa peka kapital dengan wildcard literal,
+  q trim 2..200 karakter, maksimal 20 hasil, id ASC dan cursor eksklusif; route GET `/api/admin/umkm-tugas/cari`.
+  Antrean hanya revisi belum diputuskan atau mendesak. Kontak mensyaratkan pemegang dan pekerjaan terbuka tersebut;
+  ambil alih tetap tersedia setelah putusan. Pencatatan izin mempertahankan nilai mendesak.
+- Penanda hanya diubah RPC; aktivasi diri sendiri ditolak, INSERT memaksa false.
+  Perubahan role/auth_user_id mencabut penanda dan mengisi nilai lama/baru audit, termasuk tanpa sesi pengguna;
+  perubahan layanan_id mempertahankannya. Semua fungsi baru memakai `search_path = pg_catalog, pg_temp`.
+- Empat status profil, snapshot publik tetap saat koreksi, pemulihan melalui review. Nomor baru membatalkan izin lama tanpa menghapus riwayat. Semua mutasi memakai UUID operasi/HMAC dan versi dengan row lock singkat; riwayat hanya referensi/status serta alasan bebas kontak.
+- Proyeksi `umkm_profil_publik` hanya snapshot disetujui; tanpa NIB, alamat, kontak, kunci R2 atau data staf. Semua field teks publik/URL diperiksa kontak sebelum terbit. Foto lama tersembunyi tetap tersembunyi saat daftar penuh disalin; hide pada koreksi juga segera menyembunyikan foto cocok pada snapshot terbit. Riwayat memuat UUID foto/versi/penangan dan enum tindakan, tanpa payload privat.
+- Foto unggahan di R2 private `umkm-draf`, maksimal 2 MiB; preview melalui JWT dan signed URL 60 detik. Presign dan konfirmasi draf memeriksa aktif/flag/role/sesi terkini, gagal tertutup bila kolom atau sesi belum tersedia; area lain tetap memakai aturan lama. Publikasi foto unggahan diselesaikan tiket 04, di luar G1.
+- Bukti lokal: contract statis adjacency, test route JWT/no-store/validasi/galat, test perilaku `src/lib/umkm-katalog/database.test.ts`, dan skenario QA `scripts/lokal-rantai/skenario-umkm-a1.mjs`. Harness PGlite menerapkan seluruh rantai; tidak menyambung database nyata. Dua koneksi simultan diuji pada tiket 10; G1 membuktikan versi stale berurutan.
+- Rollback operasional: `docs/rollback-umkm-inti-202611090001.sql` menutup sebelas RPC dan melepas pemicu penjaga
+  penanda, mempertahankan data, audit dan bukti. Presign/konfirmasi draf tetap terbuka bagi akun yang memenuhi
+  syarat; penanda tidak dikosongkan dan pencabutan otomatis role/auth berhenti. Gelombang berikutnya dikembalikan
+  lebih dahulu. Rollback belum dijalankan pada produksi; pengaktifan ulang melalui migrasi maju baru.
+- Perintah rilis sesudah persetujuan pemilik dan uji staging, belum dijalankan:
+  `node scripts/apply-migration.mjs supabase/migrations/202611090001_umkm_inti.sql --atomic --dry-run`,
+  lalu `node scripts/apply-migration.mjs supabase/migrations/202611090001_umkm_inti.sql --atomic`.
+- Status: BELUM DITERAPKAN ke staging atau produksi. Tidak ada commit, push, atau perubahan data nyata dalam pekerjaan ini.
+
+## 202611090002 sampai 202611090004: UMKM tahap A G2 (belum diterapkan)
+
+- `202611090002_umkm_katalog.sql`: proyeksi publik approved-only, pencarian DB maksimal 20 kartu,
+  filter DISTINCT maksimal 200/dimensi, trigram dan cursor HMAC dengan snapshot/filter. Tambahan bukti
+  ETag/ukuran/MIME pada foto, pointer copy publik dan antrean hapus privat. HEAD/CopyObject bersyarat
+  melalui lapisan R2 setelah keputusan; tanpa byte gambar lewat server aplikasi. Kegagalan foto tidak
+  membatalkan keputusan; retry eksplisit, salin baru dahulu sebelum antrean hapus. Cache 60 detik hanya
+  kartu tanpa q/filter/cursor dan opsi filter; detail no-store, invalidasi tag setelah putusan/hide/darurat.
+- `202611090003_umkm_pesan_laporan.sql`: dua tabel isi privat, receipt idempoten terpisah tanpa PII,
+  guard shared memakai `anon_rate_limit` dan indeks aksi/waktu. Konstanta 10/600 detik per UID per aksi,
+  30/86400 per UID per aksi dan 200/600 per aksi global, tanpa ambang ditampilkan ke pengunjung. Pesan dengan profil tidak terbit
+  menyimpan NULL; laporan profil wajib, hanya dari detail. Penipuan/nomor_tampil mendesak dalam antrean.
+  Antrean campuran memakai cursor text opaque, menggantikan signature uuid G1 sesuai keputusan PM;
+  perubahan cast pada uji G1 mempertahankan semua assertion. Detail/ambil/selesai khusus pemeriksa aktif.
+- `202611090004_umkm_pengawasan_darurat.sql`: agregat, durasi dan jejak aman untuk FO/admin aktif,
+  pencarian hanya nama approved. Darurat sembunyikan hanya profil terbit atau catat pencabutan pada
+  kontak terkini, tidak membaca nomor; alasan bersih, versi/operasi dan audit atomik, mendesak true.
+  Pemeriksa pemegang menyelesaikan mendesak satu klik. Tidak ada tabel atau aksi tahan fase B.
+- Ketiga migrasi tidak mengubah migrasi lama, perilaku marketplace, otorisasi akses nomor G1 atau tabel legacy.
+  Semua tabel baru RLS tanpa grant langsung, semua RPC definer search_path terkunci dan grant eksplisit.
+- Rollback berurutan: `docs/rollback-umkm-pengawasan-darurat-202611090004.sql`,
+  `docs/rollback-umkm-pesan-laporan-202611090003.sql`, `docs/rollback-umkm-katalog-202611090002.sql`.
+  Menutup endpoint dan menjaga data/bukti; tidak mengembalikan signature lama atau menghapus copy R2.
+- Uji lokal: kontrak adjacent, route JWT/zod/envelope/no-store, storage HEAD/CopyObject dan kegagalan,
+  DB pekerjaan/balasan pertama, serta A1/A2 pada rantai PGlite. Tidak membuktikan transaksi dua koneksi,
+  IAM, bucket/CDN R2 sungguhan atau staging. Gate penuh/build dijalankan koordinator.
+- Status: BELUM DITERAPKAN ke staging/produksi. Rilis hanya sesudah staging dan persetujuan pemilik
+  melalui prosedur resmi `--atomic --dry-run`, lalu `--atomic`, satu migrasi sesuai urutan.
+
+Perbaikan G2 sebelum penerapan: `0002` mengganti `ada_kontak` dengan pembuangan UUID/nominal Rp
+dan perapatan pemisah sebelum pindai angka; rollback memulihkan fungsi G1. Tabel `foto_hapus`
+menyimpan rencana salin sebelum CopyObject; publikasi memasang pointer dan menghapus rencana atomik.
+Antrean melewati pointer aktif dan rencana lebih muda dari 5 menit. Penutupan hanya pemeriksa aktif;
+FO memicu hapus melalui darurat, penyelesaian mendesak otomatis mencoba lagi. Detail dan respons
+foto menyertakan hitungan hapus tertunda. `deleteObjects` memeriksa galat per objek.
+`0003` membatasi pesan 1000/catatan 500 pada CHECK/RPC/zod dan menyatukan laporan baru kembar
+(profil/foto/alasan) lewat indeks unik parsial; receipt sama sampai laporan ditutup.
+Bucket privat/publik sama menonaktifkan draf dan publikasi foto. Ketiga migrasi masih belum diterapkan.
+
+## 202611090005 sampai 202611090007: UMKM tahap A G3 (belum diterapkan)
+
+- `202611090005_umkm_statistik.sql`: suka idempoten true/false untuk akun nonanon bukan staf;
+  tanggal pertama tetap dan total dijaga trigger termasuk penghapusan akun. Kolektor service-only
+  menulis dedup, harian dan total dalam satu transaksi, tanpa identitas mentah pada tabel kejadian.
+  Satu sakelar admin bawaan mati; versi naskah dan waktu aktivasi masuk jejak. Guard global diam
+  berhenti mencatat setelah 1000 kejadian per 600 detik. Baris sakelar hilang menolak pencatatan.
+- Skor `5*L90+V90`, atau L90 saat sakelar mati; satu statement CTE membangun dan mengaktifkan
+  snapshot. Hanya snapshot aktif disimpan; kegagalan transaksi mempertahankan snapshot terdahulu.
+  Job `umkm_skor_harian` berjalan `0 19 * * *` UTC, yaitu 02.00 WIB.
+- `202611090006_umkm_urutan.sql`: hanya `paling_sesuai`, menggantikan `terbaru`; kecocokan spesifik,
+  kategori, nama/deskripsi mendahului skor, hash harian WIB dan id. Slot baru posisi 5/15 halaman
+  pertama, cursor HMAC mengikat filter/snapshot/hari/key/id slot. Pergantian snapshot/hari memberi
+  `SNAPSHOT_BERUBAH` 409 dan menginvalidasi cache sebelum mulai ulang.
+  Detail memberi sakelar, kartu memberi suka/dilihat/baru; serupa maksimal 10.
+- Laporan admin/pemeriksa berupa agregat tanpa nomor dan konten formulir, profil 20 per halaman;
+  ekspor satu CSV maksimal 10000 profil dan 5000 kelompok, lewat utilitas CSV dan redaksi PII.
+  Sakelar mati memberi null untuk statistik opsional, dilabeli "belum dicatat" pada layar/ekspor.
+  CSV menormalkan titik koma pada teks dan mencantumkan waktu aktif sakelar berlabel WIB.
+- `202611090007_umkm_retensi.sql`: DELETE pesan/laporan dan key retry setelah 180 hari,
+  maksimal 500 per jenis per putaran. Jejak tidak bergantung pada keberadaan baris pekerjaan.
+  Dedup 7 hari, harian/tanpa hasil 95 hari, bulanan 24 bulan; maksimal 20000 per jenis.
+  Pemindahan kelompok harian kadaluwarsa ke bulanan dilakukan atomik dan idempoten, total tetap.
+  Job `umkm_retensi_harian` berjalan `15 19 * * *` UTC, yaitu 02.15 WIB, tanpa HTTP.
+- Foto draf tidak memakai antrean/status baru. Route cron menelusuri prefix R2 `umkm-draf/`,
+  mulai dari key UUID acak sampai habis lalu dari awal sampai titik mulai. Objek >30 hari
+  diperiksa lewat RPC service-role. Hanya revisi tayang dilindungi, termasuk foto tersembunyi;
+  key bersama, tinjauan aktif <90 hari dan keputusan ditolak <30 hari juga dilindungi.
+  Maksimal 1000 objek dihapus per panggilan; selesai false bila tenggat/batas menghentikan scan.
+- Rollback berurutan: `docs/rollback-umkm-retensi-202611090007.sql`,
+  `docs/rollback-umkm-urutan-202611090006.sql`, `docs/rollback-umkm-statistik-202611090005.sql`.
+  Pulihkan aplikasi G2 bersamaan; rollback mempertahankan tabel, total, suka dan agregat.
+  Penanda harian sampai hari ini WIB dihapus; suka tidak bisa dibatalkan selama rollback.
+  Data yang sudah kedaluwarsa dan dihapus tidak dipulihkan oleh rollback.
+- Prasyarat: seluruh G1/G2, pg_cron, key service server dan bucket R2 privat/publik terpisah.
+  Jadwal HTTP 02.30 WIB serta publikasi dua naskah privasi adalah langkah rilis manusia.
+  Belum ada pemasangan jadwal, aktivasi sakelar, akses credential atau penerapan ke database nyata.
+
+## 202611090008 dan 202611090009: UMKM tahap B (belum diterapkan)
+
+- `202611090008_umkm_permintaan.sql`: empat tabel privat perusahaan, Kebutuhan, permintaan dan pembukaan.
+  Akun individu, consent perusahaan, potongan teknis 50 tanpa batas total, penjaga laju 60/600 detik
+  dan 1000/hari untuk pengajuan. Auth dihapus menjadi UID NULL; bukti dan hitungan tetap.
+- `202611090009_umkm_permintaan_petugas.sql`: keputusan manual atomik/idempoten, bantuan dengan kode
+  12 karakter sekali pakai, pengambilalihan, hasil, tahan darurat, laporan dan retensi 730 hari.
+  Izin yang dicabut, izin baru dan perubahan kontak tidak menghidupkan pembukaan lama.
+  Pembukaan tidak dihitung kerja sama; hasil bawaan belum_diketahui.
+- Aktor perusahaan dicatat di aktor_uid nullable pada riwayat; aktor_id petugas menjadi nullable.
+  Jejak FO memakai LEFT JOIN dan label Pemohon, tanpa nomor, data perusahaan atau kontak pemohon.
+  Semua tabel RLS tanpa grant langsung. Baca nomor hanya RPC pemohon asli dengan JWT nonanon.
+  Ringkasan, laporan, CSV dan respons Setujui tidak memuat nomor UMKM.
+- Retensi harian G3 mengosongkan teks Kebutuhan, rincian bantuan dan hash yang layak setelah 730 hari;
+  maksimal 500 per putaran, tidak menghapus Kebutuhan yang masih dipakai permintaan belum layak.
+  Status, pembukaan, hasil dan hitungan dipertahankan.
+- Rollback berurutan: `docs/rollback-umkm-permintaan-petugas-202611090009.sql`, kemudian
+  `docs/rollback-umkm-permintaan-202611090008.sql`, bersama pemulihan aplikasi G3.
+  Rollback menutup nomor/modul B, memulihkan fungsi G3, serta mempertahankan tabel dan bukti.
+  Rincian yang sudah dibersihkan retensi tidak dipulihkan.
+- Prasyarat: tahap A 0001 sampai 0007; naskah privasi B diterbitkan pada rilis yang sama atau sebelumnya.
+  RPC publik umkm_tahap_b menandai kesiapan; sebelum migrasi route memberi 503 tanpa fallback service-role.
+  Staging lebih dulu sebelum produksi, melalui prosedur resmi; belum ada penerapan database nyata.
+
+### Perbaikan G4 sebelum penerapan, 9 November 2026
+
+- Migrasi 0008/0009 belum diterapkan dan diperbaiki langsung sesuai keputusan PM; manifest diregenerasi.
+  Migrasi 0001 sampai 0007 tetap. Kebutuhan menambah ditutup_pada untuk dasar masa simpan sejak penutupan.
+- Trigger UID perusahaan menjadi NULL menutup Kebutuhan aktif, membatalkan permintaan belum terbuka,
+  dan memberi tanggal penutupan semua permintaan akun bila belum ada, termasuk nomor_dibuka.
+- Retensi 730 hari mencakup Kebutuhan tertutup tanpa permintaan. Teks aktif tidak dikosongkan;
+  permintaan yang masih dalam masa simpan menahan pengosongan teks Kebutuhan yang dirujuknya.
+  Perusahaan tanpa akun dan tanpa rujukan Kebutuhan berteks dinetralkan setelah aktivitas terakhir 730 hari;
+  perusahaan dengan akun tetap disimpan. Rincian bantuan/hash tetap dibersihkan tanpa menghapus hitungan.
+- Detail pemeriksa menambah bantuan nama/kontak sebagai pembanding akun yang menautkan sampai retensi.
+  Tahan dibatasi status diajukan, menunggu_izin, nomor_dibuka; ambil/lepas untuk butir ditahan tetap tersedia.
+- Tambahan akhir rollback 0009 mempertahankan pembersihan tahap B setelah pemulihan fungsi tahap A.
+  Rollback 0008 tidak menggantinya, tidak membuka nomor dan tidak mengembalikan rincian yang dibersihkan.
+- Saat akun dihapus, tahan darurat permintaannya ikut dikosongkan agar butir keluar antrean,
+  termasuk pembukaan yang pernah ditahan. Pembatalan biasa tetap menunggu pelepasan tahan oleh petugas.
+
+### UMKM tahap C G5, 9 November 2026, belum diterapkan
+
+- `202611090010_umkm_pemilik.sql`: kepemilikan berdasarkan UID akun nonanon dan persetujuan petugas,
+  registrasi mandiri privat, perbaikan setelah ditolak, revisi draf dan pencabutan izin nomor sendiri.
+  Terbit pertama mengesahkan pendaftar atomik; penolakan revisi tidak menolak pendaftarnya.
+  Kolom UID pelaku mempertahankan bukti tanpa meniru identitas petugas; nomor tidak masuk riwayat.
+- `202611090011_umkm_pemilik_integrasi.sql`: klaim dalam antrean yang sama, putusan manual idempoten,
+  detail akun hanya bagi pemeriksa, statistik profil sendiri dengan tren 30 hari WIB dan penerima
+  paling banyak 20 nama perusahaan/tanggal per halaman. Suka pemilik sendiri tidak dihitung.
+- Kedua migrasi maju dari 0009 dan diuji di PGlite. Tidak mengubah migrasi 0001 sampai 0009,
+  data nyata, konfigurasi deployment atau kredensial. Manifest dan daftar migrasi menyertakan keduanya.
+- Rollback berurutan: `rollback-umkm-pemilik-integrasi-202611090011.sql`, lalu
+  `rollback-umkm-pemilik-202611090010.sql`, bersama pemulihan aplikasi tahap B.
+  RPC tahap C ditutup; tabel, kolom pelaku dan bukti tetap disimpan. Tahap B tetap berjalan.
+
+### Perbaikan UMKM tahap C G5, 9 November 2026, belum diterapkan
+
+- 0010 dan 0011 diperbaiki langsung karena belum di-commit dan belum diterapkan; entri manifest keduanya
+  dihapus lalu diregenerasi. Migrasi 0001 sampai 0009 tetap.
+- 0010: draf pemilik pada profil disembunyikan ditolak `KONFLIK_STATUS`; pemicu `umkm_jaga_sumber_mandiri`
+  mempertahankan sumber mandiri saat petugas menyimpan; `perubahan` pada daftar/detail pemilik; catatan petugas
+  hanya dari penolakan revisi terakhir milik akun itu; detail pemilik tanpa UID/ID pelaku dan pemeriksa foto.
+- 0011: RPC `umkm_cabut_kepemilikan` bagi pemeriksa, `pemilik_terdaftar` di detail tugas (maksimal 20),
+  keterangan pemilik dengan LEFT JOIN, jejak FO berlabel "Pemilik usaha" tanpa data akun.
+- Rollback 0011 menambah stub `MODUL_BELUM_TERSEDIA` untuk RPC cabut dan mengembalikan jejak versi 0009;
+  rollback 0010 melepas pemicu sumber mandiri.
+
+### Deteksi kontak kata utuh UMKM, 9 November 2026, belum diterapkan
+
+- `202611090012_umkm_kontak_kata_utuh.sql`: `umkm_private.ada_kontak` hanya menganggap wa.me, wa.link,
+  whatsapp.com, t.me, dan linktr.ee sebagai tautan bila muncul sebagai kata utuh. Kalimat wajar seperti
+  "PT. Mekar Jaya" atau "sehat. Menggunakan bahan alami" tidak lagi menahan Terbitkan. Deteksi nomor, email,
+  `tel:`, dan `mailto:` tidak berubah. Tidak mengubah data.
+- Terapkan sesudah 0011 dengan `--atomic`. Rollback: `docs/rollback-umkm-kontak-kata-utuh-202611090012.sql`
+  mengembalikan fungsi versi 0002.
+
+### Penerapan UMKM 0001 sampai 0012 ke produksi, 9 November 2026
+
+- Diterapkan 21.25 WIB ke `aws-1-ap-southeast-1.pooler.supabase.com` atas persetujuan pemilik, dalam SATU
+  transaksi (`apply-migration.mjs <gabungan 0001..0012> --atomic --yes`) sesudah dry run gabungan yang sama bersih.
+- Staging belum ada (konfigurasi `stg` kosong); pemilik memutuskan langsung ke produksi sesudah dry run.
+- `verify-migration-ledger.mjs` sesudahnya: 202611090001 sampai 202611090012 berstatus terpasang.
+  Ledger `supabase_migrations.schema_migrations` tidak diisi, sama seperti migrasi sebelumnya lewat skrip ini.
+- Rollback berurutan terbalik memakai `docs/rollback-umkm-*` (0012 lalu 0011 sampai 0001), data lama tidak tersentuh.

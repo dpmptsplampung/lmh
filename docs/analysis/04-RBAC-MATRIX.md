@@ -266,3 +266,78 @@ Mengganti baca langsung `kunjungan` oleh klien untuk autofill (yang menyusut sej
 | `hp_normal(text)` | authenticated, service_role (anon dicabut) | fungsi murni, tanpa akses data |
 
 Celah yang TIDAK ditutup Fase 6: `buku_tamu` terbaca semua FO untuk semua tanggal (tidak dipakai fitur ini).
+
+## 11. UMKM tahap A G1, 2026-11-09 (belum diterapkan)
+
+Flag `petugas.pemeriksa_umkm` terpisah dari role utama dan Layanan. Database memeriksa akun aktif serta
+`sesi_valid()` setiap panggilan, tidak mempercayai flag di browser/JWT metadata pengguna.
+Perubahan role atau auth_user_id mencabut flag dan diaudit dengan nilai lama/baru, termasuk tanpa sesi pengguna;
+perubahan layanan_id mempertahankannya. INSERT memaksa false, perubahan langsung ditolak, dan aktivasi diri
+sendiri ditolak oleh RPC penanda. Front Office selalu ditolak oleh RPC pemeriksa walaupun flag bernilai true.
+
+| Data/aksi | Anon/pengunjung | Petugas tanpa flag | Pemeriksa aktif pemegang tugas | Pemeriksa lain | FO | Admin tanpa flag |
+|---|---|---|---|---|---|---|
+| Proyeksi revisi terbit yang disetujui | Ya | Ya | Ya | Ya | Ya | Ya |
+| Tabel dasar, nomor lewat SELECT langsung | Tidak | Tidak | Tidak | Tidak | Tidak | Tidak |
+| Daftar/pencarian/detail privat melalui RPC | Tidak | Tidak | Ya | Ya | Tidak | Tidak |
+| Simpan profil baru | Tidak | Tidak | Ya | Ya, otomatis memegang profil baru | Tidak | Tidak |
+| Ambil alih tugas | Tidak | Tidak | Ya | Ya, versi dan riwayat | Tidak | Tidak |
+| Koreksi/putusan/izin/visibilitas | Tidak | Tidak | Ya, versi terbaru | Tidak sebelum ambil alih | Tidak | Tidak |
+| Kontak tunggal lewat RPC tercatat | Tidak | Tidak | Ya, revisi belum diputuskan atau mendesak | Tidak | Tidak | Tidak |
+| Atur flag pemeriksa | Tidak | Tidak | Hanya bila juga Admin | Hanya bila juga Admin | Tidak | Ya |
+
+Admin dengan flag mengikuti hak pemeriksa, termasuk syarat memegang tugas untuk nomor/mutasi. Tidak ada pemberian nomor kepada perusahaan/pengunjung pada tahap A. Tidak ada hak operasi darurat/pengawasan baru di G1; itu ditambahkan tiket 06.
+
+Antrean memakai keputusan revisi terakhir IS NULL OR mendesak; profil tersembunyi yang sudah diputuskan dicari
+melalui pencarian semua status. Pencarian memakai nama revisi terakhir, q trim 2..200, wildcard literal,
+id ASC dan cursor eksklusif, maksimal 20 hasil tanpa nomor. Izin tidak mengubah mendesak, dan G1 tidak menyalakannya.
+Ambil alih tetap diperbolehkan sesudah keputusan. service_role tidak memiliki hak langsung pada enam tabel UMKM.
+
+Proyeksi publik hanya field bisnis allowlist, tanpa NIB, alamat rinci, nomor, R2 key atau data staf. Draf koreksi tidak mengganti snapshot terbit sampai keputusan baru; profil disembunyikan ditolak langsung oleh RPC publik. Foto draf R2 private dipratinjau melalui JWT dan URL bertanda tangan 60 detik, bukan alamat publik tetap.
+
+Definer memakai search_path pg_catalog, pg_temp dan semua relasi schema-qualified. PUBLIC EXECUTE dicabut;
+schema/helper/rahasia privat tidak memiliki grant pengguna. UUID operasi + HMAC body dalam riwayat mendukung
+retry tanpa menyimpan payload privat; pengulangan body berbeda konflik. Alasan audit menolak kontak.
+Uji DB langsung menggunakan role dan UID ada pada skenario lokal, bukan hanya mock route/menu.
+
+## 12. UMKM tahap A G2, 2026-11-09 (belum diterapkan)
+
+Tiga migrasi 202611090002/0003/0004 menambah katalog, pesan/laporan dan pengawasan terpisah.
+Hak pemeriksa G1 dan predicate akses kontak tetap. `mendesak` pertama kali disetel oleh darurat,
+bukan oleh laporan. FO dengan flag pemeriksa yang basi tetap tidak dapat membaca isi privat.
+
+| Data/aksi | Publik tanpa sesi | Sesi anon/pengunjung | Pemeriksa aktif | FO aktif | Admin tanpa flag |
+|---|---|---|---|---|---|
+| Kartu/filter/detail approved-only melalui RPC | Ya | Ya | Ya | Ya | Ya |
+| Tabel baru atau helper/schema privat langsung | Tidak | Tidak | Tidak | Tidak | Tidak |
+| Kirim pesan/laporan, receipt tanpa echo | Tidak | Ya, guard per UID/aksi dan global | Ya, guard sama | Ya, guard sama | Ya, guard sama |
+| Antrean campuran/detail pesan dan laporan | Tidak | Tidak | Ya, semua pemeriksa | Tidak | Tidak |
+| Ambil alih pesan/laporan | Tidak | Tidak | Ya, versi/operasi | Tidak | Tidak |
+| Tandai dibalas/selesai | Tidak | Tidak | Pemegang, versi/operasi | Tidak | Tidak |
+| Bukti/publikasi foto dan retry | Tidak | Tidak | Pemegang profil | Tidak | Tidak |
+| Ringkasan/jejak/pencarian pengawasan | Tidak | Tidak | Hanya bila juga Admin | Ya, tanpa isi privat | Ya, tanpa isi privat |
+| Sembunyikan darurat/catat pencabutan | Tidak | Tidak | Hanya bila juga Admin | Ya, tanpa nomor | Ya, tanpa nomor |
+| Selesaikan mendesak | Tidak | Tidak | Pemegang profil | Tidak | Tidak |
+| Baca antrean hapus copy publik | Tidak | Tidak | Ya | Ya, hanya key publik | Ya, hanya key publik |
+| Tutup antrean hapus copy publik | Tidak | Tidak | Ya | Tidak | Tidak |
+| Nomor UMKM | Tidak | Tidak | Tetap G1, pemegang pekerjaan terbuka | Tidak | Tidak |
+
+Pesan/laporan tidak pernah diproyeksikan ke pengirim atau FO. Isi hanya detail pemeriksa no-store;
+nama pada antrean berupa label netral dan nama profil approved. Kontak pengirim berbeda dari nomor UMKM;
+dibaca oleh pemeriksa untuk balasan personal WhatsApp, tidak masuk audit atau cache bersama.
+Tidak ada ekspor, notifikasi isi formulir atau jalur nomor perusahaan dalam G2.
+
+Darurat FO/admin tanpa flag atau roster hanya dua aksi: hide profil terbit atau append izin dicabut
+pada kontak terkini. Alasan wajib pendek dan lolos pemindai kontak; versi/operasi/aktor/jejak atomik.
+Tidak mengembalikan kontak. Clear mendesak tidak mengubah persetujuan/konten; restore tetap review.
+Ringkasan hanya angka/durasi; jejak memproyeksikan enum/nama aktor/nama approved dan alasan aman,
+tanpa hasil operasi, referensi kontak, isi draf, pesan atau laporan.
+
+Seluruh grant RPC eksplisit; service_role tidak memiliki akses tabel atau EXECUTE baru.
+Pemicu hide menutup proyeksi dan membuat antrean hapus tanpa membuka key draf kepada FO.
+Copy R2 memakai ETag hasil HEAD dan key UUID baru; publikasi foto gagal tidak membatalkan keputusan.
+Rollback menutup RPC G2 tetapi mempertahankan isi privat, bukti izin, audit dan antrean.
+
+Perbaikan G2: rencana salin hanya untuk pemeriksa aktif pemegang profil terbit; FO tetap memicu
+penghapusan melalui route darurat. Rencana muda dan pointer aktif tidak masuk antrean hapus.
+Selesai mendesak otomatis mengulangi pembersihan. Batas kirim tetap hanya konstanta internal.

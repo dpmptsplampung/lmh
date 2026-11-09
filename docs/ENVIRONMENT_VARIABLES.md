@@ -60,8 +60,11 @@ Server-only. Opsional saat start (deploy tanpa R2 tidak gagal); fitur unggah (ab
 |---|---|
 | `R2_ACCOUNT_ID` | ID akun Cloudflare (membentuk endpoint `https://<id>.r2.cloudflarestorage.com`) |
 | `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | Token API R2 (Object Read & Write) |
-| `R2_BUCKET_PRIVATE` | Bucket privat (dokumen investasi, foto absensi, lampiran chat); dibaca lewat route berizin/presigned |
-| `R2_BUCKET_PUBLIC` | Bucket publik (hanya `umkm-photos/`) |
+| `R2_BUCKET_PRIVATE` | Bucket privat (dokumen investasi, foto absensi, lampiran chat, `umkm-draf/`); dibaca lewat route berizin/presigned |
+| `R2_BUCKET_PUBLIC` | Bucket publik (`umkm-photos/` dan salinan disetujui `umkm-katalog/`) |
 | `R2_PUBLIC_BASE_URL` | Domain publik bucket publik, HTTPS tanpa path/garis miring akhir |
 
 CORS bucket privat (dashboard R2): AllowedOrigins = domain LMH, AllowedMethods = `PUT`, AllowedHeaders = `content-type`, MaxAgeSeconds = 3600.
+
+Bucket privat dan publik wajib berbeda. Bila namanya sama, area `umkm-draf` (presign, konfirmasi,
+pratinjau) dan publikasi foto katalog dianggap tidak tersedia. Draf tidak mendapat URL publik.

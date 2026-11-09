@@ -187,3 +187,74 @@ Satu panggilan memproses maks 500 pesan; bila backlog besar, panggil ulang sampa
 - **Schema:** restore from Supabase backup (see `docs/BACKUP_RESTORE.md`).  
 - Do not re-apply old numbered migrations from git history into the live
   `supabase/migrations/` folder.
+
+## Tambahan penjadwal UMKM tahap A G3 (langkah rilis, belum dipasang)
+
+| Job | Jadwal | Panggilan |
+|---|---|---|
+| Skor UMKM | harian 02.00 WIB, `0 19 * * *` UTC | pg_cron `umkm_skor_harian` |
+| Retensi data UMKM | harian 02.15 WIB, `15 19 * * *` UTC | pg_cron `umkm_retensi_harian` |
+| Pembersihan foto draf UMKM | harian 02.30 WIB | POST `/api/umkm-katalog/bersihkan-draf` |
+
+Dua job DB ditambahkan migrasi 0005/0007. Jadwal HTTP dipasang operator pada penjadwal server
+yang sama dengan lampiran chat, memakai `Authorization: Bearer <CRON_SECRET>` tanpa memasukkan
+nilainya ke dokumen/log. Perubahan penjadwal nyata belum dilakukan. Periksa bahwa pemanggil mengirim
+POST, sesuai route UMKM ini. Pada server dengan zona UTC, jadwal HTTP adalah `30 19 * * *`.
+
+Satu panggilan R2 menelusuri halaman prefix `umkm-draf/` selama maksimal 45 detik pemindaian,
+menghapus paling banyak 1000 objek >30 hari sesudah RPC memeriksa perlindungan revisinya.
+Foto pada revisi terbit tidak dihapus; draf yang sedang ditinjau <90 hari dan revisi ditolak <30 hari
+juga dilindungi. Termasuk objek yatim lama, tanpa mengubah route presign. Foto hilang memakai placeholder.
+Respons envelope `data.dihapus` adalah jumlah objek yang berhasil diproses. Galat tidak menutup status
+apa pun, sehingga pemanggilan berikutnya menelusuri ulang objek tersisa. HTTP 401 berarti otorisasi
+cron tidak sah; 503 berarti modul/R2 belum tersedia; 500 berarti pemrosesan belum berhasil.
+
+Sebelum formulir publik dibuka, pastikan retensi DB dan jadwal R2 berjalan. Retensi isi pesan/laporan
+180 hari menggunakan waktu selesai atau aktivitas terakhir; total statistik dan jejak FO dipertahankan.
+Tidak perlu mengaktifkan telemetri untuk menjalankan retensi atau menggunakan formulir/suka/katalog.
+
+Sebelum sakelar statistik dinyalakan, pemilik membaca versi naskah yang terbit pada
+`/kebijakan-privasi` dan `docs/KEBIJAKAN_PDP.md`; admin kemudian mengonfirmasi versi itu pada laporan.
+Sakelar bawaan tetap mati, tanpa cookie atau baris opsional. Rilis aplikasi dan migrasi mengikuti
+staging lebih dahulu serta prosedur resmi di MIGRATIONS; dokumen ini tidak menandakan penerapan.
+
+## UMKM tahap B: permintaan nomor (belum diterapkan)
+
+Terapkan `202611090008_umkm_permintaan.sql` lalu `202611090009_umkm_permintaan_petugas.sql`
+di staging lebih dahulu, dengan seluruh tahap A sebagai prasyarat. Jalur produksi mengikuti aturan
+migrasi resmi dan persetujuan pemilik; catatan ini bukan bukti penerapan. Publikasikan paragraf privasi B
+di halaman dan dokumen PDP pada rilis yang sama atau sebelumnya.
+
+Sebelum migrasi, GET `/api/umkm-katalog/perusahaan` memberi 503. Sesudah migrasi, pengunjung tanpa
+login mendapat `data.masuk:false`, tanpa isi privat. Baca nomor selalu memakai JWT pemohon asli,
+private no-store. Pastikan nomor tidak masuk log, notifikasi, WhatsApp, jejak FO atau CSV.
+
+Uji staging: buat perusahaan/Kebutuhan, ajukan, ambil tugas, Setujui tanpa izin menjadi menunggu_izin;
+catat izin dan pastikan belum terbuka otomatis, lalu Setujui lagi. Uji pencabutan, akun lain, bantuan
+dan kode sekali pakai, serta tahan darurat FO. Hasil belum_diketahui tidak dihitung kerja sama.
+Templat pemberitahuan dan kode bantuan menuju `/me/umkm` pada origin aplikasi kanonik.
+
+Job retensi G3 tetap 02.15 WIB; versi baru menambah rincian permintaan yang layak sesudah 730 hari,
+maksimal 500 per putaran. Hitungan, status dan pembukaan tetap disimpan; tidak ada jadwal baru.
+
+Jika rilis dikembalikan, pulihkan aplikasi G3 bersama rollback SQL 0009 lalu 0008. Pembacaan nomor
+ditutup segera dan penanda tahap B menjadi tidak aktif; tabel/bukti tetap. Rincian yang sudah
+dibersihkan retensi tidak dipulihkan. Berkas rollback diuji di PGlite, belum dijalankan di server nyata.
+
+## UMKM tahap C: pemilik usaha, belum diterapkan
+
+Prasyarat: migrasi tahap A dan B sampai `202611090009`. Terapkan `202611090010_umkm_pemilik.sql`
+lalu `202611090011_umkm_pemilik_integrasi.sql` di staging melalui prosedur migrasi resmi.
+Publikasikan paragraf privasi tahap C pada halaman dan dokumen PDP bersama rilis aplikasi.
+Catatan ini bukan persetujuan atau bukti penerapan database nyata.
+
+Uji registrasi mandiri, Tolak lalu perbaikan, dan Terbit pertama yang mengesahkan pemilik.
+Uji klaim yang belum disetujui, pemilik lain dan FO: tidak boleh mengakses draf, kontak atau statistik.
+Pendaftar mandiri boleh mengunggah foto ke R2 privat sesudah profilnya mendapat ID, termasuk sebelum
+disetujui. Pengklaim profil lama menunggu disetujui. Kunci foto berawalan profil; publikasi memakai G2.
+Pastikan bucket publik/privat terpisah; tanpa R2, foto tetap privat/placeholder dan keputusan tetap tersimpan.
+
+Uji pencabutan pemilik dan penggantian nomor menutup pembukaan tahap B segera. Statistik menampilkan
+tren 30 hari WIB; penerima hanya nama perusahaan/tanggal, tanpa data pribadi pemohon. Tidak ada job baru.
+Sebelum migrasi, route pemilik memberi 503 tenang bila RPC belum ada; tidak ada fallback service-role.
+Untuk pemulihan, gunakan aplikasi tahap B dan rollback 0011 lalu 0010. Bukti dipertahankan, tahap B tetap aktif.

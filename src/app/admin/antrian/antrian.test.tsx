@@ -1554,8 +1554,12 @@ describe('Admin antrian: jendela tanggal Front Office non-Koordinator', () => {
     render(<AntrianPage />);
     await waitFor(() => expect(panggilanFo(mock).length).toBeGreaterThan(0));
     // profil dibaca sebelum pemilih mendapat batas: tunggu sampai hari di luar jendela benar-benar nonaktif
+    // Kalender menolak pindah ke bulan yang seluruhnya di luar batas, jadi hari uji harus ada di kisi bulan berjalan.
+    // Salah satu dari dua calon di luar jendela ini selalu sebulan dengan hari ini.
     fireEvent.click(chipTanggal());
-    const luar = await bukaHari(addDaysWIB(-30));
+    const bulanIni = todayWIB().slice(0, 7);
+    const hariLuar = [addDaysWIB(-8), addDaysWIB(2)].find((iso) => iso.startsWith(bulanIni)) as string;
+    const luar = await bukaHari(hariLuar);
     await waitFor(() => expect(luar).toHaveAttribute('aria-disabled', 'true'));
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     const awal = panggilanFo(mock).length;

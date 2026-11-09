@@ -1,6 +1,6 @@
-// Sumber kebenaran tunggal untuk akses halaman admin per role.
-// Dipakai oleh Sidebar (filter menu) dan AdminGuard (route guard) agar
-// keduanya tidak pernah berbeda pendapat.
+// Sumber kebenaran akses menu admin per role dan penanda.
+// Sidebar menyaring menu; AdminGuard memakai aturan yang sama untuk rute.
+// Halaman tugas UMKM mengizinkan kerangka penjelasan untuk staf; API dan DB menjaga akses datanya.
 
 export type AdminRole = 'admin' | 'petugas' | 'front_office';
 
@@ -52,7 +52,12 @@ export function badgeKeysForRole(role: string | null | undefined): AdminBadgeKey
   );
 }
 
+export interface AdminNavContext {
+  pemeriksa_umkm?: boolean;
+}
+
 export interface AdminNavEntry {
+  requiresPemeriksaUmkm?: boolean;
   label: string;
   href: string;
   iconKey:
@@ -110,6 +115,8 @@ export const ADMIN_NAV: AdminNavEntry[] = [
   // Laporan & Evaluasi. Fase 3: satu halaman Rekap terpadu (lingkup data per orang/Koordinator ditegakkan DB, ADR 0003);
   // halaman lama Rekap Front Office kini redirect ke Rekap (entri tersembunyi agar tetap lolos AdminGuard).
   { label: 'Rekap', href: '/admin/rekap', iconKey: 'rekap', roles: ['admin', 'petugas', 'front_office'], group: 'laporan' },
+  { label: 'Laporan UMKM', href: '/admin/umkm-laporan', iconKey: 'umkm',
+    roles: ['admin', 'petugas'], group: 'laporan' },
   { label: 'Rekap Front Office', href: '/admin/rekap-fo', iconKey: 'rekapFo', roles: ['admin', 'front_office'], group: 'laporan', hidden: true, tampilSebagai: '/admin/rekap' },
   { label: 'Cetak Laporan Pesan Perilaku', href: '/admin/pesan-perilaku/cetak', iconKey: 'skm', roles: ['admin', 'front_office'], group: 'pesanPerilaku', hidden: true, tampilSebagai: '/admin/pesan-perilaku' },
   { label: 'Hasil Survei', href: '/admin/skm', iconKey: 'skm', roles: ['admin', 'petugas', 'front_office'], group: 'pesanPerilaku', hidden: true, tampilSebagai: '/admin/pesan-perilaku' },
@@ -122,6 +129,9 @@ export const ADMIN_NAV: AdminNavEntry[] = [
   { label: 'Kelola Layar', href: '/admin/layar', iconKey: 'layar', roles: ['admin'], group: 'pengelolaan' },
 
   // Kemitraan & Investasi
+  { label: 'Tugas UMKM', href: '/admin/umkm-tugas', iconKey: 'umkm', roles: ['admin', 'petugas'], group: 'kemitraan', requiresPemeriksaUmkm: true },
+  { label: 'Pengawasan UMKM', href: '/admin/umkm-pengawasan', iconKey: 'umkm',
+    roles: ['admin', 'front_office'], group: 'kemitraan' },
   { label: 'UMKM', href: '/admin/umkm', iconKey: 'umkm', roles: ['admin'], group: 'kemitraan' },
   { label: 'Lead Investasi', href: '/admin/investasi-leads', iconKey: 'leads', roles: ['admin'], group: 'kemitraan' },
   { label: 'Investment Gallery', href: '/admin/gallery', iconKey: 'gallery', roles: ['admin'], group: 'kemitraan' },
@@ -150,9 +160,9 @@ export type AdminNavTreeItem =
 // - entri yang role-nya tidak mencakup `role` dibuang (urutan relatif tetap);
 // - kelompok kosong disembunyikan; kelompok dengan 1 entri menjadi tautan biasa;
 // - role tak dikenal/kosong -> pohon kosong.
-export function buildNavTree(role: string | null | undefined): AdminNavTreeItem[] {
+export function buildNavTree(role: string | null | undefined, context: AdminNavContext = {}): AdminNavTreeItem[] {
   if (!role) return [];
-  const boleh = (e: AdminNavEntry) => (e.roles as string[]).includes(role);
+  const boleh = (e: AdminNavEntry) => (e.roles as string[]).includes(role) && (!e.requiresPemeriksaUmkm || context.pemeriksa_umkm === true);
   const links = (slot: 'atas' | 'bawah'): AdminNavTreeItem[] =>
     ADMIN_NAV
       .filter((e) => !e.hidden && !e.group && (e.slot ?? 'atas') === slot && boleh(e))
@@ -191,16 +201,17 @@ export function findGroupForPath(pathname: string): AdminNavGroupKey | null {
 }
 
 // Apakah role boleh membuka pathname di area /admin (kecuali '/': publik).
-export function canAccessAdminPath(role: AdminRole, pathname: string): boolean {
+export function canAccessAdminPath(role: AdminRole, pathname: string, context: AdminNavContext = {}): boolean {
+  const boleh = (entry: AdminNavEntry) => entry.roles.includes(role) && (!entry.requiresPemeriksaUmkm || context.pemeriksa_umkm === true);
   // Exact-match terlebih dahulu (sub-path dari entry lain bisa beda role).
   const exact = ADMIN_NAV.find((e) => e.href === pathname);
-  if (exact) return exact.roles.includes(role);
+  if (exact) return boleh(exact);
 
   // Prefix match: pilih entry paling spesifik yang menjadi induk pathname.
   const parents = ADMIN_NAV
     .filter((e) => e.href !== '/' && pathname.startsWith(`${e.href}/`))
     .sort((a, b) => b.href.length - a.href.length);
-  if (parents.length > 0) return parents[0].roles.includes(role);
+  if (parents.length > 0) return boleh(parents[0]);
 
   // Halaman /admin yang tidak terdaftar: hanya admin (fail-closed).
   return role === 'admin';

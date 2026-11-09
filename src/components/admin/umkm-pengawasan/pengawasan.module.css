@@ -1,0 +1,29 @@
+.halaman { padding: 0 var(--pad-page) var(--pad-page); display: flex; flex-direction: column;
+  gap: var(--gap-grid); min-width: 0; overflow-wrap: anywhere; }
+.angka { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-5); margin: 0; }
+.angka div { border-bottom: 1px solid var(--border-default); padding-bottom: var(--space-3); }
+.angka dt, .waktu dt, .meta { color: var(--text-secondary); font-size: var(--fs-body, 14px); line-height: 1.6; }
+.angka dd { margin: var(--space-2) 0 0; font-size: 28px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.waktu { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4);
+  margin: var(--space-5) 0; }
+.waktu dd { margin: var(--space-2) 0 0; }
+.aksi { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.pencarian { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-3);
+  align-items: end; margin: var(--space-4) 0; }
+.daftar { list-style: none; padding: 0; margin: 0; }
+.daftar li + li { border-top: 1px solid var(--border-default); }
+.profil { display: flex; gap: var(--space-4); justify-content: space-between; align-items: center;
+  padding: var(--space-4) 0; }
+.jejak { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-4) 0; }
+.jejak p { margin: 0; }
+.form { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; overflow-wrap: anywhere; }
+.form textarea { min-height: 100px; }
+.halaman :is(button, a), .form button { min-height: 44px; }
+.halaman :is(input, textarea, select), .form :is(input, textarea) { min-width: 0; max-width: 100%; }
+.halaman :focus-visible, .form :focus-visible { outline: 2px solid var(--border-focus); outline-offset: 3px; }
+@media (max-width: 640px) {
+  .angka { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .waktu, .pencarian { grid-template-columns: minmax(0, 1fr); }
+  .profil { align-items: flex-start; flex-direction: column; }
+  .halaman :is(input, textarea), .form textarea { font-size: 16px; }
+}

@@ -24,6 +24,7 @@ import {
   BookOpen,
   Map,
   CalendarCheck,
+  Store,
 } from 'lucide-react';
 import Link from 'next/link';
 import type { ElementType } from 'react';
@@ -229,6 +230,8 @@ export default function MeDashboard() {
     { label: 'Lacak Pengaduan', href: '/pengaduan/lacak', ikon: FileQuestion, nada: 'peringatan' },
     { label: 'Info Layanan', href: '/standar-pelayanan', ikon: BookOpen, nada: 'primer' },
     { label: 'Peta Potensi', href: '/peta-potensi', ikon: Map, nada: 'info' },
+    { label: 'UMKM Saya', href: '/me/umkm', ikon: Store, nada: 'sukses' },
+    { label: 'Usaha Saya', href: '/me/usaha', ikon: Store, nada: 'primer' },
     { label: 'Buat Pengaduan', href: '/pengaduan', ikon: AlertCircle, nada: 'bahaya' },
   ];
 

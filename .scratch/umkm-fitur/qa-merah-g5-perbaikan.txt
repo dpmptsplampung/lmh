@@ -1,0 +1,12 @@
+PASS login, email lama, HP dan klaim belum disetujui tidak memberi hak
+PASS pendaftar mandiri dapat memperbaiki draf tanpa hak nomor dan statistik
+PASS revisi dan foto draf privat, versi terbit tetap sampai disetujui
+PASS pencabutan pemilik langsung menutup nomor tahap B
+PASS statistik dan penerima hanya pemilik sendiri, tanpa data pemohon
+PASS FO tidak memperoleh data pemilik
+PASS pemilik mengganti nomor lewat draf: pembukaan lama langsung tertutup
+FAIL jejak FO untuk tindakan pemilik berlabel Pemilik usaha tanpa UID: label aktor: Pemohon
+FAIL draf pemilik pada profil disembunyikan ditolak KONFLIK_STATUS: draf diterima atau galat lain: undefined undefined
+FAIL cabut kepemilikan menutup seluruh akses akun dan boleh klaim lagi: pemilik_terdaftar tidak berisi satu baris
+FAIL petugas menyimpan profil mandiri: sumber tetap, terbit pertama menyetujui pendaftar: sumber berubah menjadi kurasi
+HASIL: 7 PASS, 4 FAIL

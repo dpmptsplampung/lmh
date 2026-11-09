@@ -8,6 +8,7 @@ const h = vi.hoisted(() => ({
   petugas: { role: 'petugas', wajib_ganti_sandi: false } as Record<string, unknown> | null,
   rpc: vi.fn(),
   signOut: vi.fn(),
+  oauth: vi.fn(),
   params: new URLSearchParams(),
 }));
 
@@ -18,7 +19,7 @@ vi.mock('next/navigation', () => ({
 }));
 vi.mock('@/lib/supabase/client', () => ({
   createClient: () => ({
-    auth: { signInWithPassword: h.signIn, signInWithOAuth: vi.fn(), signOut: h.signOut },
+    auth: { signInWithPassword: h.signIn, signInWithOAuth: h.oauth, signOut: h.signOut },
     rpc: h.rpc,
     from: () => ({ select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: h.petugas }) }) }) }),
   }),
@@ -172,5 +173,36 @@ describe('login staf: sesi tunggal', () => {
     h.params = new URLSearchParams({ alasan: '<b>x</b>' });
     render(<LoginPage />);
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+});
+
+describe('tujuan sesudah login (redirect dari proxy)', () => {
+  beforeEach(() => {
+    h.oauth.mockReset().mockResolvedValue({ error: null });
+    h.params = new URLSearchParams();
+  });
+  afterEach(cleanup);
+
+  const loginGoogle = async () => {
+    render(<LoginPage />);
+    fireEvent.click(screen.getByRole('button', { name: /Masuk dengan Google/ }));
+    await waitFor(() => expect(h.oauth).toHaveBeenCalled());
+    return h.oauth.mock.calls[0][0].options.redirectTo as string;
+  };
+
+  it('?redirect=/me/umkm dari proxy dibawa ke callback sebagai next', async () => {
+    h.params = new URLSearchParams({ redirect: '/me/umkm' });
+    expect(await loginGoogle()).toMatch(/\/auth\/callback\?next=%2Fme%2Fumkm$/);
+  });
+
+  it('next menang atas redirect, dan jalur luar ditolak', async () => {
+    h.params = new URLSearchParams({ next: '/chat', redirect: '/me/umkm' });
+    expect(await loginGoogle()).toMatch(/next=%2Fchat$/);
+    cleanup(); h.oauth.mockClear();
+    h.params = new URLSearchParams({ redirect: '//evil.example' });
+    expect(await loginGoogle()).not.toContain('next=');
+    cleanup(); h.oauth.mockClear();
+    h.params = new URLSearchParams({ redirect: 'https://evil.example' });
+    expect(await loginGoogle()).not.toContain('next=');
   });
 });

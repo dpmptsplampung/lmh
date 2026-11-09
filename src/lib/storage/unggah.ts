@@ -10,7 +10,10 @@ export async function unggahKeR2(area: Area, path: string, berkas: Blob): Promis
     body: JSON.stringify({ area, path, mime, ukuran: berkas.size }),
   });
   if (!presign.ok) throw new Error(await pesanGalat(presign, 'Gagal menyiapkan unggahan'));
-  const { uploadUrl, headers } = (await presign.json()) as { uploadUrl: string; headers: Record<string, string> };
+  const { uploadUrl, headers, kunci } = (await presign.json()) as {
+    uploadUrl: string; headers: Record<string, string>; kunci: string;
+  };
+  const pathKonfirmasi = area === 'umkm-draf' ? kunci.slice(`${area}/`.length) : path;
 
   let put: Response;
   try {
@@ -23,7 +26,7 @@ export async function unggahKeR2(area: Area, path: string, berkas: Blob): Promis
   const konfirmasi = await fetch('/api/storage/konfirmasi', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ area, path }),
+    body: JSON.stringify({ area, path: pathKonfirmasi }),
   });
   if (!konfirmasi.ok) throw new Error(await pesanGalat(konfirmasi, 'Berkas tidak lolos pemeriksaan'));
   return (await konfirmasi.json()) as { kunci: string; url?: string };
