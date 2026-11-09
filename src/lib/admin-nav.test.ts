@@ -19,6 +19,11 @@ it('A19: label menu mengikuti glosarium, termasuk alamat hasil survei lama', () 
 });
 
 describe('canAccessAdminPath', () => {
+  it('laporan UMKM boleh dibuka admin dan petugas, bukan Front Office', () => {
+    expect(canAccessAdminPath('admin', '/admin/umkm-laporan')).toBe(true);
+    expect(canAccessAdminPath('petugas', '/admin/umkm-laporan')).toBe(true);
+    expect(canAccessAdminPath('front_office', '/admin/umkm-laporan')).toBe(false);
+  });
   it('pengawasan UMKM hanya untuk FO dan admin tanpa penanda pemeriksa', () => {
     expect(canAccessAdminPath('admin', '/admin/umkm-pengawasan')).toBe(true);
     expect(canAccessAdminPath('front_office', '/admin/umkm-pengawasan')).toBe(true);
@@ -174,7 +179,7 @@ const ROLES_SEBELUM: Record<string, string[]> = {
   '/admin/petugas': [A], '/admin/profil': [A, P, F], '/admin/rekap': [A, P, F], '/admin/rekap-fo': [A, F],
   '/admin/riwayat': [A], '/admin/scan': [A, F], '/admin/settings': [A], '/admin/settings/ai': [A],
   '/admin/settings/jadwal': [A, P, F], '/admin/settings/landing': [A], '/admin/pesan-perilaku': [A, P, F], '/admin/pesan-perilaku/cetak': [A, F], '/admin/skm': [A, P, F], '/admin/saran': [A, F],
-  '/admin/topik': [A], '/admin/umkm': [A], '/admin/umkm-pengawasan': [A, F],
+  '/admin/topik': [A], '/admin/umkm': [A], '/admin/umkm-laporan': [A, P], '/admin/umkm-pengawasan': [A, F],
 };
 
 // Halaman lama yang digabung ke /admin/fo/registrasi: tersembunyi dari sidebar, tetap boleh dibuka.
@@ -207,7 +212,7 @@ describe('pengelompokan menu: data', () => {
     expect(anak('antrean')).toEqual(['Antrean', 'Absensi', 'Kunjungan', 'Buku Tamu']);
     expect(anak('layananOnline')).toEqual(['Live Chat', 'Kelola FAQ', 'Log AI Chat']);
     expect(anak('pesanPerilaku')).toEqual(['Hasil Survei', 'Saran', 'Pengaduan']);
-    expect(anak('laporan')).toEqual(['Rekap', 'Performa Pelayanan']);
+    expect(anak('laporan')).toEqual(['Rekap', 'Laporan UMKM', 'Performa Pelayanan']);
     expect(anak('pengelolaan')).toEqual(['Jadwal Layanan', 'Kelola Layanan', 'Topik Penanganan', 'Kelola Layar']);
     expect(anak('kemitraan')).toEqual(['Tugas UMKM', 'Pengawasan UMKM', 'UMKM', 'Lead Investasi', 'Investment Gallery']);
     expect(anak('konten')).toEqual(['Dokumen Peraturan', 'Konten Landing']);
@@ -255,7 +260,7 @@ describe('buildNavTree', () => {
       ['Antrean & Kehadiran', '/admin/antrian', '/admin/absensi'],
       ['Layanan Online', '/admin/chat', '/admin/chat/faq'],
       ['Pesan Perilaku', '/admin/pesan-perilaku', '/admin/pengaduan'],
-      '/admin/rekap',
+      ['Laporan & Evaluasi', '/admin/rekap', '/admin/umkm-laporan'],
       '/admin/settings/jadwal', // Pengelolaan Layanan tinggal 1 entri -> tautan biasa
       '/admin/profil',
       '/',

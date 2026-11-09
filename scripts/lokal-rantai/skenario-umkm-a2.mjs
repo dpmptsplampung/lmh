@@ -33,7 +33,7 @@ const terbit = async (body = data) => {
 };
 const publik = (who, id) => rpc(who, 'umkm_profil_publik', '$1::uuid', [id]);
 const cari = (who, q = null, cursor = null) => rpc(who, 'umkm_cari_katalog',
-  '$1::text,NULL::text,NULL::text,NULL::text,NULL::text,$2::text,$3::text', [q, 'terbaru', cursor]);
+  '$1::text,NULL::text,NULL::text,NULL::text,NULL::text,$2::text,$3::text', [q, 'paling_sesuai', cursor]);
 const pesan = (who, op, teks = 'PesanRahasia', profil = null) => rpc(who, 'umkm_kirim_pesan_kontak',
   '$1::text,$2::text,$3::text,$4::text,$5::uuid,$6::uuid,$7::text',
   ['PengirimRahasia', 'PerusahaanRahasia', nomor, teks, op, profil, null]);

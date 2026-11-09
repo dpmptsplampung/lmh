@@ -6,7 +6,7 @@ import Field from '@/components/ui/Field';
 import Tombol from '@/components/ui/Tombol';
 import type { DaftarKatalog, FilterKatalog } from '@/lib/umkm-katalog/types';
 import { KatalogError, katalogRequest } from './api';
-import FotoKatalog from './FotoKatalog';
+import KartuKatalog from './KartuKatalog';
 import FormulirKatalog, { type KonteksFormulir } from './FormulirKatalog';
 import KeadaanKatalog from './KeadaanKatalog';
 import styles from './katalog.module.css';
@@ -22,6 +22,7 @@ export default function Katalog() {
   const [data, setData] = useState<DaftarKatalog | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<KatalogError | null>(null);
+  const [notice, setNotice] = useState('');
   const [open, setOpen] = useState(false);
   const [context, setContext] = useState<KonteksFormulir>({});
   const request = useRef<AbortController | null>(null);
@@ -31,13 +32,22 @@ export default function Katalog() {
   const load = useCallback(async (cursor?: string) => {
     request.current?.abort();
     const controller = new AbortController(); request.current = controller;
-    setLoading(true); setError(null); setData(null);
-    const params = new URLSearchParams({ sort: 'terbaru' });
+    setLoading(true); setError(null); setData(null); setNotice('');
+    const params = new URLSearchParams();
     if (search) params.set('q', search);
     for (const [key, value] of Object.entries(filters)) if (value) params.set(key, value);
     if (cursor) params.set('cursor', cursor);
     try {
-      const response = await katalogRequest<DaftarKatalog>(`?${params}`, { signal: controller.signal });
+      let response: DaftarKatalog;
+      try {
+        response = await katalogRequest<DaftarKatalog>(`?${params}`, { signal: controller.signal });
+      } catch (e) {
+        if (!(e instanceof KatalogError) || e.code !== 'SNAPSHOT_BERUBAH' || !cursor) throw e;
+        if (controller.signal.aborted) return;
+        setNotice('Urutan katalog diperbarui. Pencarian ditampilkan kembali dari halaman pertama.');
+        params.delete('cursor');
+        response = await katalogRequest<DaftarKatalog>(`?${params}`, { signal: controller.signal });
+      }
       if (!controller.signal.aborted) setData(response);
     } catch (e) {
       if (!controller.signal.aborted) setError(e instanceof KatalogError ? e : new KatalogError('GAGAL_INTERNAL', 500));
@@ -111,6 +121,7 @@ export default function Katalog() {
     </div>
     <section aria-labelledby="hasil-katalog" className={styles.hasil}>
       <h2 id="hasil-katalog" ref={results} tabIndex={-1}>Profil UMKM</h2>
+      {notice && <p role="status">{notice}</p>}
       {loading && <p role="status">Memuat katalog UMKM...</p>}
       {error && <KeadaanKatalog error={error} onRetry={() => void load()} />}
       {!loading && data && (data.items.length === 0 ? <div className={styles.keadaan}>
@@ -119,17 +130,7 @@ export default function Katalog() {
         <Tombol onClick={() => contact(search ? { kata_kunci: search } : {})}>Hubungi lewat petugas</Tombol>
       </div> : <>
         <ul className={styles.kartuDaftar}>
-          {data.items.map((item) => <li key={item.id} className={styles.kartu}>
-            <FotoKatalog src={item.foto?.url ?? null} alt={`Foto ${item.nama}`} />
-            <div className={styles.isiKartu}>
-              <p className={styles.label}>{item.kabupaten_kota}</p>
-              <h3><Link href={`/umkm/katalog/${item.id}`}>{item.nama}</Link></h3>
-              <p>{[item.jenis, item.kategori, item.spesifik].filter(Boolean).join(' · ')}</p>
-              <p>{item.deskripsi}</p>
-              <Tombol varian="sekunder" onClick={() => contact({ profil_id: item.id, nama: item.nama })}
-                aria-label={`Hubungi lewat petugas untuk ${item.nama}`}>Hubungi lewat petugas</Tombol>
-            </div>
-          </li>)}
+          {data.items.map((item) => <KartuKatalog key={item.id} item={item} onHubungi={contact} />)}
         </ul>
         <div className={styles.aksi}>
           {data.next_cursor && <Tombol onClick={() => {

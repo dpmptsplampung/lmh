@@ -20,6 +20,11 @@ afterEach(() => {
 const label = (role: string) => susunPerintah(role).map((p) => p.label);
 
 describe('susunPerintah: hak akses mengikuti peran', () => {
+  it('laporan UMKM tersedia untuk admin dan petugas', () => {
+    expect(label('admin')).toContain('Laporan UMKM');
+    expect(label('petugas')).toContain('Laporan UMKM');
+    expect(label('front_office')).not.toContain('Laporan UMKM');
+  });
   it('petugas: tanpa tindakan Front Office/Admin dan tanpa menu admin-saja', () => {
     const l = label('petugas');
     expect(l).not.toContain('Registrasi Walk-in');

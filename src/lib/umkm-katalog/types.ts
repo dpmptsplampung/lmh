@@ -32,13 +32,15 @@ export type DaftarTugas = { items: TugasCampuran[]; next_cursor: string | null }
 export type ApiSukses<T> = { data: T; meta: { request_id: string; next_cursor?: string | null } };
 export type ApiGalat = { error: { code: string; message: string }; request_id: string };
 
-export type ProfilPublik = {
+export type StatistikPublik = { suka: number; dilihat: number | null; baru: boolean };
+export type ProfilPublik = StatistikPublik & {
   id: string; nama: string; deskripsi: string; jenis: string; kategori: string; spesifik: string | null;
   kabupaten_kota: string; instagram: string | null; tiktok: string | null; foto: {id: string; url: string}[];
+  telemetri_opsional_aktif: boolean; statistik_mulai_pada: string | null;
 };
 export type FotoPublik = { id: string; url: string };
 export type Kartu = Pick<ProfilPublik, 'id' | 'nama' | 'deskripsi' | 'jenis' | 'kategori' |
-  'spesifik' | 'kabupaten_kota'> & { foto: FotoPublik | null };
+  'spesifik' | 'kabupaten_kota'> & StatistikPublik & { foto: FotoPublik | null };
 export type FilterKatalog = { jenis: string[]; kategori: string[]; kabupaten_kota: string[]; terpotong: boolean };
 export type DaftarKatalog = { items: Kartu[]; next_cursor: string | null };
 export type FotoPublikasi = { status: 'selesai' | 'tertunda'; tertunda: number; hapus_tertunda: number };
@@ -77,4 +79,15 @@ export type ProfilPengawasan = { id: string; nama: string; status: Status; versi
 export type DaftarProfilPengawasan = { items: ProfilPengawasan[]; next_cursor: string | null };
 export type MutasiDarurat = {
   id: string; versi: number; status: Status; mendesak: boolean; foto_publikasi?: FotoPublikasi;
+};
+export type StatusStatistik = {
+  telemetri_opsional_aktif: boolean; versi_naskah: string | null; aktif_pada: string | null;
+};
+export type ProfilStatistik = { id: string; nama: string; suka: number;
+  dilihat: number | null; klik_formulir: number | null };
+export type KelompokTanpaHasil = { hari: string; kategori: string; kabupaten_kota: string; jumlah: number };
+export type LaporanStatistik = StatusStatistik & {
+  profil: Record<Status, number>; suka: number; dilihat: number | null; tanpa_hasil: number | null;
+  pesan: { baru: number; ditangani: number }; laporan: { baru: number; ditangani: number };
+  profil_statistik: ProfilStatistik[]; kelompok_tanpa_hasil: KelompokTanpaHasil[]; next_cursor: string | null;
 };

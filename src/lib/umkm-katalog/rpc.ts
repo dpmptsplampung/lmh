@@ -1,9 +1,17 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { DaftarTugas, Detail, Mutasi, ProfilPublik, DetailPesan, DetailLaporan,
-  MutasiPekerjaan, RingkasanPengawasan, DaftarJejakPengawasan, DaftarProfilPengawasan, MutasiDarurat } from './types';
+  MutasiPekerjaan, RingkasanPengawasan, DaftarJejakPengawasan, DaftarProfilPengawasan, MutasiDarurat,
+  StatusStatistik, LaporanStatistik } from './types';
 import type { ProfilInput } from './schemas';
 type Versi = { p_profil_id: string; p_expected_version: number; p_operasi_id: string };
 export type RpcKontrak = {
+  umkm_suka: { args: { p_profil_id: string; p_aktif: boolean };
+    hasil: { profil_id: string; suka_saya: boolean; suka: number } };
+  umkm_status_suka: { args: { p_profil_id: string }; hasil: { suka_saya: boolean } };
+  umkm_laporan_statistik: { args: { p_cursor: string | null }; hasil: LaporanStatistik };
+  umkm_ekspor_statistik: { args: Record<string, never>; hasil: LaporanStatistik };
+  umkm_atur_telemetri: { args: { p_aktif: boolean; p_versi_naskah: string; p_kebijakan_terbit: boolean };
+    hasil: StatusStatistik };
   umkm_profil_publik: { args: { p_profil_id: string }; hasil: ProfilPublik };
   umkm_daftar_tugas: { args: { p_cursor: string | null }; hasil: DaftarTugas };
   umkm_cari_profil: { args: { p_q: string; p_cursor: string | null }; hasil: DaftarTugas };

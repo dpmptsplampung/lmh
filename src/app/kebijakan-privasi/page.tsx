@@ -159,7 +159,13 @@ export default function KebijakanPrivasiPage() {
             <p>
               LMH dapat mencatat statistik katalog: tampilan profil, jumlah pencarian tanpa hasil tanpa
               menyimpan kata yang dicari, klik membuka formulir, dan tanda suka. Pencatatan ini tidak memakai
-              cookie iklan.
+              cookie iklan. Untuk pengunjung yang belum login, LMH memakai cookie statistik acak yang berlaku
+              24 jam agar kunjungan yang sama tidak terhitung dua kali. Bila Anda login, penanda harian
+              dibuat dari ID akun dengan kunci rahasia. Penanda ini tidak menampilkan ID akun, tetapi
+              LMH masih dapat mengaitkannya dengan akun selama 7 hari. Penanda harian kami simpan 7 hari,
+              angka harian 95 hari, ringkasan pencarian tanpa hasil 24 bulan, dan jumlah total selama profil
+              ada. Tanda suka dan tanggal pertama Anda menyukai tersimpan sampai akun dihapus.
+              Membatalkan suka menonaktifkan tanda itu dan mengeluarkannya dari jumlah suka.
             </p>
           </div>
         </section>

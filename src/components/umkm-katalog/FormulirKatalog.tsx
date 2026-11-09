@@ -8,10 +8,12 @@ import Tombol from '@/components/ui/Tombol';
 import { KatalogError, kirimFormulir } from './api';
 import styles from './katalog.module.css';
 import { ALASAN_LAPORAN } from './alasan';
+import { PencatatFormulir } from './PencatatStatistik';
 
 export type KonteksFormulir = { profil_id?: string; nama?: string; kata_kunci?: string; foto_id?: string };
-export default function FormulirKatalog({ terbuka, jenis, konteks, onTutup }: {
+export default function FormulirKatalog({ terbuka, jenis, konteks, onTutup, telemetriAktif }: {
   terbuka: boolean; jenis: 'pesan' | 'laporan'; konteks: KonteksFormulir; onTutup: () => void;
+  telemetriAktif?: boolean;
 }) {
   const [values, setValues] = useState({ nama: '', perusahaan: '', nomor: '', pesan: '', alasan: '', catatan: '' });
   const [busy, setBusy] = useState(false);
@@ -66,6 +68,8 @@ export default function FormulirKatalog({ terbuka, jenis, konteks, onTutup }: {
 
   return <Dialog terbuka={terbuka} onTutup={close} dikunci={busy}
     judul={jenis === 'pesan' ? 'Hubungi lewat petugas' : 'Laporkan'}>
+    {terbuka && jenis === 'pesan' && konteks.profil_id && <PencatatFormulir
+      key={konteks.profil_id} id={konteks.profil_id} aktif={telemetriAktif} />}
     {receipt ? <div className={styles.form}>
       <p role="status">{jenis === 'pesan'
         ? 'Pesan diterima. Petugas akan menghubungi Anda melalui kontak yang Anda isi.'

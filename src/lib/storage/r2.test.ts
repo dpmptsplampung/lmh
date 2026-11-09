@@ -15,12 +15,13 @@ vi.mock('@aws-sdk/client-s3', () => {
     HeadObjectCommand: buat('Head'),
     DeleteObjectsCommand: buat('Delete'),
     CopyObjectCommand: buat('Copy'),
+    ListObjectsV2Command: buat('List'),
   };
 });
 vi.mock('@aws-sdk/s3-request-presigner', () => ({ getSignedUrl: vi.fn(async () => 'https://signed.example/x') }));
 
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { copyObject, deleteObjects, getObjectBytes, headObject, presignGet, presignPut,
+import { copyObject, deleteObjects, getObjectBytes, headObject, listObjects, presignGet, presignPut,
   putObject, r2Tersedia, bucketTerpisah, urlPublik } from './r2';
 
 const ENV = {
@@ -33,6 +34,26 @@ describe('r2', () => {
     kirim.mockReset();
     vi.mocked(getSignedUrl).mockClear();
     Object.assign(process.env, ENV);
+  });
+
+  it('listing meneruskan prefix dan token halaman tanpa membaca isi objek', async () => {
+    const date = new Date('2026-01-01T00:00:00Z');
+    kirim.mockResolvedValue({ Contents: [{ Key: 'umkm-draf/a.jpg', LastModified: date }, {}],
+      IsTruncated: true, NextContinuationToken: 'halaman-berikut' });
+    expect(await listObjects('private', 'umkm-draf/', 'halaman-awal')).toEqual({
+      items: [{ key: 'umkm-draf/a.jpg', lastModified: date }], nextCursor: 'halaman-berikut',
+    });
+    expect(kirim).toHaveBeenCalledWith(expect.objectContaining({ nama: 'List', input: {
+      Bucket: 'priv', Prefix: 'umkm-draf/', ContinuationToken: 'halaman-awal', MaxKeys: 1000,
+    } }));
+  });
+
+  it('listing dapat mulai sesudah key acak tanpa token halaman', async () => {
+    kirim.mockResolvedValue({ Contents: [], IsTruncated: false });
+    await listObjects('private', 'umkm-draf/', undefined, { startAfter: 'umkm-draf/m' });
+    expect(kirim).toHaveBeenCalledWith(expect.objectContaining({ input: expect.objectContaining({
+      StartAfter: 'umkm-draf/m', ContinuationToken: undefined,
+    }) }));
   });
 
   it('PUT draf menandatangani content-type hanya bila opsi dinyalakan', async () => {

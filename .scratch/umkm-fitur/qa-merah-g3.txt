@@ -1,0 +1,7 @@
+PASS U-08 suka idempoten, staf dan anonim ditolak
+FAIL U-08 sakelar mati dan deduplikasi telemetri: 42883: function public.umkm_catat_statistik(text, uuid, text) does not exist
+FAIL U-09 rumus skor dan mode mati: 42883: function umkm_private.perbarui_skor() does not exist
+FAIL U-09 serupa tidak menyertakan diri dan maksimal sepuluh: 42883: function public.umkm_serupa(uuid) does not exist
+FAIL U-10 laporan mati menunjukkan data tidak dicatat dan FO ditolak: 42883: function public.umkm_laporan_statistik() does not exist
+FAIL U-12 retensi memangkas yang kedaluwarsa dan menjaga total: 42P01: relation "umkm_stat_kejadian" does not exist
+1 PASS, 5 FAIL

@@ -29,7 +29,7 @@ describe('formulir publik', () => {
   ] as const)('membuka %s baru setelah sukses ditutup lewat %s', async (jenis, tutup) => {
     const onTutup = vi.fn();
     const props = { jenis, konteks: { profil_id: id }, onTutup };
-    const { rerender } = render(<FormulirKatalog {...props} terbuka />);
+    const { rerender } = render(<FormulirKatalog telemetriAktif={false} {...props} terbuka />);
     const isi = () => {
       if (jenis === 'pesan') fill();
       else {
@@ -44,8 +44,8 @@ describe('formulir publik', () => {
     if (tutup === 'Escape') fireEvent.keyDown(document, { key: 'Escape' });
     else fireEvent.click(screen.getByRole('button', { name: tutup }));
     expect(onTutup).toHaveBeenCalledOnce();
-    rerender(<FormulirKatalog {...props} terbuka={false} />);
-    rerender(<FormulirKatalog {...props} terbuka />);
+    rerender(<FormulirKatalog telemetriAktif={false} {...props} terbuka={false} />);
+    rerender(<FormulirKatalog telemetriAktif={false} {...props} terbuka />);
     expect(screen.queryByText(/^(Pesan|Laporan) diterima/)).toBeNull();
     if (jenis === 'pesan') {
       for (const field of screen.getAllByRole('textbox')) expect(field).toHaveValue('');
@@ -62,14 +62,14 @@ describe('formulir publik', () => {
   it('menutup hasil belum pasti mempertahankan isian dan kunci saat dibuka lagi', async () => {
     request.mockRejectedValueOnce(new TypeError('Koneksi terputus'));
     const props = { jenis: 'pesan' as const, konteks: { profil_id: id }, onTutup: vi.fn() };
-    const { rerender } = render(<FormulirKatalog {...props} terbuka />);
+    const { rerender } = render(<FormulirKatalog telemetriAktif={false} {...props} terbuka />);
     fill();
     fireEvent.click(screen.getByRole('button', { name: 'Kirim pesan' }));
     await screen.findByRole('alert');
     const first = JSON.parse(request.mock.calls[0][1].body);
     fireEvent.click(screen.getByRole('button', { name: 'Batal' }));
-    rerender(<FormulirKatalog {...props} terbuka={false} />);
-    rerender(<FormulirKatalog {...props} terbuka />);
+    rerender(<FormulirKatalog telemetriAktif={false} {...props} terbuka={false} />);
+    rerender(<FormulirKatalog telemetriAktif={false} {...props} terbuka />);
     expect(screen.getByRole('textbox', { name: 'Pesan' })).toHaveValue('Mencari produk kopi');
     fireEvent.click(screen.getByRole('button', { name: 'Kirim pesan' }));
     await screen.findByRole('button', { name: 'Selesai' });
@@ -79,12 +79,12 @@ describe('formulir publik', () => {
   it.each([
     ['pesan', 'Pesan', 1000], ['laporan', 'Catatan (opsional)', 500],
   ] as const)('membatasi isian %s sesuai kontrak', (jenis, label, batas) => {
-    render(<FormulirKatalog terbuka jenis={jenis} konteks={{ profil_id: id }} onTutup={vi.fn()} />);
+    render(<FormulirKatalog telemetriAktif={false} terbuka jenis={jenis} konteks={{ profil_id: id }} onTutup={vi.fn()} />);
     expect(screen.getByRole('textbox', { name: label })).toHaveAttribute('maxlength', String(batas));
   });
 
   it('menyiapkan sesi anon dan mengirim konteks tanpa meminta isian tambahan', async () => {
-    render(<FormulirKatalog terbuka jenis="pesan" konteks={{ profil_id: id, nama: 'Kopi Lampung' }}
+    render(<FormulirKatalog telemetriAktif={false} terbuka jenis="pesan" konteks={{ profil_id: id, nama: 'Kopi Lampung' }}
       onTutup={vi.fn()} />);
     fill();
     expect(screen.queryByRole('checkbox')).toBeNull();
@@ -99,7 +99,7 @@ describe('formulir publik', () => {
 
   it('sesi yang sudah ada dipakai kembali dan laporan hanya membawa profil, foto, alasan, catatan', async () => {
     auth.getSession.mockResolvedValue({ data: { session: { user: { id: 'pengunjung' } } }, error: null });
-    render(<FormulirKatalog terbuka jenis="laporan" konteks={{ profil_id: id, foto_id: 'foto-uji' }}
+    render(<FormulirKatalog telemetriAktif={false} terbuka jenis="laporan" konteks={{ profil_id: id, foto_id: 'foto-uji' }}
       onTutup={vi.fn()} />);
     fireEvent.change(screen.getByRole('combobox', { name: 'Alasan laporan' }), { target: { value: 'nomor_tampil' } });
     fireEvent.click(screen.getByRole('button', { name: 'Kirim laporan' }));
@@ -113,7 +113,7 @@ describe('formulir publik', () => {
 
   it('pengiriman tidak pasti memakai kunci sama sampai isian berubah', async () => {
     request.mockRejectedValue(new TypeError('Koneksi terputus'));
-    render(<FormulirKatalog terbuka jenis="pesan" konteks={{ kata_kunci: 'kopi' }} onTutup={vi.fn()} />);
+    render(<FormulirKatalog telemetriAktif={false} terbuka jenis="pesan" konteks={{ kata_kunci: 'kopi' }} onTutup={vi.fn()} />);
     fill();
     fireEvent.click(screen.getByRole('button', { name: 'Kirim pesan' }));
     await screen.findByRole('alert');
@@ -133,7 +133,7 @@ describe('formulir publik', () => {
   it('429 mengumumkan galat tanpa angka batas dan mempertahankan isian', async () => {
     request.mockResolvedValue(new Response(JSON.stringify({ error: { code: 'TERLALU_BANYAK', message: '10/600' } }),
       { status: 429 }));
-    render(<FormulirKatalog terbuka jenis="pesan" konteks={{}} onTutup={vi.fn()} />);
+    render(<FormulirKatalog telemetriAktif={false} terbuka jenis="pesan" konteks={{}} onTutup={vi.fn()} />);
     fill(); fireEvent.click(screen.getByRole('button', { name: 'Kirim pesan' }));
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('Permintaan sedang padat');

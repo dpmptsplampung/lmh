@@ -187,3 +187,33 @@ Satu panggilan memproses maks 500 pesan; bila backlog besar, panggil ulang sampa
 - **Schema:** restore from Supabase backup (see `docs/BACKUP_RESTORE.md`).  
 - Do not re-apply old numbered migrations from git history into the live
   `supabase/migrations/` folder.
+
+## Tambahan penjadwal UMKM tahap A G3 (langkah rilis, belum dipasang)
+
+| Job | Jadwal | Panggilan |
+|---|---|---|
+| Skor UMKM | harian 02.00 WIB, `0 19 * * *` UTC | pg_cron `umkm_skor_harian` |
+| Retensi data UMKM | harian 02.15 WIB, `15 19 * * *` UTC | pg_cron `umkm_retensi_harian` |
+| Pembersihan foto draf UMKM | harian 02.30 WIB | POST `/api/umkm-katalog/bersihkan-draf` |
+
+Dua job DB ditambahkan migrasi 0005/0007. Jadwal HTTP dipasang operator pada penjadwal server
+yang sama dengan lampiran chat, memakai `Authorization: Bearer <CRON_SECRET>` tanpa memasukkan
+nilainya ke dokumen/log. Perubahan penjadwal nyata belum dilakukan. Periksa bahwa pemanggil mengirim
+POST, sesuai route UMKM ini. Pada server dengan zona UTC, jadwal HTTP adalah `30 19 * * *`.
+
+Satu panggilan R2 menelusuri halaman prefix `umkm-draf/` selama maksimal 45 detik pemindaian,
+menghapus paling banyak 1000 objek >30 hari sesudah RPC memeriksa perlindungan revisinya.
+Foto pada revisi terbit tidak dihapus; draf yang sedang ditinjau <90 hari dan revisi ditolak <30 hari
+juga dilindungi. Termasuk objek yatim lama, tanpa mengubah route presign. Foto hilang memakai placeholder.
+Respons envelope `data.dihapus` adalah jumlah objek yang berhasil diproses. Galat tidak menutup status
+apa pun, sehingga pemanggilan berikutnya menelusuri ulang objek tersisa. HTTP 401 berarti otorisasi
+cron tidak sah; 503 berarti modul/R2 belum tersedia; 500 berarti pemrosesan belum berhasil.
+
+Sebelum formulir publik dibuka, pastikan retensi DB dan jadwal R2 berjalan. Retensi isi pesan/laporan
+180 hari menggunakan waktu selesai atau aktivitas terakhir; total statistik dan jejak FO dipertahankan.
+Tidak perlu mengaktifkan telemetri untuk menjalankan retensi atau menggunakan formulir/suka/katalog.
+
+Sebelum sakelar statistik dinyalakan, pemilik membaca versi naskah yang terbit pada
+`/kebijakan-privasi` dan `docs/KEBIJAKAN_PDP.md`; admin kemudian mengonfirmasi versi itu pada laporan.
+Sakelar bawaan tetap mati, tanpa cookie atau baris opsional. Rilis aplikasi dan migrasi mengikuti
+staging lebih dahulu serta prosedur resmi di MIGRATIONS; dokumen ini tidak menandakan penerapan.

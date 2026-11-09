@@ -81,4 +81,20 @@ describe('kebijakan-privasi page', () => {
       expect(teks).not.toContain('Halaman publik tidak menampilkan nomor telepon');
     }
   });
+
+  it('menjelaskan cookie statistik dan retensi sama dengan kebijakan PDP', () => {
+    render(<KebijakanPrivasiPage />);
+    const dokumen = readFileSync(join(process.cwd(), 'docs/KEBIJAKAN_PDP.md'), 'utf8');
+    const statistik = 'Untuk pengunjung yang belum login, LMH memakai cookie statistik acak yang berlaku ' +
+      '24 jam agar kunjungan yang sama tidak terhitung dua kali. ' +
+      'Bila Anda login, penanda harian dibuat dari ID akun dengan kunci rahasia. ' +
+      'Penanda ini tidak menampilkan ID akun, tetapi LMH masih dapat mengaitkannya dengan akun selama 7 hari. ' +
+      'Penanda harian kami simpan 7 hari, ' +
+      'angka harian 95 hari, ringkasan pencarian tanpa hasil 24 bulan, dan jumlah total selama profil ada. ' +
+      'Tanda suka dan tanggal pertama Anda menyukai tersimpan sampai akun dihapus. ' +
+      'Membatalkan suka menonaktifkan tanda itu dan mengeluarkannya dari jumlah suka.';
+    for (const naskah of [document.body.textContent ?? '', dokumen]) {
+      expect(naskah.replace(/\s+/g, ' ')).toContain(statistik);
+    }
+  });
 });

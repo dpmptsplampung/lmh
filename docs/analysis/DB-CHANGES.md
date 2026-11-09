@@ -717,3 +717,31 @@
   memberi receipt sama lintas pengunjung, tanpa antrean ganda.
 - Cache kartu hanya tanpa q/filter/cursor; bucket sama menonaktifkan draf/publikasi foto.
 - Seluruh bukti dan berkas: .tim/umkm-fitur/PROGRES-PERBAIKAN-G2-backend.md. Belum diterapkan.
+
+### [2026-11-09] UMKM tahap A G3: statistik, urutan dan retensi
+
+- Migrasi maju: `202611090005_umkm_statistik.sql`, `202611090006_umkm_urutan.sql`,
+  `202611090007_umkm_retensi.sql`. Migrasi 0001 sampai 0004 dan seluruh hash lama tetap utuh.
+- Data baru: suka fungsional ber-UID, dedup pseudonim berkunci harian, statistik harian/total,
+  kelompok tanpa hasil tanpa kata pencarian, ringkasan bulanan, satu snapshot skor dan metadata sakelar.
+  Semua tabel RLS tanpa hak langsung; RPC publik hanya proyeksi, penulis statistik service-role saja.
+- Dampak pengunjung: cookie first-party acak HttpOnly 24 jam hanya bila kolektor benar-benar mencatat,
+  hanya pengunjung tanpa akun nonanon. UID akun diperoleh server; tidak disimpan pada dedup.
+  Staf/bot/prefetch tidak dihitung. Nol hasil menyimpan label kategori/kota yang ada pada profil terbit,
+  selain itu kosong; tidak ada q, IP, nomor atau payload formulir pada statistik/audit baru.
+- Perubahan kontrak: sort `terbaru` menjadi `paling_sesuai`, cursor snapshot/hari memberi 409
+  ketika berubah, dua slot profil baru pada halaman pertama, serupa maksimal 10.
+  Status suka selalu privat; cache bersama hanya proyeksi publik, TTL 60 detik dan invalidasi sakelar/409.
+- Retensi: pesan/laporan/key retry 180 hari (batch 500), dedup 7 hari, harian 95 hari (batch 20000),
+  bulanan 24 bulan. Total seumur hidup dan jejak tetap. Pembersihan kelompok harian sekaligus
+  menambahkan hanya baris yang terhapus ke bulanan, sehingga retry tidak menggandakan hitungan.
+- R2: tanpa registrasi presign/antrean baru; listing prefix draf menampung yatim lama. RPC perlindungan
+  mempertahankan revisi tayang termasuk foto tersembunyi dan key bersama, tinjauan <90 hari,
+  penolakan <30 hari. Scan dua fase mulai UUID acak; maksimal 1000/panggilan dan status selesai.
+- Jobs DB: skor 02.00 WIB dan retensi 02.15 WIB. POST pembersihan R2 02.30 WIB perlu dipasang saat rilis.
+  Sakelar tetap mati sampai dua naskah privasi diterbitkan dan admin mengonfirmasi versinya.
+- Rollback SQL 0007 lalu 0006 lalu 0005 menjaga tabel/bukti dan menutup RPC baru; pulihkan aplikasi G2
+  dan batasi formulir jika job retensi dihentikan. Penanda sampai hari ini WIB dihapus dan suka
+  tidak bisa dibatalkan selama rollback. Hasil pembersihan tidak dapat dipulihkan rollback.
+- Bukti lokal dan progres per butir: `.tim/umkm-fitur/PROGRES-G3-backend.md`.
+  Belum diterapkan ke staging/produksi; tidak mengubah data nyata atau konfigurasi deployment.

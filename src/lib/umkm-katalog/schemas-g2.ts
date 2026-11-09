@@ -6,7 +6,7 @@ export const cursorOpaqueSchema = z.object({
 }).strict();
 export const katalogSchema = cursorOpaqueSchema.extend({
   q: teks(100).optional(), jenis: teks(100).optional(), kategori: teks(100).optional(),
-  spesifik: teks(100).optional(), kabupaten_kota: teks(100).optional(), sort: z.literal('terbaru').optional(),
+  spesifik: teks(100).optional(), kabupaten_kota: teks(100).optional(), sort: z.literal('paling_sesuai').optional(),
 });
 export const kosongSchema = z.object({}).strict();
 export const pesanSchema = z.object({

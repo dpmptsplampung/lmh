@@ -178,9 +178,15 @@ Pembacaan ini tidak memberi izin membagikan nomor UMKM pada tahap A.
 
 ### Statistik opsional
 
-Statistik katalog meliputi tampilan profil (Views), jumlah pencarian tanpa hasil tanpa
-menyimpan kata pencarian, klik membuka formulir, dan tanda suka (Likes). Pencatatan hanya
-berjalan ketika sakelarnya aktif, dengan pemberitahuan, tanpa cookie untuk iklan.
+Statistik katalog meliputi tampilan profil, jumlah pencarian tanpa hasil tanpa
+menyimpan kata pencarian, klik membuka formulir, dan tanda suka. Pencatatan opsional
+berjalan ketika sakelarnya aktif, dengan pemberitahuan. Pencatatan ini tidak memakai cookie iklan.
+Untuk pengunjung yang belum login, LMH memakai cookie statistik acak yang berlaku 24 jam agar kunjungan
+yang sama tidak terhitung dua kali. Bila Anda login, penanda harian dibuat dari ID akun dengan kunci rahasia.
+Penanda ini tidak menampilkan ID akun, tetapi LMH masih dapat mengaitkannya dengan akun selama 7 hari.
+Penanda harian kami simpan 7 hari, angka harian 95 hari, ringkasan pencarian tanpa hasil 24 bulan,
+dan jumlah total selama profil ada. Tanda suka dan tanggal pertama Anda menyukai tersimpan sampai akun dihapus.
+Membatalkan suka menonaktifkan tanda itu dan mengeluarkannya dari jumlah suka.
 Sakelar tetap mati sampai teks kebijakan diterbitkan. Statistik dan tanda suka mengikuti
 gelombang implementasinya, bukan dinyatakan sudah aktif oleh pembaruan naskah ini.
 

@@ -4,10 +4,15 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import Tombol from '@/components/ui/Tombol';
 import type { ProfilPublik } from '@/lib/umkm-katalog/types';
+import { toWIBDateString } from '@/lib/time';
 import { KatalogError, katalogRequest } from './api';
 import FotoKatalog from './FotoKatalog';
 import FormulirKatalog, { type KonteksFormulir } from './FormulirKatalog';
 import KeadaanKatalog from './KeadaanKatalog';
+import StatistikProfil from './StatistikProfil';
+import SukaProfil from './SukaProfil';
+import UmkmSerupa from './UmkmSerupa';
+import PencatatStatistik from './PencatatStatistik';
 import styles from './katalog.module.css';
 
 export default function ProfilKatalog({ id }: { id: string }) {
@@ -42,10 +47,19 @@ export default function ProfilKatalog({ id }: { id: string }) {
       <p>Profil mungkin belum terbit atau sedang diperiksa kembali. Silakan pilih usaha lain di katalog.</p>
     </div> : <><h1>Profil UMKM</h1><KeadaanKatalog error={error} onRetry={reload} /></>)}
     {!loading && profile && <>
+      <PencatatStatistik key={id} id={id} aktif={profile.telemetri_opsional_aktif} jenis="dilihat" />
       <header className={styles.kepala}>
         <p className={styles.label}>{profile.kabupaten_kota}</p>
         <h1>{profile.nama}</h1>
         <p>{[profile.jenis, profile.kategori, profile.spesifik].filter(Boolean).join(' · ')}</p>
+        <StatistikProfil suka={profile.suka} dilihat={profile.dilihat} baru={profile.baru} />
+        {profile.telemetri_opsional_aktif && profile.statistik_mulai_pada && <p>
+          Dicatat sejak <time dateTime={profile.statistik_mulai_pada}>
+            {toWIBDateString(new Date(profile.statistik_mulai_pada))} WIB
+          </time>
+        </p>}
+        <SukaProfil key={id} id={id} onJumlah={(value) => setProfile((previous) => previous
+          ? { ...previous, suka: value } : null)} />
       </header>
       <p className={styles.deskripsi}>{profile.deskripsi}</p>
       <section className={styles.kontak} aria-label="Informasi melalui petugas">
@@ -74,8 +88,12 @@ export default function ProfilKatalog({ id }: { id: string }) {
           </figure>)}
         </div>}
       </section>
+      <UmkmSerupa key={id} id={id} onHubungi={(value) => {
+        setFormKind('pesan'); setContext(value); setDialog('pesan');
+      }} />
     </>}
     <FormulirKatalog key={`${formKind}:${JSON.stringify(context)}`} terbuka={dialog !== null}
-      jenis={formKind} konteks={context} onTutup={() => setDialog(null)} />
+      jenis={formKind} konteks={context} onTutup={() => setDialog(null)}
+      telemetriAktif={context.profil_id === id ? profile?.telemetri_opsional_aktif : undefined} />
   </div>;
 }

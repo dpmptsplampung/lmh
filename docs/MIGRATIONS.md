@@ -1450,3 +1450,41 @@ foto menyertakan hitungan hapus tertunda. `deleteObjects` memeriksa galat per ob
 `0003` membatasi pesan 1000/catatan 500 pada CHECK/RPC/zod dan menyatukan laporan baru kembar
 (profil/foto/alasan) lewat indeks unik parsial; receipt sama sampai laporan ditutup.
 Bucket privat/publik sama menonaktifkan draf dan publikasi foto. Ketiga migrasi masih belum diterapkan.
+
+## 202611090005 sampai 202611090007: UMKM tahap A G3 (belum diterapkan)
+
+- `202611090005_umkm_statistik.sql`: suka idempoten true/false untuk akun nonanon bukan staf;
+  tanggal pertama tetap dan total dijaga trigger termasuk penghapusan akun. Kolektor service-only
+  menulis dedup, harian dan total dalam satu transaksi, tanpa identitas mentah pada tabel kejadian.
+  Satu sakelar admin bawaan mati; versi naskah dan waktu aktivasi masuk jejak. Guard global diam
+  berhenti mencatat setelah 1000 kejadian per 600 detik. Baris sakelar hilang menolak pencatatan.
+- Skor `5*L90+V90`, atau L90 saat sakelar mati; satu statement CTE membangun dan mengaktifkan
+  snapshot. Hanya snapshot aktif disimpan; kegagalan transaksi mempertahankan snapshot terdahulu.
+  Job `umkm_skor_harian` berjalan `0 19 * * *` UTC, yaitu 02.00 WIB.
+- `202611090006_umkm_urutan.sql`: hanya `paling_sesuai`, menggantikan `terbaru`; kecocokan spesifik,
+  kategori, nama/deskripsi mendahului skor, hash harian WIB dan id. Slot baru posisi 5/15 halaman
+  pertama, cursor HMAC mengikat filter/snapshot/hari/key/id slot. Pergantian snapshot/hari memberi
+  `SNAPSHOT_BERUBAH` 409 dan menginvalidasi cache sebelum mulai ulang.
+  Detail memberi sakelar, kartu memberi suka/dilihat/baru; serupa maksimal 10.
+- Laporan admin/pemeriksa berupa agregat tanpa nomor dan konten formulir, profil 20 per halaman;
+  ekspor satu CSV maksimal 10000 profil dan 5000 kelompok, lewat utilitas CSV dan redaksi PII.
+  Sakelar mati memberi null untuk statistik opsional, dilabeli "belum dicatat" pada layar/ekspor.
+  CSV menormalkan titik koma pada teks dan mencantumkan waktu aktif sakelar berlabel WIB.
+- `202611090007_umkm_retensi.sql`: DELETE pesan/laporan dan key retry setelah 180 hari,
+  maksimal 500 per jenis per putaran. Jejak tidak bergantung pada keberadaan baris pekerjaan.
+  Dedup 7 hari, harian/tanpa hasil 95 hari, bulanan 24 bulan; maksimal 20000 per jenis.
+  Pemindahan kelompok harian kadaluwarsa ke bulanan dilakukan atomik dan idempoten, total tetap.
+  Job `umkm_retensi_harian` berjalan `15 19 * * *` UTC, yaitu 02.15 WIB, tanpa HTTP.
+- Foto draf tidak memakai antrean/status baru. Route cron menelusuri prefix R2 `umkm-draf/`,
+  mulai dari key UUID acak sampai habis lalu dari awal sampai titik mulai. Objek >30 hari
+  diperiksa lewat RPC service-role. Hanya revisi tayang dilindungi, termasuk foto tersembunyi;
+  key bersama, tinjauan aktif <90 hari dan keputusan ditolak <30 hari juga dilindungi.
+  Maksimal 1000 objek dihapus per panggilan; selesai false bila tenggat/batas menghentikan scan.
+- Rollback berurutan: `docs/rollback-umkm-retensi-202611090007.sql`,
+  `docs/rollback-umkm-urutan-202611090006.sql`, `docs/rollback-umkm-statistik-202611090005.sql`.
+  Pulihkan aplikasi G2 bersamaan; rollback mempertahankan tabel, total, suka dan agregat.
+  Penanda harian sampai hari ini WIB dihapus; suka tidak bisa dibatalkan selama rollback.
+  Data yang sudah kedaluwarsa dan dihapus tidak dipulihkan oleh rollback.
+- Prasyarat: seluruh G1/G2, pg_cron, key service server dan bucket R2 privat/publik terpisah.
+  Jadwal HTTP 02.30 WIB serta publikasi dua naskah privasi adalah langkah rilis manusia.
+  Belum ada pemasangan jadwal, aktivasi sakelar, akses credential atau penerapan ke database nyata.

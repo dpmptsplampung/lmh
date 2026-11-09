@@ -4,10 +4,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Katalog from './Katalog';
 import ProfilKatalog from './ProfilKatalog';
 
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
+
 const id = '10000000-0000-4000-8000-000000000001';
 const card = {
   id, nama: 'Kopi Lampung', jenis: 'Produk', kategori: 'Minuman', spesifik: 'Kopi',
   kabupaten_kota: 'Lampung Barat', deskripsi: 'Kopi hasil kebun setempat', foto: null,
+  suka: 1299, dilihat: 1000, baru: true,
 };
 const ok = (data: unknown) => Promise.resolve(new Response(JSON.stringify({ data }), { status: 200 }));
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -28,6 +31,30 @@ describe('katalog publik', () => {
     expect(screen.queryByRole('button', { name: /^Laporkan$/ })).toBeNull();
     expect(screen.getByLabelText('Kata kunci')).toBeTruthy();
     expect(screen.getByLabelText('Jenis usaha')).toBeTruthy();
+    expect(screen.getByText('1.299 Suka', { selector: '.sr-only' }).parentElement).toHaveTextContent('1,2 rb Suka');
+    expect(screen.getByText('1.000 Dilihat', { selector: '.sr-only' }).parentElement).toHaveTextContent('1 rb Dilihat');
+    expect(screen.getByText('Baru')).toBeTruthy();
+    expect(fetchMock.mock.calls.some(([url]) => url.includes('sort=terbaru'))).toBe(false);
+  });
+
+  it('mengulang pencarian dari awal ketika snapshot berubah dengan filter tetap', async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (url.endsWith('/filter')) return ok({ jenis: [], kategori: [], kabupaten_kota: [], terpotong: false });
+      if (url.includes('cursor=')) return Promise.resolve(new Response(
+        JSON.stringify({ error: { code: 'SNAPSHOT_BERUBAH' } }), { status: 409 }));
+      return ok({ items: [card], next_cursor: 'lama' });
+    });
+    render(<Katalog />);
+    await screen.findByRole('link', { name: card.nama });
+    fireEvent.change(screen.getByLabelText('Kata kunci'), { target: { value: 'kopi' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Cari UMKM' }));
+    await screen.findByRole('button', { name: 'Halaman berikutnya' });
+    fireEvent.click(screen.getByRole('button', { name: 'Halaman berikutnya' }));
+    expect(await screen.findByText(/Urutan katalog diperbarui/)).toBeTruthy();
+    await screen.findByRole('link', { name: card.nama });
+    const last = fetchMock.mock.calls.at(-1)?.[0];
+    expect(last).toContain('q=kopi');
+    expect(last).not.toContain('cursor=');
   });
 
   it('hasil kosong mempunyai jalan keluar dengan kata kunci terlampir', async () => {
@@ -73,8 +100,11 @@ describe('katalog publik', () => {
 
 describe('detail profil publik', () => {
   it('hanya menampilkan proyeksi publik dan tautan sosial berlabel', async () => {
-    fetchMock.mockResolvedValue(await ok({ ...card, foto: [], instagram: 'https://instagram.com/kopi', tiktok: null,
-      nomor: '081234567890', email: 'privat@example.test', alamat: 'Alamat rinci privat', pemilik: 'Pemilik Privat' }));
+    fetchMock.mockImplementation((url: string) => url.endsWith('/serupa') ? ok({ items: [] })
+      : url.endsWith('/suka') ? ok({ suka_saya: false })
+        : ok({ ...card, foto: [], instagram: 'https://instagram.com/kopi', tiktok: null,
+          telemetri_opsional_aktif: false, statistik_mulai_pada: null,
+          nomor: '081234567890', email: 'privat@example.test', alamat: 'Alamat rinci privat', pemilik: 'Pemilik Privat' }));
     render(<ProfilKatalog id={id} />);
     expect(await screen.findByRole('heading', { level: 1, name: card.nama })).toBeTruthy();
     const social = screen.getByRole('link', { name: /Instagram/ });

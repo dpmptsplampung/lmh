@@ -5,6 +5,7 @@ import {
   DeleteObjectsCommand,
   GetObjectCommand,
   HeadObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
@@ -68,6 +69,21 @@ function s3(): S3Client {
 }
 
 const namaBucket = (b: Bucket): string => (b === 'private' ? konfig().bucketPrivate : konfig().bucketPublic);
+
+export async function listObjects(
+  bucket: Bucket, prefix: string, cursor?: string, options?: { startAfter?: string },
+) {
+  const result = await s3().send(new ListObjectsV2Command({
+    Bucket: namaBucket(bucket), Prefix: prefix, ContinuationToken: cursor, MaxKeys: 1000,
+    ...(options?.startAfter ? { StartAfter: options.startAfter } : {}),
+  }));
+  const items: { key: string; lastModified: Date }[] = [];
+  for (const object of result.Contents ?? []) {
+    if (object.Key && object.LastModified) items.push({ key: object.Key, lastModified: object.LastModified });
+  }
+  if (result.IsTruncated && !result.NextContinuationToken) throw new Error('Halaman objek belum lengkap');
+  return { items, nextCursor: result.IsTruncated ? result.NextContinuationToken! : null };
+}
 
 function adalahTidakAda(err: unknown): boolean {
   const e = err as { name?: string; Code?: string; $metadata?: { httpStatusCode?: number } };

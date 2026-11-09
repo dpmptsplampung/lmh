@@ -1,0 +1,27 @@
+.halaman { padding: 0 var(--pad-page) var(--pad-page); display: flex; flex-direction: column;
+  gap: var(--gap-grid); min-width: 0; overflow-wrap: anywhere; }
+.angka { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-5); margin: 0; }
+.angka dt { color: var(--text-secondary); }
+.angka dd { margin: var(--space-2) 0 0; font-size: var(--text-xl); font-variant-numeric: tabular-nums; }
+.aksi { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-top: var(--space-4); }
+.form { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+.konfirmasi { display: flex; align-items: center; gap: var(--space-3); min-height: 44px; }
+.konfirmasi input { flex-shrink: 0; width: 20px; height: 20px; }
+.halaman table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.halaman th, .halaman td { padding: var(--space-3); border-bottom: 1px solid var(--border-default);
+  text-align: right; vertical-align: top; font-variant-numeric: tabular-nums; }
+.halaman th:first-child { text-align: left; }
+.halaman :is(button, a) { min-height: 44px; max-width: 100%; white-space: normal; }
+.halaman input { min-width: 0; max-width: 100%; }
+.halaman :focus-visible { outline: 2px solid var(--border-focus); outline-offset: 3px; }
+@media (max-width: 640px) {
+  .angka { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .halaman table, .halaman tbody, .halaman tr { display: block; }
+  .halaman thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .halaman tbody tr { padding-block: var(--space-3); border-bottom: 1px solid var(--border-default); }
+  .halaman tbody th { display: block; }
+  .halaman td { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-3); }
+  .halaman td::before { content: attr(data-label); text-align: left; color: var(--text-secondary); }
+  .halaman :is(td, th) { border: 0; padding: var(--space-2) 0; }
+  .halaman input { font-size: 16px; }
+}
