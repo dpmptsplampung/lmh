@@ -143,3 +143,17 @@ Dari 50-an migrasi di `supabase/migrations/` (urutan = nama file). Kelompok tabe
 ## Dokumen rujukan cepat
 
 `docs/STATUS.md` (status WP-01…32), `docs/DECISION_LOG.md`, `docs/DEPLOY_RUNBOOK.md`, `docs/ENVIRONMENT_VARIABLES.md`, `docs/TESTING.md`, `docs/OBSERVABILITY.md`, `docs/analysis/04-RBAC-MATRIX*.md` (matriks hak akses), `docs/superpowers/{specs,plans}` (spesifikasi/rencana fitur terbaru), `GLOSSARY.md` (istilah domain), `docs/adr/` (keputusan arsitektur). `.superpowers/sdd/progress.md` melacak pekerjaan subagent-driven yang sedang berjalan. `docs/archive/` sudah tidak akurat.
+
+## Agent skills
+
+### Issue tracker
+
+Tiket disimpan sebagai file markdown di `.scratch/<fitur>/`. Lihat `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Lima status bawaan (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`), ditulis di baris `Status:` tiap tiket. Lihat `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Satu konteks: `GLOSSARY.md` dan `docs/adr/` di akar repo. Lihat `docs/agents/domain.md`.
