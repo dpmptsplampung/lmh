@@ -128,7 +128,8 @@ describe('pengawasan UMKM', () => {
       'Profil sudah berhenti tampil. Salinan foto akan dibersihkan petugas.',
     );
     expect(notice).toHaveAttribute('role', 'status');
-    expect(notice).toHaveFocus();
+    // Fokus dipindah lewat efek; saat mesin sibuk efek itu bisa berjalan sesudah teks tampil.
+    await waitFor(() => expect(notice).toHaveFocus());
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Sembunyikan Kopi Lampung' })).toBeNull();
   });

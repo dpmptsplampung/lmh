@@ -309,12 +309,14 @@ await uji('FO termasuk penanda basi tidak dapat keputusan, izin atau kontak', as
 await uji('deteksi kontak: jarak panjang, UUID, dan nominal rupiah', async () => {
   const deteksi = async teks => (await sql('SELECT umkm_private.ada_kontak($1) AS ada', [teks]))[0].ada;
   for (const teks of ['0812    3456    7890', '0812\n\n\n\n3456 7890', 'Rp 0812-3456-7890', '0812-3456-7890',
-    '0812\u00a03456\u20137890', 'cek@example.test', 'wa . me/62812']) {
+    '0812\u00a03456\u20137890', 'cek@example.test', 'wa . me/62812',
+    'https://t.me/kopi', 'linktr.ee/kopi', 'WA.me/62812', 'whatsapp.com/kopi']) {
     cek(await deteksi(teks), `lolos: ${JSON.stringify(teks)}`);
   }
   for (const teks of ['Rp 10.000.000', 'Rp 1.000.000.000', 'sejak 2010', 'foto_1699999999.jpg', 'kode pos 35111',
     'NIB 1234567890123', 'Rp 850.000.000', 'Rp 620.000.000', 'Rp. 850.000.000', 'omzet Rp850.000.000 per tahun',
-    `https://example.test/foto/${randomUUID()}.jpg`]) {
+    `https://example.test/foto/${randomUUID()}.jpg`, 'Produk kami sehat. Menggunakan bahan alami', 'PT. Mekar Jaya',
+    'Kopi asli Jawa. Melayani pesanan', 'alat. menerima pesanan']) {
     cek(!(await deteksi(teks)), `tertahan: ${teks}`);
   }
   const [{ n }] = await sql(`SELECT count(*)::int AS n FROM generate_series(1,2000)

@@ -1556,3 +1556,12 @@ Bucket privat/publik sama menonaktifkan draf dan publikasi foto. Ketiga migrasi 
   keterangan pemilik dengan LEFT JOIN, jejak FO berlabel "Pemilik usaha" tanpa data akun.
 - Rollback 0011 menambah stub `MODUL_BELUM_TERSEDIA` untuk RPC cabut dan mengembalikan jejak versi 0009;
   rollback 0010 melepas pemicu sumber mandiri.
+
+### Deteksi kontak kata utuh UMKM, 9 November 2026, belum diterapkan
+
+- `202611090012_umkm_kontak_kata_utuh.sql`: `umkm_private.ada_kontak` hanya menganggap wa.me, wa.link,
+  whatsapp.com, t.me, dan linktr.ee sebagai tautan bila muncul sebagai kata utuh. Kalimat wajar seperti
+  "PT. Mekar Jaya" atau "sehat. Menggunakan bahan alami" tidak lagi menahan Terbitkan. Deteksi nomor, email,
+  `tel:`, dan `mailto:` tidak berubah. Tidak mengubah data.
+- Terapkan sesudah 0011 dengan `--atomic`. Rollback: `docs/rollback-umkm-kontak-kata-utuh-202611090012.sql`
+  mengembalikan fungsi versi 0002.
