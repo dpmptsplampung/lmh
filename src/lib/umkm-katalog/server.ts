@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { panggilRpc, type RpcKontrak } from './rpc';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 const statusKode: Record<string, number> = {
   INPUT_TIDAK_VALID: 400, LOGIN_DIPERLUKAN: 401, DILARANG: 403, TIDAK_DITEMUKAN: 404,
@@ -52,6 +53,7 @@ export async function inputAksi(request: Request, context: IdContext) {
 export const idSchema = z.object({ id: z.uuid() }).strict();
 export async function layaniRpc<S extends z.ZodType, K extends keyof RpcKontrak>(
   schema: S, input: () => Promise<unknown>, nama: K, args: (data: z.output<S>) => RpcKontrak[K]['args'],
+  setelah?: (data: RpcKontrak[K]['hasil'], client: SupabaseClient) => Promise<RpcKontrak[K]['hasil']>,
 ) {
   const requestId = crypto.randomUUID();
   try {
@@ -63,6 +65,7 @@ export async function layaniRpc<S extends z.ZodType, K extends keyof RpcKontrak>
     const result = await panggilRpc(client, nama, args(parsed.data));
     if (result.error) return galat(kodeRpc(result.error), requestId);
     if (result.data === null) return galat('TIDAK_DITEMUKAN', requestId);
+    if (setelah) result.data = await setelah(result.data, client);
     const cursor = typeof result.data === 'object' && 'next_cursor' in result.data ? result.data.next_cursor : undefined;
     return Response.json({ data: result.data, meta: { request_id: requestId, ...(cursor !== undefined ? { next_cursor: cursor } : {}) } }, { headers: headersPrivat });
   } catch (e) {

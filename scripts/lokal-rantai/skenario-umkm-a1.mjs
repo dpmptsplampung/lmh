@@ -92,7 +92,7 @@ await uji('02','nomor hanya untuk pemegang tugas',async()=>{
       pastikan((!q.ok && q.kode==='42501') || (q.ok && !JSON.stringify(q.rows).includes(nomor)),`${who} dapat membaca
         nomor dari ${table}`);
     }
-    for (const [fn,args,params] of [['umkm_detail_tugas','$1::uuid',[p.id]],['umkm_daftar_tugas','$1::uuid',[null]],
+    for (const [fn,args,params] of [['umkm_detail_tugas','$1::uuid',[p.id]],['umkm_daftar_tugas','$1::text',[null]],
       ['umkm_profil_publik','$1::uuid',[p.id]]]) {
       const q=await rpc(who,fn,args,params); pastikan((!q.ok && (q.kode === '42501' ||
         /DILARANG|LOGIN_DIPERLUKAN|TIDAK_DITEMUKAN/.test(q.pesan))) || (q.ok &&
@@ -329,7 +329,7 @@ await uji('28', 'profil tersembunyi keluar dari antrean', async () => {
   ok(await vis(p.id, terbit.versi, 'sembunyikan'), 'sembunyikan');
   let cursor = null;
   do {
-    const daftar = ok(await rpc('a', 'umkm_daftar_tugas', '$1::uuid', [cursor]), 'antrean');
+    const daftar = ok(await rpc('a', 'umkm_daftar_tugas', '$1::text', [cursor]), 'antrean');
     pastikan(!daftar.items.some(x => x.id === p.id), JSON.stringify(daftar));
     cursor = daftar.next_cursor;
   } while (cursor);

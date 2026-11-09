@@ -1,0 +1,12 @@
+FAIL publik hanya revisi disetujui dan tanpa data privat: katalog: 42883 function public.umkm_cari_katalog(text, text, text, text, text, text, text) does not exist
+FAIL akses langsung tabel baru ditolak semua role: anon public.umkm_pesan_kontak: 42P01 relation "public.umkm_pesan_kontak" does not exist
+FAIL cursor katalog menelusuri 1000 profil tanpa duplikat atau kehilangan: halaman: 42883 function public.umkm_cari_katalog(text, text, text, text, text, text, text) does not exist
+FAIL profil disembunyikan di tengah cursor hilang: halaman pertama: 42883 function public.umkm_cari_katalog(text, text, text, text, text, text, text) does not exist
+FAIL foto unggahan memerlukan bukti dan hilang saat disembunyikan: bukti: 42883 function public.umkm_bukti_foto(uuid, uuid, text, bigint, text) does not exist
+FAIL form dan laporan: sesi, replay, konflik dan privasi: pesan: 42883 function public.umkm_kirim_pesan_kontak(text, text, text, text, uuid, uuid, text) does not exist
+FAIL penjaga laju menolak ledakan tanpa membocorkan ambang: kode laju: function public.umkm_kirim_pesan_kontak(text, text, text, text, uuid, uuid, text) does not exist
+FAIL daftar tugas campuran, mendesak dan cursor: pesan: 42883 function public.umkm_kirim_pesan_kontak(text, text, text, text, uuid, uuid, text) does not exist
+FAIL pengawasan FO/admin aman dan peran lain ditolak: ringkasan: 42883 function public.umkm_ringkasan_pengawasan() does not exist
+FAIL darurat FO/admin, audit dan penyelesaian petugas: sembunyikan darurat: 42883 function public.umkm_tindakan_darurat(uuid, text, text, integer, uuid) does not exist
+PASS FO termasuk penanda basi tidak dapat keputusan, izin atau kontak
+HASIL: 1 PASS, 10 FAIL

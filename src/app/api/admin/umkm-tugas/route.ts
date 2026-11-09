@@ -1,8 +1,9 @@
-import { cursorSchema, simpanSchema } from '@/lib/umkm-katalog/schemas';
+import { simpanSchema } from '@/lib/umkm-katalog/schemas';
+import { cursorOpaqueSchema, queryInput } from '@/lib/umkm-katalog/schemas-g2';
 import { bacaJson, layaniRpc } from '@/lib/umkm-katalog/server';
 export const dynamic = 'force-dynamic';
 export async function GET(request: Request) {
-  return layaniRpc(cursorSchema, async () => Object.fromEntries(new URL(request.url).searchParams),
+  return layaniRpc(cursorOpaqueSchema, async () => queryInput(request),
     'umkm_daftar_tugas', b => ({ p_cursor: b.cursor ?? null }));
 }
 export async function POST(request: Request) {

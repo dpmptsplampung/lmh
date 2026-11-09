@@ -1411,3 +1411,42 @@ Perbaikan hasil tinjauan keamanan, QA, dan UI 2026-11-04. Prasyarat: 20261103001
   `node scripts/apply-migration.mjs supabase/migrations/202611090001_umkm_inti.sql --atomic --dry-run`,
   lalu `node scripts/apply-migration.mjs supabase/migrations/202611090001_umkm_inti.sql --atomic`.
 - Status: BELUM DITERAPKAN ke staging atau produksi. Tidak ada commit, push, atau perubahan data nyata dalam pekerjaan ini.
+
+## 202611090002 sampai 202611090004: UMKM tahap A G2 (belum diterapkan)
+
+- `202611090002_umkm_katalog.sql`: proyeksi publik approved-only, pencarian DB maksimal 20 kartu,
+  filter DISTINCT maksimal 200/dimensi, trigram dan cursor HMAC dengan snapshot/filter. Tambahan bukti
+  ETag/ukuran/MIME pada foto, pointer copy publik dan antrean hapus privat. HEAD/CopyObject bersyarat
+  melalui lapisan R2 setelah keputusan; tanpa byte gambar lewat server aplikasi. Kegagalan foto tidak
+  membatalkan keputusan; retry eksplisit, salin baru dahulu sebelum antrean hapus. Cache 60 detik hanya
+  kartu tanpa q/filter/cursor dan opsi filter; detail no-store, invalidasi tag setelah putusan/hide/darurat.
+- `202611090003_umkm_pesan_laporan.sql`: dua tabel isi privat, receipt idempoten terpisah tanpa PII,
+  guard shared memakai `anon_rate_limit` dan indeks aksi/waktu. Konstanta 10/600 detik per UID per aksi,
+  30/86400 per UID per aksi dan 200/600 per aksi global, tanpa ambang ditampilkan ke pengunjung. Pesan dengan profil tidak terbit
+  menyimpan NULL; laporan profil wajib, hanya dari detail. Penipuan/nomor_tampil mendesak dalam antrean.
+  Antrean campuran memakai cursor text opaque, menggantikan signature uuid G1 sesuai keputusan PM;
+  perubahan cast pada uji G1 mempertahankan semua assertion. Detail/ambil/selesai khusus pemeriksa aktif.
+- `202611090004_umkm_pengawasan_darurat.sql`: agregat, durasi dan jejak aman untuk FO/admin aktif,
+  pencarian hanya nama approved. Darurat sembunyikan hanya profil terbit atau catat pencabutan pada
+  kontak terkini, tidak membaca nomor; alasan bersih, versi/operasi dan audit atomik, mendesak true.
+  Pemeriksa pemegang menyelesaikan mendesak satu klik. Tidak ada tabel atau aksi tahan fase B.
+- Ketiga migrasi tidak mengubah migrasi lama, perilaku marketplace, otorisasi akses nomor G1 atau tabel legacy.
+  Semua tabel baru RLS tanpa grant langsung, semua RPC definer search_path terkunci dan grant eksplisit.
+- Rollback berurutan: `docs/rollback-umkm-pengawasan-darurat-202611090004.sql`,
+  `docs/rollback-umkm-pesan-laporan-202611090003.sql`, `docs/rollback-umkm-katalog-202611090002.sql`.
+  Menutup endpoint dan menjaga data/bukti; tidak mengembalikan signature lama atau menghapus copy R2.
+- Uji lokal: kontrak adjacent, route JWT/zod/envelope/no-store, storage HEAD/CopyObject dan kegagalan,
+  DB pekerjaan/balasan pertama, serta A1/A2 pada rantai PGlite. Tidak membuktikan transaksi dua koneksi,
+  IAM, bucket/CDN R2 sungguhan atau staging. Gate penuh/build dijalankan koordinator.
+- Status: BELUM DITERAPKAN ke staging/produksi. Rilis hanya sesudah staging dan persetujuan pemilik
+  melalui prosedur resmi `--atomic --dry-run`, lalu `--atomic`, satu migrasi sesuai urutan.
+
+Perbaikan G2 sebelum penerapan: `0002` mengganti `ada_kontak` dengan pembuangan UUID/nominal Rp
+dan perapatan pemisah sebelum pindai angka; rollback memulihkan fungsi G1. Tabel `foto_hapus`
+menyimpan rencana salin sebelum CopyObject; publikasi memasang pointer dan menghapus rencana atomik.
+Antrean melewati pointer aktif dan rencana lebih muda dari 5 menit. Penutupan hanya pemeriksa aktif;
+FO memicu hapus melalui darurat, penyelesaian mendesak otomatis mencoba lagi. Detail dan respons
+foto menyertakan hitungan hapus tertunda. `deleteObjects` memeriksa galat per objek.
+`0003` membatasi pesan 1000/catatan 500 pada CHECK/RPC/zod dan menyatukan laporan baru kembar
+(profil/foto/alasan) lewat indeks unik parsial; receipt sama sampai laporan ditutup.
+Bucket privat/publik sama menonaktifkan draf dan publikasi foto. Ketiga migrasi masih belum diterapkan.

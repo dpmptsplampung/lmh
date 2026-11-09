@@ -72,7 +72,7 @@ describe('saring', () => {
     expect(saring(daftar, 'chat log').map((p) => p.label)).toEqual(['Log AI Chat']);
   });
   it('mencocokkan nama kelompok dan kata tambahan tindakan', () => {
-    expect(saring(daftar, 'kemitraan').map((p) => p.label)).toEqual(['UMKM', 'Lead Investasi', 'Investment Gallery']);
+    expect(saring(daftar, 'kemitraan').map((p) => p.label)).toEqual(['Pengawasan UMKM', 'UMKM', 'Lead Investasi', 'Investment Gallery']);
     expect(saring(daftar, 'tv').map((p) => p.label)).toContain('Buka layar TV');
   });
   it('tidak ada yang cocok = kosong', () => expect(saring(daftar, 'zzzz')).toEqual([]));

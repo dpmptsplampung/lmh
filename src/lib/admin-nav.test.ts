@@ -19,6 +19,14 @@ it('A19: label menu mengikuti glosarium, termasuk alamat hasil survei lama', () 
 });
 
 describe('canAccessAdminPath', () => {
+  it('pengawasan UMKM hanya untuk FO dan admin tanpa penanda pemeriksa', () => {
+    expect(canAccessAdminPath('admin', '/admin/umkm-pengawasan')).toBe(true);
+    expect(canAccessAdminPath('front_office', '/admin/umkm-pengawasan')).toBe(true);
+    expect(canAccessAdminPath('petugas', '/admin/umkm-pengawasan', { pemeriksa_umkm: true })).toBe(false);
+    const menu = ADMIN_NAV.find((entry) => entry.href === '/admin/umkm-pengawasan');
+    expect(menu?.requiresPemeriksaUmkm).toBeUndefined();
+    expect(menu?.label).toBe('Pengawasan UMKM');
+  });
   it('admin can open every registered admin page', () => {
     for (const entry of ADMIN_NAV) {
       if (entry.href === '/') continue;
@@ -166,7 +174,7 @@ const ROLES_SEBELUM: Record<string, string[]> = {
   '/admin/petugas': [A], '/admin/profil': [A, P, F], '/admin/rekap': [A, P, F], '/admin/rekap-fo': [A, F],
   '/admin/riwayat': [A], '/admin/scan': [A, F], '/admin/settings': [A], '/admin/settings/ai': [A],
   '/admin/settings/jadwal': [A, P, F], '/admin/settings/landing': [A], '/admin/pesan-perilaku': [A, P, F], '/admin/pesan-perilaku/cetak': [A, F], '/admin/skm': [A, P, F], '/admin/saran': [A, F],
-  '/admin/topik': [A], '/admin/umkm': [A],
+  '/admin/topik': [A], '/admin/umkm': [A], '/admin/umkm-pengawasan': [A, F],
 };
 
 // Halaman lama yang digabung ke /admin/fo/registrasi: tersembunyi dari sidebar, tetap boleh dibuka.
@@ -201,7 +209,7 @@ describe('pengelompokan menu: data', () => {
     expect(anak('pesanPerilaku')).toEqual(['Hasil Survei', 'Saran', 'Pengaduan']);
     expect(anak('laporan')).toEqual(['Rekap', 'Performa Pelayanan']);
     expect(anak('pengelolaan')).toEqual(['Jadwal Layanan', 'Kelola Layanan', 'Topik Penanganan', 'Kelola Layar']);
-    expect(anak('kemitraan')).toEqual(['Tugas UMKM', 'UMKM', 'Lead Investasi', 'Investment Gallery']);
+    expect(anak('kemitraan')).toEqual(['Tugas UMKM', 'Pengawasan UMKM', 'UMKM', 'Lead Investasi', 'Investment Gallery']);
     expect(anak('konten')).toEqual(['Dokumen Peraturan', 'Konten Landing']);
     expect(anak('sistem')).toEqual(['Kelola Petugas', 'Pengaturan', 'Pengaturan AI', 'Tata Kelola Data', 'Riwayat Perubahan']);
   });
@@ -236,6 +244,7 @@ describe('buildNavTree', () => {
       ['Pesan Perilaku', '/admin/pesan-perilaku', '/admin/saran', '/admin/pengaduan'],
       '/admin/rekap',
       ['Pengelolaan Layanan', '/admin/settings/jadwal', '/admin/layanan'],
+      '/admin/umkm-pengawasan',
       '/admin/profil',
       '/',
     ]);

@@ -22,6 +22,8 @@
 .template { padding: var(--space-3); background: var(--bg-surface-hover, var(--color-neutral-50)); border-radius: var(--radius-sm); line-height: 1.6; overflow-wrap: anywhere; }
 .keputusan { display: flex; flex-direction: column; gap: var(--space-3); padding-top: var(--space-4); }
 .baris button, .aksi button { min-height: 44px; }
+.halaman :is(button, a) { max-width: 100%; white-space: normal; text-align: center; }
+.aksi :is(button, a) { min-width: 0; padding-top: var(--space-2); padding-bottom: var(--space-2); }
 .halaman .form :is(button, a, input, textarea, select):focus-visible, .halaman :is(button, a):focus-visible { outline: 2px solid var(--border-focus); outline-offset: 3px; }
 .halaman :is(input, textarea, select) { min-width: 0; max-width: 100%; }
 .halaman textarea { min-height: 100px; }

@@ -5,11 +5,11 @@ import Kartu from '@/components/ui/Kartu';
 import Tombol from '@/components/ui/Tombol';
 import Field from '@/components/ui/Field';
 import Lencana from '@/components/ui/Lencana';
-import FotoUmkm from '@/components/umkm/FotoUmkm';
 import type { Detail, Mutasi } from '@/lib/umkm-katalog/types';
 import { formatTanggal } from '@/lib/utils';
 import { hasilBelumPasti, kirimTugas, TugasError } from './api';
 import NomorTugas from './NomorTugas';
+import FotoKatalog from '@/components/umkm-katalog/FotoKatalog';
 import styles from './umkm-tugas.module.css';
 
 export default function DetailTugas({ detail, onChanged, onEdit, onBack, onRefresh }: {
@@ -37,15 +37,27 @@ export default function DetailTugas({ detail, onChanged, onEdit, onBack, onRefre
         ...body, expected_version: detail.versi, operasi_id: operation.current.id,
       });
       operation.current = null;
-      if (mounted.current) await onChanged(result, action === 'putusan');
+      if (mounted.current) await onChanged(result, action === 'putusan' || action === 'selesai-mendesak');
     } catch (e) {
       if (!hasilBelumPasti(e)) operation.current = null;
+      if (mounted.current) setError(e instanceof TugasError ? e : new TugasError('GAGAL_INTERNAL', 500));
+    } finally { if (mounted.current) setBusy(false); }
+  };
+  const retryPhotos = async () => {
+    if (busy) return;
+    setBusy(true); setError(null);
+    try {
+      await kirimTugas(`/${detail.id}/foto-publikasi`, {});
+      if (mounted.current) onRefresh();
+    } catch (e) {
       if (mounted.current) setError(e instanceof TugasError ? e : new TugasError('GAGAL_INTERNAL', 500));
     } finally { if (mounted.current) setBusy(false); }
   };
   const warning = (field: string) => detail.peringatan_kontak.includes(field)
     ? <p className={styles.peringatan} role="alert">Informasi kontak ditemukan. Bersihkan bagian ini sebelum menerbitkan.</p> : null;
   const revision = detail.revisi;
+  const publicationPending = (detail.foto_publikasi_tertunda ?? 0) > 0;
+  const deletionPending = (detail.foto_hapus_tertunda ?? 0) > 0;
   const template = `Halo, saya petugas UMKM DPMPTSP Provinsi Lampung. Bolehkah nomor Anda kami tampilkan kepada perusahaan yang sudah kami periksa ketika layanan berbagi nomor tersedia? Izin dapat dicabut kapan saja. Saat ini nomor belum dibagikan melalui LMH.`;
   const copy = async () => {
     try { await navigator.clipboard.writeText(template); if (mounted.current) setCopied('Template disalin.'); }
@@ -68,6 +80,9 @@ export default function DetailTugas({ detail, onChanged, onEdit, onBack, onRefre
           <h3>Keputusan profil</h3>
           {!revision.keputusan && detail.peringatan_kontak.length > 0 && <p className={styles.peringatan}>Terbitkan tersedia setelah informasi kontak yang ditandai dibersihkan.</p>}
           <div className={styles.aksi}>
+            {detail.mendesak && <Tombol memuat={busy} onClick={() => mutate('selesai-mendesak', {})}>
+              Selesaikan pemeriksaan mendesak
+            </Tombol>}
             {!revision.keputusan && <>
             <Tombol memuat={busy} disabled={detail.peringatan_kontak.length > 0 || detail.status === 'disembunyikan'} onClick={() => mutate('putusan', { keputusan: 'terbit' })}>Terbitkan</Tombol>
             <Tombol varian="bahaya" disabled={busy} onClick={() => setReject(true)}>Tolak</Tombol>
@@ -94,11 +109,23 @@ export default function DetailTugas({ detail, onChanged, onEdit, onBack, onRefre
       </dl>
       <section className={styles.bagian} aria-label="Foto usaha">
         <h3>Foto usaha</h3>
+        {(publicationPending || deletionPending) && <div className={styles.peringatan} role="status">
+          {publicationPending && <p>
+            Keputusan terbit tersimpan. Sebagian foto belum dapat ditampilkan kepada pengunjung.
+          </p>}
+          {deletionPending && <p>Sebagian salinan foto yang disembunyikan belum dapat dibersihkan.</p>}
+          {detail.dipegang_saya && <Tombol varian="sekunder" memuat={busy} onClick={() => void retryPhotos()}>
+            {publicationPending && deletionPending ? 'Coba lagi memproses foto publik'
+              : deletionPending ? 'Coba lagi membersihkan foto publik' : 'Coba lagi menampilkan foto publik'}
+          </Tombol>}
+        </div>}
         {warning('foto')}
         <p className={styles.meta}>Periksa juga apakah ada nomor atau informasi kontak tertulis pada foto.</p>
         {detail.foto.length === 0 ? <p>Belum ada foto.</p> : <div className={styles.foto}>
           {detail.foto.map((photo, index) => <figure key={photo.id}>
-            <FotoUmkm key={`${photo.id}:${photo.tersembunyi}`} src={photo.asal === 'unggahan' ? `/api/admin/umkm-tugas/${detail.id}/foto/${photo.id}` : photo.url ?? ''} alt={`Foto ${index + 1} ${revision.nama}`} width={240} height={180} style={{ width: '100%', maxWidth: '100%' }} />
+            <FotoKatalog key={`${photo.id}:${photo.tersembunyi}`}
+              src={photo.asal === 'unggahan' ? `/api/admin/umkm-tugas/${detail.id}/foto/${photo.id}` : photo.url}
+              alt={`Foto ${index + 1} ${revision.nama}`} />
             <figcaption>{photo.tersembunyi ? 'Foto disembunyikan' : photo.perlu_review ? 'Menunggu pemeriksaan' : 'Sudah diperiksa'}</figcaption>
             {detail.dipegang_saya && <Tombol varian="sekunder" disabled={busy} onClick={() => mutate('visibilitas', { aksi: photo.tersembunyi ? 'pulihkan' : 'sembunyikan', foto_id: photo.id })}>{photo.tersembunyi ? 'Pulihkan' : 'Sembunyikan'} foto {index + 1}</Tombol>}
           </figure>)}

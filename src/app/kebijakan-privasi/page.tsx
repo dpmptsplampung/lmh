@@ -2,12 +2,12 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 import { APP_NAME } from '@/lib/constants';
 
-/** Must match CONSENT_VERSION in checkin/chat consent flows. */
+/** Selaras dengan versi persetujuan reservasi dan chat. */
 const POLICY_VERSION = '1.0';
 
 export const metadata: Metadata = {
   title: 'Kebijakan Privasi',
-  description: `Kebijakan privasi ${APP_NAME} — DPMPTSP Provinsi Lampung`,
+  description: `Kebijakan privasi ${APP_NAME}, DPMPTSP Provinsi Lampung`,
 };
 
 export default function KebijakanPrivasiPage() {
@@ -26,7 +26,8 @@ export default function KebijakanPrivasiPage() {
           background: 'var(--surface-elevated)',
           borderRadius: 'var(--radius-2xl)',
           border: '1px solid var(--border-default)',
-          padding: 'var(--space-8)',
+          padding: 'clamp(16px, 5vw, 32px)',
+          overflowWrap: 'anywhere',
           boxShadow: 'var(--shadow-sm)',
         }}
       >
@@ -113,7 +114,7 @@ export default function KebijakanPrivasiPage() {
           </h2>
           <p style={{ color: 'var(--text-secondary)', lineHeight: 1.7 }}>
             Untuk meningkatkan layanan investasi, kami mencatat <strong>aktivitas penggunaan</strong>
-            Anda pada fitur Investment Gallery dan Peta Potensi — misalnya dokumen yang Anda buka,
+            Anda pada fitur Investment Gallery dan Peta Potensi, misalnya dokumen yang Anda buka,
             sektor yang Anda lihat, dan halaman yang Anda kunjungi. Pencatatan ini digunakan
             <strong> semata untuk memahami minat calon investor</strong> dan menindaklanjuti
             penawaran yang relevan, serta diungkapkan sebagai dasar pemrosesan yang sah.
@@ -125,7 +126,47 @@ export default function KebijakanPrivasiPage() {
 
         <section style={{ marginBottom: 'var(--space-6)' }}>
           <h2 style={{ fontSize: 'var(--text-xl)', marginBottom: 'var(--space-3)' }}>
-            6. Hak Subjek Data
+            6. Katalog dan formulir UMKM
+          </h2>
+          <div style={{ color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+            <p>
+              Profil di katalog berasal dari data kurasi petugas, satudata, dan tamu yang datang ke loket.
+              Petugas memeriksa setiap profil sebelum tampil. Petugas memeriksa agar nomor telepon, email,
+              alamat rinci, atau nama pemilik usaha tidak tampil di halaman publik. Saat ini LMH tidak
+              membagikan nomor UMKM kepada pengunjung, perusahaan, atau Front Office.
+            </p>
+            <p>
+              Formulir Hubungi lewat petugas meminta nama, perusahaan, nomor kontak, dan pesan. Profil atau kata
+              kunci yang sedang Anda lihat ikut terkirim. Petugas memakai data ini untuk membalas Anda. Formulir
+              Laporkan meminta alasan dan catatan bila perlu, supaya petugas dapat menindaklanjuti masalah pada
+              profil atau foto. Pengiriman formulir memakai sesi anonim untuk menahan kiriman berlebihan.
+            </p>
+            <p>
+              Data kedua formulir kami simpan paling lama 180 hari sejak selesai ditangani, atau sejak aktivitas
+              terakhir bila belum ditangani. Foto yang belum terbit kami simpan paling lama 30 hari sejak
+              pengajuannya dibatalkan, atau 90 hari bila tidak ada aktivitas.
+            </p>
+            <p>
+              Petugas membalas dari WhatsApp pribadi di ponselnya sendiri. Percakapan dan nomor kontak yang
+              tersimpan di ponsel itu berada di luar LMH, dan LMH tidak dapat menghapusnya. Petugas yang
+              berhenti bertugas diminta menghapus percakapan kerja, tetapi LMH tidak dapat membuktikan
+              penghapusan itu.
+            </p>
+            <p>
+              Nomor UMKM yang disimpan untuk meminta izin hanya dapat dibaca petugas yang sedang menangani tugas
+              itu, dan setiap pembacaan dicatat.
+            </p>
+            <p>
+              LMH dapat mencatat statistik katalog: tampilan profil, jumlah pencarian tanpa hasil tanpa
+              menyimpan kata yang dicari, klik membuka formulir, dan tanda suka. Pencatatan ini tidak memakai
+              cookie iklan.
+            </p>
+          </div>
+        </section>
+
+        <section style={{ marginBottom: 'var(--space-6)' }}>
+          <h2 style={{ fontSize: 'var(--text-xl)', marginBottom: 'var(--space-3)' }}>
+            7. Hak Subjek Data
           </h2>
           <p style={{ color: 'var(--text-secondary)', lineHeight: 1.7 }}>
             Anda berhak meminta akses, koreksi, pembaruan, atau penghapusan data pribadi
@@ -138,7 +179,7 @@ export default function KebijakanPrivasiPage() {
 
         <section style={{ marginBottom: 'var(--space-6)' }}>
           <h2 style={{ fontSize: 'var(--text-xl)', marginBottom: 'var(--space-3)' }}>
-            7. Cara Kontak
+            8. Cara Kontak
           </h2>
           <p style={{ color: 'var(--text-secondary)', lineHeight: 1.7 }}>
             Untuk pertanyaan privasi atau permintaan hak subjek data, hubungi{' '}
@@ -150,12 +191,12 @@ export default function KebijakanPrivasiPage() {
 
         <section>
           <h2 style={{ fontSize: 'var(--text-xl)', marginBottom: 'var(--space-3)' }}>
-            8. Versi Kebijakan
+            9. Versi Kebijakan
           </h2>
           <p style={{ color: 'var(--text-secondary)', lineHeight: 1.7 }}>
             Versi kebijakan privasi yang dirujuk oleh formulir persetujuan di aplikasi adalah{' '}
             <strong>{POLICY_VERSION}</strong>. Perubahan material akan diumumkan dengan
-            menaikkan nomor versi dan memperbarui teks persetujuan di alur check-in dan chat.
+            menaikkan nomor versi dan memperbarui teks persetujuan pada layanan yang terkait.
           </p>
         </section>
       </article>

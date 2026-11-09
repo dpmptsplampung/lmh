@@ -128,11 +128,11 @@ describe('perilaku DB melalui RPC UMKM', () => {
       '０８１２３４５６７８９０', '٠٨١٢٣٤٥٦٧٨٩٠', '۰۸۱۲۳۴۵۶۷۸۹۰', '०८१२३४५६७८९०',
       'https://instagram.com/0812_3456_7890', 'https://a.test/%30%38%31%32%33%34%35%36%37%38%39%30.jpg',
       'wa . me', 'wa.link/abc', 't . me/abc', 'linktr . ee/abc', 'tel:123', 'mailto:a@b.id',
-      'seri 123 0812 3456 7890', '6281234567890', '8123456789',
+      'seri 123 0812 3456 7890', '6281234567890', '8123456789', '0812----3456----7890',
     ];
     const wajar = [
       'Rp 10.000.000', 'Rp 1.000.000.000', 'sejak 2010', 'foto_1699999999.jpg',
-      'kode pos 35111', 'NIB 1234567890123', 'NIB 7891234567890', '0812----3456----7890',
+      'kode pos 35111', 'NIB 1234567890123', 'NIB 7891234567890',
     ];
     for (const [values, expected] of [[kontak, true], [wajar, false]] as const) {
       for (const value of values) {
@@ -188,7 +188,7 @@ describe('perilaku DB melalui RPC UMKM', () => {
     expect(update.ok).toBe(true);
     const first=await rpc<{items:{id:string}[];next_cursor:string|null}>('umkm_daftar_tugas','',[]);
     expect(first.items).toHaveLength(20); expect(first.items[0].id).toBe(urgent); expect(first.next_cursor).toBeTruthy();
-    const second=await rpc<{items:{id:string}[];next_cursor:string|null}>('umkm_daftar_tugas','$1::uuid',[first.next_cursor]);
+    const second=await rpc<{items:{id:string}[];next_cursor:string|null}>('umkm_daftar_tugas','$1::text',[first.next_cursor]);
     expect(second.items).toHaveLength(2); expect(new Set([...first.items,...second.items].map(p=>p.id)).size).toBe(22);
   });
 });

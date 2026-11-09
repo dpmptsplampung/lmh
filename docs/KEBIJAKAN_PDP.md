@@ -50,7 +50,9 @@ Data **tidak** digunakan untuk pemasaran komersial, profiling otomatis, atau dib
 
 ## Consent (Persetujuan)
 
-Persetujuan eksplisit diperlukan sebelum pengolahan data pribadi. Implementasi:
+Alur berikut memakai persetujuan eksplisit. Formulir katalog UMKM tahap A memakai pemberitahuan
+tanpa kotak centang tambahan, sebagaimana dijelaskan pada bagian katalog UMKM di bawah.
+Pemakaian pemberitahuan tanpa kotak centang pada formulir UMKM perlu ditinjau DPO sebelum formulir dibuka.
 
 | Titik consent | Tabel | `tujuan` |
 |---------------|-------|----------|
@@ -124,9 +126,63 @@ Bagian di atas (keputusan 2026-10-14) dibalik sebagian oleh keputusan berikut. B
 
 ## Versi Kebijakan
 
+Pembaruan naskah UMKM tahap A, 9 November 2026, disiapkan untuk dibaca pemilik sebelum rilis.
+Peninjauan oleh DPO disarankan sebelum formulir dibuka. Formulir tidak dibuka sebelum naskah
+ini terbit. Sakelar statistik tetap mati sampai naskah ini terbit.
+
+Versi persetujuan tetap `1.0`, selaras dengan `CONSENT_VERSION` pada reservasi dan chat.
+Naskah ini tidak mengubah alur persetujuan layanan tersebut. Kenaikan versi persetujuan
+harus dibahas dengan PM dan diselaraskan dengan layanan yang mencatatnya.
+
 | Versi | Tanggal | Perubahan |
 |-------|---------|-----------|
 | 1.0 | Fase 1 / I8 | Kebijakan awal — audit log, consent checkin/chat, retensi 730 hari, DPO dashboard |
+| 1.0, pembaruan naskah | 2026-11-09 | Katalog UMKM tahap A, formulir, laporan, WhatsApp pribadi, dan retensi awal |
+
+## Katalog UMKM tahap A
+
+### Profil yang ditampilkan
+
+Profil katalog berasal dari data yang diperiksa petugas, satudata, dan tamu loket.
+Petugas memeriksa agar nomor telepon, email, alamat rinci, atau nama pemilik usaha tidak tampil di halaman publik.
+Pada tahap A, LMH tidak membagikan nomor UMKM kepada pengunjung, perusahaan, atau Front Office.
+Ketentuan ini khusus katalog tahap A; marketplace lama tetap merupakan layanan terpisah.
+
+### Formulir kontak dan laporan
+
+Formulir **Hubungi lewat petugas** mengumpulkan nama, perusahaan, nomor kontak, dan pesan.
+Profil atau kata kunci yang sedang dilihat ikut terlampir tanpa isian tambahan.
+Tujuannya agar petugas dapat membalas pengirim. Formulir **Laporkan** menerima alasan,
+catatan opsional, serta konteks profil atau foto untuk menindaklanjuti masalah katalog.
+Isi formulir hanya dibaca pemeriksa UMKM yang berwenang; FO dan admin tanpa penanda
+pemeriksa hanya melihat angka. Isi formulir tidak dimasukkan ke jejak kerja atau log.
+Kedua formulir menggunakan pemberitahuan singkat dan tautan `/kebijakan-privasi`,
+tanpa kotak centang persetujuan tambahan.
+Pengiriman formulir memakai sesi anonim untuk menahan kiriman berlebihan.
+
+**Retensi awal:** 180 hari setelah ditangani, atau setelah aktivitas terakhir bila belum ditangani. Pembersihan otomatis dijadwalkan pada tiket 09 dan tidak boleh
+diklaim telah berjalan sebelum pekerjaan itu selesai. Foto draf disimpan sampai
+30 hari setelah pengajuan dibatalkan atau 90 hari tanpa aktivitas.
+
+### WhatsApp pribadi petugas
+
+Petugas membalas melalui WhatsApp pribadi di ponselnya sendiri. Percakapan dan nomor kontak
+yang tersimpan di sana berada di luar LMH. LMH tidak dapat menghapus percakapan tersebut.
+Petugas yang berhenti bertugas diminta menghapus percakapan kerja, tetapi LMH tidak dapat
+membuktikan penghapusan itu. Jejak LMH hanya mencatat tindakan di dalam LMH, bukan isi,
+pengiriman, atau penghapusan percakapan di WhatsApp.
+
+Nomor UMKM yang disimpan untuk meminta izin hanya dapat dibaca petugas yang sedang
+menangani tugas tersebut. Pembacaannya dicatat dalam jejak kerja tanpa nomor mentah.
+Pembacaan ini tidak memberi izin membagikan nomor UMKM pada tahap A.
+
+### Statistik opsional
+
+Statistik katalog meliputi tampilan profil (Views), jumlah pencarian tanpa hasil tanpa
+menyimpan kata pencarian, klik membuka formulir, dan tanda suka (Likes). Pencatatan hanya
+berjalan ketika sakelarnya aktif, dengan pemberitahuan, tanpa cookie untuk iklan.
+Sakelar tetap mati sampai teks kebijakan diterbitkan. Statistik dan tanda suka mengikuti
+gelombang implementasinya, bukan dinyatakan sudah aktif oleh pembaruan naskah ini.
 
 ## Referensi
 

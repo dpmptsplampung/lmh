@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { galat, headersPrivat, layaniRpc } from '@/lib/umkm-katalog/server';
 import { kunciObjek } from '@/lib/storage/area';
-import { presignGet, r2Tersedia } from '@/lib/storage/r2';
+import { presignGet, r2Tersedia, bucketTerpisah } from '@/lib/storage/r2';
 import type { ApiSukses, Detail } from '@/lib/umkm-katalog/types';
 export const dynamic = 'force-dynamic';
 const schema = z.object({ id: z.uuid(), fotoId: z.uuid() }).strict();
@@ -18,7 +18,7 @@ export async function GET(_request: Request, context: Context) {
     const ekstensi = key.split('.').at(-1) ?? '';
     const mime: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
     if (!mime[ekstensi]) return galat('TIDAK_DITEMUKAN', meta.request_id);
-    if (!r2Tersedia()) return galat('MODUL_BELUM_TERSEDIA', meta.request_id);
+    if (!r2Tersedia() || !bucketTerpisah()) return galat('MODUL_BELUM_TERSEDIA', meta.request_id);
     const url = await presignGet('private', key, 60, { contentType: mime[ekstensi], contentDisposition: 'inline' });
     return new Response(null, { status: 307, headers: { ...headersPrivat, Location: url, 'Referrer-Policy': 'no-referrer' } });
   } catch { return galat('GAGAL_INTERNAL', meta.request_id); }

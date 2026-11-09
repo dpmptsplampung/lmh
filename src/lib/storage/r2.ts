@@ -1,6 +1,7 @@
 // Klien Cloudflare R2 (kompatibel S3). Server-only: memakai kunci rahasia dari env. Dibuat malas agar impor tidak
 // gagal saat env kosong (build, test, atau deploy tanpa R2); fungsi melempar galat jelas bila env kurang.
 import {
+  CopyObjectCommand,
   DeleteObjectsCommand,
   GetObjectCommand,
   HeadObjectCommand,
@@ -36,6 +37,11 @@ function baca(): KonfigR2 | null {
 
 export function r2Tersedia(): boolean {
   return baca() !== null;
+}
+
+export function bucketTerpisah(): boolean {
+  const k = baca();
+  return k !== null && k.bucketPrivate !== k.bucketPublic;
 }
 
 function konfig(): KonfigR2 {
@@ -100,14 +106,29 @@ export async function getObjectStream(
   }
 }
 
-export async function headObject(bucket: Bucket, key: string): Promise<{ size: number; contentType: string } | null> {
+export async function headObject(
+  bucket: Bucket, key: string,
+): Promise<{ size: number; contentType: string; etag?: string } | null> {
   try {
     const r = await s3().send(new HeadObjectCommand({ Bucket: namaBucket(bucket), Key: key }));
-    return { size: r.ContentLength ?? 0, contentType: r.ContentType ?? '' };
+    return { size: r.ContentLength ?? 0, contentType: r.ContentType ?? '', ...(r.ETag ? { etag: r.ETag } : {}) };
   } catch (err) {
     if (adalahTidakAda(err)) return null;
     throw err;
   }
+}
+
+/** Menyalin di penyimpanan, hanya bila sumber masih sama dengan bukti pemeriksaan. */
+export async function copyObject(
+  sumber: Bucket, keySumber: string, tujuan: Bucket, keyTujuan: string, etag: string,
+): Promise<void> {
+  if (!etag) throw new Error('Bukti unggah belum tersedia');
+  const hasil = await s3().send(new CopyObjectCommand({
+    Bucket: namaBucket(tujuan), Key: keyTujuan,
+    CopySource: [namaBucket(sumber), ...keySumber.split('/')].map(encodeURIComponent).join('/'),
+    CopySourceIfMatch: etag,
+  }));
+  if (!hasil.CopyObjectResult?.ETag) throw new Error('Salinan foto belum terkonfirmasi');
 }
 
 /** N byte pertama objek (untuk pemeriksaan magic bytes). */
@@ -124,9 +145,10 @@ export async function getObjectRange(bucket: Bucket, key: string, bytes: number)
 export async function deleteObjects(bucket: Bucket, keys: string[]): Promise<void> {
   for (let i = 0; i < keys.length; i += 1000) {
     const potong = keys.slice(i, i + 1000);
-    await s3().send(
+    const hasil = await s3().send(
       new DeleteObjectsCommand({ Bucket: namaBucket(bucket), Delete: { Objects: potong.map((Key) => ({ Key })), Quiet: true } }),
     );
+    if (hasil.Errors?.length) throw new Error('Penghapusan objek belum selesai');
   }
 }
 

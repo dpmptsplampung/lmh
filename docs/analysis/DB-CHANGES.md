@@ -674,3 +674,46 @@
   tetap tersedia, penanda tetap tersimpan dan pencabutan otomatis role/auth berhenti.
   Pengaktifan ulang melalui migrasi maju baru. Rilis wajib mode --atomic sesuai `docs/MIGRATIONS.md`.
 - Status: BELUM DITERAPKAN. Tidak menjalankan skrip produksi, membaca `.env*`, commit atau push.
+
+### [2026-11-09] UMKM tahap A G2 (M-202611090002/0003/0004), BELUM DITERAPKAN
+
+- WP/Migrasi: tiket 04 katalog, 05 formulir/laporan, 06 pengawasan/darurat; kontrak final
+  `.tim/umkm-fitur/KONTRAK-G2.md`, tujuh penyesuaian PM dicatat sebelum implementasi.
+- Jenis: DDL aditif pada `umkm_foto`, dua tabel isi privat, tabel receipt/antrean hapus privat,
+  indeks katalog/antrean/jejak/laju, fungsi baru dan penggantian proyeksi/list G1 melalui migrasi maju.
+- Objek: `umkm_pesan_kontak`, `umkm_laporan`, `umkm_private.operasi_publik`, `umkm_private.foto_hapus`;
+  ETag/ukuran/MIME/tanggal pemeriksaan dan key/URL publik pada foto. Semua tabel baru RLS, tanpa hak
+  langsung PUBLIC/anon/authenticated/service_role. Ledger laju lama dipakai, tidak ada tabel laju baru.
+- Menyentuh data pengunjung: saat diterapkan hanya DDL; formulir runtime menyimpan nama/perusahaan/
+  nomor/pesan privat dan kata kunci opsional. Hasil publik receipt id saja; HMAC idempotensi tanpa isi.
+  Tidak ada nomor UMKM baru pada publik/FO/perusahaan, log, cache bersama atau audit.
+- Prasyarat: rantai G1 `202611090001`, pg_trgm, sesi valid dan petugas aktif. Tidak menambah dependensi.
+- Otorisasi: publik katalog lewat RPC anon, tulis melalui sesi termasuk anon Auth; pemeriksa aktif dengan
+  flag dan role bukan FO untuk isi/putusan. FO/admin mendapat proyeksi aman dan dua aksi darurat tanpa
+  flag atau duty check. Predicate dan fungsi akses kontak G1 tetap, hanya mendesak G2 menjadi true.
+- Query/perubahan kontrak: katalog 20, filter 200/dimensi, cursor bertanda tangan dan keyset; campuran
+  tiga sumber masing-masing LIMIT 21 sebelum UNION. `umkm_daftar_tugas(uuid)` sengaja diganti
+  `umkm_daftar_tugas(text)` sesuai Detail PM tiket 05; cast uji G1 disesuaikan, assertion tidak dilonggarkan.
+- Retensi: pesan 180 hari dan pembersihan receipt merupakan tiket 09. Prune laju lama tetap berlaku.
+- Cara mengembalikan: rollback SQL 0004 lalu 0003 lalu 0002 pada `docs/rollback-umkm-*.sql`.
+  Menutup RPC, menahan tabel dan bukti; tidak menghapus R2 atau memulihkan signature uuid lama.
+- Uji perilaku: rantai PGlite A2 dan regresi A1; DB pekerjaan memeriksa takeover, reply pertama/replay,
+  audit aman dan durasi; route memeriksa validasi, JWT, 403/409/429/503/no-store; R2 tiruan memeriksa
+  HEAD/ETag, conditional CopyObject, pointer sesudah copy, kegagalan tetap terbit dan urutan sebelum hapus.
+- Batas: belum membuktikan R2/IAM/CDN sungguhan, dua transaksi serentak, staging atau produksi.
+  Tidak ada operasi remote, commit/push, pembacaan credential atau perubahan konfigurasi deployment.
+
+### [2026-11-09] Perbaikan G2 sebelum penerapan
+
+- Hanya migrasi belum diterapkan 0002/0003 yang disunting; 0001 dan 109 hash migrasi lama tetap.
+- 0002 mengganti deteksi kontak: email/tautan dahulu, buang UUID kanonik dan nominal Rp sederhana
+  keputusan PM, rapatkan pemisah sebelum pindai nomor. Rollback memulihkan implementasi G1.
+- Rencana key salin pada foto_hapus, RPC umkm_rencana_foto khusus pemeriksa/pemegang, pointer dan
+  DELETE rencana atomik, antrean melewati pointer aktif/rencana muda, penutupan hanya pemeriksa.
+- Detail memuat foto_hapus_tertunda; mutasi foto/darurat memuat hapus_tertunda. Penyelesaian mendesak
+  otomatis menjalankan pembersihan dan invalidasi. Galat per objek R2 diperlakukan gagal.
+- 0003 memperketat laju 10/600 dan 30/86400 per UID/aksi serta 200/600 global/aksi; prune tetap 7 hari.
+  CHECK/RPC/zod pesan 1000 dan catatan 500; indeks unik parsial laporan baru profil/foto/alasan
+  memberi receipt sama lintas pengunjung, tanpa antrean ganda.
+- Cache kartu hanya tanpa q/filter/cursor; bucket sama menonaktifkan draf/publikasi foto.
+- Seluruh bukti dan berkas: .tim/umkm-fitur/PROGRES-PERBAIKAN-G2-backend.md. Belum diterapkan.

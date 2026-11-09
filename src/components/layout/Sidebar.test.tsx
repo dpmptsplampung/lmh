@@ -88,9 +88,10 @@ describe('Sidebar: struktur per role', () => {
       .filter((a) => !a.closest('[data-widget]'))
       .map((a) => a.getAttribute('href'));
     // 33 href lama - 3 tersembunyi (Daftar FO, Scan QR, Rekap Front Office) + 1 Registrasi Pengunjung
-    // + 1 Saran (Pesan Perilaku; Hasil SKM lama menjadi Hasil Survei, alamat pengalihan tersembunyi).
-    expect(hrefs).toHaveLength(32);
-    expect(new Set(hrefs).size).toBe(32);
+    // + 1 Saran (Pesan Perilaku; Hasil SKM lama menjadi Hasil Survei, alamat pengalihan tersembunyi)
+    // + 1 Pengawasan UMKM.
+    expect(hrefs).toHaveLength(33);
+    expect(new Set(hrefs).size).toBe(33);
     expect(hrefs).not.toContain('/admin/rekap-fo');
     expect(hrefs).not.toContain('/admin/scan');
     expect(hrefs).not.toContain('/admin/fo/daftar');

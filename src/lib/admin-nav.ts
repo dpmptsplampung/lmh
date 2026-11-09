@@ -128,6 +128,8 @@ export const ADMIN_NAV: AdminNavEntry[] = [
 
   // Kemitraan & Investasi
   { label: 'Tugas UMKM', href: '/admin/umkm-tugas', iconKey: 'umkm', roles: ['admin', 'petugas'], group: 'kemitraan', requiresPemeriksaUmkm: true },
+  { label: 'Pengawasan UMKM', href: '/admin/umkm-pengawasan', iconKey: 'umkm',
+    roles: ['admin', 'front_office'], group: 'kemitraan' },
   { label: 'UMKM', href: '/admin/umkm', iconKey: 'umkm', roles: ['admin'], group: 'kemitraan' },
   { label: 'Lead Investasi', href: '/admin/investasi-leads', iconKey: 'leads', roles: ['admin'], group: 'kemitraan' },
   { label: 'Investment Gallery', href: '/admin/gallery', iconKey: 'gallery', roles: ['admin'], group: 'kemitraan' },

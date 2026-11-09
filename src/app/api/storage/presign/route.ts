@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/server';
 import { bolehUnggahDraf } from '@/lib/umkm-katalog/akses-server';
 import { logServerEvent } from '@/lib/observability/logger';
 import { ATURAN_AREA, adalahArea, kunciObjek, type Area } from '@/lib/storage/area';
-import { presignPut, r2Tersedia } from '@/lib/storage/r2';
+import { presignPut, r2Tersedia, bucketTerpisah } from '@/lib/storage/r2';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
   } catch {
     return NextResponse.json({ error: 'Path berkas tidak valid' }, { status: 400 });
   }
-  if (!r2Tersedia()) {
+  if (!r2Tersedia() || (area === 'umkm-draf' && !bucketTerpisah())) {
     logServerEvent('error', { operation: 'storage.presign.r2_belum_dikonfigurasi', route: ROUTE });
     return NextResponse.json({ error: 'Penyimpanan berkas belum dikonfigurasi' }, { status: 503 });
   }

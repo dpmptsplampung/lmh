@@ -53,4 +53,32 @@ describe('kebijakan-privasi page', () => {
     expect(RESERVASI_SOURCE).toContain('href="/kebijakan-privasi"');
     expect(CHAT_SOURCE).toContain('href="/kebijakan-privasi"');
   });
+
+  it('menjelaskan formulir UMKM, batas WhatsApp pribadi, dan pencatatan opsional', () => {
+    render(<KebijakanPrivasiPage />);
+    const body = document.body.textContent ?? '';
+    expect(screen.getByRole('heading', { name: /katalog dan formulir UMKM/i })).toBeTruthy();
+    expect(body).toMatch(/180 hari/);
+    expect(body).toMatch(/30 hari sejak.*dibatalkan/);
+    expect(body).toMatch(/90 hari bila tidak ada aktivitas/);
+    expect(body).toMatch(/LMH tidak dapat menghapusnya/);
+    expect(body).toMatch(/tidak dapat membuktikan/);
+    expect(body).toMatch(/tanpa menyimpan kata yang dicari/);
+    expect(body).toMatch(/tidak.*membagikan nomor UMKM/);
+    expect(body).toMatch(/tidak memakai cookie iklan/);
+  });
+
+  it('menjelaskan pemeriksaan kontak dan sesi anonim secara sama dengan kebijakan PDP', () => {
+    render(<KebijakanPrivasiPage />);
+    const dokumen = readFileSync(join(process.cwd(), 'docs/KEBIJAKAN_PDP.md'), 'utf8');
+    const pemeriksaan = 'Petugas memeriksa agar nomor telepon, email, alamat rinci, atau nama pemilik usaha ' +
+      'tidak tampil di halaman publik.';
+    const sesi = 'Pengiriman formulir memakai sesi anonim untuk menahan kiriman berlebihan.';
+    for (const naskah of [document.body.textContent ?? '', dokumen]) {
+      const teks = naskah.replace(/\s+/g, ' ');
+      expect(teks).toContain(pemeriksaan);
+      expect(teks).toContain(sesi);
+      expect(teks).not.toContain('Halaman publik tidak menampilkan nomor telepon');
+    }
+  });
 });

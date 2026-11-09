@@ -1,0 +1,71 @@
+.halaman {
+  --text-on-primary: var(--text-inverse);
+  --radius-button: var(--radius-lg);
+  --fs-body: var(--text-base);
+  --bg-surface: var(--color-neutral-0);
+  --bg-surface-hover: var(--color-neutral-100);
+  --radius-panel: var(--radius-2xl);
+  --border-subtle: var(--border-default);
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: var(--space-6) clamp(16px, 4vw, 40px) var(--space-12);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+  min-width: 0;
+  line-height: 1.6;
+}
+.kembali { display: inline-flex; align-items: center; min-height: 44px; color: var(--text-link); }
+.kepala { max-width: 760px; }
+.kepala h1 { font-family: var(--font-display); font-size: clamp(28px, 5vw, 44px); line-height: 1.2; }
+.kepala p { margin-top: var(--space-3); color: var(--text-secondary); }
+.label { font-size: var(--text-sm); color: var(--text-secondary); }
+.pencarian { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: var(--space-3); }
+.filter { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-4); }
+.filterWadah { border-block: 1px solid var(--border-default); padding-block: var(--space-3); }
+.filterWadah summary { min-height: 44px; padding-block: var(--space-2); cursor: pointer; color: var(--text-link); }
+.filterWadah[open] .filter { margin-top: var(--space-4); }
+.aksi { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.hasil { display: flex; flex-direction: column; gap: var(--space-4); }
+.hasil h2, .halaman h2 { font-size: var(--text-xl); }
+.kartuDaftar { list-style: none; padding: 0; display: grid; gap: var(--space-5); margin: 0;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); }
+.kartu { min-width: 0; border: 1px solid var(--border-default); border-radius: var(--radius-lg);
+  background: var(--surface-elevated); overflow: hidden; }
+.isiKartu { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-5); }
+.isiKartu h3 { font-size: var(--text-xl); }
+.isiKartu h3 a { color: var(--text-link); display: inline-flex; min-height: 44px; align-items: center; }
+.isiKartu p { margin: 0; }
+.foto { display: flex; flex-direction: column; align-items: stretch; min-width: 0; }
+.foto > :first-child { max-width: 100%; }
+.tanpaFoto { min-height: 180px; display: flex; align-items: center; justify-content: center;
+  margin: 0; background: var(--color-neutral-100); color: var(--text-secondary); }
+.galeri { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: var(--space-5); margin-top: var(--space-4); }
+.galeri figure { margin: 0; min-width: 0; }
+.galeri figcaption { padding-top: var(--space-2); }
+.deskripsi { white-space: pre-wrap; font-size: var(--text-lg); max-width: 760px; }
+.kontak, .keadaan { padding: var(--space-5); border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg); background: var(--surface-elevated);
+  display: flex; flex-direction: column; gap: var(--space-4); }
+.form { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; border: 0;
+  margin: 0; padding: 0; overflow-wrap: anywhere; }
+.form textarea { min-height: 120px; }
+.pemberitahuan, .keterangan { color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.6; }
+.pemberitahuan a { color: var(--text-link); text-decoration: underline; }
+.galat { color: var(--color-danger-700); padding: var(--space-3); background: var(--color-danger-50); }
+.halaman :is(button, a), .form button { min-height: 44px; max-width: 100%; white-space: normal; }
+.halaman button, .form button { padding-block: var(--space-2); }
+.halaman :is(button, a, input, select, textarea, summary):focus-visible, .form :focus-visible {
+  outline: 2px solid var(--border-focus, var(--color-primary-600)); outline-offset: 3px;
+}
+.halaman :is(input, select, textarea), .form :is(input, select, textarea) { min-width: 0; max-width: 100%; }
+@media (max-width: 640px) {
+  .filter { grid-template-columns: minmax(0, 1fr); }
+  .pencarian { grid-template-columns: minmax(0, 1fr); }
+  .halaman :is(input, select, textarea), .form :is(input, select, textarea) { font-size: 16px; }
+  .aksi { align-items: stretch; }
+  .isiKartu, .kontak, .keadaan { padding: var(--space-4); }
+}

@@ -20,4 +20,6 @@ Also: real two-connection test of concurrent decisions (moved from ticket 03), o
 
 Detail is written when the wave starts.
 
+Also from G2, staging only: R2 cross-bucket CopyObject, CopySourceIfMatch with quoted ETag, the DeleteObjects `Errors` shape, token rights, edge cache after delete; `revalidateTag` across instances; Auth anonymous sign-in limit per IP, which sets the cost of a form flood; advisory lock in `jaga_laju` on two real connections.
+
 ## Comments

@@ -14,12 +14,14 @@ vi.mock('@aws-sdk/client-s3', () => {
     GetObjectCommand: buat('Get'),
     HeadObjectCommand: buat('Head'),
     DeleteObjectsCommand: buat('Delete'),
+    CopyObjectCommand: buat('Copy'),
   };
 });
 vi.mock('@aws-sdk/s3-request-presigner', () => ({ getSignedUrl: vi.fn(async () => 'https://signed.example/x') }));
 
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { deleteObjects, getObjectBytes, presignGet, presignPut, putObject, r2Tersedia, urlPublik } from './r2';
+import { copyObject, deleteObjects, getObjectBytes, headObject, presignGet, presignPut,
+  putObject, r2Tersedia, bucketTerpisah, urlPublik } from './r2';
 
 const ENV = {
   R2_ACCOUNT_ID: 'acc', R2_ACCESS_KEY_ID: 'ak', R2_SECRET_ACCESS_KEY: 'sk',
@@ -42,6 +44,18 @@ describe('r2', () => {
     });
     await presignPut('public', 'umkm-photos/foto.jpg', { contentType: 'image/jpeg', contentLength: 100 });
     expect(vi.mocked(getSignedUrl).mock.calls[1][2]).toEqual({ expiresIn: 120 });
+  });
+
+  it('HEAD mengembalikan ETag dan salin lintas bucket bersyarat tidak membaca body', async () => {
+    kirim.mockResolvedValue({ ETag: '"abc123"', ContentType: 'image/jpeg', ContentLength: 120,
+      CopyObjectResult: { ETag: '"abc123"' } });
+    expect(await headObject('private', 'umkm-draf/a.jpg'))
+      .toEqual({ etag: '"abc123"', size: 120, contentType: 'image/jpeg' });
+    await copyObject('private', 'umkm-draf/a.jpg', 'public', 'umkm-katalog/b.jpg', '"abc123"');
+    expect(kirim.mock.calls[1][0]).toMatchObject({ nama: 'Copy', input: {
+      Bucket: 'pub', Key: 'umkm-katalog/b.jpg', CopySource: 'priv/umkm-draf/a.jpg',
+      CopySourceIfMatch: '"abc123"',
+    } });
   });
 
   it('GET pratinjau dapat memaksa tipe gambar dan inline tanpa mengubah GET lama', async () => {
@@ -75,6 +89,19 @@ describe('r2', () => {
     expect(kirim).toHaveBeenCalledTimes(2);
     const jumlah = kirim.mock.calls.map((c) => (c[0] as { input: { Delete: { Objects: unknown[] } } }).input.Delete.Objects.length);
     expect(jumlah).toEqual([1000, 500]);
+  });
+
+  it('galat per objek pada respons sukses HTTP tetap menggagalkan penghapusan', async () => {
+    kirim.mockResolvedValue({ Errors: [{ Key: 'privat.jpg', Code: 'AccessDenied', Message: 'rahasia' }] });
+    await expect(deleteObjects('public', ['privat.jpg'])).rejects.toThrow('Penghapusan objek belum selesai');
+  });
+
+  it('bucket draf harus berbeda dari bucket publik', () => {
+    expect(bucketTerpisah()).toBe(true);
+    process.env.R2_BUCKET_PRIVATE = 'pub';
+    expect(bucketTerpisah()).toBe(false);
+    delete process.env.R2_BUCKET_PRIVATE;
+    expect(bucketTerpisah()).toBe(false);
   });
 
   it('urlPublik menggabungkan basis tanpa garis miring ganda', () => {

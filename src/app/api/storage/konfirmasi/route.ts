@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 import { bolehUnggahDraf } from '@/lib/umkm-katalog/akses-server';
 import { logServerEvent } from '@/lib/observability/logger';
 import { ATURAN_AREA, adalahArea, cocokMagicBytes, kunciObjek, type Area } from '@/lib/storage/area';
-import { deleteObjects, getObjectRange, headObject, r2Tersedia, urlPublik } from '@/lib/storage/r2';
+import { deleteObjects, getObjectRange, headObject, r2Tersedia, bucketTerpisah, urlPublik } from '@/lib/storage/r2';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
   } catch {
     return NextResponse.json({ error: 'Path berkas tidak valid' }, { status: 400 });
   }
-  if (!r2Tersedia()) return NextResponse.json({ error: 'Penyimpanan berkas belum dikonfigurasi' }, { status: 503 });
+  if (!r2Tersedia() || (area === 'umkm-draf' && !bucketTerpisah())) return NextResponse.json({ error: 'Penyimpanan berkas belum dikonfigurasi' }, { status: 503 });
 
   try {
     const head = await headObject(aturan.bucket, kunci);
