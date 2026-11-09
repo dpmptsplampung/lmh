@@ -15,7 +15,12 @@ import { hasilBelumPasti, kirimTugas, tugasRequest, TugasError } from './api';
 import DetailTugas from './DetailTugas';
 import DetailPekerjaan from './DetailPekerjaan';
 import ProfilForm from './ProfilForm';
+import DetailPermintaanLayar from './DetailPermintaan';
+import BantuPermintaan from './BantuPermintaan';
+import type { DetailPermintaan, TugasPermintaan } from './permintaan-types';
 import styles from './umkm-tugas.module.css';
+
+type Butir = TugasCampuran | TugasPermintaan;
 
 function subscribeNetwork(listener: () => void) {
   window.addEventListener('online', listener); window.addEventListener('offline', listener);
@@ -26,8 +31,9 @@ export default function TugasUmkm() {
   const [list, setList] = useState<DaftarTugas | null>(null);
   const [query, setQuery] = useState('');
   const [detail, setDetail] = useState<Detail | null>(null);
+  const [permintaan, setPermintaan] = useState<DetailPermintaan | null>(null);
   const [work, setWork] = useState<DetailPesan | DetailLaporan | null>(null);
-  const [mode, setMode] = useState<'list' | 'detail' | 'work' | 'new' | 'edit'>('list');
+  const [mode, setMode] = useState<'list' | 'detail' | 'work' | 'new' | 'edit' | 'permintaan' | 'bantu'>('list');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<TugasError | null>(null);
   const offline = useSyncExternalStore(subscribeNetwork, () => !navigator.onLine, () => false);
@@ -35,7 +41,7 @@ export default function TugasUmkm() {
   const listRequest = useRef<AbortController | null>(null);
   const detailRequest = useRef<AbortController | null>(null);
   const currentId = useRef<string | null>(null);
-  const currentKind = useRef<TugasCampuran['jenis']>('profil');
+  const currentKind = useRef<Butir['jenis']>('profil');
   const claimOperation = useRef<{ signature: string; id: string } | null>(null);
   const returnFocus = useRef(false);
   const listHeading = useRef<HTMLDivElement>(null);
@@ -99,6 +105,32 @@ export default function TugasUmkm() {
       if (!request.signal.aborted) setError(e instanceof TugasError ? e : new TugasError('GAGAL_INTERNAL', 500));
     } finally { if (!request.signal.aborted) setLoading(false); }
   };
+  const openPermintaan = async (id: string, claim = true) => {
+    detailRequest.current?.abort(); listRequest.current?.abort();
+    const request = new AbortController(); detailRequest.current = request;
+    currentId.current = id; currentKind.current = 'permintaan';
+    setPermintaan(null); setWork(null); setDetail(null); setMode('permintaan'); setLoading(true); setError(null);
+    try {
+      let result = await tugasRequest<DetailPermintaan>(`/permintaan/${id}`, { signal: request.signal });
+      if (request.signal.aborted) return;
+      if (claim && !result.petugas_id && ['diajukan', 'menunggu_izin', 'nomor_dibuka'].includes(result.status)) {
+        const signature = JSON.stringify(['permintaan', id, result.versi]);
+        if (claimOperation.current?.signature !== signature) {
+          claimOperation.current = { signature, id: crypto.randomUUID() };
+        }
+        await kirimTugas(`/permintaan/${id}/ambil`, {
+          expected_version: result.versi, operasi_id: claimOperation.current.id,
+        }, request.signal);
+        claimOperation.current = null;
+        if (request.signal.aborted) return;
+        result = await tugasRequest<DetailPermintaan>(`/permintaan/${id}`, { signal: request.signal });
+      }
+      if (!request.signal.aborted) setPermintaan(result);
+    } catch (e) {
+      if (!hasilBelumPasti(e)) claimOperation.current = null;
+      if (!request.signal.aborted) setError(e instanceof TugasError ? e : new TugasError('GAGAL_INTERNAL', 500));
+    } finally { if (!request.signal.aborted) setLoading(false); }
+  };
   const openWork = async (jenis: 'pesan' | 'laporan', id: string, claim = true) => {
     detailRequest.current?.abort(); listRequest.current?.abort();
     const request = new AbortController(); detailRequest.current = request;
@@ -126,7 +158,7 @@ export default function TugasUmkm() {
     } finally { if (!request.signal.aborted) setLoading(false); }
   };
   const back = () => {
-    detailRequest.current?.abort(); currentId.current = null; setDetail(null); setWork(null); setMode('list');
+    detailRequest.current?.abort(); currentId.current = null; setDetail(null); setWork(null); setPermintaan(null); setMode('list');
     returnFocus.current = true;
     void load();
   };
@@ -140,12 +172,16 @@ export default function TugasUmkm() {
   const restricted = error && [401, 403, 503].includes(error.status);
   return <div className={styles.halaman}>
     <PageHeader title="Tugas UMKM" description="Periksa profil, pesan, dan laporan sesuai urutan. Tugas mendesak didahulukan.">
-      {mode === 'list' && !loading && !error && <Tombol onClick={() => { listRequest.current?.abort(); setDetail(null); setMode('new'); }}>Tambah profil</Tombol>}
+      {mode === 'list' && !loading && !error && <>
+        <Tombol varian="sekunder" onClick={() => { listRequest.current?.abort(); setNotice(''); setMode('bantu'); }}>
+          Bantu pemohon</Tombol>
+        <Tombol onClick={() => { listRequest.current?.abort(); setDetail(null); setMode('new'); }}>Tambah profil</Tombol>
+      </>}
     </PageHeader>
     {notice && <p role="status" className={styles.meta}>{notice}</p>}
     {offline && <CatatanKeadaan jenis="info" judul="Sedang offline">Periksa koneksi sebelum mengambil tugas atau menyimpan keputusan.</CatatanKeadaan>}
     {!restricted && mode === 'list' && <Field label="Cari nama usaha"
-      bantuan="Minimal 2 karakter. Pencarian mencakup semua status profil. Kosongkan untuk kembali ke antrean.">
+      bantuan="Minimal 2 karakter. Pencarian mencakup semua status profil. Kode permintaan (mis. UM-3F9A1C2B7D4E) juga bisa dicari. Kosongkan untuk kembali ke antrean.">
       <input type="search" value={query} maxLength={200} onChange={(event) => {
         listRequest.current?.abort();
         setQuery(event.target.value); setList(null); setError(null);
@@ -159,7 +195,9 @@ export default function TugasUmkm() {
         ? <CatatanKeadaan jenis="lingkup" judul="Belum memiliki izin pemeriksa">{error.message}</CatatanKeadaan>
         : <Galat pesan={error.message} onRetry={() => {
           if (mode === 'detail' && currentId.current) void open(currentId.current, false);
-          else if (mode === 'work' && currentId.current && currentKind.current !== 'profil') {
+          else if (mode === 'permintaan' && currentId.current) void openPermintaan(currentId.current, false);
+          else if (mode === 'work' && currentId.current && currentKind.current !== 'profil'
+            && currentKind.current !== 'permintaan') {
             void openWork(currentKind.current, currentId.current, false);
           } else back();
         }} />)}
@@ -174,22 +212,34 @@ export default function TugasUmkm() {
           isi={query.trim() ? 'Coba nama usaha lain atau kosongkan pencarian untuk kembali ke antrean.'
             : 'Profil yang perlu diperiksa akan muncul di sini. Anda dapat menambahkan profil baru.'} />
           : <ol className={styles.daftar}>
-          {list.items.map((task) => <li key={`${task.jenis}:${task.id}`}><div className={styles.baris}>
-            <div className={styles.identitas}><strong>{task.nama}</strong>
-              <span className={styles.meta}>{task.jenis === 'profil' ? 'Profil' : task.jenis === 'pesan' ? 'Pesan' : 'Laporan'}.
+          {(list.items as Butir[]).map((task) => <li key={`${task.jenis}:${task.id}`}><div className={styles.baris}>
+            <div className={styles.identitas}><strong>{task.jenis === 'permintaan' ? `Permintaan ${task.kode}: ${task.profil_nama}` : task.nama}</strong>
+              <span className={styles.meta}>{task.jenis === 'profil' ? 'Profil' : task.jenis === 'pesan' ? 'Pesan'
+                : task.jenis === 'permintaan' ? 'Permintaan kontak' : 'Laporan'}.
                 {task.mendesak ? ' Mendesak. ' : ' '}{task.status}. Masuk {formatTanggal(task.dibuat_pada)}</span>
               {task.petugas_nama && <span className={styles.meta}>sedang dipegang {task.petugas_nama}</span>}
               {task.jenis === 'profil' && task.tanpa_nomor && <span className={styles.meta}>Belum ada WhatsApp</span>}
             </div>
-            <Tombol varian="sekunder" onClick={() => task.jenis === 'profil'
-              ? void open(task.id) : void openWork(task.jenis, task.id)}
-              aria-label={`Periksa ${task.nama}`}>Periksa</Tombol>
+            <Tombol varian="sekunder" onClick={() => task.jenis === 'profil' ? void open(task.id)
+              : task.jenis === 'permintaan' ? void openPermintaan(task.id) : void openWork(task.jenis, task.id)}
+              aria-label={task.jenis === 'permintaan' ? `Periksa Permintaan ${task.kode}: ${task.profil_nama}`
+                : `Periksa ${task.nama}`}>Periksa</Tombol>
           </div></li>)}
         </ol>}
         <div className={styles.aksi}>{list.next_cursor && <Tombol varian="sekunder" onClick={() => load(list.next_cursor!)}>Halaman berikutnya</Tombol>}{list.items.length > 0 && <Tombol varian="hantu" onClick={() => load()}>Ke awal daftar</Tombol>}</div>
       </Kartu>
     </div>}
     {!restricted && !loading && mode === 'detail' && detail && <DetailTugas key={`${detail.id}:${detail.versi}`} detail={detail} onChanged={changed} onEdit={() => setMode('edit')} onBack={back} onRefresh={() => void open(detail.id, false)} />}
+    {!restricted && !loading && mode === 'permintaan' && permintaan && <DetailPermintaanLayar
+      key={`${permintaan.id}:${permintaan.versi}:${permintaan.profil_versi}`} detail={permintaan} onBack={back}
+      onRefresh={() => void openPermintaan(permintaan.id, false)} onChanged={async (pesan, tutup) => {
+        setNotice(pesan);
+        if (tutup) back(); else await openPermintaan(permintaan.id, false);
+      }} />}
+    {!restricted && mode === 'bantu' && <BantuPermintaan onBatal={back} onSelesai={(id) => {
+      setNotice('Permintaan bantuan dicatat.');
+      if (id) void openPermintaan(id, false); else back();
+    }} />}
     {!restricted && !loading && mode === 'work' && work && <DetailPekerjaan key={`${work.jenis}:${work.id}:${work.versi}`}
       detail={work} onBack={back} onRefresh={() => void openWork(work.jenis, work.id, false)}
       onProfile={(id) => void open(id)} onChanged={async (completed) => {
@@ -197,7 +247,7 @@ export default function TugasUmkm() {
         else await openWork(work.jenis, work.id, false);
       }} />}
     {!restricted && !loading && (mode === 'new' || mode === 'edit') && <ProfilForm key={mode === 'new' ? 'new' : detail?.id} detail={mode === 'edit' ? detail ?? undefined : undefined} onSaved={(result) => void changed(result)} onCancel={back} />}
-    {!restricted && !loading && (mode === 'detail' || mode === 'work') && !detail && !work && error &&
+    {!restricted && !loading && (mode === 'detail' || mode === 'work' || mode === 'permintaan') && !detail && !work && !permintaan && error &&
       <Tombol varian="hantu" onClick={back}>Kembali ke daftar</Tombol>}
   </div>;
 }

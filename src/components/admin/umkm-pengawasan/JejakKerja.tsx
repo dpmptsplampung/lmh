@@ -7,6 +7,7 @@ import Galat from '@/components/ui/Galat';
 import type { DaftarJejakPengawasan } from '@/lib/umkm-katalog/types';
 import { formatTanggalWaktu } from '@/lib/utils';
 import { PengawasanError, pengawasanRequest } from './api';
+import { AKSI_PERMINTAAN, LABEL_PERMINTAAN, type RujukanPermintaan } from './permintaan-types';
 import styles from './pengawasan.module.css';
 
 const ACTIONS: Record<string, string> = {
@@ -17,7 +18,9 @@ const ACTIONS: Record<string, string> = {
   selesai_mendesak: 'Pemeriksaan mendesak selesai',
 };
 
-export default function JejakKerja({ refresh }: { refresh: number }) {
+export default function JejakKerja({ refresh, onTahan }: {
+  refresh: number; onTahan: (permintaan: RujukanPermintaan) => void;
+}) {
   const [data, setData] = useState<DaftarJejakPengawasan | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -44,16 +47,27 @@ export default function JejakKerja({ refresh }: { refresh: number }) {
     {loading && <p role="status">Memuat jejak kerja...</p>}
     {error && <Galat pesan={error} onRetry={() => void load()} />}
     {data && (data.items.length === 0 ? <p>Belum ada jejak kerja</p> : <ol className={styles.daftar}>
-      {data.items.map((item) => <li key={item.id} className={styles.jejak}>
-        <strong>{ACTIONS[item.aksi] ?? 'Tindakan tercatat'}</strong>
-        <p>{item.profil_nama}</p>
+      {data.items.map((row) => {
+        const item = row;
+        const permintaan = item.permintaan_id ? item : null;
+        const bisaTahan = permintaan && permintaan.permintaan_versi != null && permintaan.permintaan_status != null
+          && ['diajukan', 'menunggu_izin', 'nomor_dibuka'].includes(permintaan.permintaan_status);
+        return <li key={item.id} className={styles.jejak}>
+        <strong>{(permintaan ? AKSI_PERMINTAAN[item.aksi] : ACTIONS[item.aksi]) ?? 'Tindakan tercatat'}</strong>
+        <p>{item.profil_nama}{permintaan?.permintaan_kode ? `. Permintaan ${permintaan.permintaan_kode}` : ''}</p>
+        {permintaan?.permintaan_status && <p>Status permintaan sekarang: {LABEL_PERMINTAAN[permintaan.permintaan_status]}</p>}
         <p className={styles.meta}>{item.aktor_nama} · {item.peran === 'front_office' ? 'Front Office'
           : item.peran === 'admin' ? 'Admin' : 'Petugas'} · <time dateTime={item.dibuat_pada}>
           {formatTanggalWaktu(item.dibuat_pada)} WIB</time></p>
         {(item.status_lama || item.status_baru) && <p>Status: {item.status_lama ?? 'belum ada'} →
           {' '}{item.status_baru ?? 'tidak berubah'}</p>}
         {item.alasan && <p>Alasan: {item.alasan}</p>}
-      </li>)}
+        {bisaTahan && <div><Tombol varian="bahaya" ukuran="kecil" aria-label={`Tahan permintaan ${permintaan.permintaan_kode ?? ''}`.trim()}
+          onClick={() => onTahan({
+          id: permintaan.permintaan_id!, versi: permintaan.permintaan_versi!, status: permintaan.permintaan_status!,
+          kode: permintaan.permintaan_kode ?? null,
+        })}>Tahan permintaan</Tombol></div>}
+      </li>; })}
     </ol>)}
     {data?.next_cursor && <Tombol varian="sekunder" onClick={() => void load(data.next_cursor!)}>
       Jejak berikutnya

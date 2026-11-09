@@ -9,6 +9,7 @@ import { createClient } from '@/lib/supabase/client';
 import type { LaporanStatistik } from '@/lib/umkm-katalog/types';
 import { menitWIB, toWIBDateString } from '@/lib/time';
 import { LaporanError, laporanRequest, laporanResponse } from './api';
+import { LABEL_HASIL, LABEL_STATUS, lamaTunggu } from './permintaan';
 import SakelarStatistik from './SakelarStatistik';
 import styles from './laporan.module.css';
 
@@ -27,6 +28,7 @@ export default function LaporanUmkm() {
   const [exportError, setExportError] = useState('');
   const request = useRef<AbortController | null>(null);
   const heading = useRef<HTMLSpanElement>(null);
+  const withRequests = Boolean(data?.permintaan);
   const activeSince = data?.aktif_pada ? new Date(data.aktif_pada) : null;
   const activeMinute = activeSince ? menitWIB(activeSince) : 0;
   const load = useCallback(async (cursor?: string) => {
@@ -113,15 +115,32 @@ export default function LaporanUmkm() {
         </dl>
         <p>Data disimpan hingga 180 hari sejak ditangani, atau aktivitas terakhir bila belum ditangani.</p>
       </Kartu>
+      {data.permintaan && <Kartu judul="Permintaan kontak">
+        <dl className={styles.angka}>
+          {Object.entries(LABEL_STATUS).map(([key, label]) => <div key={key}>
+            <dt>{label}</dt><dd>{angka(data.permintaan![key as keyof typeof LABEL_STATUS] ?? 0)}</dd>
+          </div>)}
+        </dl>
+        <dl className={styles.angka}>
+          <div><dt>Rata-rata lama tunggu sampai keputusan</dt><dd>{lamaTunggu(data.rata_keputusan_detik ?? null)}</dd></div>
+          {Object.entries(LABEL_HASIL).map(([key, label]) => <div key={key}>
+            <dt>Hasil: {label}</dt><dd>{angka(data.hasil?.[key as keyof typeof LABEL_HASIL] ?? 0)}</dd>
+          </div>)}
+        </dl>
+        <p>Nomor yang sudah dibuka tidak dihitung sebagai kerja sama sebelum hasilnya dicatat.</p>
+      </Kartu>}
       <Kartu judul={<span ref={heading} tabIndex={-1}>Statistik per UMKM</span>}>
         {data.profil_statistik.length === 0 ? <p>Belum ada profil untuk ditampilkan.</p> : <table>
           <caption className="sr-only">Suka, dilihat, dan klik formulir per UMKM</caption>
           <thead><tr><th scope="col">UMKM</th><th scope="col">Suka</th><th scope="col">Dilihat</th>
-            <th scope="col">Klik formulir</th></tr></thead>
+            <th scope="col">Klik formulir</th>
+            {withRequests && <th scope="col">Permintaan kontak</th>}</tr></thead>
           <tbody>{data.profil_statistik.map((profile) => <tr key={profile.id}>
             <th scope="row">{profile.nama}</th><td data-label="Suka">{angka(profile.suka)}</td>
             <td data-label="Dilihat">{angka(data.telemetri_opsional_aktif ? profile.dilihat : null)}</td>
             <td data-label="Klik formulir">{angka(data.telemetri_opsional_aktif ? profile.klik_formulir : null)}</td>
+            {withRequests && <td data-label="Permintaan kontak">{angka(
+              (profile as typeof profile & { permintaan?: number }).permintaan ?? 0)}</td>}
           </tr>)}</tbody>
         </table>}
         <div className={styles.aksi}>

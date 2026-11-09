@@ -64,8 +64,32 @@ describe('kebijakan-privasi page', () => {
     expect(body).toMatch(/LMH tidak dapat menghapusnya/);
     expect(body).toMatch(/tidak dapat membuktikan/);
     expect(body).toMatch(/tanpa menyimpan kata yang dicari/);
-    expect(body).toMatch(/tidak.*membagikan nomor UMKM/);
+    expect(body).toMatch(/tidak membagikan nomor UMKM kepada pengunjung atau Front Office/);
+    expect(body).toMatch(/hanya dapat dibuka ke akun perusahaan dengan izin pemilik usaha/);
     expect(body).toMatch(/tidak memakai cookie iklan/);
+  });
+
+  it('menjelaskan tahap B (data perusahaan, izin nomor, akun pemohon, retensi) sama dengan kebijakan PDP', () => {
+    render(<KebijakanPrivasiPage />);
+    const dokumen = readFileSync(join(process.cwd(), 'docs/KEBIJAKAN_PDP.md'), 'utf8');
+    const kalimat = [
+      'wajib masuk dengan akun pribadi dan mengisi nama perusahaan dan jabatan',
+      'Nama, email, dan HP diambil dari profil akun.',
+      'Nomor UMKM hanya dibuka bila pemiliknya sudah memberi izin dan petugas menyetujui permintaan.',
+      'Nomor hanya tampil di akun pemohon itu, tidak dikirim lewat WhatsApp, email, atau notifikasi.',
+      'Pemilik UMKM dapat mencabut izin kapan saja dengan menghubungi petugas UMKM atau lewat formulir di LMH.',
+      'perusahaan yang sudah mencatatnya mungkin masih menyimpannya.',
+      'Petugas memakai WhatsApp pribadinya untuk menanyakan izin kepada UMKM dan memberi tahu pemohon.',
+      'Riwayat chat di ponsel petugas berada di luar sistem LMH.',
+      'Nama perusahaan dan jabatan disimpan selama akun Anda ada. Catatan permintaan dan Kebutuhan disimpan ' +
+        'sampai 730 hari sesudah ditutup, sesudah izin dicabut, atau sesudah akun dihapus. Sesudah itu teks ' +
+        'Kebutuhan, kontak yang dicatat petugas, serta nama dan jabatan perusahaan yang tidak terhubung ke akun ' +
+        'dihapus.',
+    ];
+    for (const naskah of [document.body.textContent ?? '', dokumen]) {
+      const teks = naskah.replace(/\s+/g, ' ');
+      for (const k of kalimat) expect(teks).toContain(k);
+    }
   });
 
   it('menjelaskan pemeriksaan kontak dan sesi anonim secara sama dengan kebijakan PDP', () => {

@@ -72,3 +72,17 @@
   .aksi { align-items: stretch; }
   .isiKartu, .kontak, .keadaan { padding: var(--space-4); }
 }
+
+/* Tahap B: perusahaan */
+.centang { display: flex; align-items: flex-start; gap: var(--space-3); min-height: 44px; }
+.centang input { flex: none; width: 20px; height: 20px; margin-top: 2px; }
+.daftarBaris { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-4); }
+.baris { border: 1px solid var(--border-default); border-radius: var(--radius-lg); background: var(--surface-elevated);
+  padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+.baris h3 { font-size: var(--text-lg); }
+.baris p { margin: 0; }
+.nomor { font-size: var(--text-xl); font-variant-numeric: tabular-nums; font-weight: 600; }
+.peringatan { padding: var(--space-3); border-radius: var(--radius-md); background: var(--color-warning-50);
+  color: var(--text-primary); font-size: var(--text-sm); }
+.berhasil { padding: var(--space-3); background: var(--color-success-50); color: var(--text-primary); }
+.pilihan { display: flex; flex-direction: column; gap: var(--space-2); border: 0; margin: 0; padding: 0; }

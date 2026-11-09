@@ -193,7 +193,10 @@ describe('pencatat opsional', () => {
     beacon.mockImplementation(() => { throw new Error('gagal'); });
     render(<ProfilKatalog id={id} />);
     expect(await screen.findByRole('heading', { level: 1, name: profile.nama })).toBeTruthy();
+    // Tunggu panggilan pertama; saat mesin sibuk efek pencatat bisa berjalan sesudah judul tampil.
+    await waitFor(() => expect(beacon).toHaveBeenCalledOnce());
     fireEvent(document, new Event('visibilitychange'));
+    await act(async () => {});
     expect(beacon).toHaveBeenCalledOnce();
     expect(screen.queryByRole('alert')).toBeNull();
   });

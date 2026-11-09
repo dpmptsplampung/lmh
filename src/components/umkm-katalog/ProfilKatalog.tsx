@@ -13,6 +13,8 @@ import StatistikProfil from './StatistikProfil';
 import SukaProfil from './SukaProfil';
 import UmkmSerupa from './UmkmSerupa';
 import PencatatStatistik from './PencatatStatistik';
+import HubungiUmkm from '@/components/umkm-perusahaan/HubungiUmkm';
+import { useTahapB } from '@/components/umkm-perusahaan/useTahapB';
 import styles from './katalog.module.css';
 
 export default function ProfilKatalog({ id }: { id: string }) {
@@ -23,6 +25,7 @@ export default function ProfilKatalog({ id }: { id: string }) {
   const [dialog, setDialog] = useState<'pesan' | 'laporan' | null>(null);
   const [formKind, setFormKind] = useState<'pesan' | 'laporan'>('pesan');
   const [context, setContext] = useState<KonteksFormulir>({ profil_id: id });
+  const tahapB = useTahapB();
   const reload = useCallback(() => setAttempt((value) => value + 1), []);
   useEffect(() => {
     const controller = new AbortController();
@@ -63,10 +66,14 @@ export default function ProfilKatalog({ id }: { id: string }) {
       </header>
       <p className={styles.deskripsi}>{profile.deskripsi}</p>
       <section className={styles.kontak} aria-label="Informasi melalui petugas">
-        <p>Nomor pemilik usaha tidak ditampilkan. Tekan Hubungi lewat petugas untuk mengisi formulir singkat;
-          petugas akan menghubungi Anda.</p>
+        {tahapB.fase === 'ya' ? <p>Nomor pemilik usaha tidak ditampilkan. Tekan Hubungi UMKM. Bila disetujui
+          petugas, nomor tampil di akun Anda.</p> : <p>Nomor pemilik usaha tidak ditampilkan. Tekan Hubungi lewat
+          petugas untuk mengisi formulir singkat; petugas akan menghubungi Anda.</p>}
         <div className={styles.aksi}>
-          <Tombol onClick={() => open('pesan')}>Hubungi lewat petugas</Tombol>
+          {tahapB.fase === 'ya' && <HubungiUmkm profilId={id} profilNama={profile.nama} masuk={tahapB.masuk}
+            perusahaan={tahapB.perusahaan} onPerusahaan={tahapB.setPerusahaan} />}
+          <Tombol varian={tahapB.fase === 'ya' ? 'sekunder' : 'utama'} onClick={() => open('pesan')}>
+            Hubungi lewat petugas</Tombol>
           <Tombol varian="sekunder" onClick={() => open('laporan')}>Laporkan</Tombol>
         </div>
       </section>

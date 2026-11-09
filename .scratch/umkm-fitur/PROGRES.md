@@ -4,14 +4,49 @@ Diperbarui 2026-11-09. Pengganti catatan pukul 12.15 WIB saat worker berhenti ka
 
 ## Keadaan repo
 
-- Branch `feat/umkm`. Kode G1 ada di commit `16f1795`, perbaikan uji kalender di `205ed4e`. Dokumen rencana di `91f4888`. Kode G2 ada di commit `9469df2`. Kode G3 masih di working tree.
+- Branch `feat/umkm`. Kode G1 ada di commit `16f1795`, perbaikan uji kalender di `205ed4e`. Dokumen rencana di `91f4888`. Kode G2 ada di commit `9469df2`. Kode G3 ada di commit `13d9c98`.
 - **Belum ada push**, jadi commit ini hanya ada di mesin ini.
 - Migrasi `202611090001` sampai `0007` belum diterapkan ke database mana pun, termasuk staging.
 - Worker: semua sudah dilepas. Run Orca G1: `run_f7c5c7375d19`, transkrip worker yang dihentikan: `.tim/umkm-fitur/transkrip-g1/`. Run Orca G2: `run_8d70cd1fda1b`. Run Orca G3: `run_2f77f9b64789`.
 
+## Gelombang G4, tahap B (tiket 11 sampai 15)
+
+**Kode selesai dan lulus gate, di-commit lokal, belum di-push.** Migrasi `202611090008` dan `0009` belum diterapkan ke database mana pun. Tahap B aktif hanya sesudah migrasinya diterapkan; sebelum itu semua halaman berperilaku seperti tahap A.
+
+Run Orca `run_04b9a929c500`. Kontrak: `.tim/umkm-fitur/KONTRAK-G4.md` (termasuk bagian Persetujuan PM). Tinjauan: `.tim/umkm-fitur/TINJAUAN-G4-KEAMANAN.md` (0 kritis, 0 tinggi, 1 sedang, 4 rendah, 4 catatan) dan `TINJAUAN-G4-KODE.md` (1 tinggi, 4 sedang, 1 rendah), diperbaiki sesuai `.tim/umkm-fitur/PERBAIKAN-G4.md`. Bukti merah: `.scratch/umkm-fitur/qa-merah-g4.txt` dan `qa-merah-g4-perbaikan.txt`.
+
+Keputusan PM yang disampaikan ke pemilik:
+
+- Kode tautan bantuan 12 karakter berkelompok 4-4-4, sekali pakai, tanpa masa berlaku. Kode yang hilang sebelum dipakai: petugas membuat bantuan baru.
+- Batas anti-spam permintaan perusahaan dilonggarkan (60 per 10 menit, 1000 per hari per akun) agar tambah satu klik tidak terhalang.
+- Pemohon bantuan mengisi data perusahaan dulu, lalu memasukkan kode. Petugas melihat data yang ia catat berdampingan dengan data akun penaut.
+- Akun perusahaan yang dihapus menutup Kebutuhan dan permintaannya.
+- Tidak diubah: hash kode tanpa kunci, akses nomor petugas lewat bantuan (sama dengan tahap A, tercatat), batas global bersama.
+
+### Hasil gate terakhir G4
+
+| Uji | Hasil |
+|---|---|
+| `npx eslint . --max-warnings=0 --ignore-pattern '.tim/**'` | lulus |
+| `npm run typecheck` | lulus |
+| `npm run build` | lulus |
+| `npm test` | 6495 lulus, 0 gagal, 6 dilewati |
+| Skenario A1, A2, A3 | 69, 16, 6 PASS, 0 FAIL |
+| `node scripts/lokal-rantai/skenario-umkm-b1.mjs` | 18 PASS, 0 FAIL |
+| `node scripts/lokal-rantai/beban-umkm.mjs` | exit 0 |
+| Manifest migrasi | cocok, 117 berkas |
+
+Dua uji lama formulir dan satu uji statistik dibuat menunggu efek layar, karena gagal sesekali saat mesin sibuk.
+
+### Yang belum terbukti G4
+
+Butuh staging: penghapusan akun lewat Supabase Auth dengan FK `ON DELETE SET NULL`, hak bawaan Supabase dan skema `umkm_private` tidak terekspos, klaim `is_anonymous` JWT asli, `extensions.digest` dan `gen_random_bytes`, jadwal `pg_cron` retensi, log gateway tidak merekam body RPC, CDN menghormati `private, no-store`, serta perlombaan dua koneksi sungguhan.
+
+Tahap C menyusul sebagai G5 (tiket 16 sampai 19).
+
 ## Gelombang G3 (tiket 08, 09, 10)
 
-**Kode selesai dan lulus gate, belum di-commit.** Menunggu persetujuan pemilik. Migrasi `202611090005`, `0006`, `0007` belum diterapkan ke database mana pun. Sakelar statistik bawaannya mati.
+**Di-commit di `13d9c98`, belum di-push.** Migrasi `202611090005`, `0006`, `0007` belum diterapkan ke database mana pun. Sakelar statistik bawaannya mati.
 
 Kontrak: `.tim/umkm-fitur/KONTRAK-G3.md`. Tinjauan: `.tim/umkm-fitur/TINJAUAN-G3-KEAMANAN.md` (0 kritis, 0 tinggi, 2 sedang, 4 rendah) dan `TINJAUAN-G3-KODE.md` (1 tinggi, 3 sedang, 1 rendah), diperbaiki sesuai `.tim/umkm-fitur/PERBAIKAN-G3.md`. Bukti merah: `.scratch/umkm-fitur/qa-merah-g3.txt`. Hasil beban: `docs/umkm/HASIL-BEBAN-TAHAP-A.md`.
 

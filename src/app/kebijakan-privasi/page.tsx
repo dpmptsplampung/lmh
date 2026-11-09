@@ -132,8 +132,9 @@ export default function KebijakanPrivasiPage() {
             <p>
               Profil di katalog berasal dari data kurasi petugas, satudata, dan tamu yang datang ke loket.
               Petugas memeriksa setiap profil sebelum tampil. Petugas memeriksa agar nomor telepon, email,
-              alamat rinci, atau nama pemilik usaha tidak tampil di halaman publik. Saat ini LMH tidak
-              membagikan nomor UMKM kepada pengunjung, perusahaan, atau Front Office.
+              alamat rinci, atau nama pemilik usaha tidak tampil di halaman publik. LMH tidak membagikan
+              nomor UMKM kepada pengunjung atau Front Office. Nomor hanya dapat dibuka ke akun perusahaan
+              dengan izin pemilik usaha, seperti dijelaskan pada bagian permintaan nomor di bawah.
             </p>
             <p>
               Formulir Hubungi lewat petugas meminta nama, perusahaan, nomor kontak, dan pesan. Profil atau kata
@@ -155,6 +156,20 @@ export default function KebijakanPrivasiPage() {
             <p>
               Nomor UMKM yang disimpan untuk meminta izin hanya dapat dibaca petugas yang sedang menangani tugas
               itu, dan setiap pembacaan dicatat.
+            </p>
+            <p>
+              Tahap B, permintaan nomor oleh perusahaan. Perusahaan yang meminta nomor UMKM wajib masuk dengan
+              akun pribadi dan mengisi nama perusahaan dan jabatan. Nama, email, dan HP diambil dari profil akun.
+              Nomor UMKM hanya dibuka bila pemiliknya sudah memberi izin dan petugas menyetujui permintaan. Nomor
+              hanya tampil di akun pemohon itu, tidak dikirim lewat WhatsApp, email, atau notifikasi. Pemilik UMKM
+              dapat mencabut izin kapan saja dengan menghubungi petugas UMKM atau lewat formulir di LMH. Sesudah
+              dicabut, nomor tidak lagi tampil di akun perusahaan, tetapi
+              perusahaan yang sudah mencatatnya mungkin masih menyimpannya. Petugas memakai WhatsApp pribadinya
+              untuk menanyakan izin kepada UMKM dan memberi tahu pemohon. Riwayat chat di ponsel petugas berada di
+              luar sistem LMH. Nama perusahaan dan jabatan disimpan selama akun Anda ada. Catatan permintaan
+              dan Kebutuhan disimpan sampai 730 hari sesudah ditutup, sesudah izin dicabut, atau sesudah akun
+              dihapus. Sesudah itu teks Kebutuhan, kontak yang dicatat petugas, serta nama dan jabatan perusahaan
+              yang tidak terhubung ke akun dihapus.
             </p>
             <p>
               LMH dapat mencatat statistik katalog: tampilan profil, jumlah pencarian tanpa hasil tanpa

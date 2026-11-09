@@ -1488,3 +1488,44 @@ Bucket privat/publik sama menonaktifkan draf dan publikasi foto. Ketiga migrasi 
 - Prasyarat: seluruh G1/G2, pg_cron, key service server dan bucket R2 privat/publik terpisah.
   Jadwal HTTP 02.30 WIB serta publikasi dua naskah privasi adalah langkah rilis manusia.
   Belum ada pemasangan jadwal, aktivasi sakelar, akses credential atau penerapan ke database nyata.
+
+## 202611090008 dan 202611090009: UMKM tahap B (belum diterapkan)
+
+- `202611090008_umkm_permintaan.sql`: empat tabel privat perusahaan, Kebutuhan, permintaan dan pembukaan.
+  Akun individu, consent perusahaan, potongan teknis 50 tanpa batas total, penjaga laju 60/600 detik
+  dan 1000/hari untuk pengajuan. Auth dihapus menjadi UID NULL; bukti dan hitungan tetap.
+- `202611090009_umkm_permintaan_petugas.sql`: keputusan manual atomik/idempoten, bantuan dengan kode
+  12 karakter sekali pakai, pengambilalihan, hasil, tahan darurat, laporan dan retensi 730 hari.
+  Izin yang dicabut, izin baru dan perubahan kontak tidak menghidupkan pembukaan lama.
+  Pembukaan tidak dihitung kerja sama; hasil bawaan belum_diketahui.
+- Aktor perusahaan dicatat di aktor_uid nullable pada riwayat; aktor_id petugas menjadi nullable.
+  Jejak FO memakai LEFT JOIN dan label Pemohon, tanpa nomor, data perusahaan atau kontak pemohon.
+  Semua tabel RLS tanpa grant langsung. Baca nomor hanya RPC pemohon asli dengan JWT nonanon.
+  Ringkasan, laporan, CSV dan respons Setujui tidak memuat nomor UMKM.
+- Retensi harian G3 mengosongkan teks Kebutuhan, rincian bantuan dan hash yang layak setelah 730 hari;
+  maksimal 500 per putaran, tidak menghapus Kebutuhan yang masih dipakai permintaan belum layak.
+  Status, pembukaan, hasil dan hitungan dipertahankan.
+- Rollback berurutan: `docs/rollback-umkm-permintaan-petugas-202611090009.sql`, kemudian
+  `docs/rollback-umkm-permintaan-202611090008.sql`, bersama pemulihan aplikasi G3.
+  Rollback menutup nomor/modul B, memulihkan fungsi G3, serta mempertahankan tabel dan bukti.
+  Rincian yang sudah dibersihkan retensi tidak dipulihkan.
+- Prasyarat: tahap A 0001 sampai 0007; naskah privasi B diterbitkan pada rilis yang sama atau sebelumnya.
+  RPC publik umkm_tahap_b menandai kesiapan; sebelum migrasi route memberi 503 tanpa fallback service-role.
+  Staging lebih dulu sebelum produksi, melalui prosedur resmi; belum ada penerapan database nyata.
+
+### Perbaikan G4 sebelum penerapan, 9 November 2026
+
+- Migrasi 0008/0009 belum diterapkan dan diperbaiki langsung sesuai keputusan PM; manifest diregenerasi.
+  Migrasi 0001 sampai 0007 tetap. Kebutuhan menambah ditutup_pada untuk dasar masa simpan sejak penutupan.
+- Trigger UID perusahaan menjadi NULL menutup Kebutuhan aktif, membatalkan permintaan belum terbuka,
+  dan memberi tanggal penutupan semua permintaan akun bila belum ada, termasuk nomor_dibuka.
+- Retensi 730 hari mencakup Kebutuhan tertutup tanpa permintaan. Teks aktif tidak dikosongkan;
+  permintaan yang masih dalam masa simpan menahan pengosongan teks Kebutuhan yang dirujuknya.
+  Perusahaan tanpa akun dan tanpa rujukan Kebutuhan berteks dinetralkan setelah aktivitas terakhir 730 hari;
+  perusahaan dengan akun tetap disimpan. Rincian bantuan/hash tetap dibersihkan tanpa menghapus hitungan.
+- Detail pemeriksa menambah bantuan nama/kontak sebagai pembanding akun yang menautkan sampai retensi.
+  Tahan dibatasi status diajukan, menunggu_izin, nomor_dibuka; ambil/lepas untuk butir ditahan tetap tersedia.
+- Tambahan akhir rollback 0009 mempertahankan pembersihan tahap B setelah pemulihan fungsi tahap A.
+  Rollback 0008 tidak menggantinya, tidak membuka nomor dan tidak mengembalikan rincian yang dibersihkan.
+- Saat akun dihapus, tahan darurat permintaannya ikut dikosongkan agar butir keluar antrean,
+  termasuk pembukaan yang pernah ditahan. Pembatalan biasa tetap menunggu pelepasan tahan oleh petugas.

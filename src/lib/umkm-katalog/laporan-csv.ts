@@ -29,13 +29,24 @@ export function laporanCsv(data: LaporanStatistik) {
       rows.push({ bagian: `${label} (masa simpan 180 hari)`, nama: status, jumlah: n });
     }
   }
+  for (const [status, jumlah] of Object.entries(data.permintaan ?? {})) {
+    rows.push({ bagian: 'Permintaan per status', nama: status, jumlah });
+  }
+  if (data.rata_keputusan_detik !== undefined) rows.push({ bagian: 'Permintaan',
+    nama: 'Lama tunggu keputusan (detik)', jumlah: data.rata_keputusan_detik ?? 'belum ada keputusan' });
+  for (const [hasil, jumlah] of Object.entries(data.hasil ?? {})) {
+    rows.push({ bagian: 'Hasil pembukaan', nama: hasil, jumlah });
+  }
   for (const p of data.profil_statistik) rows.push({ bagian: 'Statistik per UMKM',
-    id: p.id, nama: aman(p.nama), suka: p.suka, dilihat: angka(p.dilihat), klik_formulir: angka(p.klik_formulir) });
+    id: p.id, nama: aman(p.nama), suka: p.suka, dilihat: angka(p.dilihat), klik_formulir: angka(p.klik_formulir),
+    permintaan: p.permintaan ?? '',
+  });
   for (const k of data.kelompok_tanpa_hasil) rows.push({ bagian: 'Kelompok tanpa hasil',
     hari: k.hari, kategori: aman(k.kategori), kabupaten_kota: aman(k.kabupaten_kota), jumlah: k.jumlah });
   return '\uFEFF' + toCsv([
     ['bagian', 'Bagian'], ['id', 'Id profil'], ['nama', 'Nama'], ['suka', 'Suka'], ['dilihat', 'Dilihat'],
     ['klik_formulir', 'Klik formulir'], ['jumlah', 'Jumlah'], ['hari', 'Hari WIB'],
     ['kategori', 'Kategori'], ['kabupaten_kota', 'Kabupaten/kota'],
+    ['permintaan', 'Minat perusahaan'],
   ].map(([key, label]) => ({ key, label })), rows);
 }

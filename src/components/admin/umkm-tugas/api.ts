@@ -18,6 +18,8 @@ function pesanGalat(code: string): string {
     case 'KONFLIK_VERSI': case 'KONFLIK_STATUS': case 'KONFLIK_OPERASI': return 'Tugas berubah atau telah diambil petugas lain. Muat ulang sebelum melanjutkan.';
     case 'KONTAK_PUBLIK': return 'Bersihkan informasi kontak pada bagian yang ditandai sebelum menerbitkan.';
     case 'INPUT_TIDAK_VALID': return 'Periksa kembali isian. Tautan sosial hanya boleh HTTPS Instagram atau TikTok; alasan tolak tidak boleh memuat kontak.';
+    case 'BELUM_TERTAUT': return 'Pemohon belum menautkan akunnya. Kirim kode tautan kepada pemohon dan minta ia memasukkannya di akun LMH.';
+    case 'NOMOR_TIDAK_TERSEDIA': return 'Nomor belum dapat dibuka. Periksa izin UMKM, profil, dan status tahan, lalu muat ulang.';
     case 'TERLALU_BANYAK': return 'Permintaan sedang padat. Tunggu sebentar lalu coba lagi.';
     case 'JARINGAN': return 'Koneksi terputus. Periksa jaringan lalu coba lagi.';
     default: return 'Tugas belum berhasil diproses. Silakan coba lagi.';

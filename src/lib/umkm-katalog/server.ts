@@ -7,6 +7,7 @@ const statusKode: Record<string, number> = {
   INPUT_TIDAK_VALID: 400, LOGIN_DIPERLUKAN: 401, DILARANG: 403, TIDAK_DITEMUKAN: 404,
   KONFLIK_VERSI: 409, KONFLIK_STATUS: 409, KONFLIK_OPERASI: 409, KONTAK_PUBLIK: 409,
   TERLALU_BANYAK: 429, MODUL_BELUM_TERSEDIA: 503, GAGAL_INTERNAL: 500, SNAPSHOT_BERUBAH: 409,
+  BELUM_TERTAUT: 409, NOMOR_TIDAK_TERSEDIA: 409, KODE_TIDAK_VALID: 409,
 };
 const pesanKode: Record<string, string> = {
   INPUT_TIDAK_VALID: 'Periksa kembali isian Anda.', LOGIN_DIPERLUKAN: 'Silakan masuk untuk melanjutkan.',
@@ -16,6 +17,9 @@ const pesanKode: Record<string, string> = {
   TERLALU_BANYAK: 'Coba kembali beberapa saat lagi.', MODUL_BELUM_TERSEDIA: 'Modul UMKM belum tersedia. Silakan coba kembali nanti.',
   GAGAL_INTERNAL: 'Permintaan belum dapat diproses. Silakan coba kembali.',
   SNAPSHOT_BERUBAH: 'Urutan telah diperbarui. Pencarian dimulai kembali.',
+  BELUM_TERTAUT: 'Pemohon perlu masuk dan menautkan permintaan terlebih dahulu.',
+  NOMOR_TIDAK_TERSEDIA: 'Nomor tidak lagi ditampilkan. Hubungi petugas untuk informasi.',
+  KODE_TIDAK_VALID: 'Kode tidak cocok atau sudah digunakan.',
 };
 export const headersPrivat = { 'Cache-Control': 'private, no-store' };
 export function galat(code: string, requestId: string) {

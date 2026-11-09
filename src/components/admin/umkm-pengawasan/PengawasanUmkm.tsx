@@ -11,6 +11,8 @@ import type { DaftarProfilPengawasan, ProfilPengawasan, RingkasanPengawasan } fr
 import { PengawasanError, pengawasanRequest } from './api';
 import JejakKerja from './JejakKerja';
 import TindakanDarurat from './TindakanDarurat';
+import TahanPermintaan from './TahanPermintaan';
+import { LABEL_PERMINTAAN, type RujukanPermintaan, type StatusPermintaan } from './permintaan-types';
 import styles from './pengawasan.module.css';
 
 function duration(seconds: number | null) {
@@ -31,6 +33,7 @@ export default function PengawasanUmkm() {
   const [selected, setSelected] = useState<ProfilPengawasan | null>(null);
   const [action, setAction] = useState<'sembunyikan' | 'catat_pencabutan'>('sembunyikan');
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [tahan, setTahan] = useState<RujukanPermintaan | null>(null);
   const [notice, setNotice] = useState('');
   const [refresh, setRefresh] = useState(0);
   const summaryRequest = useRef<AbortController | null>(null);
@@ -99,6 +102,19 @@ export default function PengawasanUmkm() {
       </dl>
       <p className={styles.meta}>Waktu dihitung dari pekerjaan yang sudah ditangani.</p>
     </Kartu>}
+    {summary?.permintaan && <Kartu judul="Permintaan kontak">
+      <dl className={styles.angka}>
+        {(Object.keys(LABEL_PERMINTAAN) as StatusPermintaan[]).map((status) => <div key={status}>
+          <dt>{LABEL_PERMINTAAN[status]}</dt>
+          <dd>{new Intl.NumberFormat('id-ID').format(summary.permintaan![status] ?? 0)}</dd>
+        </div>)}
+      </dl>
+      <dl className={styles.waktu}>
+        <div><dt>Rata-rata lama sampai keputusan</dt><dd>{summary.rata_keputusan_detik == null
+          ? 'Belum ada keputusan' : duration(summary.rata_keputusan_detik)}</dd></div>
+      </dl>
+      <p className={styles.meta}>Layar ini tidak menampilkan nomor UMKM atau data pemohon.</p>
+    </Kartu>}
     {!restricted && <>
       <Kartu judul="Tindakan darurat">
         <p>Temukan profil dengan nama usaha yang pernah terbit. Nomor dan isi formulir tidak ditampilkan di sini.</p>
@@ -131,8 +147,13 @@ export default function PengawasanUmkm() {
           Profil berikutnya
         </Tombol>}
       </Kartu>
-      <JejakKerja refresh={refresh} />
+      <JejakKerja refresh={refresh} onTahan={(p) => { setNotice(''); setTahan(p); }} />
     </>}
+    {tahan && <TahanPermintaan key={`${tahan.id}:${tahan.versi}`} terbuka permintaan={tahan}
+      onTutup={() => setTahan(null)} onSaved={() => {
+        setTahan(null); setNotice('Permintaan ditahan. Pemeriksa UMKM akan melihatnya sebagai mendesak.');
+        setRefresh((value) => value + 1); void load();
+      }} />}
     {selected && <TindakanDarurat key={`${selected.id}:${selected.versi}:${action}`} terbuka={dialogOpen}
       profil={selected} aksi={action} onTutup={() => setDialogOpen(false)} onSaved={(result) => {
         setDialogOpen(false);

@@ -217,3 +217,26 @@ Sebelum sakelar statistik dinyalakan, pemilik membaca versi naskah yang terbit p
 `/kebijakan-privasi` dan `docs/KEBIJAKAN_PDP.md`; admin kemudian mengonfirmasi versi itu pada laporan.
 Sakelar bawaan tetap mati, tanpa cookie atau baris opsional. Rilis aplikasi dan migrasi mengikuti
 staging lebih dahulu serta prosedur resmi di MIGRATIONS; dokumen ini tidak menandakan penerapan.
+
+## UMKM tahap B: permintaan nomor (belum diterapkan)
+
+Terapkan `202611090008_umkm_permintaan.sql` lalu `202611090009_umkm_permintaan_petugas.sql`
+di staging lebih dahulu, dengan seluruh tahap A sebagai prasyarat. Jalur produksi mengikuti aturan
+migrasi resmi dan persetujuan pemilik; catatan ini bukan bukti penerapan. Publikasikan paragraf privasi B
+di halaman dan dokumen PDP pada rilis yang sama atau sebelumnya.
+
+Sebelum migrasi, GET `/api/umkm-katalog/perusahaan` memberi 503. Sesudah migrasi, pengunjung tanpa
+login mendapat `data.masuk:false`, tanpa isi privat. Baca nomor selalu memakai JWT pemohon asli,
+private no-store. Pastikan nomor tidak masuk log, notifikasi, WhatsApp, jejak FO atau CSV.
+
+Uji staging: buat perusahaan/Kebutuhan, ajukan, ambil tugas, Setujui tanpa izin menjadi menunggu_izin;
+catat izin dan pastikan belum terbuka otomatis, lalu Setujui lagi. Uji pencabutan, akun lain, bantuan
+dan kode sekali pakai, serta tahan darurat FO. Hasil belum_diketahui tidak dihitung kerja sama.
+Templat pemberitahuan dan kode bantuan menuju `/me/umkm` pada origin aplikasi kanonik.
+
+Job retensi G3 tetap 02.15 WIB; versi baru menambah rincian permintaan yang layak sesudah 730 hari,
+maksimal 500 per putaran. Hitungan, status dan pembukaan tetap disimpan; tidak ada jadwal baru.
+
+Jika rilis dikembalikan, pulihkan aplikasi G3 bersama rollback SQL 0009 lalu 0008. Pembacaan nomor
+ditutup segera dan penanda tahap B menjadi tidak aktif; tabel/bukti tetap. Rincian yang sudah
+dibersihkan retensi tidak dipulihkan. Berkas rollback diuji di PGlite, belum dijalankan di server nyata.

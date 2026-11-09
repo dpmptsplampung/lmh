@@ -3,8 +3,9 @@ import type { DaftarTugas, Detail, Mutasi, ProfilPublik, DetailPesan, DetailLapo
   MutasiPekerjaan, RingkasanPengawasan, DaftarJejakPengawasan, DaftarProfilPengawasan, MutasiDarurat,
   StatusStatistik, LaporanStatistik } from './types';
 import type { ProfilInput } from './schemas';
+import type { RpcG4 } from './rpc-g4';
 type Versi = { p_profil_id: string; p_expected_version: number; p_operasi_id: string };
-export type RpcKontrak = {
+export type RpcKontrak = RpcG4 & {
   umkm_suka: { args: { p_profil_id: string; p_aktif: boolean };
     hasil: { profil_id: string; suka_saya: boolean; suka: number } };
   umkm_status_suka: { args: { p_profil_id: string }; hasil: { suka_saya: boolean } };
@@ -41,8 +42,9 @@ export type RpcKontrak = {
   };
   umkm_detail_pesan: { args: { p_id: string }; hasil: DetailPesan };
   umkm_detail_laporan: { args: { p_id: string }; hasil: DetailLaporan };
-  umkm_ambil_pekerjaan: { args: { p_jenis: 'pesan' | 'laporan'; p_id: string;
-    p_expected_version: number; p_operasi_id: string }; hasil: MutasiPekerjaan };
+  umkm_ambil_pekerjaan: { args: { p_jenis: 'pesan' | 'laporan' | 'permintaan'; p_id: string;
+    p_expected_version: number; p_operasi_id: string };
+    hasil: MutasiPekerjaan | import('./types-g4').MutasiPermintaan };
   umkm_selesaikan_pekerjaan: { args: { p_jenis: 'pesan' | 'laporan'; p_id: string;
     p_expected_version: number; p_operasi_id: string }; hasil: MutasiPekerjaan };
   umkm_ringkasan_pengawasan: { args: Record<string, never>; hasil: RingkasanPengawasan };

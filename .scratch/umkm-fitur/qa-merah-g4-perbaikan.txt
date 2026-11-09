@@ -1,0 +1,18 @@
+PASS fungsi tahap B tersedia
+PASS U-04 izin menunggu tanpa pembukaan otomatis dan perlu Setujui
+PASS U-05 hanya pemohon dan sesi bukan anonim dapat baca
+PASS U-04 dan U-05 pencabutan, izin baru dan nomor baru menutup pembukaan lama
+PASS U-04 profil tersembunyi dan tahan mencegah pembukaan
+PASS U-05 bantuan perlu kode sekali pakai dan akun tertaut
+PASS U-03 U-05 pasangan, batal, versi dan kunci operasi
+PASS U-10 hasil awal belum diketahui dan replay tidak menggandakan
+PASS U-06 akses tabel dan ringkasan FO/admin tidak membocorkan data
+PASS U-06 laporan dan ekspor tidak memuat data privat dan FO ditolak
+FAIL akun terhapus menutup kebutuhan dan membatalkan permintaan: kebutuhan akun terhapus masih aktif
+FAIL retensi kebutuhan lama tanpa permintaan dan kebutuhan aktif: fixture 42703: column "ditutup_pada" of relation "umkm_kebutuhan" does not exist
+FAIL retensi tidak mengosongkan kebutuhan aktif meski permintaan lama: kebutuhan aktif dengan permintaan lama dikosongkan
+FAIL retensi menetralkan perusahaan tanpa akun dan mempertahankan akun aktif: perusahaan tanpa akun belum dinetralkan
+FAIL tahan ditolak pada permintaan dibatalkan: tahan permintaan dibatalkan: diterima 
+PASS permintaan ditahan lalu dibatalkan tetap dapat diambil dan dilepas
+PASS U-12 satu akun 300 permintaan dan replay potongan
+HASIL: 12 PASS, 5 FAIL

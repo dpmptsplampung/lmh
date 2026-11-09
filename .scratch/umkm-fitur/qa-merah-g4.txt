@@ -1,0 +1,11 @@
+FAIL fungsi tahap B tersedia: tahap B: 42883 function public.umkm_tahap_b() does not exist
+FAIL U-04 izin menunggu tanpa pembukaan otomatis dan perlu Setujui: kebutuhan: 42883 function public.umkm_simpan_kebutuhan(text, text, text, uuid) does not exist
+FAIL U-05 hanya pemohon dan sesi bukan anonim dapat baca: kebutuhan: 42883 function public.umkm_simpan_kebutuhan(text, text, text, uuid) does not exist
+FAIL U-04 dan U-05 pencabutan, izin baru dan nomor baru menutup pembukaan lama: kebutuhan: 42883 function public.umkm_simpan_kebutuhan(text, text, text, uuid) does not exist
+FAIL U-04 profil tersembunyi dan tahan mencegah pembukaan: kebutuhan: 42883 function public.umkm_simpan_kebutuhan(text, text, text, uuid) does not exist
+FAIL U-05 bantuan perlu kode sekali pakai dan akun tertaut: bantuan: 42883 function public.umkm_bantu_permintaan(text, text, text, text, text, text, text, uuid, uuid) does not exist
+FAIL U-03 U-05 pasangan, batal, versi dan kunci operasi: kebutuhan: 42883 function public.umkm_simpan_kebutuhan(text, text, text, uuid) does not exist
+FAIL U-10 hasil awal belum diketahui dan replay tidak menggandakan: kebutuhan: 42883 function public.umkm_simpan_kebutuhan(text, text, text, uuid) does not exist
+FAIL U-06 akses tabel dan ringkasan FO/admin tidak membocorkan data: kebutuhan: 42883 function public.umkm_simpan_kebutuhan(text, text, text, uuid) does not exist
+FAIL U-12 satu akun 300 permintaan dan replay potongan: kebutuhan massal: 42883 function public.umkm_simpan_kebutuhan(text, text, text, uuid) does not exist
+HASIL: 0 PASS, 10 FAIL

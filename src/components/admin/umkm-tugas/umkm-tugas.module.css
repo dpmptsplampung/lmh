@@ -35,3 +35,5 @@
   .aksi { align-items: stretch; }
   .halaman :is(input, select, textarea) { font-size: 16px; }
 }
+.langkah { margin: 0; padding-left: var(--space-5); display: flex; flex-direction: column; gap: var(--space-4); }
+.kode { font-family: var(--font-mono, monospace); font-size: 24px; letter-spacing: 0.08em; overflow-wrap: anywhere; }

@@ -15,6 +15,9 @@ function pesanGalat(code: string) {
     case 'LOGIN_DIPERLUKAN': return 'Sesi belum berhasil disiapkan. Silakan coba kirim kembali.';
     case 'DILARANG': return 'Permintaan belum dapat dilanjutkan. Silakan kembali ke katalog.';
     case 'JARINGAN': return 'Koneksi terputus. Periksa jaringan lalu coba lagi.';
+    case 'NOMOR_TIDAK_TERSEDIA': return 'Nomor tidak lagi ditampilkan.';
+    case 'KODE_TIDAK_VALID': return 'Kode belum dapat dipakai. Periksa kembali kode Anda.';
+    case 'BELUM_TERTAUT': return 'Permintaan belum dapat dilanjutkan. Lengkapi data perusahaan Anda lebih dulu.';
     case 'KONFLIK_OPERASI': return 'Isian sudah berubah. Periksa kembali sebelum mengirim.';
     default: return 'Katalog belum berhasil dimuat. Silakan coba lagi.';
   }

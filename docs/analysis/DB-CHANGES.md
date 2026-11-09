@@ -745,3 +745,39 @@
   tidak bisa dibatalkan selama rollback. Hasil pembersihan tidak dapat dipulihkan rollback.
 - Bukti lokal dan progres per butir: `.tim/umkm-fitur/PROGRES-G3-backend.md`.
   Belum diterapkan ke staging/produksi; tidak mengubah data nyata atau konfigurasi deployment.
+
+## 2026-11-09: UMKM tahap B, permintaan nomor (belum diterapkan)
+
+- Migrasi baru: `202611090008_umkm_permintaan.sql` dan `202611090009_umkm_permintaan_petugas.sql`.
+  Tidak mengubah migrasi tahap A atau hash lama. Empat tabel RLS tanpa hak tabel langsung.
+- Perusahaan terikat UID individu dan consent_log, Kebutuhan aktif/ditutup, permintaan lima status,
+  satu pembukaan per permintaan dengan kontak/izin yang dipakai dan hasil bawaan belum_diketahui.
+  Auth dihapus mengosongkan UID melalui FK SET NULL, tanpa menghapus catatan permintaan/pembukaan.
+- Riwayat menambah aktor_uid dan mengizinkan aktor_id NULL. Jejak tetap LEFT JOIN dan label netral,
+  ringkasan/laporan tidak bergantung pada keberadaan aktor petugas untuk aksi perusahaan.
+- Setujui memeriksa izin terkini dan pemegang, profil terbit, akun tertaut, versi dan tahan darurat
+  dalam satu transaksi. Replay UUID operasi menyimpan rujukan saja, tanpa nomor atau kode bantuan mentah.
+  Pencabutan langsung menutup baca; izin baru dan kontak pengganti memerlukan permintaan baru.
+- Bantuan menghasilkan 12 karakter acak berkelompok 4-4-4, hash saja disimpan, respons pertama saja.
+  Pencocokan mengabaikan kapital/spasi/hubung, salah kode tetap dihitung penjaga laju dalam transaksi.
+- Antrean/pencarian menerima permintaan; kode persis dapat mencari pembukaan lama untuk catat hasil.
+  FO menahan dengan alasan tanpa akses kebutuhan, kontak, nama perusahaan atau nomor.
+  Laporan menambah status, minat per UMKM, lama tunggu keputusan dan hasil, tanpa PII pemohon.
+- Retensi 730 hari sesudah tutup atau pencabutan mengosongkan rincian dalam potongan 500.
+  Kebutuhan yang masih dipakai permintaan belum layak dipertahankan; hitungan/status tetap.
+- Rollback 0009 lalu 0008 menutup pembacaan nomor dan modul B, memulihkan fungsi G3 tanpa menghapus tabel.
+  Bukti lokal/progres: `.tim/umkm-fitur/PROGRES-G4-backend.md`; gate penuh dan build oleh PM.
+  Belum menerapkan ke staging/produksi atau mengubah data nyata/konfigurasi deployment.
+
+## 2026-11-09: perbaikan G4 sebelum penerapan
+
+- 0008/0009 yang belum diterapkan diperbaiki langsung; tidak mengubah 0001 sampai 0007.
+- Kebutuhan menyimpan ditutup_pada. Trigger akun terhapus menutup Kebutuhan dan permintaan belum terbuka,
+  serta menandai penutupan seluruh permintaan akun untuk retensi, termasuk nomor_dibuka.
+- Retensi memisahkan kandidat permintaan, Kebutuhan tertutup dan perusahaan tanpa akun, masing-masing
+  paling banyak 500. Teks aktif, permintaan dalam masa simpan dan perusahaan berakun tetap dipertahankan.
+  Perusahaan tanpa akun dinetralkan bila tidak ada Kebutuhan berteks dan aktivitas terakhir sudah 730 hari.
+- Detail pemeriksa memuat bantuan nama/kontak sampai retensi; FO, ekspor dan Setujui tetap tanpa nomor.
+- Tahan menolak status tertutup, sedangkan ambil/lepas tetap menerima butir ditahan yang kemudian batal.
+- Rollback 0009 tetap membersihkan rincian tahap B, mempertahankan hitungan dan menutup pembacaan nomor.
+  Bukti per butir: `.tim/umkm-fitur/PROGRES-PERBAIKAN-G4-backend.md`; belum menerapkan ke database nyata.

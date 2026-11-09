@@ -138,6 +138,7 @@ harus dibahas dengan PM dan diselaraskan dengan layanan yang mencatatnya.
 |-------|---------|-----------|
 | 1.0 | Fase 1 / I8 | Kebijakan awal — audit log, consent checkin/chat, retensi 730 hari, DPO dashboard |
 | 1.0, pembaruan naskah | 2026-11-09 | Katalog UMKM tahap A, formulir, laporan, WhatsApp pribadi, dan retensi awal |
+| 1.0, pembaruan naskah | 2026-11-09 | Tahap B: data perusahaan, izin nomor, nomor hanya di akun pemohon, retensi 730 hari |
 
 ## Katalog UMKM tahap A
 
@@ -145,8 +146,8 @@ harus dibahas dengan PM dan diselaraskan dengan layanan yang mencatatnya.
 
 Profil katalog berasal dari data yang diperiksa petugas, satudata, dan tamu loket.
 Petugas memeriksa agar nomor telepon, email, alamat rinci, atau nama pemilik usaha tidak tampil di halaman publik.
-Pada tahap A, LMH tidak membagikan nomor UMKM kepada pengunjung, perusahaan, atau Front Office.
-Ketentuan ini khusus katalog tahap A; marketplace lama tetap merupakan layanan terpisah.
+LMH tidak membagikan nomor UMKM kepada pengunjung atau Front Office. Nomor hanya dapat dibuka ke akun perusahaan dengan izin pemilik usaha, seperti dijelaskan pada bagian permintaan nomor di bawah.
+Ketentuan ini khusus katalog baru; marketplace lama tetap merupakan layanan terpisah.
 
 ### Formulir kontak dan laporan
 
@@ -175,6 +176,19 @@ pengiriman, atau penghapusan percakapan di WhatsApp.
 Nomor UMKM yang disimpan untuk meminta izin hanya dapat dibaca petugas yang sedang
 menangani tugas tersebut. Pembacaannya dicatat dalam jejak kerja tanpa nomor mentah.
 Pembacaan ini tidak memberi izin membagikan nomor UMKM pada tahap A.
+
+### Permintaan nomor perusahaan (tahap B)
+
+Tahap B, permintaan nomor oleh perusahaan. Perusahaan yang meminta nomor UMKM wajib masuk dengan akun pribadi
+dan mengisi nama perusahaan dan jabatan. Nama, email, dan HP diambil dari profil akun. Nomor UMKM hanya dibuka
+bila pemiliknya sudah memberi izin dan petugas menyetujui permintaan. Nomor hanya tampil di akun pemohon itu,
+tidak dikirim lewat WhatsApp, email, atau notifikasi. Pemilik UMKM dapat mencabut izin kapan saja dengan
+menghubungi petugas UMKM atau lewat formulir di LMH. Sesudah dicabut, nomor tidak lagi tampil di akun perusahaan, tetapi perusahaan yang sudah mencatatnya mungkin masih
+menyimpannya. Petugas memakai WhatsApp pribadinya untuk menanyakan izin kepada UMKM dan memberi tahu pemohon.
+Riwayat chat di ponsel petugas berada di luar sistem LMH. Nama perusahaan dan jabatan disimpan selama akun Anda
+ada. Catatan permintaan dan Kebutuhan disimpan sampai 730 hari sesudah ditutup, sesudah izin dicabut, atau sesudah
+akun dihapus. Sesudah itu teks Kebutuhan, kontak yang dicatat petugas, serta nama dan jabatan perusahaan yang tidak
+terhubung ke akun dihapus.
 
 ### Statistik opsional
 

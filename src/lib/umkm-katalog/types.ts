@@ -52,7 +52,7 @@ type DasarPekerjaan = {
 };
 export type TugasPesan = DasarPekerjaan & { jenis: 'pesan'; alasan: null };
 export type TugasLaporan = DasarPekerjaan & { jenis: 'laporan'; alasan: AlasanLaporan };
-export type TugasCampuran = Tugas | TugasPesan | TugasLaporan;
+export type TugasCampuran = Tugas | TugasPesan | TugasLaporan | import('./types-g4').TugasPermintaan;
 export type DetailPesan = TugasPesan & {
   nama_pengirim: string; perusahaan: string; nomor: string; pesan: string; kata_kunci: string | null;
   dipegang_saya: boolean; pemeriksa_nama: string; dibalas_pada: string | null;
@@ -68,11 +68,14 @@ export type RingkasanPengawasan = {
   profil: Record<Status, number>; tugas_terbuka: number; mendesak: number;
   pesan: { baru: number; ditangani: number }; laporan_terbuka: number;
   rata_pemeriksaan_detik: number | null; rata_balasan_pertama_detik: number | null;
+  permintaan?: Record<import('./types-g4').StatusPermintaan, number>; rata_keputusan_detik?: number | null;
 };
 export type JejakPengawasan = {
   id: string; aksi: string; peran: string; aktor_nama: string; dibuat_pada: string;
   status_lama: string | null; status_baru: string | null; alasan: string | null;
   profil_id: string | null; profil_nama: string;
+  permintaan_id?: string | null; permintaan_versi?: number | null;
+  permintaan_kode?: string | null; permintaan_status?: import('./types-g4').StatusPermintaan | null;
 };
 export type DaftarJejakPengawasan = { items: JejakPengawasan[]; next_cursor: string | null };
 export type ProfilPengawasan = { id: string; nama: string; status: Status; versi: number };
@@ -84,10 +87,12 @@ export type StatusStatistik = {
   telemetri_opsional_aktif: boolean; versi_naskah: string | null; aktif_pada: string | null;
 };
 export type ProfilStatistik = { id: string; nama: string; suka: number;
-  dilihat: number | null; klik_formulir: number | null };
+  dilihat: number | null; klik_formulir: number | null; permintaan?: number };
 export type KelompokTanpaHasil = { hari: string; kategori: string; kabupaten_kota: string; jumlah: number };
 export type LaporanStatistik = StatusStatistik & {
   profil: Record<Status, number>; suka: number; dilihat: number | null; tanpa_hasil: number | null;
   pesan: { baru: number; ditangani: number }; laporan: { baru: number; ditangani: number };
   profil_statistik: ProfilStatistik[]; kelompok_tanpa_hasil: KelompokTanpaHasil[]; next_cursor: string | null;
+  permintaan?: Record<import('./types-g4').StatusPermintaan, number>; rata_keputusan_detik?: number | null;
+  hasil?: Record<import('./types-g4').HasilPermintaan, number>;
 };

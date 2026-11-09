@@ -37,7 +37,8 @@ function LoginContent() {
     || (alasanSesi ? PESAN_ALASAN_SESI[alasanSesi] : '');
 
   // Tujuan setelah login (mis. ?next=/chat dari halaman yang butuh login)
-  const rawNext = searchParams.get('next');
+  // `redirect` dipakai proxy untuk tamu di rute terlindungi; dibaca sebagai cadangan `next`.
+  const rawNext = searchParams.get('next') ?? searchParams.get('redirect');
   const nextPath = rawNext && rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : null;
 
   const handleGoogleLogin = async () => {

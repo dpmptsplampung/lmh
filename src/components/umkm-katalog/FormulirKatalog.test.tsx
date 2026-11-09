@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import FormulirKatalog from './FormulirKatalog';
 
@@ -41,6 +41,8 @@ describe('formulir publik', () => {
     fireEvent.click(screen.getByRole('button', { name: `Kirim ${jenis}` }));
     await screen.findByRole('button', { name: 'Selesai' });
     const first = JSON.parse(request.mock.calls[0][1].body);
+    // Biarkan efek dialog terpasang dulu; saat mesin sibuk tombol Escape bisa datang sebelum pendengarnya siap.
+    await act(async () => {});
     if (tutup === 'Escape') fireEvent.keyDown(document, { key: 'Escape' });
     else fireEvent.click(screen.getByRole('button', { name: tutup }));
     expect(onTutup).toHaveBeenCalledOnce();
@@ -138,7 +140,7 @@ describe('formulir publik', () => {
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('Permintaan sedang padat');
     expect(alert.textContent).not.toContain('10/600');
-    expect(alert).toHaveFocus();
+    await waitFor(() => expect(alert).toHaveFocus());
     expect(screen.getByRole('textbox', { name: 'Pesan' })).toHaveValue('Mencari produk kopi');
   });
 });
