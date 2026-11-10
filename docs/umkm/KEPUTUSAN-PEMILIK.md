@@ -1,6 +1,6 @@
 # Keputusan pemilik: fitur UMKM
 
-Sumber kebenaran P-01 sampai P-37 (nomor keputusan = nomor P). Bagian di bawah disalin apa adanya; bila ada teks yang bertentangan, keputusan bernomor lebih besar yang berlaku.
+Sumber kebenaran P-01 sampai P-40 (nomor keputusan = nomor P). Bagian di bawah disalin apa adanya; bila ada teks yang bertentangan, keputusan bernomor lebih besar yang berlaku.
 
 ## 3. Keputusan pemilik (sumber kebenaran; kutip di dokumen, jangan diubah)
 
@@ -49,6 +49,22 @@ Kanal WhatsApp (arahan pemilik, 2026-11-06). Keputusan 33 sampai 35 mengalahkan 
 Prinsip penyederhanaan (arahan pemilik, 2026-11-06). Mengalahkan semua aturan buatan tim dan angka usulan.
 36. Semuanya harus sederhana. Jangan terlalu banyak aturan dan batasan, agar tidak menyulitkan petugas dan pengguna lain. Akibat langsung: keputusan 22 (masa berlaku 14 hari) gugur karena menyetujui dan membuka nomor kini satu langkah; batas 30 akses per hari di keputusan 27 gugur. "Salinan sementara satu menit" di keputusan 27 berarti cache katalog, dan tetap ada karena membuat sistem ringan (keputusan 12). Yang tetap: nomor UMKM tidak publik, profil dan permintaan diperiksa petugas, izin UMKM, nomor dilihat di akun setelah login, pencatatan otomatis, FO baca saja.
 37. (2026-11-10) "setuju semua, umkm lama di hapus saja". Marketplace UMKM lama (`/umkm`, inbox, edit lewat tautan email, halaman admin "UMKM") dihapus dari aplikasi; keputusan 11 gugur. Alamat lama diarahkan ke katalog baru. Data lama di database tidak dihapus.
+
+Impor data satudata dan produk UMKM (arahan pemilik, 2026-11-10).
+38. Data satudata yang masuk ke LMH:
+   - Data pribadi tidak masuk: NIK, tanggal lahir, jenis kelamin, disabilitas, pendidikan, alamat rumah, dan koordinat. Kata pemilik: "data sangat pribadi seperti NIK, Tanggal Lahir, Jenis Kelamin, dll Jangan masuk, tapi kamu harus detail ya, 1 kolom data sangat berarti sekali di UMKM ini".
+   - Omzet masuk sebagai rentang, tanpa angka persis; label "lebih dari Rp... per tahun" tampil publik.
+   - Modal pendirian dan aset tidak masuk.
+   - Nama usaha yang memuat nama pemilik diganti otomatis menjadi `<Spesifik> <Kecamatan>`.
+   - Nama pemilik tetap masuk, hanya untuk petugas UMKM, dan tidak pernah publik.
+   - Baris dengan HP kosong atau asal tidak masuk. Kata pemilik: "yang data nomor hp nya kosong, yang asal jangan di masukin."
+39. UMKM yang mengedit datanya bisa menambah produk lain beserta kapasitas produksinya. Kata pemilik: "seharusnya nanti si umkm ketika edit data dia, bisa tambahin produk produk yang lain, kapasitas produksi nya berapa."
+   - Kapasitas tampil publik dengan keterangan "menurut UMKM", setelah diperiksa petugas.
+   - Tiap produk boleh punya satu foto sendiri, diperiksa petugas seperti foto lain.
+40. Halaman pengguna `/me` dan formulir UMKM dirapikan. Kata pemilik: "di halaman pengguna https://lmh.dpmptsp.web.id/me, ini menu bar kiri nya gk lengkap, lalu tampilan input umkm ini masih kurang rapi, harusnya bisa upload foto sendiri. jangan hanya link dari satu data, inputan nya bisa pilih link foto atau upload foto. lalu ada foto utama untuk foto profil, ada juga foto produk."
+   - Menu kiri `/me` ditambah "Usaha saya" (`/me/usaha`), "Cari pemasok" (`/me/umkm`, judul halamannya ikut diganti), dan "Lacak pengaduan" (`/pengaduan/lacak`). Menu ini tampil untuk semua pengguna yang login.
+   - Setiap foto bisa diisi dengan memilih tautan atau unggah, termasuk saat pertama mendaftar.
+   - Ada satu foto utama sebagai foto profil, dan foto produk (P-39).
 
 ## 4. Permintaan baru: statistik, peringkat, rekomendasi
 
