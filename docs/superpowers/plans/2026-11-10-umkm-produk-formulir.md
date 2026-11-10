@@ -191,12 +191,12 @@
 ### Task 6: Unggah foto saat pendaftaran pertama
 
 **Files:**
-- Modify: `src/lib/umkm-katalog/akses-server.ts:5-25`, `src/app/api/storage/presign/route.ts:47-58`
+- Modify: `src/lib/umkm-katalog/akses-server.ts:5-25`, `src/app/api/storage/presign/route.ts:47-58`, `src/lib/storage/area.ts` (konstanta `AWALAN_AKUN`)
 - Test: `src/lib/umkm-katalog/akses-server.test.ts` (baru atau tambah), `src/app/api/storage/presign/route.test.ts`, `src/app/api/storage/konfirmasi/route.test.ts`
 
 **Interfaces:**
 - Produces:
-  - `export const AWALAN_AKUN = 'akun/'` dan `jalurAkun(path: string | undefined, userId: string): boolean` di `akses-server.ts`: benar bila `path` berawalan `akun/` atau folder pertamanya sama dengan `userId`.
+  - `export const AWALAN_AKUN = 'akun/'` di `src/lib/storage/area.ts` (aman diimpor komponen klien) dan `jalurAkun(path: string | undefined, userId: string): boolean` di `akses-server.ts`: benar bila `path` berawalan `akun/` atau folder pertamanya sama dengan `userId`.
   - `bolehUnggahDraf`: untuk non-staf yang bukan anonim, `jalurAkun(path, user.id)` cukup untuk diizinkan; jalur folder profil dan jalur staf tidak berubah.
   - Presign: non-staf dengan `path` berawalan `akun/` mendapat kunci `umkm-draf/<user.id>/<uuid>.<ext>`; selebihnya sama dengan sekarang. Klien tidak pernah mengirim ID akunnya sendiri.
 
