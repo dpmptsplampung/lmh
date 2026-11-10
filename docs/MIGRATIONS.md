@@ -1574,3 +1574,25 @@ Bucket privat/publik sama menonaktifkan draf dan publikasi foto. Ketiga migrasi 
 - `verify-migration-ledger.mjs` sesudahnya: 202611090001 sampai 202611090012 berstatus terpasang.
   Ledger `supabase_migrations.schema_migrations` tidak diisi, sama seperti migrasi sebelumnya lewat skrip ini.
 - Rollback berurutan terbalik memakai `docs/rollback-umkm-*` (0012 lalu 0011 sampai 0001), data lama tidak tersentuh.
+
+## 202611100001 sampai 202611100003: UMKM produk, foto utama, formulir rapi (P-38 sampai P-40)
+
+- `202611100001_umkm_produk_skema.sql`: kolom `umkm_revisi` kecamatan, nama_pemilik (tertutup), bentuk_usaha,
+  tahun_mulai, omzet_rentang, tenaga_kerja_rentang; tabel `umkm_produk` (maksimal 20 per revisi, kapasitas
+  semua atau tidak); `umkm_foto.utama` dan `produk_urutan`; validasi taksonomi 31 kategori dan 15 kab/kota;
+  peringatan kontak ikut memeriksa kecamatan, teks produk, dan angka kapasitas.
+- `202611100002_umkm_produk_mutasi.sql`: `tulis_revisi`/`salin_revisi` menggantikan semua INSERT revisi di
+  `mutasi` dan `mutasi_pemilik`; pendaftar boleh memakai foto di `umkm-draf/<auth_uid>/`.
+- `202611100003_umkm_produk_baca.sql`: profil publik memuat produk, foto utama, label omzet (hanya Rp50 juta ke
+  atas) dan skala (hanya bila label omzet tampil); pencarian nama produk; detail petugas dan pemilik memuat produk.
+- Rollback: `docs/rollback-umkm-produk-202611100001-0003.sql` memulihkan 10 fungsi lama, tanpa DROP tabel/kolom.
+
+### Penerapan ke produksi, 10 November 2026
+
+- Dry run ketiganya dalam SATU transaksi lalu ROLLBACK: bersih
+  (`doppler run --project lmh --config prd -- node scripts/terapkan-migrasi-berurutan.mjs --dry-run --berkas ...`).
+- Diterapkan 12.56 WIB ke `aws-1-ap-southeast-1.pooler.supabase.com` atas persetujuan pemilik, sesudah CI PR #24
+  lulus, dengan `--terapkan` (COMMIT per berkas): 0001 145 ms, 0002 45 ms, 0003 37 ms. Staging belum ada.
+- Verifikasi baca-saja sesudahnya: enam kolom revisi, dua kolom foto, tabel `umkm_produk`, tujuh fungsi baru,
+  `mutasi`/`mutasi_pemilik` memakai `tulis_revisi`, `umkm_profil_publik` versi baru; anon tetap boleh
+  `umkm_profil_publik` dan tidak boleh `umkm_private.produk_json`. Katalog produksi 0 profil saat penerapan.
