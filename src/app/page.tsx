@@ -210,7 +210,7 @@ export default function LandingPage() {
 
         <ul className={styles.navLinks}>
           {adaBlokLayanan && <li><a href="#layanan" className={styles.navLink}>Layanan</a></li>}
-          <li><Link href="/umkm" className={styles.navLink}>UMKM</Link></li>
+          <li><Link href="/umkm/katalog" className={styles.navLink}>UMKM</Link></li>
           <li><Link href="/gallery" className={styles.navLink}>Investasi</Link></li>
           <li><Link href="/chat" className={styles.navLink}>Live Chat</Link></li>
           <li><Link href="/transparansi" className={styles.navLink}>Transparansi</Link></li>
@@ -260,7 +260,7 @@ export default function LandingPage() {
             {adaBlokLayanan && (
               <li><a href="#layanan" className={styles.mobileMenuLink} onClick={() => setMobileMenuOpen(false)}>Layanan</a></li>
             )}
-            <li><Link href="/umkm" className={styles.mobileMenuLink}>UMKM</Link></li>
+            <li><Link href="/umkm/katalog" className={styles.mobileMenuLink}>UMKM</Link></li>
             <li><Link href="/gallery" className={styles.mobileMenuLink}>Investasi</Link></li>
             <li><Link href="/chat" className={styles.mobileMenuLink}>Live Chat</Link></li>
             <li><Link href="/transparansi" className={styles.mobileMenuLink}>Transparansi</Link></li>

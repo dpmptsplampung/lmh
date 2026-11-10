@@ -83,7 +83,7 @@ const JALUR_CEPAT: { href: string; label: string; ikon: ElementType }[] = [
   { href: '/pengaduan', label: 'Sampaikan pengaduan', ikon: Megaphone },
   { href: '/saran', label: 'Sampaikan saran', ikon: Lightbulb },
   { href: '/pengaduan/lacak', label: 'Lacak pengaduan', ikon: Search },
-  { href: '/umkm', label: 'Marketplace UMKM', ikon: Store },
+  { href: '/umkm/katalog', label: 'Katalog UMKM', ikon: Store },
   { href: '/gallery', label: 'Galeri investasi', ikon: TrendingUp },
   { href: '/standar-pelayanan', label: 'Standar pelayanan', ikon: ClipboardList },
   { href: '/transparansi', label: 'Transparansi', ikon: Eye },

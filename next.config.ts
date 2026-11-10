@@ -70,6 +70,16 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  // Marketplace UMKM lama dihapus (keputusan pemilik 2026-11-10); alamat lama dan tautan email lama
+  // diarahkan ke katalog baru. Data lama di database tidak dihapus.
+  async redirects() {
+    return [
+      { source: '/umkm', destination: '/umkm/katalog', permanent: false },
+      { source: '/umkm/inbox', destination: '/umkm/katalog', permanent: false },
+      { source: '/umkm/edit/:id', destination: '/umkm/katalog', permanent: false },
+      { source: '/admin/umkm', destination: '/admin/umkm-tugas', permanent: false },
+    ];
+  },
   async headers() {
     return [{
       source: '/:path*',
