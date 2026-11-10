@@ -4,7 +4,7 @@ vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn() }));
 import { createClient } from '@/lib/supabase/server';
 import { GET, POST } from './route';
 const op='660e8400-e29b-41d4-a716-446655440001';
-const profile={nama:'Keripik',deskripsi:'Usaha lokal',jenis:'Pangan',kategori:'Olahan',kabupaten_kota:'Bandar Lampung',sumber:'kurasi'};
+const profile={nama:'Keripik',deskripsi:'Usaha lokal',jenis:'Produk',kategori:'Makanan Olahan',kabupaten_kota:'Kota Bandar Lampung',sumber:'kurasi'};
 let rpc: ReturnType<typeof vi.fn>;
 let user: {id:string}|null;
 const req=(body?:unknown,url='http://localhost/api/admin/umkm-tugas')=>new Request(url,body===undefined?undefined:{method:'POST',body:JSON.stringify(body)});

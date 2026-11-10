@@ -38,16 +38,14 @@ const QR = ambilFungsi(sql, 'ambil_qr_survei');
 const FUNGSI_DEFINER = { ensure_undangan: ENSURE, kunjungan_selesai_undangan: TRIGGER_FN, ambil_qr_survei: QR };
 
 describe('survei_undangan: berkas, urutan, atomik', () => {
-  it('terdaftar di FORWARD_MIGRATION_FILES, bernomor terbesar sampai seri ini, dan nama sesuai pola', () => {
+  it('terdaftar di FORWARD_MIGRATION_FILES sebelum migrasi jawaban dan nama sesuai pola', () => {
     expect(BERKAS).toMatch(/^\d{12}_[a-z0-9_]+\.sql$/);
     expect(FORWARD_MIGRATION_FILES).toContain(BERKAS);
     expect(listMigrationFiles()).toContain(BERKAS);
-    // Urutan daftar = urutan nomor, dan berkas ini mengungguli semua migrasi di luar seri survei terpadu
-    // (202611020001-202611020004; Task 3-5 menambah yang lain sesudahnya).
+    // Urutan seri survei tetap, meskipun fitur lain menambah migrasi sesudahnya.
     const daftar = [...FORWARD_MIGRATION_FILES];
     expect(daftar).toEqual([...daftar].sort());
-    const luarSeri = listMigrationFiles().filter((nama) => nama !== BERKAS && !/^20261(?:1020|1030|1040|1090)\d{3}_/.test(nama));
-    for (const nama of luarSeri) expect(nama < BERKAS).toBe(true);
+    expect(daftar.indexOf(BERKAS)).toBeLessThan(daftar.indexOf('202611020002_survei_jawaban.sql'));
     // Nomor di atas paket audit (202610260001) agar urutan tetap sah bila kedua cabang digabung.
     expect(BERKAS > '202610260001').toBe(true);
   });

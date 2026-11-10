@@ -39,3 +39,18 @@ describe('konfirmasi area draf UMKM dengan JWT pengguna',()=>{
  });
  it('area legacy tetap boleh tanpa flag atau cek sesi tambahan',async()=>{flag=false;session=false;const res=await POST(req('umkm-photos'));expect(res.status).toBe(200);expect(rpc).not.toHaveBeenCalled();});
 });
+
+it('konfirmasi menerima folder akun sendiri dan menolak folder akun lain', async () => {
+  const id = '11111111-1111-4111-8111-111111111111';
+  vi.mocked(createClient).mockResolvedValue({ auth: { getUser: async () => ({ data: { user: { id, is_anonymous: false } } }) },
+    rpc: vi.fn(async () => ({ data: { diizinkan: false }, error: null })),
+    from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }),
+  } as unknown as Awaited<ReturnType<typeof createClient>>);
+  const request = (folder: string) => new Request('http://localhost/api/storage/konfirmasi', { method: 'POST',
+    body: JSON.stringify({ area: 'umkm-draf', path: `${folder}/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.jpg` }) }) as NextRequest;
+  expect((await POST(request(id))).status).toBe(200);
+  expect(headObject).toHaveBeenCalledWith('private', `umkm-draf/${id}/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.jpg`);
+  vi.mocked(headObject).mockClear();
+  expect((await POST(request('22222222-2222-4222-8222-222222222222'))).status).toBe(403);
+  expect(headObject).not.toHaveBeenCalled();
+});

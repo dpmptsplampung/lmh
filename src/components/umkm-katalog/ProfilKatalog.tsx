@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { ArrowLeft, ExternalLink, Flag, MapPin } from 'lucide-react';
 import Tombol from '@/components/ui/Tombol';
 import type { ProfilPublik } from '@/lib/umkm-katalog/types';
+import { LABEL_TENAGA_KERJA, formatKapasitas } from '@/lib/umkm-katalog/taksonomi';
 import { toWIBDateString } from '@/lib/time';
 import { KatalogError, katalogRequest } from './api';
 import FotoKatalog, { inisialNama } from './FotoKatalog';
@@ -45,6 +46,15 @@ export default function ProfilKatalog({ id }: { id: string }) {
     setDialog(kind);
   };
   const [utama, ...lain] = profile?.foto ?? [];
+  // Server lama (migrasi produk belum diterapkan) belum mengirim kolom baru.
+  const produk = profile?.produk ?? [];
+  const fakta = profile ? [
+    profile.bentuk_usaha && `Bentuk usaha: ${profile.bentuk_usaha}`,
+    profile.tahun_mulai && `Mulai usaha: ${profile.tahun_mulai}`,
+    profile.skala && `Skala usaha: ${profile.skala}`,
+    profile.omzet_label,
+    profile.tenaga_kerja_rentang && `Tenaga kerja: ${LABEL_TENAGA_KERJA[profile.tenaga_kerja_rentang] ?? profile.tenaga_kerja_rentang}`,
+  ].filter((v): v is string => !!v) : [];
   return <div className={styles.halaman}>
     <div className={styles.profilBingkai}>
       <nav aria-label="Jejak halaman" className={styles.jejak}>
@@ -64,7 +74,7 @@ export default function ProfilKatalog({ id }: { id: string }) {
         <PencatatStatistik key={`dilihat-${id}`} id={id} aktif={profile.telemetri_opsional_aktif} jenis="dilihat" />
         <div className={styles.profilGrid}>
           <header className={styles.profilJudul}>
-            <p className={styles.wilayah}><MapPin size={16} aria-hidden="true" />{profile.kabupaten_kota}</p>
+            <p className={styles.wilayah}><MapPin size={16} aria-hidden="true" />{[profile.kecamatan, profile.kabupaten_kota].filter(Boolean).join(', ')}</p>
             <h1 className={styles.judulProfil}>{profile.nama}</h1>
             <p className={styles.jenisProfil}>
               {[profile.jenis, profile.kategori, profile.spesifik].filter(Boolean).map((value) =>
@@ -130,6 +140,9 @@ export default function ProfilKatalog({ id }: { id: string }) {
           <section aria-labelledby="judul-tentang" className={styles.tentang}>
             <h2 id="judul-tentang">Tentang usaha</h2>
             <p className={styles.deskripsi}>{profile.deskripsi}</p>
+            {fakta.length > 0 && <ul className={styles.fakta} aria-label="Keterangan usaha">
+              {fakta.map((teks) => <li key={teks}>{teks}</li>)}
+            </ul>}
             {(profile.instagram || profile.tiktok) && <nav className={styles.sosial} aria-label="Media sosial usaha">
               {profile.instagram && <a href={profile.instagram} target="_blank" rel="noopener noreferrer">
                 <span className="sr-only">Lihat </span>Instagram<span className="sr-only"> {profile.nama} (tab baru)</span>
@@ -141,6 +154,20 @@ export default function ProfilKatalog({ id }: { id: string }) {
               </a>}
             </nav>}
           </section>
+
+          {produk.length > 0 && <section aria-labelledby="judul-produk" className={styles.produk}>
+            <h2 id="judul-produk">Produk</h2>
+            <ul className={styles.produkDaftar}>
+              {produk.map((p) => <li key={p.urutan} className={styles.produkItem}>
+                {p.foto && <FotoKatalog src={p.foto.url} alt={`Foto ${p.nama}`} isi className={styles.produkFoto} />}
+                <h3>{p.nama}</h3>
+                {p.keterangan && <p>{p.keterangan}</p>}
+                {p.kapasitas_jumlah != null && p.kapasitas_satuan && p.kapasitas_periode && <p className={styles.kapasitas}>
+                  {formatKapasitas({ kapasitas_jumlah: p.kapasitas_jumlah, kapasitas_satuan: p.kapasitas_satuan,
+                    kapasitas_periode: p.kapasitas_periode })}</p>}
+              </li>)}
+            </ul>
+          </section>}
         </div>
         <UmkmSerupa key={`serupa-${id}`} id={id} onHubungi={(value) => {
           setFormKind('pesan'); setContext(value); setDialog('pesan');

@@ -42,7 +42,7 @@ export default function PanelUmkmSaya() {
   }, [percobaan]);
 
   return <div className={styles.halaman}>
-    <h1>UMKM saya</h1>
+    <h1>Cari pemasok</h1>
     {keadaan.fase === 'memuat' && <p role="status">Memuat...</p>}
     {keadaan.fase === 'belum_buka' && <div className={styles.keadaan} role="status">
       <p>Fitur Hubungi UMKM belum dibuka. Silakan kembali lagi nanti.</p>

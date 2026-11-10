@@ -5,7 +5,8 @@ import Kartu from '@/components/ui/Kartu';
 import Tombol from '@/components/ui/Tombol';
 import Field from '@/components/ui/Field';
 import Lencana from '@/components/ui/Lencana';
-import type { Detail, Mutasi } from '@/lib/umkm-katalog/types';
+import type { Detail, Foto, Mutasi } from '@/lib/umkm-katalog/types';
+import { LABEL_OMZET, LABEL_TENAGA_KERJA, formatKapasitas } from '@/lib/umkm-katalog/taksonomi';
 import { formatTanggal } from '@/lib/utils';
 import { hasilBelumPasti, kirimTugas, TugasError } from './api';
 import NomorTugas from './NomorTugas';
@@ -58,6 +59,10 @@ export default function DetailTugas({ detail, onChanged, onEdit, onBack, onRefre
   const warning = (field: string) => detail.peringatan_kontak.includes(field)
     ? <p className={styles.peringatan} role="alert">Informasi kontak ditemukan. Bersihkan bagian ini sebelum menerbitkan.</p> : null;
   const revision = detail.revisi;
+  // Foto produk diikat ke produk lewat `produk_urutan` dan tidak masuk galeri profil.
+  const profilePhotos = detail.foto.filter((f) => f.produk_urutan == null);
+  const products = detail.produk ?? [];
+  const productPhoto = (urutan: number): Foto | undefined => detail.foto.find((f) => f.produk_urutan === urutan);
   const publicationPending = (detail.foto_publikasi_tertunda ?? 0) > 0;
   const deletionPending = (detail.foto_hapus_tertunda ?? 0) > 0;
   const template = `Halo, saya petugas UMKM DPMPTSP Provinsi Lampung. Bolehkah nomor Anda kami tampilkan kepada perusahaan yang sudah kami periksa ketika layanan berbagi nomor tersedia? Izin dapat dicabut kapan saja. Saat ini nomor belum dibagikan melalui LMH.`;
@@ -105,8 +110,14 @@ export default function DetailTugas({ detail, onChanged, onEdit, onBack, onRefre
         <dt>Kategori</dt><dd>{revision.kategori}{warning('kategori')}</dd>
         {revision.spesifik && <><dt>Spesifik</dt><dd>{revision.spesifik}{warning('spesifik')}</dd></>}
         <dt>Kabupaten/kota</dt><dd>{revision.kabupaten_kota}{warning('kabupaten_kota')}</dd>
+        <dt>Kecamatan</dt><dd>{revision.kecamatan || 'Belum diisi'}{warning('kecamatan')}</dd>
         <dt>Deskripsi</dt><dd>{revision.deskripsi || 'Belum diisi'}{warning('deskripsi')}</dd>
         <dt>Alamat privat</dt><dd>{revision.alamat || 'Belum diisi'}{warning('alamat')}</dd>
+        <dt>Nama pemilik</dt><dd>{revision.nama_pemilik || 'Belum diisi'} <Lencana>Tertutup</Lencana></dd>
+        <dt>Bentuk usaha</dt><dd>{revision.bentuk_usaha || 'Belum diisi'}</dd>
+        <dt>Mulai usaha</dt><dd>{revision.tahun_mulai || 'Belum diisi'}</dd>
+        <dt>Omzet per tahun</dt><dd>{revision.omzet_rentang ? LABEL_OMZET[revision.omzet_rentang] ?? revision.omzet_rentang : 'Belum diisi'}</dd>
+        <dt>Tenaga kerja</dt><dd>{revision.tenaga_kerja_rentang ? LABEL_TENAGA_KERJA[revision.tenaga_kerja_rentang] ?? revision.tenaga_kerja_rentang : 'Belum diisi'}</dd>
         <dt>NIB</dt><dd>{revision.memiliki_nib == null ? 'Belum diketahui' : revision.memiliki_nib ? 'Ya' : 'Tidak. NIB gratis dan dapat diurus lewat Helpdesk OSS DPMPTSP. Profil tetap dapat tampil.'}</dd>
         {revision.instagram && <><dt>Instagram</dt><dd><a href={revision.instagram} target="_blank" rel="noopener noreferrer">Lihat Instagram</a>{warning('instagram')}</dd></>}
         {revision.tiktok && <><dt>TikTok</dt><dd><a href={revision.tiktok} target="_blank" rel="noopener noreferrer">Lihat TikTok</a>{warning('tiktok')}</dd></>}
@@ -125,14 +136,37 @@ export default function DetailTugas({ detail, onChanged, onEdit, onBack, onRefre
         </div>}
         {warning('foto')}
         <p className={styles.meta}>Periksa juga apakah ada nomor atau informasi kontak tertulis pada foto.</p>
-        {detail.foto.length === 0 ? <p>Belum ada foto.</p> : <div className={styles.foto}>
-          {detail.foto.map((photo, index) => <figure key={photo.id}>
+        {profilePhotos.length === 0 ? <p>Belum ada foto.</p> : <div className={styles.foto}>
+          {profilePhotos.map((photo, index) => <figure key={photo.id}>
             <FotoKatalog key={`${photo.id}:${photo.tersembunyi}`}
               src={photo.asal === 'unggahan' ? `/api/admin/umkm-tugas/${detail.id}/foto/${photo.id}` : photo.url}
               alt={`Foto ${index + 1} ${revision.nama}`} />
-            <figcaption>{photo.tersembunyi ? 'Foto disembunyikan' : photo.perlu_review ? 'Menunggu pemeriksaan' : 'Sudah diperiksa'}</figcaption>
+            <figcaption>{photo.tersembunyi ? 'Foto disembunyikan' : photo.perlu_review ? 'Menunggu pemeriksaan' : 'Sudah diperiksa'}{photo.utama ? ' ' : ''}{photo.utama && <Lencana>Foto utama</Lencana>}</figcaption>
             {detail.dipegang_saya && <Tombol varian="sekunder" disabled={busy} onClick={() => mutate('visibilitas', { aksi: photo.tersembunyi ? 'pulihkan' : 'sembunyikan', foto_id: photo.id })}>{photo.tersembunyi ? 'Pulihkan' : 'Sembunyikan'} foto {index + 1}</Tombol>}
           </figure>)}
+        </div>}
+      </section>
+      <section className={styles.bagian} aria-label="Produk">
+        <h3>Produk</h3>
+        {warning('produk')}
+        {products.length === 0 ? <p>Belum ada produk.</p> : <div className={styles.foto}>
+          {products.map((p) => {
+            const photo = productPhoto(p.urutan);
+            return <figure key={p.urutan}>
+              <strong>{p.nama}</strong>
+              {p.keterangan && <span>{p.keterangan}</span>}
+              {p.kapasitas_jumlah != null && p.kapasitas_satuan && p.kapasitas_periode &&
+                <span>{formatKapasitas({ kapasitas_jumlah: p.kapasitas_jumlah, kapasitas_satuan: p.kapasitas_satuan,
+                  kapasitas_periode: p.kapasitas_periode })}</span>}
+              {photo ? <>
+                <FotoKatalog key={`${photo.id}:${photo.tersembunyi}`}
+                  src={photo.asal === 'unggahan' ? `/api/admin/umkm-tugas/${detail.id}/foto/${photo.id}` : photo.url}
+                  alt={`Foto produk: ${p.nama}`} />
+                <figcaption>{photo.tersembunyi ? 'Foto disembunyikan' : photo.perlu_review ? 'Menunggu pemeriksaan' : 'Sudah diperiksa'}</figcaption>
+                {detail.dipegang_saya && <Tombol varian="sekunder" disabled={busy} onClick={() => mutate('visibilitas', { aksi: photo.tersembunyi ? 'pulihkan' : 'sembunyikan', foto_id: photo.id })}>{photo.tersembunyi ? 'Pulihkan' : 'Sembunyikan'} foto produk: {p.nama}</Tombol>}
+              </> : <figcaption>Tanpa foto</figcaption>}
+            </figure>;
+          })}
         </div>}
       </section>
       {detail.dipegang_saya && <section className={styles.bagian} aria-label="Izin nomor">

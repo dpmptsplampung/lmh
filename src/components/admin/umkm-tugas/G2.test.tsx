@@ -13,10 +13,10 @@ const base = {
 };
 const profile: Detail = {
   ...base, id: profileId, jenis: 'profil', nama: 'Kopi Lampung', status: 'terbit', mendesak: true,
-  tanpa_nomor: true, peringatan_kontak: [], sumber: 'kurasi', sumber_ref: null, izin_status: null, foto: [],
+  tanpa_nomor: true, peringatan_kontak: [], sumber: 'kurasi', sumber_ref: null, izin_status: null, foto: [], produk: [],
   revisi: { id: 'revisi', profil_id: profileId, versi: 1, nama: 'Kopi Lampung', deskripsi: 'Kopi setempat',
-    alamat: null, jenis: 'Produk', kategori: 'Minuman', spesifik: null, kabupaten_kota: 'Lampung Barat',
-    memiliki_nib: null, instagram: null, tiktok: null, dibuat_oleh: 'staf',
+    alamat: null, jenis: 'Produk', kategori: 'Minuman Olahan', spesifik: null, kabupaten_kota: 'Kab. Lampung Barat',
+    memiliki_nib: null, instagram: null, tiktok: null, kecamatan: null, nama_pemilik: null, bentuk_usaha: null, tahun_mulai: null, omzet_rentang: null, tenaga_kerja_rentang: null, dibuat_oleh: 'staf',
     dibuat_pada: base.dibuat_pada, keputusan: 'terbit' },
 };
 const message: DetailPesan = {
@@ -131,7 +131,7 @@ describe('tugas campuran G2', () => {
     currentProfile.foto_publikasi_tertunda = 0;
     currentProfile.foto_hapus_tertunda = 1;
     currentProfile.foto = [{ id: 'foto-uji', revisi_id: 'revisi', asal: 'unggahan', url: null,
-      r2_key: 'umkm-draf/uji.webp', tersembunyi: true, perlu_review: false,
+      r2_key: 'umkm-draf/uji.webp', tersembunyi: true, perlu_review: false, utama: false, produk_urutan: null,
       diperiksa_oleh: 'staf', diperiksa_pada: base.dibuat_pada }];
     const original = fetchMock.getMockImplementation() as (url: string, init?: RequestInit) => Promise<Response>;
     let attempts = 0;

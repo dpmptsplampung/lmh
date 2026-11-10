@@ -194,3 +194,12 @@ Butuh staging atau tiket 10: uji dua koneksi bersamaan, perilaku R2 sungguhan, h
 Kode tahap A selesai sesudah commit G3. Berikutnya langkah rilis di atas. Tahap B dan C di luar cakupan sekarang.
 
 Push, penerapan migrasi, dan penghapusan branch remote `origin/feat/redesain-dasbor` tetap menunggu persetujuan eksplisit. Penerapan migrasi melewati staging dulu, dengan host dan daftar migrasi ditampilkan.
+
+## 2026-11-10: produk, foto utama, formulir rapi (P-38 sampai P-40)
+
+Branch `feat/umkm-produk`, rencana `docs/superpowers/plans/2026-11-10-umkm-produk-formulir.md`, dikerjakan tim Orca run `run_a56d612bd62e` (backend Codex, frontend Claude, keamanan Claude, peninjau Codex).
+
+- Migrasi `202611100001` (kolom profil, `umkm_produk`, validasi, peringatan kontak termasuk produk dan angka kapasitas), `202611100002` (`tulis_revisi`/`salin_revisi`, folder unggah akun), `202611100003` (katalog publik, pencarian nama produk, detail). Rollback: `docs/rollback-umkm-produk-202611100001-0003.sql` (fungsi saja, tanpa DROP). BELUM diterapkan ke produksi.
+- Formulir UMKM dan petugas memakai `src/components/umkm-form/`; menu `/me` memuat Usaha saya, Cari pemasok, Lacak pengaduan.
+- Bukti: gate penuh 6582 lulus (2 gagal kemudian diperbaiki, berkas terkait 696 lulus), build lulus, typecheck dan lint bersih (lint di luar `.tim/`). Skenario akses-data PGlite 121 lulus/11 gagal identik sebelum dan sesudah migrasi (baseline di luar lingkup).
+- Belum: pratinjau visual, impor satudata, penjadwal `bersihkan-draf` (sekarang juga membersihkan folder `umkm-draf/<auth_uid>/`), batas laju unggah per akun (tidak ditambah, keputusan 36).

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { Detail, Foto } from '@/lib/umkm-katalog/types';
 import ProfilForm from './ProfilForm';
 import DetailTugas from './DetailTugas';
@@ -13,15 +13,16 @@ const initial: Detail = {
   peringatan_kontak: [], dipegang_saya: true, sumber: 'kurasi', sumber_ref: null,
   revisi: {
     id: 'revisi', profil_id: id, versi: 1, nama: 'Kopi Lampung', deskripsi: 'Kopi bubuk', alamat: null,
-    jenis: 'Minuman', kategori: 'Kopi', spesifik: null, kabupaten_kota: 'Lampung Barat', memiliki_nib: null,
-    instagram: null, tiktok: null, dibuat_oleh: 'staf', dibuat_pada: '2026-11-09T02:00:00Z', keputusan: null,
+    jenis: 'Produk', kategori: 'Minuman Olahan', spesifik: null, kabupaten_kota: 'Kab. Lampung Barat', memiliki_nib: null,
+    instagram: null, tiktok: null, kecamatan: null, nama_pemilik: null, bentuk_usaha: null, tahun_mulai: null, omzet_rentang: null, tenaga_kerja_rentang: null,
+    dibuat_oleh: 'staf', dibuat_pada: '2026-11-09T02:00:00Z', keputusan: null,
   },
-  foto: [], izin_status: null,
+  foto: [], produk: [], izin_status: null,
 };
 const ok = (data: unknown) => ({ ok: true, status: 200, json: async () => ({ data: structuredClone(data) }) });
 const photo = (index: number): Foto => ({
   id: `foto${index}`, revisi_id: 'revisi', asal: 'eksternal',
-  url: `https://foto.example/${index ? `bersih${index}` : '081299998888'}.jpg`, r2_key: null,
+  url: `https://foto.example/${index ? `bersih${index}` : '081299998888'}.jpg`, r2_key: null, utama: false, produk_urutan: null,
   tersembunyi: false, perlu_review: true, diperiksa_oleh: null, diperiksa_pada: null,
 });
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -44,9 +45,11 @@ it.each([1, 10])('mengeluarkan foto bermasalah dari %s foto dan mengirim daftar 
   render(<ProfilForm detail={detail} onSaved={saved} onCancel={vi.fn()} />);
   expect(screen.getAllByRole('button', { name: /Keluarkan foto/ })).toHaveLength(count);
   fireEvent.click(screen.getByRole('button', { name: 'Keluarkan foto 1' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Tautan' }));
   fireEvent.change(screen.getByLabelText('Tambah tautan foto HTTPS'), {
     target: { value: 'https://foto.example/pengganti.jpg' },
   });
+  fireEvent.click(screen.getByRole('button', { name: 'Tambah tautan' }));
   fireEvent.click(screen.getByRole('button', { name: 'Simpan untuk diperiksa' }));
   await waitFor(() => expect(saved).toHaveBeenCalledWith(expect.objectContaining({ peringatan_kontak: [] })));
   const body = JSON.parse(fetchMock.mock.calls[0][1].body);
@@ -79,7 +82,7 @@ it('menjaga fokus keyboard saat foto tengah, terakhir, dan seluruh foto dikeluar
   remove(2);
   expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Keluarkan foto 1' }));
   remove(1);
-  expect(document.activeElement).toBe(screen.getByLabelText('Tambah tautan foto HTTPS'));
+  expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'Unggah' }));
 });
 
 it.each(['terbit', 'ditolak'] as const)('revisi %s menyediakan koreksi, visibilitas dan izin tanpa keputusan ulang',
@@ -274,4 +277,32 @@ it('form memakai kunci baru setelah galat pasti dan setelah foto dikeluarkan', a
   submit();
   await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
   expect(keys()[2]).not.toBe(keys()[1]);
+});
+
+it('detail petugas menampilkan nama pemilik dan produk', () => {
+  const foto = (over: Partial<Foto>): Foto => ({ ...photo(0), ...over });
+  render(<DetailTugas
+    detail={{
+      ...initial,
+      peringatan_kontak: ['produk'],
+      revisi: { ...initial.revisi, kecamatan: 'Sukau', nama_pemilik: 'Siti Rahma', bentuk_usaha: 'CV', tahun_mulai: 2015,
+        omzet_rentang: '300jt_2m', tenaga_kerja_rentang: '5-19' },
+      produk: [{ urutan: 1, nama: 'Keripik pisang', keterangan: 'Renyah', kapasitas_jumlah: 1500, kapasitas_satuan: 'kg',
+        kapasitas_periode: 'bulan' }],
+      foto: [foto({ id: 'profil1', produk_urutan: null, utama: true }), foto({ id: 'prod1', produk_urutan: 1 })],
+    }}
+    onChanged={vi.fn()} onEdit={vi.fn()} onBack={vi.fn()} onRefresh={vi.fn()} />);
+  expect(screen.getByText('Siti Rahma')).toBeTruthy();
+  expect(screen.getByText('Tertutup')).toBeTruthy();
+  expect(screen.getByText('Sukau')).toBeTruthy();
+  expect(screen.getByText('Lebih dari Rp300 juta sampai Rp2 miliar')).toBeTruthy();
+  expect(screen.getByText('5 sampai 19 orang')).toBeTruthy();
+  const produk = screen.getByRole('region', { name: 'Produk' });
+  expect(within(produk).getByText('Keripik pisang')).toBeTruthy();
+  expect(within(produk).getByText('Kapasitas 1.500 kg per bulan (menurut UMKM)')).toBeTruthy();
+  expect(within(produk).getByRole('alert').textContent).toMatch(/Informasi kontak/);
+  expect(within(produk).getByRole('img', { name: 'Foto produk: Keripik pisang' })).toBeTruthy();
+  const galeri = screen.getByRole('region', { name: 'Foto usaha' });
+  expect(within(galeri).getAllByRole('img')).toHaveLength(1);
+  expect(within(galeri).getByText('Foto utama')).toBeTruthy();
 });

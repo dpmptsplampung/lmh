@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+vi.mock('@/lib/foto/kompres', () => ({ kompresBerkas: vi.fn(async () => new Blob(['x'], { type: 'image/jpeg' })) }));
+vi.mock('@/lib/storage/unggah', () => ({ unggahKeR2: vi.fn(async (_a: string, path: string) => ({ kunci: `umkm-draf/uid-1/${path.split('/').pop()}` })) }));
+import { unggahKeR2 } from '@/lib/storage/unggah';
 import UsahaSaya from './UsahaSaya';
 
 const ok = (data: unknown) => Promise.resolve(new Response(JSON.stringify({ data, meta: { request_id: 'req-1' } }), { status: 200 }));
@@ -81,8 +84,8 @@ describe('daftar Usaha saya', () => {
     render(<UsahaSaya />);
     fireEvent.click(await screen.findByRole('button', { name: 'Daftarkan usaha' }));
     const isi = (nama: string, nilai: string) => fireEvent.change(screen.getByLabelText(nama), { target: { value: nilai } });
-    isi('Nama usaha', 'Kopi Sejahtera'); isi('Jenis', 'Produk'); isi('Kategori', 'Minuman');
-    isi('Kabupaten/kota', 'Lampung Barat'); isi('Deskripsi', 'Kopi hasil kebun');
+    isi('Nama usaha', 'Kopi Sejahtera'); isi('Jenis', 'Produk'); isi('Kategori', 'Minuman Olahan');
+    isi('Kabupaten/kota', 'Kab. Lampung Barat'); isi('Deskripsi', 'Kopi hasil kebun');
     isi('Nomor WhatsApp (opsional)', '081234567890');
     fireEvent.click(screen.getByRole('button', { name: 'Ajukan usaha' }));
     await waitFor(() => expect(fetchMock.mock.calls.some(([, i]) => i?.method === 'POST')).toBe(true));
@@ -96,6 +99,53 @@ describe('daftar Usaha saya', () => {
     expect(setItem).not.toHaveBeenCalled();
     expect(konsol).not.toHaveBeenCalled();
     setItem.mockRestore(); konsol.mockRestore();
+  });
+
+  it('pendaftaran pertama bisa mengunggah foto dan menambah produk', async () => {
+    render(<UsahaSaya />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Daftarkan usaha' }));
+    const isi = (nama: string, nilai: string) => fireEvent.change(screen.getByLabelText(nama), { target: { value: nilai } });
+    isi('Nama usaha', 'Kopi Sejahtera'); isi('Jenis', 'Produk'); isi('Kategori', 'Minuman Olahan');
+    isi('Kabupaten/kota', 'Kab. Lampung Barat'); isi('Deskripsi', 'Kopi hasil kebun');
+    fireEvent.change(screen.getByLabelText('Unggah foto'), {
+      target: { files: [new File(['x'], 'a.jpg', { type: 'image/jpeg' })] } });
+    await waitFor(() => expect(unggahKeR2).toHaveBeenCalled());
+    const [area, path] = vi.mocked(unggahKeR2).mock.calls[0];
+    expect(area).toBe('umkm-draf');
+    expect(path).toMatch(/^akun\/[0-9a-f-]{36}\.jpg$/);
+    fireEvent.click(await screen.findByRole('button', { name: 'Jadikan foto utama' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Tambah produk' }));
+    fireEvent.change(screen.getByLabelText('Nama produk'), { target: { value: 'Kopi bubuk' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Ajukan usaha' }));
+    await waitFor(() => expect(fetchMock.mock.calls.some(([, i]) => i?.method === 'POST')).toBe(true));
+    const body = JSON.parse(fetchMock.mock.calls.find(([, i]) => i?.method === 'POST')![1].body);
+    expect(body.data.produk[0].nama).toBe('Kopi bubuk');
+    expect(body.data.foto).toHaveLength(1);
+    expect(body.data.foto[0]).toMatchObject({ asal: 'unggahan', utama: true });
+    expect(body.data.foto[0].r2_key).toMatch(/^umkm-draf\/uid-1\//);
+  });
+
+  it('formulir tidak bisa dikirim selama foto masih diunggah', async () => {
+    let selesai!: (v: { kunci: string }) => void;
+    vi.mocked(unggahKeR2).mockImplementationOnce(() => new Promise((r) => { selesai = r; }));
+    render(<UsahaSaya />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Daftarkan usaha' }));
+    const isi = (nama: string, nilai: string) => fireEvent.change(screen.getByLabelText(nama), { target: { value: nilai } });
+    isi('Nama usaha', 'Kopi Sejahtera'); isi('Jenis', 'Produk'); isi('Kategori', 'Minuman Olahan');
+    isi('Kabupaten/kota', 'Kab. Lampung Barat'); isi('Deskripsi', 'Kopi hasil kebun');
+    fireEvent.change(screen.getByLabelText('Unggah foto'), {
+      target: { files: [new File(['x'], 'a.jpg', { type: 'image/jpeg' })] } });
+    await waitFor(() => expect(unggahKeR2).toHaveBeenCalled());
+    const kirim = screen.getByRole('button', { name: 'Ajukan usaha' }) as HTMLButtonElement;
+    expect(kirim.disabled).toBe(true);
+    fireEvent.submit(kirim.closest('form')!);
+    expect(fetchMock.mock.calls.some(([, i]) => i?.method === 'POST')).toBe(false);
+    selesai({ kunci: 'umkm-draf/uid-1/a.jpg' });
+    await waitFor(() => expect((screen.getByRole('button', { name: 'Ajukan usaha' }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(screen.getByRole('button', { name: 'Ajukan usaha' }));
+    await waitFor(() => expect(fetchMock.mock.calls.some(([, i]) => i?.method === 'POST')).toBe(true));
+    const body = JSON.parse(fetchMock.mock.calls.find(([, i]) => i?.method === 'POST')![1].body);
+    expect(body.data.foto).toHaveLength(1);
   });
 
   it('data tidak lengkap ditolak di klien tanpa memanggil server', async () => {

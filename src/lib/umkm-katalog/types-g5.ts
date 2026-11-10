@@ -1,4 +1,4 @@
-import type { Foto, Revisi, Status } from './types';
+import type { Foto, Produk, Revisi, Status } from './types';
 
 export type StatusPemilik = 'diajukan' | 'disetujui' | 'ditolak';
 export type AkunPemilik = { nama: string; hp: string | null; email: string | null };
@@ -12,7 +12,7 @@ export type Usaha = {
 export type RevisiPemilik = Omit<Revisi, 'dibuat_oleh' | 'aktor_uid'>;
 export type FotoPemilik = Omit<Foto, 'diperiksa_oleh'>;
 export type DetailUsaha = Usaha & {
-  revisi: RevisiPemilik | null; foto: FotoPemilik[]; nomor: string | null;
+  revisi: RevisiPemilik | null; foto: FotoPemilik[]; produk: Produk[]; nomor: string | null;
   izin_status: 'diberikan' | 'dicabut' | null;
 };
 export type PemilikTerdaftar = { id: string; nama: string; versi: number };

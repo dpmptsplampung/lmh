@@ -13,14 +13,15 @@ const ok = (data: unknown) => Promise.resolve(new Response(JSON.stringify({ data
 const galat = (code: string, status: number) => Promise.resolve(
   new Response(JSON.stringify({ error: { code, message: 'x' }, request_id: 'req-1' }), { status }));
 const revisi = { id: 'rv1', profil_id: id, versi: 1, nama: 'Kopi Lampung', deskripsi: 'Kopi kebun', alamat: null,
-  jenis: 'Produk', kategori: 'Minuman', spesifik: null, kabupaten_kota: 'Lampung Barat', memiliki_nib: false,
-  instagram: null, tiktok: null, dibuat_pada: '2026-11-05T03:00:00Z', keputusan: 'terbit' };
+  jenis: 'Produk', kategori: 'Minuman Olahan', spesifik: null, kabupaten_kota: 'Kab. Lampung Barat', memiliki_nib: false,
+  instagram: null, tiktok: null, kecamatan: null, nama_pemilik: null, bentuk_usaha: null, tahun_mulai: null,
+  omzet_rentang: null, tenaga_kerja_rentang: null, dibuat_pada: '2026-11-05T03:00:00Z', keputusan: 'terbit' };
 const detail = (ekstra = {}) => ({
   id, profil_nama: 'Kopi Lampung', status: 'terbit', versi: 4, pemilik_id: 'pm', pemilik_status: 'disetujui',
   dibuat_pada: '2026-11-05T03:00:00Z', alasan_tolak: null, catatan_petugas: null, memiliki_nib: false, perubahan: null,
   revisi, foto: [{ id: 'f1', revisi_id: 'rv1', asal: 'unggahan', url: null, r2_key: 'umkm-draf/p1/a.jpg',
-    tersembunyi: false, perlu_review: false, diperiksa_pada: null }],
-  nomor: NOMOR, izin_status: 'diberikan', ...ekstra,
+    tersembunyi: false, perlu_review: false, diperiksa_pada: null, utama: false, produk_urutan: null }],
+  produk: [], nomor: NOMOR, izin_status: 'diberikan', ...ekstra,
 });
 const tren = Array.from({ length: 30 }, (_, i) => ({
   hari: `2026-10-${String(i + 1).padStart(2, '0')}`, dilihat: null, suka: i === 29 ? 2 : 0, permintaan: 0, nomor_dibuka: 0,
@@ -69,6 +70,33 @@ describe('detail Usaha saya', () => {
     await waitFor(() => expect(posts()).toHaveLength(1));
     expect(posts()[0][0]).toBe(`/api/umkm-pemilik/${id}/draf`);
     expect(JSON.parse(posts()[0][1].body).data.foto).toEqual([{ asal: 'unggahan', r2_key: 'umkm-draf/p1/acak.jpg' }]);
+  });
+
+  it('draf memisahkan foto produk dari foto profil', async () => {
+    data = detail({
+      produk: [{ urutan: 1, nama: 'Keripik', keterangan: null, kapasitas_jumlah: 1500, kapasitas_satuan: 'kg',
+        kapasitas_periode: 'bulan' }],
+      foto: [
+        { id: 'f1', revisi_id: 'rv1', asal: 'unggahan', url: null, r2_key: 'umkm-draf/p1/a.jpg', tersembunyi: false,
+          perlu_review: false, diperiksa_pada: null, utama: true, produk_urutan: null },
+        { id: 'f2', revisi_id: 'rv1', asal: 'eksternal', url: 'https://foto.example/keripik.jpg', r2_key: null,
+          tersembunyi: false, perlu_review: false, diperiksa_pada: null, utama: false, produk_urutan: 1 },
+      ],
+    });
+    render(<DetailUsahaSaya id={id} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Ubah profil' }));
+    const profil = screen.getByRole('group', { name: 'Foto usaha' });
+    expect(within(profil).getAllByRole('img')).toHaveLength(1);
+    const produk = screen.getByRole('group', { name: 'Foto produk' });
+    expect(within(produk).getAllByRole('img')).toHaveLength(1);
+    expect((screen.getByLabelText('Jumlah kapasitas') as HTMLInputElement).value).toBe('1500');
+    fireEvent.click(screen.getByRole('button', { name: 'Kirim untuk diperiksa' }));
+    await waitFor(() => expect(posts()).toHaveLength(1));
+    const kirim = JSON.parse(posts()[0][1].body).data;
+    expect(kirim.foto).toEqual([{ asal: 'unggahan', url: null, r2_key: 'umkm-draf/p1/a.jpg', utama: true }]);
+    expect(kirim.produk).toHaveLength(1);
+    expect(kirim.produk[0]).toMatchObject({ nama: 'Keripik', kapasitas_jumlah: 1500, kapasitas_satuan: 'kg',
+      kapasitas_periode: 'bulan', foto: { asal: 'eksternal', url: 'https://foto.example/keripik.jpg', r2_key: null } });
   });
 
   it('perubahan menunggu: pesan menunggu, bagian data berjudul Perubahan yang diajukan', async () => {

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// Cangkang /me: menu pengunjung (4 item + Situs utama + Keluar), widget "Kunjungan saya", lencana Notifikasi.
+// Cangkang /me: menu pengunjung (7 item + Situs utama + Keluar), widget "Kunjungan saya", lencana Notifikasi.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { todayWIB } from '@/lib/time';
@@ -96,14 +96,17 @@ describe('CangkangPengunjung', () => {
     await screen.findByText('Sari Dewi');
   });
 
-  it('menu pengunjung: 4 item + Situs utama + Keluar; entri aktif mengikuti path', async () => {
+  it('menu pengunjung: 7 item + Situs utama + Keluar; entri aktif mengikuti path', async () => {
     pasang('/me/reservasi');
     const nav = screen.getByRole('navigation', { name: 'Menu pengunjung' });
     expect(within(nav).getAllByRole('link').map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
       ['Beranda saya', '/me'],
       ['Reservasi', '/me/reservasi'],
+      ['Usaha saya', '/me/usaha'],
+      ['Cari pemasok', '/me/umkm'],
       ['Notifikasi', '/me/notifications'],
       ['Chat', '/chat'],
+      ['Lacak pengaduan', '/pengaduan/lacak'],
     ]);
     expect(within(nav).getByRole('link', { name: 'Reservasi' })).toHaveAttribute('aria-current', 'page');
     expect(within(nav).getByRole('link', { name: 'Beranda saya' })).not.toHaveAttribute('aria-current');

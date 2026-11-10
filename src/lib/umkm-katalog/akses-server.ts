@@ -1,5 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { profilDrafDariPath } from '@/lib/storage/area';
+import { AWALAN_AKUN, profilDrafDariPath } from '@/lib/storage/area';
+
+export function jalurAkun(path: string | undefined, userId: string): boolean {
+  return !!path && (path.startsWith(AWALAN_AKUN) || profilDrafDariPath(path) === userId);
+}
 
 // Hak draf diperiksa ulang lewat JWT pengguna; flag hilang atau sesi gagal selalu menolak.
 export async function bolehUnggahDraf(
@@ -13,6 +17,7 @@ export async function bolehUnggahDraf(
       .select('role, aktif, pemeriksa_umkm').eq('auth_user_id', user.id).maybeSingle();
     if (error) return false;
     if (!staf) {
+      if (jalurAkun(path, user.id)) return true;
       const profil = profilDrafDariPath(path);
       if (!profil) return false;
       const hak = await client.rpc('umkm_akses_draf_pemilik', { p_profil_id: profil });

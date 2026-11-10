@@ -1,0 +1,33 @@
+.bagian { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+.bidang { display: grid; gap: var(--space-4); grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); }
+.lebar { grid-column: 1 / -1; }
+
+.foto { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; border: 0; margin: 0; padding: 0; }
+.foto legend { padding: 0; font-weight: 600; }
+.tab { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.tab button { min-height: 44px; padding: 0 var(--space-4); border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--text-primary); cursor: pointer; }
+.tab button[aria-selected='true'] { background: var(--color-primary-600); border-color: var(--color-primary-600);
+  color: var(--text-inverse); }
+.tab button:focus-visible { outline: 2px solid var(--color-primary-600); outline-offset: 2px; }
+.baris { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-3); }
+.baris > :first-child { flex: 1 1 220px; min-width: 0; }
+.baris button { min-height: 44px; }
+.daftarFoto { display: grid; gap: var(--space-3); margin: 0; padding: 0; list-style: none;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); }
+.daftarFoto figure { margin: 0; display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); min-width: 0; }
+.daftarFoto figcaption { color: var(--text-secondary); font-size: var(--text-sm); }
+.daftarFoto button { min-height: 44px; }
+.lencana { display: inline-block; padding: 2px var(--space-2); border-radius: var(--radius-sm); font-size: var(--text-sm);
+  background: var(--status-success-bg, var(--color-neutral-100)); color: var(--status-success-fg, var(--color-neutral-800)); }
+.catatan { color: var(--text-secondary); font-size: var(--text-sm); margin: 0; }
+.galat { color: var(--status-danger-fg, var(--color-danger-700)); margin: 0; }
+
+.produk { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+.kartuProduk { border: 1px solid var(--border-default); border-radius: var(--radius-lg); background: var(--surface-elevated);
+  padding: var(--space-4); margin: 0; min-width: 0; display: flex; flex-direction: column; gap: var(--space-3); }
+.kartuProduk legend { font-weight: 600; padding: 0 var(--space-2); }
+.kapasitas { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); }
+.aksiProduk { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.aksiProduk button, .produk > button { min-height: 44px; }
+@media (max-width: 480px) { .kartuProduk { padding: var(--space-3); } }

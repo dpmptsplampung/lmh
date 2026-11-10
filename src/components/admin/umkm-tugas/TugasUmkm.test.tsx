@@ -12,9 +12,10 @@ const initial: Detail = {
   dibuat_pada: '2026-11-09T02:00:00Z', petugas_id: 'staf', petugas_nama: 'Sari', tanpa_nomor: false,
   peringatan_kontak: [], dipegang_saya: true, sumber: 'satudata', sumber_ref: null,
   revisi: { id: 'revisi', profil_id: id, versi: 1, nama: 'Keripik Pisang Sari', deskripsi: 'Keripik pisang renyah', alamat: null,
-    jenis: 'Makanan', kategori: 'Keripik', spesifik: null, kabupaten_kota: 'Bandar Lampung', memiliki_nib: null,
-    instagram: null, tiktok: null, dibuat_oleh: 'staf', dibuat_pada: '2026-11-09T02:00:00Z', keputusan: null },
-  foto: [], izin_status: null,
+    jenis: 'Produk', kategori: 'Makanan Olahan', spesifik: null, kabupaten_kota: 'Kota Bandar Lampung', memiliki_nib: null,
+    instagram: null, tiktok: null, kecamatan: null, nama_pemilik: null, bentuk_usaha: null, tahun_mulai: null, omzet_rentang: null, tenaga_kerja_rentang: null,
+    dibuat_oleh: 'staf', dibuat_pada: '2026-11-09T02:00:00Z', keputusan: null },
+  foto: [], produk: [], izin_status: null,
 };
 const ok = (data: unknown) => Promise.resolve({ ok: true, json: async () => ({ data: structuredClone(data), meta: { request_id: 'uji' } }) });
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -135,7 +136,7 @@ describe('layar tugas UMKM', () => {
     expect(fetchMock.mock.calls.filter(([url]) => url.endsWith('/putusan'))).toHaveLength(1);
   });
   it('pratinjau foto privat dan sembunyikan/pulihkan memakai versi terbaru', async () => {
-    current.foto = [{ id: 'foto1', revisi_id: 'revisi', asal: 'unggahan', url: null, r2_key: 'umkm-draf/foto.jpg', tersembunyi: false, perlu_review: true, diperiksa_oleh: null, diperiksa_pada: null }];
+    current.foto = [{ id: 'foto1', revisi_id: 'revisi', asal: 'unggahan', url: null, r2_key: 'umkm-draf/foto.jpg', tersembunyi: false, perlu_review: true, utama: false, produk_urutan: null, diperiksa_oleh: null, diperiksa_pada: null }];
     render(<TugasUmkm />); await open();
     expect(screen.getByRole('img', { name: /Foto 1/ }).getAttribute('src')).toBe(`/api/admin/umkm-tugas/${id}/foto/foto1`);
     fireEvent.click(screen.getByRole('button', { name: 'Sembunyikan foto 1' }));

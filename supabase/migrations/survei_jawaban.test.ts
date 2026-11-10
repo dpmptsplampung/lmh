@@ -50,15 +50,14 @@ const KOLOM_BARU = ['u10_transparansi', 'u11_integritas', 'versi', 'sumber', 'un
 const NAMA_CONSTRAINT = 'skm_respons_wizard_kunjungan_versi_check';
 
 describe('survei_jawaban: berkas, urutan, atomik, aditif', () => {
-  it('terdaftar di FORWARD_MIGRATION_FILES tepat setelah migrasi undangan, nomor di atas semua migrasi di luar seri', () => {
+  it('terdaftar di FORWARD_MIGRATION_FILES tepat setelah migrasi undangan, urutan seri tetap', () => {
     expect(BERKAS).toMatch(/^\d{12}_[a-z0-9_]+\.sql$/);
     expect(FORWARD_MIGRATION_FILES).toContain(BERKAS);
     expect(listMigrationFiles()).toContain(BERKAS);
     const daftar = [...FORWARD_MIGRATION_FILES];
     expect(daftar).toEqual([...daftar].sort());
     expect(daftar.indexOf(BERKAS)).toBe(daftar.indexOf(BERKAS_UNDANGAN) + 1);
-    const luarSeri = listMigrationFiles().filter((nama) => !/^20261(?:1020|1030|1040|1090)\d{3}_/.test(nama));
-    for (const nama of luarSeri) expect(nama < BERKAS).toBe(true);
+    expect(BERKAS_UNDANGAN < BERKAS).toBe(true);
     expect(BERKAS > '202610260001').toBe(true);
   });
 

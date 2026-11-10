@@ -12,8 +12,8 @@ const detail = {
   dibuat_pada: '2026-11-09T02:00:00Z', petugas_id: 'staf', petugas_nama: 'Sari', tanpa_nomor: false,
   peringatan_kontak: [], dipegang_saya: false, sumber: 'kurasi', sumber_ref: null,
   revisi: {
-    id: 'r', profil_id: pid, versi: 1, nama: 'Kopi Lampung', deskripsi: 'Kopi', alamat: null, jenis: 'Minuman',
-    kategori: 'Kopi', spesifik: null, kabupaten_kota: 'Lampung Barat', memiliki_nib: null, instagram: null,
+    id: 'r', profil_id: pid, versi: 1, nama: 'Kopi Lampung', deskripsi: 'Kopi', alamat: null, jenis: 'Produk',
+    kategori: 'Minuman Olahan', spesifik: null, kabupaten_kota: 'Kab. Lampung Barat', memiliki_nib: null, instagram: null,
     tiktok: null, dibuat_pada: '2026-11-09T02:00:00Z', keputusan: 'terbit',
   },
   foto: [], izin_status: null, pemilik: null,

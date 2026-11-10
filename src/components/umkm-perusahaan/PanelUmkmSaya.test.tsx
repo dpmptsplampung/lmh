@@ -38,6 +38,14 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); window.localStorage.clear(); window.sessionStorage.clear(); });
 
+describe('halaman Cari pemasok', () => {
+  it('judul halaman adalah Cari pemasok', async () => {
+    rute = (url) => url.endsWith('/perusahaan') ? ok({ masuk: false, perusahaan: null }) : undefined;
+    render(<PanelUmkmSaya />);
+    expect(await screen.findByRole('heading', { level: 1, name: 'Cari pemasok' })).toBeTruthy();
+  });
+});
+
 describe('halaman UMKM saya', () => {
   it('fitur belum dibuka (503) dan belum masuk memberi keadaan yang jelas', async () => {
     rute = (url) => url.endsWith('/perusahaan') ? galat('MODUL_BELUM_TERSEDIA', 503) : undefined;

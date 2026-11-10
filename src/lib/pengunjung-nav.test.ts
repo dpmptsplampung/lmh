@@ -2,13 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { cariEntriPengunjungAktif, PENGUNJUNG_NAV } from './pengunjung-nav';
 
 describe('PENGUNJUNG_NAV', () => {
-  it('berisi empat menu utama persis seperti keputusan P3, urut', () => {
+  it('berisi tujuh menu utama, urut', () => {
     const utama = PENGUNJUNG_NAV.filter((e) => e.slot !== 'bawah');
     expect(utama.map((e) => [e.label, e.href])).toEqual([
       ['Beranda saya', '/me'],
       ['Reservasi', '/me/reservasi'],
+      ['Usaha saya', '/me/usaha'],
+      ['Cari pemasok', '/me/umkm'],
       ['Notifikasi', '/me/notifications'],
       ['Chat', '/chat'],
+      ['Lacak pengaduan', '/pengaduan/lacak'],
     ]);
   });
 
@@ -34,6 +37,9 @@ describe('cariEntriPengunjungAktif', () => {
     expect(cariEntriPengunjungAktif('/me/reservasi/x')?.label).toBe('Reservasi');
     expect(cariEntriPengunjungAktif('/me/notifications')?.label).toBe('Notifikasi');
     expect(cariEntriPengunjungAktif('/chat')?.label).toBe('Chat');
+    expect(cariEntriPengunjungAktif('/me/usaha/abc')?.label).toBe('Usaha saya');
+    expect(cariEntriPengunjungAktif('/me/umkm')?.label).toBe('Cari pemasok');
+    expect(cariEntriPengunjungAktif('/pengaduan/lacak')?.label).toBe('Lacak pengaduan');
   });
 
   it('/me tidak menelan anak rute dan path asing tidak aktif', () => {
