@@ -16,7 +16,7 @@ export default function KartuKatalog({ item, onHubungi }: {
     <FotoKatalog src={item.foto?.url ?? null} alt={`Foto ${item.nama}`} isi inisial={inisialNama(item.nama)}
       className={styles.kartuFoto} />
     <div className={styles.kartuIsi}>
-      <p className={styles.wilayah}><MapPin size={14} aria-hidden="true" />{item.kabupaten_kota}</p>
+      <p className={styles.wilayah}><MapPin size={14} aria-hidden="true" />{[item.kecamatan, item.kabupaten_kota].filter(Boolean).join(', ')}</p>
       <h3 className={styles.kartuNama}>
         <Link href={`/umkm/katalog/${item.id}`} className={styles.tautanKartu}>{item.nama}</Link>
       </h3>

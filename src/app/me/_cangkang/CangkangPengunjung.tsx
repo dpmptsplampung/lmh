@@ -7,7 +7,9 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
-import { Bell, CalendarPlus, Globe, LayoutDashboard, LogOut, MessageSquare, X } from 'lucide-react';
+import {
+  Bell, CalendarPlus, FileSearch, Globe, LayoutDashboard, LogOut, MessageSquare, PackageSearch, Store, X,
+} from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { keluarDariSesi } from '@/lib/sesi-staf';
 import { cn } from '@/lib/utils';
@@ -27,8 +29,11 @@ import lokal from './cangkang.module.css';
 const IKON: Record<PengunjungIconKey, React.ReactNode> = {
   beranda: <LayoutDashboard size={18} strokeWidth={1.75} />,
   reservasi: <CalendarPlus size={18} strokeWidth={1.75} />,
+  usaha: <Store size={18} strokeWidth={1.75} />,
+  pemasok: <PackageSearch size={18} strokeWidth={1.75} />,
   notifikasi: <Bell size={18} strokeWidth={1.75} />,
   chat: <MessageSquare size={18} strokeWidth={1.75} />,
+  lacak: <FileSearch size={18} strokeWidth={1.75} />,
   situs: <Globe size={18} strokeWidth={1.75} />,
 };
 

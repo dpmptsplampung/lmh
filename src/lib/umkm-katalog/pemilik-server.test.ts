@@ -12,7 +12,7 @@ import { POST as cabut } from '@/app/api/admin/umkm-tugas/klaim/[id]/cabut/route
 import { GET as tahap } from '@/app/api/umkm-pemilik/tahap/route';
 const id = '660e8400-e29b-41d4-a716-446655440001';
 const fotoId = '660e8400-e29b-41d4-a716-446655440002';
-const data = { nama: 'Kopi', deskripsi: '', jenis: 'Produk', kategori: 'Pangan', kabupaten_kota: 'Lampung' };
+const data = { nama: 'Kopi', deskripsi: '', jenis: 'Produk', kategori: 'Makanan Olahan', kabupaten_kota: 'Kota Bandar Lampung' };
 let rpc: ReturnType<typeof vi.fn>;
 let masuk = true;
 const req = (body?: unknown) => new Request('https://lmh.example/api/test', body === undefined ? {} : {

@@ -1,6 +1,6 @@
 // Sumber menu cangkang pengunjung (/me/*). Terpisah dari admin-nav.ts agar AdminGuard dan akses staf tidak tersentuh.
 
-export type PengunjungIconKey = 'beranda' | 'reservasi' | 'notifikasi' | 'chat' | 'situs';
+export type PengunjungIconKey = 'beranda' | 'reservasi' | 'usaha' | 'pemasok' | 'notifikasi' | 'chat' | 'lacak' | 'situs';
 
 export interface PengunjungNavEntry {
   label: string;
@@ -15,8 +15,11 @@ export interface PengunjungNavEntry {
 export const PENGUNJUNG_NAV: readonly PengunjungNavEntry[] = [
   { label: 'Beranda saya', href: '/me', iconKey: 'beranda' },
   { label: 'Reservasi', href: '/me/reservasi', iconKey: 'reservasi' },
+  { label: 'Usaha saya', href: '/me/usaha', iconKey: 'usaha' },
+  { label: 'Cari pemasok', href: '/me/umkm', iconKey: 'pemasok' },
   { label: 'Notifikasi', href: '/me/notifications', iconKey: 'notifikasi', badgeKey: 'notifikasi' },
   { label: 'Chat', href: '/chat', iconKey: 'chat' },
+  { label: 'Lacak pengaduan', href: '/pengaduan/lacak', iconKey: 'lacak' },
   { label: 'Situs utama', href: '/', iconKey: 'situs', slot: 'bawah' },
 ];
 

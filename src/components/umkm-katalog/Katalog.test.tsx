@@ -9,7 +9,7 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 const id = '10000000-0000-4000-8000-000000000001';
 const card = {
   id, nama: 'Kopi Lampung', jenis: 'Produk', kategori: 'Minuman', spesifik: 'Kopi',
-  kabupaten_kota: 'Lampung Barat', deskripsi: 'Kopi hasil kebun setempat', foto: null,
+  kabupaten_kota: 'Lampung Barat', kecamatan: 'Sukau', deskripsi: 'Kopi hasil kebun setempat', foto: null,
   suka: 1299, dilihat: 1000, baru: true,
 };
 const ok = (data: unknown) => Promise.resolve(new Response(JSON.stringify({ data }), { status: 200 }));
@@ -35,6 +35,11 @@ describe('katalog publik', () => {
     expect(screen.getByText('1.000 Dilihat', { selector: '.sr-only' }).parentElement).toHaveTextContent('1 rb Dilihat');
     expect(screen.getByText('Baru')).toBeTruthy();
     expect(fetchMock.mock.calls.some(([url]) => url.includes('sort=terbaru'))).toBe(false);
+  });
+
+  it('kartu menampilkan kecamatan', async () => {
+    render(<main><Katalog /></main>);
+    expect(await screen.findByText('Sukau, Lampung Barat')).toBeTruthy();
   });
 
   it('mengulang pencarian dari awal ketika snapshot berubah dengan filter tetap', async () => {

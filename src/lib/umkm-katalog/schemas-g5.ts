@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { profilSchema, versiSchema } from './schemas';
-export const profilPemilikSchema = profilSchema.omit({ sumber: true, sumber_ref: true });
+import { periksaProfil, profilDasarSchema, versiSchema } from './schemas';
+export const profilPemilikSchema = profilDasarSchema.omit({ sumber: true, sumber_ref: true }).superRefine(periksaProfil);
 export const daftarUsahaSchema = z.object({ data: profilPemilikSchema, operasi_id: z.uuid() }).strict();
 export const drafPemilikSchema = versiSchema.extend({ id: z.uuid(), data: profilPemilikSchema });
 export const klaimSchema = z.object({ profil_id: z.uuid(), alasan: z.string().trim().min(1).max(240),

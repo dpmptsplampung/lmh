@@ -388,7 +388,7 @@
 .profilGrid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-areas: 'judul' 'galeri' 'aksi' 'tentang';
+  grid-template-areas: 'judul' 'galeri' 'aksi' 'tentang' 'produk';
   gap: var(--space-6);
 }
 .profilJudul { grid-area: judul; display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); }
@@ -443,6 +443,19 @@
 .tentang { grid-area: tentang; min-width: 0; display: flex; flex-direction: column; gap: var(--space-3); }
 .tentang h2 { font-size: var(--text-xl); }
 .deskripsi { white-space: pre-wrap; max-width: 68ch; font-size: var(--text-lg); line-height: 1.65; }
+.fakta { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.fakta li { padding: 4px var(--space-3); border-radius: var(--radius-sm); background: var(--color-neutral-100);
+  color: var(--text-primary); font-size: var(--text-sm); }
+.produk { grid-area: produk; min-width: 0; display: flex; flex-direction: column; gap: var(--space-3); }
+.produk h2 { font-size: var(--text-xl); }
+.produkDaftar { display: grid; gap: var(--space-4); margin: 0; padding: 0; list-style: none;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); }
+.produkItem { min-width: 0; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3);
+  border: 1px solid var(--border-default); border-radius: var(--radius-lg); background: var(--surface-elevated); }
+.produkItem h3 { font-size: var(--text-lg); margin: 0; overflow-wrap: anywhere; }
+.produkItem p { margin: 0; overflow-wrap: anywhere; }
+.produkFoto { aspect-ratio: 4 / 3; border-radius: var(--radius-lg); }
+.kapasitas { color: var(--text-secondary); font-size: var(--text-sm); }
 .sosial { display: flex; flex-wrap: wrap; gap: var(--space-2); padding-top: var(--space-2); }
 .halaman .sosial a {
   display: inline-flex;
@@ -538,8 +551,8 @@
   .saring { align-self: start; }
   .profilGrid {
     grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
-    grid-template-areas: 'judul judul' 'galeri aksi' 'tentang aksi';
-    grid-template-rows: auto auto 1fr;
+    grid-template-areas: 'judul judul' 'galeri aksi' 'tentang aksi' 'produk aksi';
+    grid-template-rows: auto auto auto 1fr;
     column-gap: var(--space-10);
   }
   .aksiPanel { position: sticky; top: 96px; padding: var(--space-6); }
