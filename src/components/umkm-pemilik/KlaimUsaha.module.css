@@ -1,0 +1,19 @@
+/* Baris klaim kecil di panel aksi profil katalog. */
+.baris {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-neutral-200);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+.tombol {
+  min-height: 44px;
+  padding-inline: var(--space-2);
+  color: var(--text-link);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

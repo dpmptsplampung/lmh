@@ -8,6 +8,7 @@ import Tombol from '@/components/ui/Tombol';
 import { PemilikError, hasilBelumPasti, kirimPemilik, pemilikRequest } from './api';
 import type { MutasiKlaim, StatusPemilik } from '@/lib/umkm-katalog/types-g5';
 import styles from './pemilik.module.css';
+import gaya from './KlaimUsaha.module.css';
 
 // Tombol hanya tampil bila tahap C aktif (route tahap menjawab berhasil). Galat apa pun berarti belum aktif.
 function useTahapC() {
@@ -52,7 +53,10 @@ function TombolKlaim({ profilId, profilNama }: { profilId: string; profilNama: s
   };
   const terhubung = selesai === 'disetujui';
   return <>
-    <Tombol varian="hantu" ukuran="kecil" onClick={() => setTerbuka(true)}>Ini usaha saya</Tombol>
+    <p className={gaya.baris}>
+      <span>Pemilik usaha ini?</span>
+      <Tombol varian="hantu" ukuran="kecil" className={gaya.tombol} onClick={() => setTerbuka(true)}>Ini usaha saya</Tombol>
+    </p>
     <Dialog terbuka={terbuka} onTutup={tutup} dikunci={busy}
       judul={!selesai ? 'Ini usaha saya' : terhubung ? 'Usaha terhubung' : 'Klaim diterima'}
       deskripsi={selesai ? undefined : `Jelaskan singkat mengapa Anda penanggung jawab ${profilNama}. `

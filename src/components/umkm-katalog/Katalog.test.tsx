@@ -57,15 +57,29 @@ describe('katalog publik', () => {
     expect(last).not.toContain('cursor=');
   });
 
+  it('chip kategori menerapkan filter kategori dan bisa dihapus dari daftar filter aktif', async () => {
+    render(<Katalog />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Minuman', pressed: false }));
+    await waitFor(() => expect(fetchMock.mock.calls.at(-1)?.[0]).toMatch(/kategori=Minuman/));
+    expect(screen.getByRole('button', { name: 'Minuman', pressed: true })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Hapus filter Kategori Minuman' }));
+    await waitFor(() => expect(fetchMock.mock.calls.at(-1)?.[0]).not.toMatch(/kategori=/));
+  });
+
   it('hasil kosong mempunyai jalan keluar dengan kata kunci terlampir', async () => {
     fetchMock.mockImplementation((url: string) => url.endsWith('/filter')
       ? ok({ jenis: [], kategori: [], kabupaten_kota: [], terpotong: false })
       : ok({ items: [], next_cursor: null }));
     render(<Katalog />);
-    await screen.findByText('Belum ada profil yang cocok');
+    // Katalog yang belum punya profil sama sekali punya keadaan sendiri: jalan ke petugas dan ajakan mendaftar.
+    await screen.findByText('Profil UMKM sedang disiapkan');
+    expect(screen.getByRole('link', { name: 'Daftarkan usaha' })).toHaveAttribute('href', '/me/usaha');
+    expect(screen.queryByLabelText('Jenis usaha')).toBeNull();
     fireEvent.change(screen.getByLabelText('Kata kunci'), { target: { value: 'pisang' } });
     fireEvent.click(screen.getByRole('button', { name: 'Cari UMKM' }));
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url.includes('q=pisang'))).toBe(true));
+    expect(await screen.findByText('Belum ada profil yang cocok')).toBeTruthy();
+    expect(screen.getByText(/Tidak ada profil untuk/)).toHaveTextContent('pisang');
     fireEvent.click(screen.getAllByRole('button', { name: 'Hubungi lewat petugas' })[0]);
     expect(await screen.findByRole('dialog')).toHaveTextContent('pisang');
     expect(screen.queryByRole('checkbox')).toBeNull();

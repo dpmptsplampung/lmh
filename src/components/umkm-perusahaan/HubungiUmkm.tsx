@@ -5,7 +5,7 @@ import Link from 'next/link';
 import Dialog from '@/components/ui/Dialog';
 import Field from '@/components/ui/Field';
 import Tombol from '@/components/ui/Tombol';
-import styles from '@/components/umkm-katalog/katalog.module.css';
+import styles from './HubungiUmkm.module.css';
 import type { FilterKatalog } from '@/lib/umkm-katalog/types';
 import { formatTanggal } from '@/lib/utils';
 import { KatalogError, ambil, kirim } from './api';
@@ -117,21 +117,22 @@ function DialogHubungi({ profilId, profilNama, perusahaan, onPerusahaan, onTutup
   }
   return <Dialog terbuka onTutup={onTutup} judul={judul} dikunci={sibuk}>
     {selesai ? <div className={styles.form}>
-      <p role="status">Permintaan diterima pada {selesai}. Petugas memeriksa sesuai urutan masuk.</p>
-      <p><Link href="/me/umkm">Lihat permintaan saya</Link></p>
-      <Tombol onClick={onTutup}>Selesai</Tombol>
+      <p role="status" className={styles.berhasil}>Permintaan diterima pada {selesai}. Petugas memeriksa sesuai
+        urutan masuk.</p>
+      <p><Link href="/me/umkm" className={styles.tautan}>Lihat permintaan saya</Link></p>
+      <div className={styles.aksi}><Tombol onClick={onTutup}>Selesai</Tombol></div>
     </div> : <form className={styles.form} onSubmit={(event) => { event.preventDefault(); void kirimPermintaan(); }}>
       <p className={styles.keterangan}>
-        Nomor pemilik usaha tidak ditampilkan. Bila disetujui petugas, nomor {profilNama} tampil di akun Anda.
+        Nomor pemilik usaha tidak tampil untuk umum. Bila disetujui petugas, nomor {profilNama} tampil di akun Anda.
       </p>
       {galat && <div role="alert" className={styles.galat}>{galat}</div>}
       {kebutuhan === null ? <p role="status">Memuat kebutuhan Anda...</p> : <fieldset disabled={sibuk}
         className={styles.form}>
-        <legend>Kebutuhan Anda</legend>
+        <legend className={styles.legenda}>Kebutuhan Anda</legend>
         {kebutuhan.length > 0 && <div className={styles.pilihan} role="radiogroup" aria-label="Pilih Kebutuhan">
           {kebutuhan.map((item) => <label key={item.id} className={styles.centang}>
             <input type="radio" name="kebutuhan" checked={pilihan === item.id} onChange={() => setPilihan(item.id)} />
-            <span>{item.teks} ({item.kategori})</span>
+            <span>{item.teks} <span className={styles.kategori}>{item.kategori}</span></span>
           </label>)}
           <label className={styles.centang}>
             <input type="radio" name="kebutuhan" checked={pilihan === BARU} onChange={() => setPilihan(BARU)} />
