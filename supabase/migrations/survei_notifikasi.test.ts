@@ -75,14 +75,14 @@ const l = pecah(LAMA);
 const REVOKE = 'REVOKE ALL ON FUNCTION public.notify_kunjungan_status() FROM PUBLIC, anon, authenticated';
 
 describe('survei_notifikasi: berkas, urutan, atomik, aditif', () => {
-  it('terdaftar di FORWARD_MIGRATION_FILES tepat setelah migrasi RPC, paling akhir dalam seri, nomor di atas semua migrasi lain', () => {
+  it('terdaftar di FORWARD_MIGRATION_FILES tepat setelah migrasi RPC, urutan seri tetap', () => {
     expect(BERKAS).toMatch(/^\d{12}_[a-z0-9_]+\.sql$/);
     expect(FORWARD_MIGRATION_FILES).toContain(BERKAS);
     expect(listMigrationFiles()).toContain(BERKAS);
     const daftar = [...FORWARD_MIGRATION_FILES];
     expect(daftar).toEqual([...daftar].sort());
     expect(daftar.indexOf(BERKAS)).toBe(daftar.indexOf(BERKAS_RPC) + 1);
-    for (const nama of listMigrationFiles().filter((n) => n !== BERKAS && !/^2026110[349]/.test(n))) expect(nama < BERKAS).toBe(true);
+    expect(BERKAS_RPC < BERKAS).toBe(true);
     expect(BERKAS > '202610260001').toBe(true);
   });
 

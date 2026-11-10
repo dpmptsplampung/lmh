@@ -14,6 +14,7 @@ import { POST as presign } from './presign/route';
 import { POST as konfirmasi } from './konfirmasi/route';
 const id = '660e8400-e29b-41d4-a716-446655440001';
 const other = '660e8400-e29b-41d4-a716-446655440002';
+const akun = '660e8400-e29b-41d4-a716-446655440003';
 let rpc: ReturnType<typeof vi.fn>;
 const req = (path: string, sign: boolean) => new Request('https://lmh.example/api/storage', {
   method: 'POST', body: JSON.stringify({ area: 'umkm-draf', path,
@@ -24,7 +25,7 @@ beforeEach(() => {
   rpc = vi.fn(async (_name, args) => args?.p_profil_id === id
     ? { data: { diizinkan: true }, error: null } : { data: null, error: { code: '42501' } });
   vi.mocked(createClient).mockResolvedValue({ auth: {
-    getUser: async () => ({ data: { user: { id } } }),
+    getUser: async () => ({ data: { user: { id: akun } } }),
   }, rpc, from: () => ({ select: () => ({ eq: () => ({
     maybeSingle: async () => ({ data: null, error: null }),
   }) }) }) } as unknown as Awaited<ReturnType<typeof createClient>>);
@@ -55,4 +56,14 @@ it('konfirmasi mengulang hak akun dan mengembalikan kunci privat tanpa URL publi
   expect(rpc).toHaveBeenCalledWith('umkm_akses_draf_pemilik', { p_profil_id: id });
   rpc.mockResolvedValue({ data: null, error: { code: '42501' } });
   expect((await konfirmasi(req(`${id}/foto.jpg`, false))).status).toBe(403);
+});
+
+it('folder akun sendiri diizinkan tanpa RPC profil', async () => {
+  const response = await presign(req(`${akun}/foto.jpg`, true));
+  expect(response.status).toBe(200);
+  expect((await response.json()).kunci).toMatch(new RegExp(`^umkm-draf/${akun}/[a-f0-9-]{36}\\.jpg$`));
+  const confirmed = await konfirmasi(req(`${akun}/foto.jpg`, false));
+  expect(confirmed.status).toBe(200);
+  expect(await confirmed.json()).toEqual({ kunci: `umkm-draf/${akun}/foto.jpg` });
+  expect(rpc).not.toHaveBeenCalled();
 });

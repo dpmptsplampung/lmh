@@ -2,6 +2,8 @@
 // Hak akses yang dulu ada di policy storage.objects Supabase kini dijaga route /api/storage/*.
 import type { Bucket } from './r2';
 
+export const AWALAN_AKUN = 'akun/';
+
 export type Area = 'investment-docs' | 'umkm-photos' | 'absensi-foto' | 'pengaduan-bukti' | 'umkm-legalitas' | 'chat-lampiran' | 'umkm-draf';
 export type PeranStaf = 'admin' | 'petugas' | 'front_office';
 

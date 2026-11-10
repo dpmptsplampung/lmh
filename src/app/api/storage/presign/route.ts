@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { bolehUnggahDraf } from '@/lib/umkm-katalog/akses-server';
 import { logServerEvent } from '@/lib/observability/logger';
-import { ATURAN_AREA, adalahArea, kunciObjek, profilDrafDariPath, type Area } from '@/lib/storage/area';
+import { AWALAN_AKUN, ATURAN_AREA, adalahArea, kunciObjek, profilDrafDariPath, type Area } from '@/lib/storage/area';
 import { presignPut, r2Tersedia, bucketTerpisah } from '@/lib/storage/r2';
 
 export const dynamic = 'force-dynamic';
@@ -53,7 +53,7 @@ async function proses(request: NextRequest) {
   let kunci: string;
   try {
     const ekstensi = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }[mime];
-    const profil = !staf ? profilDrafDariPath(path) : null;
+    const profil = !staf ? (path.startsWith(AWALAN_AKUN) ? user.id : profilDrafDariPath(path)) : null;
     const nama = `${profil ? `${profil}/` : ''}${randomUUID()}.${ekstensi}`;
     kunci = kunciObjek(area, area === 'umkm-draf' ? nama : path);
   } catch {

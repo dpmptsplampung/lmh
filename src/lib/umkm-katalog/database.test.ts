@@ -6,7 +6,7 @@ import type { Detail, Mutasi } from './types';
 
 let db: Awaited<ReturnType<typeof bukaDbPenuh>>;
 const uid = randomUUID(), staff = randomUUID();
-const data = { nama: 'Keripik Lampung', deskripsi: 'Olahan pangan', jenis: 'Produk', kategori: 'Pangan', kabupaten_kota: 'Lampung', sumber: 'kurasi' };
+const data = { nama: 'Keripik Lampung', deskripsi: 'Olahan pangan', jenis: 'Produk', kategori: 'Makanan Olahan', kabupaten_kota: 'Kota Bandar Lampung', sumber: 'kurasi' };
 async function rpc<T>(nama: string, args: string, params: unknown[]): Promise<T> {
   const r = await sebagai(db, 'authenticated', uid, `SELECT public.${nama}(${args}) AS j`, params);
   if (!r.ok) throw new Error(r.pesan);
@@ -169,7 +169,10 @@ describe('perilaku DB melalui RPC UMKM', () => {
     await putus(p);
   });
   it('nomor di label publik juga menghalangi penerbitan', async () => {
-    for (const field of ['jenis','kategori','spesifik','kabupaten_kota']) {
+    for (const field of ['jenis','kategori','kabupaten_kota']) {
+      await expect(simpan({...data,[field]:'Hubungi 081234567890'})).rejects.toThrow('INPUT_TIDAK_VALID');
+    }
+    for (const field of ['spesifik','kecamatan']) {
       const p = await simpan({...data,[field]:'Hubungi 081234567890'});
       await expect(putus(p)).rejects.toThrow('KONTAK_PUBLIK');
       await rpc<Mutasi>('umkm_putuskan_profil','$1::uuid,$2::integer,$3::uuid,$4::text,$5::text',[p.id,p.versi,randomUUID(),'ditolak','Perlu diperbaiki']);

@@ -7,8 +7,8 @@ let db: Awaited<ReturnType<typeof bukaDbPenuh>>;
 let profile: string;
 const owner = randomUUID(), other = randomUUID(), officer = randomUUID(), staff = randomUUID();
 const admin = randomUUID();
-const input = { nama: 'Kopi Pemilik', deskripsi: 'Kopi daerah', jenis: 'Produk', kategori: 'Pangan',
-  kabupaten_kota: 'Lampung', nomor: '081234567890' };
+const input = { nama: 'Kopi Pemilik', deskripsi: 'Kopi daerah', jenis: 'Produk', kategori: 'Makanan Olahan',
+  kabupaten_kota: 'Kota Bandar Lampung', nomor: '081234567890' };
 type Mutation = { id: string; versi: number; status: string; pemilik_id: string };
 async function call<T = Mutation>(uid: string | null, name: string, args = '', params: unknown[] = []): Promise<T> {
   const result = await sebagai(db, 'authenticated', uid, `SELECT public.${name}(${args}) AS j`, params);

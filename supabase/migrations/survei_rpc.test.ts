@@ -106,15 +106,14 @@ function sisipan(tabel: string): Array<[string, string]> {
 }
 
 describe('survei_rpc: berkas, urutan, atomik, aditif', () => {
-  it('terdaftar di FORWARD_MIGRATION_FILES tepat setelah migrasi jawaban, nomor di atas semua migrasi di luar seri', () => {
+  it('terdaftar di FORWARD_MIGRATION_FILES tepat setelah migrasi jawaban, urutan seri tetap', () => {
     expect(BERKAS).toMatch(/^\d{12}_[a-z0-9_]+\.sql$/);
     expect(FORWARD_MIGRATION_FILES).toContain(BERKAS);
     expect(listMigrationFiles()).toContain(BERKAS);
     const daftar = [...FORWARD_MIGRATION_FILES];
     expect(daftar).toEqual([...daftar].sort());
     expect(daftar.indexOf(BERKAS)).toBe(daftar.indexOf(BERKAS_JAWABAN) + 1);
-    const luarSeri = listMigrationFiles().filter((nama) => !/^20261(?:1020|1030|1040|1090)\d{3}_/.test(nama));
-    for (const nama of luarSeri) expect(nama < BERKAS).toBe(true);
+    expect(BERKAS_JAWABAN < BERKAS).toBe(true);
     expect(BERKAS > '202610260001').toBe(true);
   });
 

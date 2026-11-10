@@ -46,3 +46,25 @@ describe('presign area draf UMKM dengan JWT pengguna',()=>{
  });
  it('area legacy tetap boleh tanpa flag atau cek sesi tambahan',async()=>{flag=false;session=false;const res=await POST(req('umkm-photos'));expect(res.status).toBe(200);expect(rpc).not.toHaveBeenCalled();});
 });
+
+function akunBiasa(anonymous = false) {
+  const id = '11111111-1111-4111-8111-111111111111';
+  vi.mocked(createClient).mockResolvedValue({ auth: { getUser: async () => ({ data: { user: { id, is_anonymous: anonymous } } }) },
+    rpc: vi.fn(async () => ({ data: { diizinkan: false }, error: null })),
+    from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }),
+  } as unknown as Awaited<ReturnType<typeof createClient>>);
+  return id;
+}
+const reqAkun = () => new Request('http://localhost/api/storage/presign', { method: 'POST',
+  body: JSON.stringify({ area: 'umkm-draf', path: 'akun/foto.jpg', mime: 'image/jpeg', ukuran: 100 }) }) as NextRequest;
+it('akun biasa boleh presign ke akun/ dan mendapat folder ID akunnya', async () => {
+  const id = akunBiasa();
+  const response = await POST(reqAkun());
+  expect(response.status).toBe(200);
+  expect((await response.json()).kunci).toMatch(new RegExp(`^umkm-draf/${id}/[0-9a-f-]{36}\\.jpg$`));
+});
+it('akun anonim ditolak', async () => {
+  akunBiasa(true);
+  expect((await POST(reqAkun())).status).toBe(403);
+  expect(presignPut).not.toHaveBeenCalled();
+});
