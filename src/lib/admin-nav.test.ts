@@ -90,7 +90,6 @@ describe('canAccessAdminPath', () => {
     expect(canAccessAdminPath('front_office', '/admin/petugas/invite')).toBe(false);
     expect(canAccessAdminPath('front_office', '/admin/settings')).toBe(false);
     expect(canAccessAdminPath('front_office', '/admin/settings/landing')).toBe(false);
-    expect(canAccessAdminPath('front_office', '/admin/umkm')).toBe(false);
     expect(canAccessAdminPath('front_office', '/admin/gallery')).toBe(false);
     expect(canAccessAdminPath('front_office', '/admin/data-governance')).toBe(false);
     expect(canAccessAdminPath('front_office', '/admin/chat/ai-log')).toBe(false);
@@ -179,7 +178,7 @@ const ROLES_SEBELUM: Record<string, string[]> = {
   '/admin/petugas': [A], '/admin/profil': [A, P, F], '/admin/rekap': [A, P, F], '/admin/rekap-fo': [A, F],
   '/admin/riwayat': [A], '/admin/scan': [A, F], '/admin/settings': [A], '/admin/settings/ai': [A],
   '/admin/settings/jadwal': [A, P, F], '/admin/settings/landing': [A], '/admin/pesan-perilaku': [A, P, F], '/admin/pesan-perilaku/cetak': [A, F], '/admin/skm': [A, P, F], '/admin/saran': [A, F],
-  '/admin/topik': [A], '/admin/umkm': [A], '/admin/umkm-laporan': [A, P], '/admin/umkm-pengawasan': [A, F],
+  '/admin/topik': [A], '/admin/umkm-laporan': [A, P], '/admin/umkm-pengawasan': [A, F],
 };
 
 // Halaman lama yang digabung ke /admin/fo/registrasi: tersembunyi dari sidebar, tetap boleh dibuka.
@@ -214,7 +213,7 @@ describe('pengelompokan menu: data', () => {
     expect(anak('pesanPerilaku')).toEqual(['Hasil Survei', 'Saran', 'Pengaduan']);
     expect(anak('laporan')).toEqual(['Rekap', 'Laporan UMKM', 'Performa Pelayanan']);
     expect(anak('pengelolaan')).toEqual(['Jadwal Layanan', 'Kelola Layanan', 'Topik Penanganan', 'Kelola Layar']);
-    expect(anak('kemitraan')).toEqual(['Tugas UMKM', 'Pengawasan UMKM', 'UMKM', 'Lead Investasi', 'Investment Gallery']);
+    expect(anak('kemitraan')).toEqual(['Tugas UMKM', 'Pengawasan UMKM', 'Lead Investasi', 'Investment Gallery']);
     expect(anak('konten')).toEqual(['Dokumen Peraturan', 'Konten Landing']);
     expect(anak('sistem')).toEqual(['Kelola Petugas', 'Pengaturan', 'Pengaturan AI', 'Tata Kelola Data', 'Riwayat Perubahan']);
   });

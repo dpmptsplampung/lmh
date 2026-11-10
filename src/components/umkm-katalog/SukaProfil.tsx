@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Heart } from 'lucide-react';
 import Tombol from '@/components/ui/Tombol';
 import { KatalogError, katalogRequest } from './api';
+import styles from './publik.module.css';
 
 export default function SukaProfil({ id, onJumlah }: { id: string; onJumlah: (value: number) => void }) {
   const router = useRouter();
@@ -50,14 +52,14 @@ export default function SukaProfil({ id, onJumlah }: { id: string; onJumlah: (va
     } finally { setBusy(false); }
   };
 
-  return <div>
-    <Tombol varian="sekunder" aria-pressed={liked} memuat={busy}
+  return <div className={styles.suka}>
+    <Tombol varian="sekunder" ikon={Heart} className={liked ? styles.disukai : undefined} aria-pressed={liked} memuat={busy}
       disabled={status === 'memuat' || status === 'ditolak' || status === 'galat'} onClick={() => void send()}>
       {liked ? 'Batalkan suka' : 'Suka'}
     </Tombol>
-    {status === 'memuat' && <p role="status">Memuat status suka...</p>}
-    {message && <p role="status">{message}</p>}
-    {status === 'galat' && <Tombol varian="hantu" onClick={() => {
+    {status === 'memuat' && <p role="status" className={styles.catatan}>Memuat status suka...</p>}
+    {message && <p role="status" className={styles.catatan}>{message}</p>}
+    {status === 'galat' && <Tombol varian="hantu" ukuran="kecil" onClick={() => {
       setStatus('memuat'); setAttempt((value) => value + 1);
     }}>Coba muat status suka</Tombol>}
   </div>;

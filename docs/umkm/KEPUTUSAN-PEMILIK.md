@@ -1,6 +1,6 @@
 # Keputusan pemilik: fitur UMKM
 
-Sumber kebenaran P-01 sampai P-36 (nomor keputusan = nomor P). Bagian di bawah disalin apa adanya; bila ada teks yang bertentangan, keputusan bernomor lebih besar yang berlaku.
+Sumber kebenaran P-01 sampai P-37 (nomor keputusan = nomor P). Bagian di bawah disalin apa adanya; bila ada teks yang bertentangan, keputusan bernomor lebih besar yang berlaku.
 
 ## 3. Keputusan pemilik (sumber kebenaran; kutip di dokumen, jangan diubah)
 
@@ -48,6 +48,7 @@ Kanal WhatsApp (arahan pemilik, 2026-11-06). Keputusan 33 sampai 35 mengalahkan 
 
 Prinsip penyederhanaan (arahan pemilik, 2026-11-06). Mengalahkan semua aturan buatan tim dan angka usulan.
 36. Semuanya harus sederhana. Jangan terlalu banyak aturan dan batasan, agar tidak menyulitkan petugas dan pengguna lain. Akibat langsung: keputusan 22 (masa berlaku 14 hari) gugur karena menyetujui dan membuka nomor kini satu langkah; batas 30 akses per hari di keputusan 27 gugur. "Salinan sementara satu menit" di keputusan 27 berarti cache katalog, dan tetap ada karena membuat sistem ringan (keputusan 12). Yang tetap: nomor UMKM tidak publik, profil dan permintaan diperiksa petugas, izin UMKM, nomor dilihat di akun setelah login, pencatatan otomatis, FO baca saja.
+37. (2026-11-10) "setuju semua, umkm lama di hapus saja". Marketplace UMKM lama (`/umkm`, inbox, edit lewat tautan email, halaman admin "UMKM") dihapus dari aplikasi; keputusan 11 gugur. Alamat lama diarahkan ke katalog baru. Data lama di database tidak dihapus.
 
 ## 4. Permintaan baru: statistik, peringkat, rekomendasi
 

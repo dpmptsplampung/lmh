@@ -2,11 +2,12 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { CircleCheck, ShieldCheck } from 'lucide-react';
 import Dialog from '@/components/ui/Dialog';
 import Field from '@/components/ui/Field';
 import Tombol from '@/components/ui/Tombol';
 import { KatalogError, kirimFormulir } from './api';
-import styles from './katalog.module.css';
+import styles from './publik.module.css';
 import { ALASAN_LAPORAN } from './alasan';
 import { PencatatFormulir } from './PencatatStatistik';
 
@@ -71,30 +72,29 @@ export default function FormulirKatalog({ terbuka, jenis, konteks, onTutup, tele
     {terbuka && jenis === 'pesan' && konteks.profil_id && <PencatatFormulir
       key={konteks.profil_id} id={konteks.profil_id} aktif={telemetriAktif} />}
     {receipt ? <div className={styles.form}>
-      <p role="status">{jenis === 'pesan'
-        ? 'Pesan diterima. Petugas akan menghubungi Anda melalui kontak yang Anda isi.'
-        : 'Laporan diterima. Petugas akan memeriksanya.'}</p>
-      <Tombol onClick={close}>Selesai</Tombol>
+      <div role="status" className={styles.berhasil}>
+        <CircleCheck size={22} aria-hidden="true" />
+        <p>{jenis === 'pesan'
+          ? 'Pesan diterima. Petugas akan menghubungi Anda melalui kontak yang Anda isi.'
+          : 'Laporan diterima. Petugas akan memeriksanya.'}</p>
+      </div>
+      <div className={styles.aksiForm}><Tombol onClick={close}>Selesai</Tombol></div>
     </div> : <form className={styles.form} onSubmit={(event) => { event.preventDefault(); void submit(); }}>
-      <p className={styles.keterangan}>
-        {konteks.nama ? `Terkait profil: ${konteks.nama}. ` : ''}
+      <p className={styles.konteks}>
+        {konteks.nama ? <>Terkait profil: <strong>{konteks.nama}</strong>. </> : ''}
         {konteks.kata_kunci ? `Kata kunci terlampir: ${konteks.kata_kunci}. ` : ''}
         {konteks.foto_id ? 'Foto yang Anda pilih ikut terlampir.' : 'Konteks halaman ikut terkirim.'}
-      </p>
-      <p className={styles.pemberitahuan}>
-        {jenis === 'pesan' ? 'Data Anda dipakai petugas untuk membalas melalui WhatsApp pribadi.'
-          : 'Alasan dan catatan dipakai petugas untuk memeriksa laporan.'}{' '}
-        Data disimpan paling lama 180 hari setelah ditangani, atau sejak aktivitas terakhir bila belum ditangani.{' '}
-        <Link href="/kebijakan-privasi" target="_blank" rel="noopener noreferrer">Kebijakan Privasi</Link>.
       </p>
       {error && <div ref={errorRef} role="alert" tabIndex={-1} className={styles.galat}>{error}</div>}
       <fieldset disabled={busy} className={styles.form}>
         <legend className="sr-only">{jenis === 'pesan' ? 'Isian pesan' : 'Isian laporan'}</legend>
         {jenis === 'pesan' ? <>
-          <Field label="Nama Anda" wajib><input autoComplete="name" value={values.nama} maxLength={200} required
-            onChange={(event) => change('nama', event.target.value)} /></Field>
-          <Field label="Perusahaan" wajib><input autoComplete="organization" value={values.perusahaan}
-            maxLength={200} required onChange={(event) => change('perusahaan', event.target.value)} /></Field>
+          <div className={styles.duaKolom}>
+            <Field label="Nama Anda" wajib><input autoComplete="name" value={values.nama} maxLength={200} required
+              onChange={(event) => change('nama', event.target.value)} /></Field>
+            <Field label="Perusahaan" wajib><input autoComplete="organization" value={values.perusahaan}
+              maxLength={200} required onChange={(event) => change('perusahaan', event.target.value)} /></Field>
+          </div>
           <Field label="Nomor kontak" wajib bantuan="Gunakan nomor WhatsApp yang dapat dihubungi petugas.">
             <input type="tel" inputMode="tel" autoComplete="tel" value={values.nomor} minLength={8} maxLength={20}
               required onChange={(event) => change('nomor', event.target.value)} />
@@ -111,7 +111,16 @@ export default function FormulirKatalog({ terbuka, jenis, konteks, onTutup, tele
             onChange={(event) => change('catatan', event.target.value)} /></Field>
         </>}
       </fieldset>
-      <div className={styles.aksi}>
+      <p className={styles.pemberitahuan}>
+        <ShieldCheck size={16} aria-hidden="true" />
+        <span>
+          {jenis === 'pesan' ? 'Data Anda dipakai petugas untuk membalas melalui WhatsApp pribadi.'
+            : 'Alasan dan catatan dipakai petugas untuk memeriksa laporan.'}{' '}
+          Data disimpan paling lama 180 hari setelah ditangani, atau sejak aktivitas terakhir bila belum ditangani.{' '}
+          <Link href="/kebijakan-privasi" target="_blank" rel="noopener noreferrer">Kebijakan Privasi</Link>.
+        </span>
+      </p>
+      <div className={styles.aksiForm}>
         <Tombol type="submit" memuat={busy}>{jenis === 'pesan' ? 'Kirim pesan' : 'Kirim laporan'}</Tombol>
         <Tombol varian="hantu" onClick={close} disabled={busy}>Batal</Tombol>
       </div>
