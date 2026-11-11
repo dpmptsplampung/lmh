@@ -14,6 +14,7 @@ import { useRealtimeRefetch } from '@/lib/hooks/useRealtimeRefetch';
 import { badgeKeysForRole, type AdminBadgeKey } from '@/lib/admin-nav';
 import { muatStatusLayananChat } from '@/lib/chat/status-layanan';
 import { todayWIB } from '@/lib/time';
+import { objekBelumAda } from '@/lib/akses-data/galat';
 
 export interface NavBadge {
   count: number;
@@ -136,6 +137,74 @@ export async function hitungBadge(
   return hasil;
 }
 
+// ---- Jalur RPC tunggal (migrasi 202611110002 nav_lencana_saya) ----
+// Satu panggilan menggantikan sampai 8 query head-count. Predikat di SQL disalin dari hitungBadge() di atas dan
+// dibatasi RLS pemanggil (SECURITY INVOKER). Fungsi belum ada (migrasi belum diterapkan): ditandai SEKALI lalu
+// seluruh sesi memakai hitungBadge() lama. Galat lain / bentuk tak dikenal: jalur lama hanya untuk putaran itu.
+let rpcTidakAda = false;
+/** Hanya untuk test. */
+export function setelUlangDeteksiRpcBadge(): void {
+  rpcTidakAda = false;
+}
+
+interface HasilRpcLencana {
+  kotakMasukFo?: { semua?: number; kembali?: number };
+  liveChat?: number;
+  penangananFo?: number;
+  antrian?: number;
+  pengaduan?: number;
+  saran?: number;
+}
+
+function dariRpc(data: HasilRpcLencana, who: PenggunaBadge): NavBadges {
+  const hasil: NavBadges = {};
+  const diizinkan = badgeKeysForRole(who.role);
+  const set = (k: AdminBadgeKey, n: unknown, label: (n: number) => string) => {
+    if (typeof n !== 'number' || !diizinkan.includes(k)) return;
+    hasil[k] = { count: n, label: label(n) };
+  };
+  const kotak = data.kotakMasukFo;
+  if (kotak && typeof kotak.semua === 'number') {
+    const n = kotak.semua;
+    const d = kotak.kembali ?? 0;
+    set('kotakMasukFo', n, () =>
+      d > 0 ? `${n} menunggu diambil, ${Math.min(d, n)} dikembalikan petugas layanan` : `${n} menunggu diambil`,
+    );
+  }
+  set('liveChat', data.liveChat, (c) => `${c} chat menunggu diambil`);
+  set('penangananFo', data.penangananFo, (c) => `${c} penanganan masih berjalan`);
+  set('antrian', data.antrian, (c) =>
+    who.role === 'petugas' ? `${c} tiket menunggu atau dipanggil hari ini` : `${c} tiket menunggu hari ini`,
+  );
+  set('pengaduan', data.pengaduan, (c) => `${c} pengaduan baru belum ditangani`);
+  set('saran', data.saran, (c) => `${c} saran belum ditinjau`);
+  return hasil;
+}
+
+/** Coba satu RPC; jatuh ke hitungBadge() bila fungsi belum ada atau jawabannya tidak dapat dipakai. */
+export async function muatBadge(
+  supabase: SupabaseClient,
+  who: PenggunaBadge,
+  opsi: { tanggal: string; hariTanpaLayanan: boolean },
+): Promise<NavBadges> {
+  if (!rpcTidakAda) {
+    try {
+      const { data, error } = await supabase.rpc('nav_lencana_saya', {
+        p_tanggal: opsi.tanggal,
+        p_hari_tanpa_layanan: opsi.hariTanpaLayanan,
+      });
+      if (error) {
+        if (objekBelumAda(error)) rpcTidakAda = true;
+      } else if (data && typeof data === 'object' && !Array.isArray(data)) {
+        return dariRpc(data as HasilRpcLencana, who);
+      }
+    } catch {
+      /* jalur lama */
+    }
+  }
+  return hitungBadge(supabase, who, opsi);
+}
+
 /** Jumlah seluruh badge (untuk judul tab). */
 export function totalBadge(badges: NavBadges): number {
   return Object.values(badges).reduce((a, b) => a + (b?.count ?? 0), 0);
@@ -184,7 +253,7 @@ export function useNavBadges(who: PenggunaBadge | null): NavBadges {
               : false;
           hariRef.current = { tanggal, libur };
         }
-        const baru = await hitungBadge(supabase, w, { tanggal, hariTanpaLayanan: !!hariRef.current?.libur });
+        const baru = await muatBadge(supabase, w, { tanggal, hariTanpaLayanan: !!hariRef.current?.libur });
         if (hidup.current && mine === seq.current && whoRef.current?.role === w.role) {
           // Saran gagal dihitung: hapus badge, termasuk dari jumlah judul tab.
           // Badge lain mempertahankan perilaku lama saat kueri gagal.

@@ -133,6 +133,8 @@ Review Opus G1: 1.4 (kebocoran timer, balapan status), 1.6 (otorisasi tetap sebe
 
 ## G2. Sisi database
 
+**Keputusan PM 2026-11-11 berdasarkan `hasil-sebelum.md`:** 2.1 (rekap satu lintasan) DITUNDA: RPC rekap hanya 4-17 ms hangat pada 720 kunjungan, penghematannya tidak sebanding risiko mengganti fungsi RLS-sensitif. 2.4 dan 2.5 DITUNDA: tidak ada bukti EXPLAIN yang menunjuk performa/indeks rekap. 2.2 (lencana navigasi, memangkas round-trip) dan 2.3 (indeks UMKM; 9.999 profil > ambang 2.000) DIKERJAKAN.
+
 Semua tugas `[DB]`: tambahkan skenario di `scripts/lokal-rantai/` (PGlite) bila fungsi bisa dijalankan di sana; worker TIDAK menerapkan migrasi.
 
 **2.1 [DB] Rekap satu lintasan (sonnet menulis, Opus mereview SQL)**

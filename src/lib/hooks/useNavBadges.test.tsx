@@ -21,7 +21,7 @@ vi.mock('@/lib/chat/status-layanan', () => ({
   muatStatusLayananChat: vi.fn(async () => ({ hariTanpaLayanan: !!infoHari.alasan })),
 }));
 
-import { hitungBadge, segarkanBadge, totalBadge, useJudulTabBadge, useNavBadges } from './useNavBadges';
+import { hitungBadge, muatBadge, segarkanBadge, setelUlangDeteksiRpcBadge, totalBadge, useJudulTabBadge, useNavBadges } from './useNavBadges';
 
 const ok = (count: number): HasilFake => ({ data: null, error: null, count });
 const galat: HasilFake = { data: null, error: { message: 'boom' } };
@@ -33,6 +33,7 @@ function setVisibility(v: 'visible' | 'hidden') {
 beforeEach(() => {
   Object.assign(h, buatH());
   infoHari.alasan = null;
+  setelUlangDeteksiRpcBadge();
   removeChannel.mockClear();
   setVisibility('visible');
 });
@@ -304,5 +305,51 @@ describe('useJudulTabBadge', () => {
     rerender({ n: 2 });
     unmount();
     expect(document.title).toBe('Kunjungan | Admin LMH');
+  });
+});
+
+describe('muatBadge (satu RPC nav_lencana_saya)', () => {
+  const opsi = { tanggal: '2026-10-14', hariTanpaLayanan: false };
+  const sb = () => buatFakeSupabase(h) as never;
+  const rpcFo = {
+    kotakMasukFo: { semua: 3, kembali: 1 }, liveChat: 2, penangananFo: 1, antrian: 5, pengaduan: 6, saran: 7,
+  };
+
+  it('memakai satu panggilan RPC tanpa query tabel; label sama dengan jalur lama', async () => {
+    h.rpc = () => ({ data: rpcFo, error: null });
+    const r = await muatBadge(sb(), FO, opsi);
+    expect(h.rpcLog).toEqual([{ nama: 'nav_lencana_saya', args: { p_tanggal: '2026-10-14', p_hari_tanpa_layanan: false } }]);
+    expect(h.log).toHaveLength(0);
+    expect(r.kotakMasukFo).toEqual({ count: 3, label: '3 menunggu diambil, 1 dikembalikan petugas layanan' });
+    expect(r.liveChat).toEqual({ count: 2, label: '2 chat menunggu diambil' });
+    expect(r.antrian).toEqual({ count: 5, label: '5 tiket menunggu hari ini' });
+    expect(r.saran).toEqual({ count: 7, label: '7 saran belum ditinjau' });
+  });
+
+  it('petugas: label antrian khusus dan hariTanpaLayanan diteruskan', async () => {
+    h.rpc = () => ({ data: { liveChat: 0, antrian: 4 }, error: null });
+    const r = await muatBadge(sb(), PETUGAS, { ...opsi, hariTanpaLayanan: true });
+    expect(h.rpcLog[0].args.p_hari_tanpa_layanan).toBe(true);
+    expect(r.antrian?.label).toBe('4 tiket menunggu atau dipanggil hari ini');
+    expect(Object.keys(r).sort()).toEqual(['antrian', 'liveChat']);
+  });
+
+  it('fungsi belum ada (PGRST202): jatuh ke 8 query lama dan tidak mencoba RPC lagi', async () => {
+    pasangJawaban();
+    h.rpc = () => ({ data: null, error: { code: 'PGRST202', message: 'tidak ada' } });
+    const r = await muatBadge(sb(), FO, opsi);
+    expect(r.antrian?.count).toBe(5);
+    expect(h.log.length).toBeGreaterThan(0);
+    await muatBadge(sb(), FO, opsi);
+    expect(h.rpcLog).toHaveLength(1);
+  });
+
+  it('galat RPC lain: jalur lama untuk putaran itu saja, RPC dicoba lagi berikutnya', async () => {
+    pasangJawaban();
+    h.rpc = () => ({ data: null, error: { code: 'XX000', message: 'boom' } });
+    const r = await muatBadge(sb(), ADMIN, opsi);
+    expect(r.saran?.count).toBe(7);
+    await muatBadge(sb(), ADMIN, opsi);
+    expect(h.rpcLog).toHaveLength(2);
   });
 });
