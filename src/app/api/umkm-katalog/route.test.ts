@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const { rpc, cache, tersimpan, revalidateTag } = vi.hoisted(() => ({
   rpc: vi.fn(), cache: vi.fn(), tersimpan: new Map<string, unknown>(), revalidateTag: vi.fn(),
 }));
+const { tertunda } = vi.hoisted(() => ({ tertunda: [] as Array<() => Promise<void> | void> }));
+vi.mock('next/server', () => ({ after: (fn: () => Promise<void> | void) => { tertunda.push(fn); } }));
 vi.mock('@/lib/umkm-katalog/statistik-server', () => ({ catatTanpaHasil: vi.fn() }));
 vi.mock('@supabase/supabase-js', () => ({ createClient: () => ({ rpc }) }));
 vi.mock('next/cache', () => ({
@@ -17,7 +19,7 @@ vi.mock('next/cache', () => ({
 import { GET } from './route';
 import { catatTanpaHasil } from '@/lib/umkm-katalog/statistik-server';
 beforeEach(() => {
-  vi.clearAllMocks(); tersimpan.clear();
+  vi.clearAllMocks(); tersimpan.clear(); tertunda.length = 0;
   revalidateTag.mockImplementation(() => tersimpan.clear());
   rpc.mockResolvedValue({ data: { items: [], next_cursor: null }, error: null });
 });
@@ -26,19 +28,46 @@ describe('katalog publik melalui RPC anon', () => {
     const first = new Request('https://lmh.example/api/umkm-katalog?kategori=Pangan');
     expect((await GET(first)).status).toBe(200);
     expect(rpc).toHaveBeenLastCalledWith('umkm_cari_katalog', expect.objectContaining({ p_sort: 'paling_sesuai' }));
+    expect(catatTanpaHasil).not.toHaveBeenCalled(); // belum jalan: respons dikembalikan lebih dulu
+    for (const fn of tertunda.splice(0)) await fn();
     expect(catatTanpaHasil).toHaveBeenCalledWith(first, 'Pangan', null);
     vi.mocked(catatTanpaHasil).mockClear();
     await GET(new Request(`https://lmh.example/api/umkm-katalog?cursor=${btoa('{}')}.${'a'.repeat(64)}`));
+    for (const fn of tertunda.splice(0)) await fn();
     expect(catatTanpaHasil).not.toHaveBeenCalled();
     expect((await GET(new Request('https://lmh.example/api/umkm-katalog?sort=terbaru'))).status).toBe(400);
   });
   it('kartu awal tanpa filter memakai cache', async () => {
     const r = await GET(new Request('https://lmh.example/api/umkm-katalog'));
     expect(r.status).toBe(200);
-    expect(r.headers.get('Cache-Control')).toContain('no-store');
+    expect(r.headers.get('Cache-Control')).toContain('no-store'); // kosong -> privat
     expect(cache).toHaveBeenCalledTimes(1);
   });
-  it.each(['q=keripik', 'jenis=Produk', 'kategori=Pangan', 'spesifik=Kopi', 'kabupaten_kota=Lampung',
+  it('galat statistik ditelan', async () => {
+    vi.mocked(catatTanpaHasil).mockRejectedValueOnce(new Error('gagal'));
+    expect((await GET(new Request('https://lmh.example/api/umkm-katalog'))).status).toBe(200);
+    await expect(tertunda[0]()).resolves.toBeUndefined();
+  });
+  it('jenis/kategori/kabupaten memakai jalur cache dengan header publik bila ada data', async () => {
+    rpc.mockResolvedValue({ data: { items: [{ id: 'a' }], next_cursor: null }, error: null });
+    for (const query of ['jenis=Produk', 'kategori=Pangan', 'kabupaten_kota=Lampung', 'jenis=Jasa&kategori=Kemasan']) {
+      cache.mockClear();
+      const r = await GET(new Request(`https://lmh.example/api/umkm-katalog?${query}`));
+      expect(cache).toHaveBeenCalledTimes(1);
+      expect(r.headers.get('Cache-Control')).toBe('public, s-maxage=60');
+    }
+  });
+  it('tanpa data atau tanpa cache tetap privat; galat selalu privat', async () => {
+    const kosong = await GET(new Request('https://lmh.example/api/umkm-katalog?jenis=Produk'));
+    expect(kosong.headers.get('Cache-Control')).toContain('no-store');
+    rpc.mockResolvedValue({ data: { items: [{ id: 'a' }], next_cursor: null }, error: null });
+    const q = await GET(new Request('https://lmh.example/api/umkm-katalog?q=kopi'));
+    expect(q.headers.get('Cache-Control')).toContain('no-store');
+    expect(q.headers.get('Cache-Control')).not.toContain('public');
+    const bad = await GET(new Request('https://lmh.example/api/umkm-katalog?sort=terbaru'));
+    expect(bad.headers.get('Cache-Control')).toContain('no-store');
+  });
+  it.each(['q=keripik', 'spesifik=Kopi',
     `cursor=${btoa('{}')}.${'a'.repeat(64)}`])('parameter %s membaca DB tanpa cache', async query => {
     const r = await GET(new Request(`https://lmh.example/api/umkm-katalog?${query}`));
     expect(r.status).toBe(200);

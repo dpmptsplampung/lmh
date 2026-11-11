@@ -7,6 +7,7 @@ import { awalHariBerikutnyaWIB, awalHariWIB } from '@/lib/rekap/format';
 import { hitungPerforma, type BarisPerforma } from '@/lib/rekap/performa';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 const KOLOM = 'id, kunjungan_id, peran_tahap, layanan_id, penangan_id, status, hasil, mulai_at, selesai_at, created_at';
 

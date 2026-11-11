@@ -5,6 +5,7 @@ import { getObjectBytes } from '@/lib/storage/r2';
 import { z } from 'zod';
 import crypto from 'node:crypto';
 import sharp from 'sharp';
+export const maxDuration = 30;
 
 const querySchema = z.object({
   doc_id: z.string().uuid(),

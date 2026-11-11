@@ -5,7 +5,7 @@ import { renderHook, act, cleanup } from '@testing-library/react';
 vi.mock('@/lib/supabase/client', () => ({ createClient: vi.fn() }));
 
 import { createClient } from '@/lib/supabase/client';
-import { usePanggilanLayar, DURASI_PITA_MS, POLL_PANGGILAN_MS, MAKS_ANTRE } from './usePanggilanLayar';
+import { usePanggilanLayar, DURASI_PITA_MS, POLL_PANGGILAN_MS, POLL_PANGGILAN_TERSAMBUNG_MS, MAKS_ANTRE } from './usePanggilanLayar';
 
 type Baris = { id: string; layanan_id: string; nomor_display: string; label: string | null; dibuat_at: string };
 const p = (id: string, nomor: string, detik: number, layanan = 'l1'): Baris => ({
@@ -16,12 +16,13 @@ const p = (id: string, nomor: string, detik: number, layanan = 'l1'): Baris => (
 let tabel: Baris[] = [];
 let galat = false;
 let picuInsert: (() => void) | null = null;
+let statusChannel: ((s: string) => void) | null = null;
 const log: Array<{ gte?: string; urutan?: boolean; batas?: number; kolom?: string }> = [];
 
 function pasang() {
   const channelApi = {
     on: vi.fn((_t: string, _f: unknown, cb: () => void) => { picuInsert = cb; return channelApi; }),
-    subscribe: vi.fn(() => channelApi),
+    subscribe: vi.fn((cb?: (s: string) => void) => { statusChannel = cb ?? null; return channelApi; }),
   };
   (createClient as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
     from: vi.fn((nama: string) => {
@@ -51,12 +52,54 @@ function pasang() {
 const maju = async (ms: number) => { await act(async () => { await vi.advanceTimersByTimeAsync(ms); }); };
 
 describe('usePanggilanLayar', () => {
-  beforeEach(() => { vi.useFakeTimers(); tabel = []; galat = false; picuInsert = null; log.length = 0; pasang(); });
+  beforeEach(() => { vi.useFakeTimers(); tabel = []; galat = false; picuInsert = null; statusChannel = null; log.length = 0; pasang(); });
   afterEach(() => { cleanup(); vi.useRealTimers(); });
 
-  it('konstanta: pita 5 dtk, polling 5 dtk', () => {
+  it('konstanta: pita 5 dtk, polling 5 dtk (putus) dan 20 dtk (tersambung)', () => {
     expect(DURASI_PITA_MS).toBe(5000);
     expect(POLL_PANGGILAN_MS).toBe(5000);
+    expect(POLL_PANGGILAN_TERSAMBUNG_MS).toBe(20_000);
+  });
+
+  it('tersambung: polling 20 dtk', async () => {
+    renderHook(() => usePanggilanLayar({ aktif: true }));
+    await maju(0);
+    act(() => statusChannel?.('SUBSCRIBED'));
+    expect(log).toHaveLength(1);
+    await maju(POLL_PANGGILAN_TERSAMBUNG_MS - 1);
+    expect(log).toHaveLength(1);
+    await maju(1);
+    expect(log).toHaveLength(2);
+  });
+
+  it('putus lagi: kembali ke polling 5 dtk; sambung ulang memicu satu muat pengejar', async () => {
+    renderHook(() => usePanggilanLayar({ aktif: true }));
+    await maju(0);
+    act(() => statusChannel?.('SUBSCRIBED'));
+    act(() => statusChannel?.('CHANNEL_ERROR'));
+    await maju(POLL_PANGGILAN_MS);
+    expect(log).toHaveLength(2);
+    act(() => statusChannel?.('SUBSCRIBED'));
+    await maju(200);
+    expect(log).toHaveLength(3);
+  });
+
+  it('INSERT saat tersambung tampil seketika tanpa menunggu polling 20 dtk', async () => {
+    const { result } = renderHook(() => usePanggilanLayar({ aktif: true }));
+    await maju(0);
+    act(() => statusChannel?.('SUBSCRIBED'));
+    tabel = [p('a', 'OS-014', 10)];
+    await act(async () => { picuInsert?.(); });
+    await maju(500);
+    expect(result.current.saatIni?.id).toBe('a');
+  });
+
+  it('unmount membersihkan timer; status terlambat diabaikan', async () => {
+    const { unmount } = renderHook(() => usePanggilanLayar({ aktif: true }));
+    await maju(0);
+    unmount();
+    act(() => statusChannel?.('SUBSCRIBED'));
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it('riwayat panggilan hari ini TIDAK diumumkan saat layar baru dibuka', async () => {

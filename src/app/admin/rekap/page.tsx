@@ -27,7 +27,7 @@ import Pagination from '@/components/Pagination';
 import { useToast } from '@/components/Toast';
 import { addDaysWIB, todayWIB } from '@/lib/time';
 import { formatMenit, formatTanggalId } from '@/lib/rekap/format';
-import { DEFINISI_DILAYANI } from '@/lib/rekap/excelTerpadu';
+import { DEFINISI_DILAYANI } from '@/lib/rekap/definisi';
 import { kolomKhusus } from '@/lib/rekap/khusus';
 import type { FieldKhusus } from '@/lib/pendataan-khusus/jenis';
 import {
@@ -121,6 +121,8 @@ function RekapTerpadu() {
   // Tampilan kolom Data Pelayanan: null = bawaan (Ringkas; tab Helpdesk OSS / Non OSS langsung Semua kolom agar kolom formulirnya tampil).
   const [tampilanPilihan, setTampilan] = useState<TampilanKolom | null>(null);
   const permintaanTerakhir = useRef(0);
+  // Total + ringkasan per kunci filter (semua parameter kecuali page): pindah halaman cukup mengirim hemat=1.
+  const hitungTersimpan = useRef<{ kunci: string; total: number; dilayani: Dilayani | null } | null>(null);
 
   // Tab Helpdesk OSS / Non OSS ada bila lingkup pengguna memuat Layanan berformulir itu (admin dan Koordinator FO:
   // semua; Petugas: Layanannya). Alamat ?bagian=oss tanpa Layanan seperti itu jatuh ke Data Pelayanan.
@@ -166,6 +168,7 @@ function RekapTerpadu() {
 
   // Data lama dibuang bila permintaan gagal: tabel/kartu tidak boleh menampilkan hasil filter sebelumnya di bawah filter baru.
   const buangData = useCallback((b: Bagian) => {
+    hitungTersimpan.current = null;
     setDilayani(null);
     if (b === 'harian') setHarian(null);
     else if (b === 'kinerja') setKinerja(null);
@@ -202,6 +205,9 @@ function RekapTerpadu() {
         p.set('page', String(halaman));
         p.set('page_size', String(UKURAN_HALAMAN));
       }
+      const kunci = `${bagian}?${params}`;
+      const tersimpan = hitungTersimpan.current?.kunci === kunci ? hitungTersimpan.current : null;
+      if (tersimpan && (bagian === 'data' || adalahBagianForm(bagian))) p.set('hemat', '1');
       const r = await ambilJson(`/api/admin/rekap/terpadu?${p}`);
       if (nomor !== permintaanTerakhir.current) return;
       if (!r.ok) {
@@ -209,8 +215,16 @@ function RekapTerpadu() {
         return tanganiGagal(r);
       }
       setStatus({ jenis: 'siap' });
-      setDilayani(ambilDilayani(r.body));
-      if (bagian === 'harian') setHarian(r.body as unknown as { rows: BarisHarian[]; ringkasan: RingkasanHarian });
+      const hemat = r.body.total == null && tersimpan != null && (bagian === 'data' || adalahBagianForm(bagian));
+      if (hemat) {
+        setDilayani(tersimpan.dilayani);
+      } else {
+        const dilayaniBaru = ambilDilayani(r.body);
+        setDilayani(dilayaniBaru);
+        hitungTersimpan.current = typeof r.body.total === 'number' ? { kunci, total: r.body.total, dilayani: dilayaniBaru } : null;
+      }
+      if (hemat) setData({ ...(r.body as unknown as { rows: BarisPelayanan[]; form_type: FormPendataan | null; kolom_khusus?: FieldKhusus[] }), total: tersimpan.total });
+      else if (bagian === 'harian') setHarian(r.body as unknown as { rows: BarisHarian[]; ringkasan: RingkasanHarian });
       else if (bagian === 'kinerja') setKinerja((r.body.rows ?? []) as BarisKinerja[]);
       else setData(r.body as unknown as { rows: BarisPelayanan[]; total: number; form_type: FormPendataan | null; kolom_khusus?: FieldKhusus[] });
     } catch {

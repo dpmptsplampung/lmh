@@ -1,6 +1,7 @@
 // Excel Data Pelayanan (rekap terpadu, Fase 3). Kolom = kolomDataPelayanan() sehingga tabel dan berkas selalu sama.
 // Sel teks dinetralkan dari formula injection; kolom No HP berformat teks agar nol di depan tidak hilang.
-import ExcelJS from 'exceljs';
+import type ExcelJS from 'exceljs';
+import { DEFINISI_DILAYANI } from './definisi';
 import type { BarisPelayanan, KolomData, NilaiSel } from './terpadu';
 
 export interface MetaEkspor {
@@ -11,8 +12,7 @@ export interface MetaEkspor {
   truncated: boolean;
 }
 
-export const DEFINISI_DILAYANI =
-  'Dilayani = tahap pelayanan berstatus selesai (tahap Layanan yang dikembalikan ke Front Office tidak dihitung); tanggal = tanggal kunjungan (WIB); pelayanan batal atau draf tidak dihitung.';
+export { DEFINISI_DILAYANI };
 
 /** Teks yang diawali = + - @ tab/CR diberi apostrof agar tidak dieksekusi sebagai rumus. */
 export function selAman(v: NilaiSel): string | number {
@@ -26,7 +26,8 @@ export async function buildDataPelayananWorkbook(
   kolom: KolomData[],
   meta: MetaEkspor,
 ): Promise<ExcelJS.Buffer> {
-  const wb = new ExcelJS.Workbook();
+  const { default: Excel } = await import('exceljs'); // dimuat saat dipakai, bukan di top-level
+  const wb = new Excel.Workbook();
   wb.creator = 'DPMPTSP Lampung';
   wb.created = new Date();
 

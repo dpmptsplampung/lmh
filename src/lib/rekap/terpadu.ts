@@ -86,10 +86,14 @@ const dasarQuery = {
   tanpa_form: z.literal('1').optional(),
 };
 
+// Hanya untuk bagian 'data' (route data, bukan ekspor): '1' = lewati ringkasan dan hitung total (klien sudah memegang nilainya).
+const hematQuery = { hemat: z.literal('1').optional() };
+
 export const rekapTerpaduQuerySchema = z
   .object({
     bagian: z.enum(['lingkup', 'harian', 'data', 'kinerja']),
     ...dasarQuery,
+    ...hematQuery,
     // Batas atas agar page * page_size (p_lewati, integer di DB) tidak meluap: 10.000 x 200 = 2 juta baris.
     page: z.coerce.number().int().min(0).max(10_000).default(0),
     page_size: z.coerce.number().int().min(1).max(200).default(50),

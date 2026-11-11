@@ -12,6 +12,7 @@ import { muatFieldKhusus, muatJawabanKhusus } from '@/lib/rekap/khususServer';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+export const maxDuration = 60;
 
 const LABEL = 'api/admin/rekap/terpadu/export';
 

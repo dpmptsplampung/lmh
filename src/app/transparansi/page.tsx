@@ -8,7 +8,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import IkmPanel from '@/components/IkmPanel';
+import { IkmPanelMalas as IkmPanel } from '@/components/ui/grafik/dinamis';
 import type { IkmRow } from '@/lib/ikm';
 import styles from './transparansi.module.css';
 

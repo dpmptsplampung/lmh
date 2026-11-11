@@ -3,6 +3,7 @@
 import Field from '@/components/ui/Field';
 
 import Tombol from '@/components/ui/Tombol';
+import DialogKonfirmasi from '@/components/ui/DialogKonfirmasi';
 import Tabel from '@/components/ui/Tabel';
 import Kartu from '@/components/ui/Kartu';
 import KartuStatistik from '@/components/ui/KartuStatistik';
@@ -124,8 +125,11 @@ export default function AdminDokumenPage() {
     }
   };
 
+  const [cabutId, setCabutId] = useState<{ id: string } | null>(null);
+  const [mencabut, setMencabut] = useState(false);
+
   const handleCabut = async (docId: string) => {
-    if (!confirm('Tandai dokumen ini sebagai dicabut? Bot tidak akan mengutipnya lagi.')) return;
+    setMencabut(true);
     const supabase = createClient();
     try {
       // Audit T2c: tanpa pemeriksaan, jaringan putus / RLS menolak (0 baris) tetap berujung toast sukses
@@ -139,6 +143,8 @@ export default function AdminDokumenPage() {
     }
     // Dimuat ulang di jalur sukses DAN gagal agar tampilan selalu sama dengan keadaan server.
     await loadDocs();
+    setMencabut(false);
+    setCabutId(null);
   };
 
   const jenisLabel: Record<string, string> = {
@@ -153,6 +159,16 @@ export default function AdminDokumenPage() {
 
   return (
     <>
+      <DialogKonfirmasi
+        terbuka={!!cabutId}
+        judul="Tandai dokumen ini sebagai dicabut?"
+        deskripsi="Bot tidak akan mengutipnya lagi."
+        labelSetuju="Ya, cabut"
+        berbahaya
+        memuat={mencabut}
+        onSetuju={() => { if (cabutId) void handleCabut(cabutId.id); }}
+        onBatal={() => { if (!mencabut) setCabutId(null); }}
+      />
       <PageHeader meta="Tanggal ditampilkan dalam WIB" title='Dokumen Peraturan' description='Kelola dokumen sumber untuk bot RAG (BOT-01..10)'>
         <Tombol varian="hantu" ukuran="kecil" type="button" onClick={loadDocs}>
           <RefreshCw size={16} className={loading ? 'animate-spin' : ''} /> Refresh
@@ -271,7 +287,7 @@ export default function AdminDokumenPage() {
                             varian="hantu" ukuran="kecil" className={["", tampilan.area22].filter(Boolean).join('')}
                             title='Cabut dokumen'
 
-                            onClick={() => handleCabut(doc.id)}>
+                            onClick={() => setCabutId({ id: doc.id })}>
                             <Trash2 size={14} />
                           </Tombol>
                         )}

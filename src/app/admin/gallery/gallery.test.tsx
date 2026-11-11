@@ -156,7 +156,6 @@ describe('Admin gallery PDF pipeline', () => {
       return {};
     });
 
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
       status: 200,
@@ -171,6 +170,8 @@ describe('Admin gallery PDF pipeline', () => {
 
     const deleteBtn = screen.getByTitle('Hapus');
     fireEvent.click(deleteBtn);
+    expect(globalThis.fetch).not.toHaveBeenCalledWith(expect.stringContaining('/api/investment-docs/doc-del-1'), expect.anything());
+    fireEvent.click(await screen.findByRole('button', { name: 'Ya, hapus' }));
 
     await waitFor(() => {
       expect(globalThis.fetch).toHaveBeenCalledWith(

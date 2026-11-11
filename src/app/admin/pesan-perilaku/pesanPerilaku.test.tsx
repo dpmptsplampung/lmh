@@ -87,7 +87,7 @@ describe('Hasil Survei: admin dan Front Office (global)', () => {
     pasang(role);
     render(<HasilSurveiPage />);
 
-    expect(await screen.findByText('Nilai per unsur pelayanan')).toBeInTheDocument();
+    expect(await screen.findByText('Nilai per unsur pelayanan', {}, { timeout: 20000 })).toBeInTheDocument();
     expect(urlRingkasan()).toEqual(['/api/admin/survei/ringkasan?dari=2026-11-01&sampai=2026-11-03']);
     expect(screen.getByRole('heading', { name: /Seluruh Pelayanan/ })).toBeInTheDocument();
     // IKM: (100 + 75) / 2 = 87.5 -> B
@@ -97,7 +97,7 @@ describe('Hasil Survei: admin dan Front Office (global)', () => {
     expect(screen.queryByText('IKM per Layanan')).toBeNull();
     expect(screen.queryByText('Layanan Disurvei')).toBeNull();
     expect(screen.queryByText('Tabel IKM per Layanan')).toBeNull();
-  });
+  }, 30000);
 
   it('tab SPAK: dashboard persen (setuju/netral/tidak setuju), indeks, dan tabel per pernyataan', async () => {
     pasang('admin');

@@ -3,6 +3,7 @@
 import Field from '@/components/ui/Field';
 
 import Tombol from '@/components/ui/Tombol';
+import DialogKonfirmasi from '@/components/ui/DialogKonfirmasi';
 import Tabel from '@/components/ui/Tabel';
 import Dialog from '@/components/ui/Dialog';
 import Kartu from '@/components/ui/Kartu';
@@ -126,8 +127,11 @@ export default function AdminGalleryPage() {
     }
   };
 
-  const handleDelete = async (id: string, judul: string) => {
-    if (!confirm(`Hapus dokumen "${judul}"? Tindakan ini tidak dapat dibatalkan.`)) return;
+  const [hapusDok, setHapusDok] = useState<{ id: string; judul: string } | null>(null);
+  const [menghapusDok, setMenghapusDok] = useState(false);
+
+  const handleDelete = async (id: string) => {
+    setMenghapusDok(true);
     try {
       const res = await fetch(`/api/investment-docs/${id}`, { method: 'DELETE' });
       if (!res.ok) {
@@ -138,6 +142,9 @@ export default function AdminGalleryPage() {
       toast('Dokumen berhasil dihapus.', 'success');
     } catch {
       toast('Gagal menghapus dokumen.', 'error');
+    } finally {
+      setMenghapusDok(false);
+      setHapusDok(null);
     }
   };
 
@@ -335,6 +342,16 @@ export default function AdminGalleryPage() {
 
   return (
     <>
+      <DialogKonfirmasi
+        terbuka={!!hapusDok}
+        judul={hapusDok ? `Hapus dokumen "${hapusDok.judul}"?` : ''}
+        deskripsi="Tindakan ini tidak dapat dibatalkan."
+        labelSetuju="Ya, hapus"
+        berbahaya
+        memuat={menghapusDok}
+        onSetuju={() => { if (hapusDok) void handleDelete(hapusDok.id); }}
+        onBatal={() => { if (!menghapusDok) setHapusDok(null); }}
+      />
       <PageHeader
         title="Investment Gallery"
         description="Kelola dokumen galeri investasi — upload metadata, atur urutan tampil">
@@ -424,7 +441,7 @@ export default function AdminGalleryPage() {
                           varian="hantu" ukuran="kecil" className={["", tampilan.area21].filter(Boolean).join('')}
                           title="Hapus"
 
-                          onClick={() => handleDelete(doc.id, doc.judul)}>
+                          onClick={() => setHapusDok({ id: doc.id, judul: doc.judul })}>
                           <Trash2 size={14} />
                         </Tombol>
                       </div></>) }

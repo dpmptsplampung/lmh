@@ -113,10 +113,11 @@ describe('Admin Layar: token 8 angka', () => {
 
   it('token lama tetap bisa dicabut lewat API', async () => {
     const m = pasang();
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     render(<AdminLayarPage />);
     await screen.findByText('4820 5917');
     fireEvent.click(screen.getByRole('button', { name: /cabut layar lama/i }));
+    expect(m.fetchMock).not.toHaveBeenCalledWith('/api/admin/layar', expect.objectContaining({ body: JSON.stringify({ aksi: 'cabut', id: 't2' }) }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Ya, cabut' }));
     await waitFor(() =>
       expect(m.fetchMock).toHaveBeenCalledWith('/api/admin/layar', expect.objectContaining({ body: JSON.stringify({ aksi: 'cabut', id: 't2' }) })),
     );

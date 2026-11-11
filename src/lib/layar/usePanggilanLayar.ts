@@ -14,7 +14,8 @@ import { addDaysWIB, todayWIB, toWIBDateString } from '@/lib/time';
 //  - Galat membaca panggilan tidak mengganggu layar (diam-diam, coba lagi pada polling berikutnya).
 
 export const DURASI_PITA_MS = 5_000;
-export const POLL_PANGGILAN_MS = 5_000;
+export const POLL_PANGGILAN_MS = 5_000; // cadangan saat channel belum SUBSCRIBED
+export const POLL_PANGGILAN_TERSAMBUNG_MS = 20_000; // saat channel SUBSCRIBED (peristiwa Realtime tetap seketika)
 export const MAKS_ANTRE = 5;
 const KOLOM = 'id,layanan_id,nomor_display,label,dibuat_at';
 const BATAS_BARIS = 20;
@@ -84,6 +85,13 @@ export function usePanggilanLayar({ aktif }: { aktif: boolean }): {
     const terlihat = new Set<string>();
     let timerPoll: ReturnType<typeof setTimeout> | null = null;
     let timerPicu: ReturnType<typeof setTimeout> | null = null;
+    let tersambung = false;
+
+    const jadwalkanPoll = () => {
+      if (timerPoll) clearTimeout(timerPoll);
+      timerPoll = setTimeout(() => { void muat(); },
+        tersambung ? POLL_PANGGILAN_TERSAMBUNG_MS : POLL_PANGGILAN_MS);
+    };
 
     const catat = (b: PanggilanLayar) => {
       terlihat.add(b.id);
@@ -148,10 +156,7 @@ export function usePanggilanLayar({ aktif }: { aktif: boolean }): {
       } finally {
         berjalan = false;
       }
-      if (!batal) {
-        if (timerPoll) clearTimeout(timerPoll);
-        timerPoll = setTimeout(() => { void muat(); }, POLL_PANGGILAN_MS);
-      }
+      if (!batal) jadwalkanPoll();
     };
 
     const picu = () => {
@@ -163,10 +168,24 @@ export function usePanggilanLayar({ aktif }: { aktif: boolean }): {
     let channel: ReturnType<ReturnType<typeof createClient>['channel']> | null = null;
     try {
       supabase = createClient();
+      let pernahTersambung = false;
       channel = supabase
         .channel('layar:panggilan')
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'panggilan_layar' }, picu)
-        .subscribe();
+        .subscribe((status: string) => {
+          if (batal) return;
+          const ok = status === 'SUBSCRIBED';
+          if (ok === tersambung) return;
+          tersambung = ok;
+          if (ok) {
+            // Sambung ulang setelah putus: kejadian yang terlewat dikejar satu muat ulang.
+            if (pernahTersambung) picu();
+            pernahTersambung = true;
+          }
+          // Jeda mengikuti status; jangan menyentuh jadwal bila muat sedang berjalan
+          // (muat menjadwalkan sendiri) atau belum pernah dijadwalkan.
+          if (!berjalan && timerPoll) jadwalkanPoll();
+        });
     } catch {
       channel = null;
     }

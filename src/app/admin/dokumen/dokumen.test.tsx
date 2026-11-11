@@ -99,7 +99,6 @@ beforeEach(() => {
   h.toast.mockClear();
   h.calls.length = 0;
   h.state = h.defaults();
-  vi.stubGlobal('confirm', vi.fn(() => true));
 });
 afterEach(() => {
   cleanup();
@@ -119,6 +118,7 @@ describe('admin dokumen: handleCabut mengecek hasil mutasi (T2c)', () => {
     h.state.updateResult = { data: [], error: null };
     const tombol = await siap();
     fireEvent.click(tombol);
+    fireEvent.click(await screen.findByRole('button', { name: 'Ya, cabut' }));
 
     await waitFor(() =>
       expect(h.toast).toHaveBeenCalledWith(expect.stringMatching(/tidak berwenang/i), 'error'),
@@ -132,6 +132,7 @@ describe('admin dokumen: handleCabut mengecek hasil mutasi (T2c)', () => {
     h.state.updateResult = { data: null, error: ERR_JARINGAN, status: 0 };
     const tombol = await siap();
     fireEvent.click(tombol);
+    fireEvent.click(await screen.findByRole('button', { name: 'Ya, cabut' }));
 
     await waitFor(() =>
       expect(h.toast).toHaveBeenCalledWith(expect.stringMatching(/Koneksi bermasalah/i), 'error'),
@@ -144,6 +145,7 @@ describe('admin dokumen: handleCabut mengecek hasil mutasi (T2c)', () => {
     h.state.updateResult = { data: null, error: ERR_RLS };
     const tombol = await siap();
     fireEvent.click(tombol);
+    fireEvent.click(await screen.findByRole('button', { name: 'Ya, cabut' }));
 
     await waitFor(() =>
       expect(h.toast).toHaveBeenCalledWith(expect.stringMatching(/tidak berwenang/i), 'error'),
@@ -155,6 +157,7 @@ describe('admin dokumen: handleCabut mengecek hasil mutasi (T2c)', () => {
   it('sukses: update status dicabut pada id yang benar, toast sukses setelah terbukti, daftar dimuat ulang', async () => {
     const tombol = await siap();
     fireEvent.click(tombol);
+    fireEvent.click(await screen.findByRole('button', { name: 'Ya, cabut' }));
 
     await waitFor(() => expect(h.toast).toHaveBeenCalledWith('Dokumen ditandai dicabut', 'success'));
     const [upd] = panggilan('update');
@@ -167,6 +170,7 @@ describe('admin dokumen: handleCabut mengecek hasil mutasi (T2c)', () => {
   it('query update menyertakan .select (tanpa itu mutasiWajibBaris selalu melempar); mock setia pada supabase-js', async () => {
     const tombol = await siap();
     fireEvent.click(tombol);
+    fireEvent.click(await screen.findByRole('button', { name: 'Ya, cabut' }));
     await waitFor(() => expect(h.toast).toHaveBeenCalledWith('Dokumen ditandai dicabut', 'success'));
     expect(panggilan('update').map((c) => c.selected)).toEqual([true]);
 
@@ -178,9 +182,10 @@ describe('admin dokumen: handleCabut mengecek hasil mutasi (T2c)', () => {
   });
 
   it('batal pada konfirmasi: tidak ada update, tidak ada toast', async () => {
-    vi.stubGlobal('confirm', vi.fn(() => false));
     const tombol = await siap();
     fireEvent.click(tombol);
+    fireEvent.click(await screen.findByRole('button', { name: 'Batal' }));
+    expect(screen.queryByRole('alertdialog')).toBeNull();
 
     expect(panggilan('update')).toHaveLength(0);
     expect(h.toast).not.toHaveBeenCalled();

@@ -8,7 +8,7 @@ vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn() }));
 type Hasil = { data: unknown; error: unknown };
 const lingkup = { petugas_id: 'fo1', role: 'front_office', koordinator: false, layanan_id: null };
 function pasang(ringkasan: Hasil, role = 'front_office') {
-  const rpc = vi.fn(async (nama: string) => {
+  const rpc = vi.fn(async (nama: string, _args?: Record<string, unknown>) => {
     if (nama === 'lingkup_data_saya') return { data: { ...lingkup, role }, error: null };
     if (nama === 'rekap_ringkasan_dilayani') return ringkasan;
     return { data: { rows: [], total: 0, ringkasan: {} }, error: null };
@@ -61,5 +61,31 @@ describe('ringkasan dilayani pada API rekap', () => {
     pasang({ data, error: null });
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
     try { expect((await get('bagian=harian')).status).toBe(500); } finally { spy.mockRestore(); }
+  });
+  it('hemat=1 melewati RPC ringkasan, mengirim p_hitung false, total dan ringkasan null', async () => {
+    const rpc = pasang({ data: { saya: 1, total: 2, persen: 50 }, error: null }, 'admin');
+    const body = await (await get('bagian=data&hemat=1')).json();
+    expect(rpc.mock.calls.map((c) => c[0])).not.toContain('rekap_ringkasan_dilayani');
+    const panggilData = rpc.mock.calls.find((c) => c[0] === 'rekap_data_pelayanan');
+    expect(panggilData?.[1]).toMatchObject({ p_hitung: false });
+    expect(body.total).toBeNull();
+    expect(body.ringkasan).toBeNull();
+  });
+  it('tanpa hemat: p_hitung true dan total angka', async () => {
+    const rpc = pasang({ data: { saya: 1, total: 2, persen: 50 }, error: null }, 'admin');
+    const body = await (await get('bagian=data')).json();
+    expect(rpc.mock.calls.find((c) => c[0] === 'rekap_data_pelayanan')?.[1]).toMatchObject({ p_hitung: true });
+    expect(body.total).toBe(0);
+    expect(body).not.toHaveProperty('ringkasan');
+  });
+  it('hemat tidak melewati lingkup: peran terlarang tetap 403', async () => {
+    pasang({ data: null, error: null });
+    const rpc = vi.fn(async (nama: string) => nama === 'lingkup_data_saya'
+      ? { data: null, error: { code: '42501', message: 'FORBIDDEN: hanya staf aktif' } } : { data: null, error: null });
+    vi.mocked(createClient).mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'u1' } } }) }, rpc,
+    } as unknown as Awaited<ReturnType<typeof createClient>>);
+    expect((await get('bagian=data&hemat=1')).status).toBe(403);
+    expect(rpc.mock.calls.map((c) => c[0])).toEqual(['lingkup_data_saya']);
   });
 });

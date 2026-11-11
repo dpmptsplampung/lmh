@@ -504,4 +504,32 @@ describe('/admin/rekap: ringkasan "dilayani saya / total" (akses FO, migrasi 202
     render(<AdminRekapPage />);
     expect(await screen.findByRole('cell', { name: 'Rina FO' })).toBeInTheDocument();
   });
+
+  it('pindah halaman memakai hemat=1 dan total tetap tampil; ganti filter memuat penuh', async () => {
+    params.nilai = new URLSearchParams('bagian=data');
+    const baris = (nama: string) => ({ pelayanan_id: nama, tanggal: '2026-10-20', unit: 'fo', kanal: 'tatap_muka', pengunjung_nama: nama, hasil: 'selesai' });
+    mockFetch.mockImplementation((url: string) => {
+      const u = new URL(url, 'http://x');
+      const bagian = u.searchParams.get('bagian');
+      if (bagian === 'lingkup') return json({ ...LINGKUP, unit_opsi: ['fo', 'layanan'], opsi_layanan: [] });
+      const hemat = u.searchParams.get('hemat') === '1';
+      return json({
+        total: hemat ? null : 120, form_type: null,
+        rows: [baris(u.searchParams.get('page') === '1' ? 'Budi' : 'Andi')],
+        dilayani: hemat ? null : { saya: 1, total: 120, persen: 1 },
+      });
+    });
+    render(<AdminRekapPage />);
+    await screen.findByText('Andi');
+    expect(screen.getByText(/120 pelayanan/)).toBeInTheDocument();
+    const urlData = () => mockFetch.mock.calls.map((c) => new URL(String(c[0]), 'http://x').searchParams).filter((q) => q.get('bagian') === 'data');
+    expect(urlData()[0].get('hemat')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Halaman berikutnya' }));
+    await screen.findByText('Budi');
+    expect(urlData().at(-1)!.get('hemat')).toBe('1');
+    expect(screen.getByText(/120 pelayanan/)).toBeInTheDocument();
+    gantiRentang('30 hari terakhir');
+    await waitFor(() => expect(urlData().length).toBeGreaterThan(2));
+    expect(urlData().at(-1)!.get('hemat')).toBeNull();
+  });
 });

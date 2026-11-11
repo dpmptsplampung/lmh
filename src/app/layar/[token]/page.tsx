@@ -42,6 +42,10 @@ import styles from './layar-token.module.css';
 /** Pengumuman dibaca ulang berkala agar perubahan dari halaman Layar admin sampai ke TV tanpa muat ulang. */
 const SEGARKAN_PENGUMUMAN_MS = 5 * 60_000;
 
+/** Hanya kolom yang dibaca layar (tanpa `select('*')`). Tiga kolom terakhir baru ada setelah migrasi layar TV. */
+const KOLOM_DASAR = 'layanan_id,layanan_nama,antre_count,dilayani_count,nomor_display_dilayani';
+const KOLOM_LAYAR = `${KOLOM_DASAR},nama_layar,nama_tampil,urutan_layar`;
+
 interface LoketStatus {
   layanan_id: string;
   layanan_nama: string;
@@ -131,10 +135,13 @@ export default function LayarTokenPage({
 
   const ambil = useCallback(async () => {
     const supabase = createClient();
-    const [hasil, status] = await Promise.all([
-      supabase.from('v_layar_antrian').select('*'),
-      ambilStatusBuka(supabase),
-    ]);
+    const baca = (kolom: string) => supabase.from('v_layar_antrian').select(kolom);
+    const [hasilLengkap, status] = await Promise.all([baca(KOLOM_LAYAR), ambilStatusBuka(supabase)]);
+    // Migrasi layar TV belum diterapkan: kolom nama/urutan belum ada (42703), ulangi dengan kolom dasar.
+    // Galat lain (jaringan, izin) TIDAK memicu kueri kedua; biarkan backoff useAntreanFeed menanganinya.
+    const kolomBelumAda =
+      hasilLengkap.error?.code === '42703' || /column .* does not exist/i.test(hasilLengkap.error?.message ?? '');
+    const hasil = kolomBelumAda ? await baca(KOLOM_DASAR) : hasilLengkap;
     const semua = hasil.data as LoketStatus[] | null;
     if (semua) setJadwalDiketahui(status !== null);
     return { data: semua ? urutkanLayar(saringBerjadwalHariIni(semua, status)) : null, error: hasil.error };

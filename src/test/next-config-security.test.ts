@@ -21,8 +21,10 @@ describe('Next security headers', () => {
     expect(headers['Content-Security-Policy-Report-Only']).toBeUndefined();
     expect(csp).toContain("connect-src 'self' https://project-ref.supabase.co wss://project-ref.supabase.co");
     expect(csp).toContain("img-src 'self' data: blob: https://project-ref.supabase.co https:");
-    expect(csp).toContain("style-src 'self' 'unsafe-inline' https://fonts.googleapis.com");
-    expect(csp).toContain("font-src 'self' data: https://fonts.gstatic.com");
+    expect(csp).toContain("style-src 'self' 'unsafe-inline'");
+    expect(csp).toContain("font-src 'self' data:");
+    expect(csp).not.toContain('fonts.googleapis.com');
+    expect(csp).not.toContain('fonts.gstatic.com');
     expect(csp).toContain("worker-src 'self' blob:");
     expect(csp).toContain("frame-ancestors 'none'");
     expect(csp).not.toContain('*');

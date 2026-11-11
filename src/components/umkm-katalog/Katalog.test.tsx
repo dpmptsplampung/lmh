@@ -16,7 +16,7 @@ const ok = (data: unknown) => Promise.resolve(new Response(JSON.stringify({ data
 let fetchMock: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   fetchMock = vi.fn((url: string) => url.endsWith('/filter')
-    ? ok({ jenis: ['Produk'], kategori: ['Minuman'], kabupaten_kota: ['Lampung Barat'], terpotong: false })
+    ? ok({ jenis: ['Produk', 'Jasa'], kategori: ['Minuman Olahan', 'Kemasan', 'Percetakan, Sablon & Desain'], kabupaten_kota: ['Lampung Barat'], terpotong: false })
     : ok({ items: [card], next_cursor: null }));
   vi.stubGlobal('fetch', fetchMock);
 });
@@ -30,7 +30,6 @@ describe('katalog publik', () => {
     expect(await screen.findByRole('link', { name: card.nama })).toHaveAttribute('href', `/umkm/katalog/${id}`);
     expect(screen.queryByRole('button', { name: /^Laporkan$/ })).toBeNull();
     expect(screen.getByLabelText('Kata kunci')).toBeTruthy();
-    expect(screen.getByLabelText('Jenis usaha')).toBeTruthy();
     expect(screen.getByText('1.299 Suka', { selector: '.sr-only' }).parentElement).toHaveTextContent('1,2 rb Suka');
     expect(screen.getByText('1.000 Dilihat', { selector: '.sr-only' }).parentElement).toHaveTextContent('1 rb Dilihat');
     expect(screen.getByText('Baru')).toBeTruthy();
@@ -62,13 +61,49 @@ describe('katalog publik', () => {
     expect(last).not.toContain('cursor=');
   });
 
-  it('chip kategori menerapkan filter kategori dan bisa dihapus dari daftar filter aktif', async () => {
+  it('awalnya hanya chip jenis; kategori muncul setelah jenis dipilih dan hilang bila Semua jenis', async () => {
     render(<Katalog />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Minuman', pressed: false }));
+    await screen.findByRole('link', { name: card.nama });
+    expect(screen.getByRole('button', { name: 'Produksi' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Semua kategori' })).toBeNull();
+    expect(screen.queryByLabelText('Jenis usaha', { selector: 'select' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Produksi' }));
+    await waitFor(() => expect(fetchMock.mock.calls.at(-1)?.[0]).toMatch(/jenis=Produk/));
+    expect(screen.getByRole('button', { name: 'Minuman Olahan' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Kemasan' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Percetakan, Sablon & Desain' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Semua jenis' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Semua kategori' })).toBeNull());
+  });
+
+  it('ganti jenis mengosongkan kategori dan spesifik dengan satu permintaan baru', async () => {
+    render(<Katalog />);
+    await screen.findByRole('link', { name: card.nama });
+    fireEvent.click(screen.getByRole('button', { name: 'Produksi' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Minuman Olahan', pressed: false }));
     await waitFor(() => expect(fetchMock.mock.calls.at(-1)?.[0]).toMatch(/kategori=Minuman/));
-    expect(screen.getByRole('button', { name: 'Minuman', pressed: true })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Hapus filter Kategori Minuman' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Jasa' }));
+    await waitFor(() => expect(fetchMock.mock.calls.at(-1)?.[0]).toMatch(/jenis=Jasa/));
+    expect(fetchMock.mock.calls.at(-1)?.[0]).not.toContain('kategori=');
+    expect(screen.getByRole('button', { name: 'Percetakan, Sablon & Desain' })).toBeTruthy();
+  });
+
+  it('chip kategori bisa dihapus dari daftar filter aktif', async () => {
+    render(<Katalog />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Produksi' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Kemasan', pressed: false }));
+    await waitFor(() => expect(fetchMock.mock.calls.at(-1)?.[0]).toMatch(/kategori=Kemasan/));
+    fireEvent.click(screen.getByRole('button', { name: 'Hapus filter Kategori Kemasan' }));
     await waitFor(() => expect(fetchMock.mock.calls.at(-1)?.[0]).not.toMatch(/kategori=/));
+  });
+
+  it('jenis tanpa irisan kategori menampilkan catatan', async () => {
+    fetchMock.mockImplementation((url: string) => url.endsWith('/filter')
+      ? ok({ jenis: ['Jasa'], kategori: ['Kemasan'], kabupaten_kota: [], terpotong: false })
+      : ok({ items: [card], next_cursor: null }));
+    render(<Katalog />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Jasa' }));
+    expect(await screen.findByText('Belum ada kategori untuk jenis ini.')).toBeTruthy();
   });
 
   it('hasil kosong mempunyai jalan keluar dengan kata kunci terlampir', async () => {
@@ -79,7 +114,7 @@ describe('katalog publik', () => {
     // Katalog yang belum punya profil sama sekali punya keadaan sendiri: jalan ke petugas dan ajakan mendaftar.
     await screen.findByText('Profil UMKM sedang disiapkan');
     expect(screen.getByRole('link', { name: 'Daftarkan usaha' })).toHaveAttribute('href', '/me/usaha');
-    expect(screen.queryByLabelText('Jenis usaha')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Semua jenis' })).toBeNull();
     fireEvent.change(screen.getByLabelText('Kata kunci'), { target: { value: 'pisang' } });
     fireEvent.click(screen.getByRole('button', { name: 'Cari UMKM' }));
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url.includes('q=pisang'))).toBe(true));
@@ -111,7 +146,7 @@ describe('katalog publik', () => {
     render(<Katalog />);
     fireEvent.click(await screen.findByRole('button', { name: 'Halaman berikutnya' }));
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url.includes('cursor=opaque-page'))).toBe(true));
-    fireEvent.change(screen.getByLabelText('Jenis usaha'), { target: { value: 'Produk' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Produksi' }));
     await waitFor(() => expect(fetchMock.mock.calls.at(-1)?.[0]).toMatch(/jenis=Produk/));
     expect(fetchMock.mock.calls.at(-1)?.[0]).not.toContain('cursor=');
   });

@@ -10,6 +10,7 @@ Kontrak: `.tim/desain-baru/SISTEM-DESAIN.md` §3.2 dan §3.3. Semua komponen mem
 | `Tombol` | `varian`, `ukuran`, `ikon?`, `memuat?`, `href?` (tautan). `memuat` = aria-busy + aria-disabled (fokus tidak hilang), teks dan lebar tetap |
 | `Tabel<T>` | `kolom`, `baris`, `kunciBaris`, `caption` (wajib), `kosong?`, `memuat?`, `padat?`, `kartuDiHp?` (A14). Kolom: `angka`, `judulBaris`, `peran: 'utama'｜'aksi'`, `sembunyiDiHp` |
 | `Dialog`, `PanelSamping` | `terbuka`, `onTutup`, `judul`, `deskripsi?`, `kaki?`, `dikunci?`, `tutupDenganLatar?`; fokus lewat `useDialogFokus`; tanpa portal |
+| `DialogKonfirmasi` | pengganti `window.confirm`: `terbuka`, `judul`, `deskripsi?`, `labelSetuju?`, `labelBatal?`, `berbahaya?`, `memuat?`, `onSetuju`, `onBatal`. `role="alertdialog"`, fokus awal di Batal, Esc = `onBatal`, terkunci saat `memuat`. Pola pakai: state `{ id } \| null` -> `terbuka={!!state}` |
 | `Field` | `label`, `bantuan?`, `galat?`, `wajib?`; anak = satu input/select/textarea (atau fungsi) |
 | `Tab` + `PanelTab` | `<Tab id label tab aktif onGanti />` dan `<PanelTab idTab={id} kunci aktif>` |
 | `MenuTitikTiga` | `item[]` (`onPilih` atau `href`), `label?` untuk nama tombol |

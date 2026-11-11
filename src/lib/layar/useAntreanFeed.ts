@@ -9,7 +9,7 @@ import { backoffMs, denganBatas, BATAS_WAKTU_MS } from './koneksi';
 // - Jalur utama: siaran realtime `antrean:publik` (payload tiket_id, layanan_id, nomor_display, status).
 //   Satu aksi bisa menghasilkan dua siaran identik → muat ulang di-debounce (trailing) agar tidak
 //   flicker / dobel fetch.
-// - Cadangan: polling berkala.
+// - Cadangan: polling berkala; 15 dtk saat channel belum SUBSCRIBED, 30 dtk saat tersambung.
 // - Gangguan (error/jaringan/timeout) TIDAK menghapus data terakhir: `data` tetap, `reconnecting`
 //   menjadi true, dan coba-ulang memakai backoff eksponensial (maks ~30 dtk) sampai pulih sendiri.
 
@@ -24,7 +24,10 @@ export interface OpsiUmpan<T> {
   ambil: () => Promise<HasilAmbil<T>>;
   /** Dipanggil tiap pemuatan sukses; `sebelumnya` null pada pemuatan pertama. */
   saatData?: (sebelumnya: T[] | null, berikutnya: T[]) => void;
+  /** Jeda polling cadangan saat channel belum SUBSCRIBED (default 15 dtk). */
   pollMs?: number;
+  /** Jeda polling saat channel SUBSCRIBED (default 30 dtk); siaran Realtime tetap memicu muat seketika. */
+  pollTersambungMs?: number;
   debounceMs?: number;
   batasWaktuMs?: number;
 }
@@ -38,7 +41,7 @@ export interface KeadaanUmpan<T> {
 }
 
 export function useAntreanFeed<T>(opsi: OpsiUmpan<T>): KeadaanUmpan<T> {
-  const { aktif, pollMs = 15_000, debounceMs = 300, batasWaktuMs = BATAS_WAKTU_MS } = opsi;
+  const { aktif, pollMs = 15_000, pollTersambungMs = 30_000, debounceMs = 300, batasWaktuMs = BATAS_WAKTU_MS } = opsi;
   const [data, setData] = useState<T[]>([]);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [reconnecting, setReconnecting] = useState(false);
@@ -61,6 +64,7 @@ export function useAntreanFeed<T>(opsi: OpsiUmpan<T>): KeadaanUmpan<T> {
     let sebelumnya: T[] | null = null;
     let timerJadwal: ReturnType<typeof setTimeout> | null = null;
     let timerDebounce: ReturnType<typeof setTimeout> | null = null;
+    let tersambung = false;
 
     const jadwalkan = (ms: number) => {
       if (timerJadwal) clearTimeout(timerJadwal);
@@ -94,7 +98,7 @@ export function useAntreanFeed<T>(opsi: OpsiUmpan<T>): KeadaanUmpan<T> {
         setReconnecting(false);
         const segera = perluUlang;
         perluUlang = false;
-        jadwalkan(segera ? 0 : pollMs);
+        jadwalkan(segera ? 0 : tersambung ? pollTersambungMs : pollMs);
       } else {
         gagalBeruntun += 1;
         perluUlang = false;
@@ -118,7 +122,16 @@ export function useAntreanFeed<T>(opsi: OpsiUmpan<T>): KeadaanUmpan<T> {
         .channel('antrean:publik')
         .on('broadcast', { event: '*' }, picu)
         .subscribe((status: string) => {
-          if (status !== 'SUBSCRIBED') return;
+          if (batal) return;
+          const ok = status === 'SUBSCRIBED';
+          if (ok !== tersambung) {
+            tersambung = ok;
+            // Jeda mengikuti status; backoff gangguan dan muat yang sedang berjalan tidak disentuh.
+            if (!berjalan && timerJadwal && gagalBeruntun === 0) {
+              jadwalkan(ok ? pollTersambungMs : pollMs);
+            }
+          }
+          if (!ok) return;
           // Sambung ulang setelah putus: siaran yang terlewat dikejar dengan satu muat ulang.
           if (pernahTersambung) picu();
           pernahTersambung = true;
@@ -139,7 +152,7 @@ export function useAntreanFeed<T>(opsi: OpsiUmpan<T>): KeadaanUmpan<T> {
       window.removeEventListener('online', saatOnline);
       if (supabase && channel) void supabase.removeChannel(channel);
     };
-  }, [aktif, pollMs, debounceMs, batasWaktuMs]);
+  }, [aktif, pollMs, pollTersambungMs, debounceMs, batasWaktuMs]);
 
   return { data, updatedAt, reconnecting };
 }

@@ -19,6 +19,8 @@ export interface KerangkaModalProps {
   varian: 'dialog' | 'samping';
   lebar?: 'sedang' | 'lebar';
   className?: string;
+  /** Peran ARIA kotak. Bawaan 'dialog'; konfirmasi tindakan memakai 'alertdialog'. */
+  peran?: 'dialog' | 'alertdialog';
   children: ReactNode;
 }
 
@@ -35,6 +37,7 @@ export default function KerangkaModal({
   varian,
   lebar = 'sedang',
   className,
+  peran = 'dialog',
   children,
 }: KerangkaModalProps) {
   const wadah = useRef<HTMLDivElement>(null);
@@ -75,7 +78,7 @@ export default function KerangkaModal({
     <div ref={latar} className={cn(styles.latar, varian === 'samping' && styles.latarSamping)}>
       <div
         ref={wadah}
-        role="dialog"
+        role={peran}
         aria-modal="true"
         aria-labelledby={idJudul}
         aria-describedby={deskripsi ? idDesk : undefined}

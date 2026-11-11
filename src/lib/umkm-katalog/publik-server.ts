@@ -32,6 +32,7 @@ const bacaCache = unstable_cache(async (
 export async function layaniPublik<S extends z.ZodType, K extends keyof Publik>(
   schema: S, input: () => Promise<unknown>, nama: K,
   args: (b: z.output<S>) => Publik[K]['args'], cache: boolean,
+  opsi: { headerSukses?: HeadersInit } = {},
 ) {
   const requestId = crypto.randomUUID();
   try {
@@ -44,8 +45,12 @@ export async function layaniPublik<S extends z.ZodType, K extends keyof Publik>(
       data = hit.kedaluwarsa > Date.now() ? hit.data : await bacaPublik(nama, params);
     } else data = await bacaPublik(nama, params);
     const cursor = 'next_cursor' in data ? data.next_cursor : undefined;
+    // Header publik hanya untuk jalur ber-cache yang berisi data; selain itu tetap privat.
+    const items = 'items' in data ? data.items : undefined;
+    const headers = cache && opsi.headerSukses && Array.isArray(items) && items.length > 0
+      ? opsi.headerSukses : headersPrivat;
     return Response.json({ data, meta: { request_id: requestId,
-      ...(cursor !== undefined ? { next_cursor: cursor } : {}) } }, { headers: headersPrivat });
+      ...(cursor !== undefined ? { next_cursor: cursor } : {}) } }, { headers });
   } catch (error) {
     const code = error instanceof Error ? error.message : 'GAGAL_INTERNAL';
     if (code === 'SNAPSHOT_BERUBAH') invalidasiKatalog();

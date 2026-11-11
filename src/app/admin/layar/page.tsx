@@ -12,6 +12,7 @@ import PageHeader from '@/components/layout/PageHeader';
 import Kartu from '@/components/ui/Kartu';
 import Field from '@/components/ui/Field';
 import Tombol from '@/components/ui/Tombol';
+import DialogKonfirmasi from '@/components/ui/DialogKonfirmasi';
 import Lencana from '@/components/ui/Lencana';
 import StatusKosong from '@/components/ui/StatusKosong';
 import Skeleton from '@/components/ui/Skeleton';
@@ -250,8 +251,11 @@ export default function AdminLayarPage() {
     }
   };
 
+  const [cabutToken, setCabutToken] = useState<{ id: string; nama: string } | null>(null);
+  const [mencabut, setMencabut] = useState(false);
+
   const handleCabut = async (id: string, nama: string) => {
-    if (!confirm(`Cabut akses token "${nama}"? Layar yang menggunakan token ini tidak akan bisa menampilkan data.`)) return;
+    setMencabut(true);
     try {
       const res = await fetch('/api/admin/layar', {
         method: 'POST',
@@ -264,6 +268,9 @@ export default function AdminLayarPage() {
       await loadTokens();
     } catch (e: unknown) {
       toast(e instanceof Error ? e.message : 'Gagal mencabut token', 'error');
+    } finally {
+      setMencabut(false);
+      setCabutToken(null);
     }
   };
 
@@ -284,6 +291,16 @@ export default function AdminLayarPage() {
 
   return (
     <>
+      <DialogKonfirmasi
+        terbuka={!!cabutToken}
+        judul={cabutToken ? `Cabut akses token "${cabutToken.nama}"?` : ''}
+        deskripsi="Layar yang menggunakan token ini tidak akan bisa menampilkan data."
+        labelSetuju="Ya, cabut"
+        berbahaya
+        memuat={mencabut}
+        onSetuju={() => { if (cabutToken) void handleCabut(cabutToken.id, cabutToken.nama); }}
+        onBatal={() => { if (!mencabut) setCabutToken(null); }}
+      />
       <PageHeader title="Kelola Layar Antrean" description="Atur isi layar TV antrean dan kelola token aksesnya">
         <Tombol varian="hantu" ukuran="kecil" ikon={RefreshCw} onClick={() => { void loadTokens(); void muatLayanan(); void muatPengumuman(); }}>
           Refresh
@@ -374,7 +391,7 @@ export default function AdminLayarPage() {
                     <td><div className={styles.aksiToken}>
                       <Tombol varian="hantu" ukuran="kecil" ikon={copied === t.token ? CheckCircle2 : Copy} onClick={() => void handleCopy(t.token)} aria-label={`Salin tautan ${t.nama}`}>{copied === t.token ? 'Disalin' : 'Salin tautan'}</Tombol>
                       <Tombol varian="sekunder" ukuran="kecil" ikon={ExternalLink} href={`/layar/${t.token}`} eksternal target="_blank" rel="noopener noreferrer" title="Buka layar di tab baru">Buka</Tombol>
-                      <Tombol varian="bahaya" ukuran="kecil" ikon={XCircle} onClick={() => void handleCabut(t.id, t.nama)} aria-label={`Cabut ${t.nama}`} title="Cabut akses token ini">Cabut</Tombol>
+                      <Tombol varian="bahaya" ukuran="kecil" ikon={XCircle} onClick={() => setCabutToken({ id: t.id, nama: t.nama })} aria-label={`Cabut ${t.nama}`} title="Cabut akses token ini">Cabut</Tombol>
                     </div></td>
                   </tr>
                 ))}</tbody>
