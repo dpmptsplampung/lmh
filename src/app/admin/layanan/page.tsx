@@ -22,6 +22,9 @@ import FormDialog from '@/components/admin/FormDialog';
 import { AdminFetchError, adminFetch } from '@/components/admin/adminFetch';
 import LayananForm, { FORM_PENDATAAN_LABEL, STATUS_LABEL, type HasilForm, type LayananRow } from '@/components/admin/layanan/LayananForm';
 import { BarisTambah, SelTeksInline } from '@/components/admin/SuntingInline';
+import { TAG_PUBLIK_KLIEN, segarkanPublik } from '@/lib/data/klien/segarkanPublik';
+import { buangCacheReferensi } from '@/lib/data/klien/useReferensi';
+import { KUNCI_REFERENSI } from '@/lib/data/referensi';
 import type { InstansiRow, LayananTautan } from '@/lib/layanan/schemas';
 import styles from '@/components/admin/layanan/KelolaLayanan.module.css';
 
@@ -41,6 +44,19 @@ const tanggalArsip = (iso: string | null | undefined) => {
 
 // Dialog yang sedang terbuka: form (baru / ubah), konfirmasi arsip, atau konfirmasi hapus permanen.
 type Aksi = { jenis: 'arsip' | 'hapus'; row: LayananRow };
+
+// Panggil SETELAH penulisan ke server selesai (rencana 4.5). Galat pembuangan cache diabaikan (lihat segarkanPublik).
+// Etalase publik (beranda + daftar layanan) ber-cache di server; kartu etalase juga memuat nama instansi dan website
+// terkait, jadi perubahan instansi/tautan memakai tag yang sama.
+const etalaseBerubah = () => {
+  void segarkanPublik([TAG_PUBLIK_KLIEN.layanan, TAG_PUBLIK_KLIEN.beranda]);
+};
+// Layanan sendiri berubah (tambah/ubah/arsip/pulihkan/hapus): selain etalase, daftar layanan ringkas yang di-cache di
+// klien (halaman topik/dokumen) ikut basi.
+const layananBerubah = () => {
+  etalaseBerubah();
+  buangCacheReferensi(KUNCI_REFERENSI.layananRingkas);
+};
 
 export default function KelolaLayananPage() {
   const { toast } = useToast();
@@ -107,12 +123,14 @@ export default function KelolaLayananPage() {
       }
       layananTersimpan = true;
       if (tautan !== undefined) await simpanTautan(id, tautan);
+      layananBerubah();
       toast(row ? 'Layanan diperbarui.' : 'Layanan ditambahkan.', 'success');
       tutup();
       await load();
     } catch (e) {
       const pesan = e instanceof Error ? e.message : 'Gagal menyimpan';
       if (layananTersimpan) {
+        layananBerubah(); // layanan sudah tersimpan walau website terkait gagal: cache tetap harus dibuang
         const daftar = await load();
         const terbaru = daftar.find((r) => r.id === id);
         if (terbaru) {
@@ -156,6 +174,7 @@ export default function KelolaLayananPage() {
         await adminFetch(`/api/admin/layanan/${aksi.row.id}`, 'DELETE');
         toast(`${aksi.row.nama} dihapus permanen.`, 'success');
       }
+      layananBerubah();
       tutupAksi();
       await load();
     } catch (e) {
@@ -176,6 +195,7 @@ export default function KelolaLayananPage() {
   const ubahInstansi = async (i: InstansiRow, bidang: 'nama' | 'singkatan', baru: string): Promise<string | null> => {
     try {
       await adminFetch(`/api/admin/instansi/${i.id}`, 'PATCH', { [bidang]: bidang === 'singkatan' ? baru || null : baru });
+      etalaseBerubah();
       setPengumuman(`Instansi ${bidang === 'nama' ? baru : i.nama} diperbarui.`);
       await load();
       return null;
@@ -191,6 +211,7 @@ export default function KelolaLayananPage() {
     if (galat) return galat;
     try {
       await adminFetch('/api/admin/instansi', 'POST', { nama, singkatan: singkatan || null });
+      etalaseBerubah();
       setPengumuman(`Instansi ${nama} ditambahkan.`);
       await load();
       return null;
@@ -202,6 +223,7 @@ export default function KelolaLayananPage() {
   const aktifkanLagi = async (row: LayananRow) => {
     try {
       await adminFetch(`/api/admin/layanan/${row.id}/arsip`, 'POST', { arsip: false });
+      layananBerubah();
       toast(`${row.nama} diaktifkan lagi.`, 'success');
       await load();
     } catch (e) {

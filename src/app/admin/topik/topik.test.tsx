@@ -20,6 +20,7 @@ vi.mock('@/components/layout/PageHeader', () => ({
 
 import KelolaTopikPage from './page';
 import { createClient } from '@/lib/supabase/client';
+import { buangCacheReferensi } from '@/lib/data/klien/useReferensi';
 
 type Row = { id: string; layanan_id: string | null; nama: string; aktif: boolean; urut: number };
 type Hasil = { data: unknown; error: { code?: string; message: string } | null };
@@ -41,6 +42,8 @@ function buildMock(opts: {
   topikError?: boolean;
   updateHasil?: Hasil | Promise<Hasil>;
   insertHasil?: Hasil;
+  /** Migrasi Fase 1 (202610270001) belum diterapkan: kolom layanan.slug/diarsipkan_at belum ada (42703). */
+  layananFase1Belum?: boolean;
 } = {}) {
   const updates: Array<{ nilai: Record<string, unknown>; id: string }> = [];
   const inserts: Array<Record<string, unknown>> = [];
@@ -48,7 +51,16 @@ function buildMock(opts: {
   const mock = {
     from: vi.fn((tabel: string) => {
       if (tabel === 'layanan') {
-        return { select: () => ({ order: () => Promise.resolve({ data: LAYANAN, error: null }) }) };
+        return {
+          select: (kolom: string) => ({
+            order: () =>
+              Promise.resolve(
+                opts.layananFase1Belum && /slug|diarsipkan_at/.test(kolom)
+                  ? { data: null, error: { code: '42703', message: 'column layanan.slug does not exist' } }
+                  : { data: LAYANAN, error: null },
+              ),
+          }),
+        };
       }
       return {
         select: () => ({
@@ -87,6 +99,7 @@ function buildMock(opts: {
 beforeEach(() => {
   vi.clearAllMocks();
   toastMock.mockClear();
+  buangCacheReferensi(); // daftar Layanan ber-cache modul: tiap test mulai dari nol
 });
 afterEach(() => cleanup());
 
@@ -143,6 +156,16 @@ describe('Kelola Topik: daftar', () => {
     expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['Topik', 'Urutan', 'Status']);
     expect(screen.queryByRole('button', { name: /hapus/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('migrasi Fase 1 belum diterapkan (kolom slug/diarsipkan_at belum ada): halaman tetap tampil dengan daftar Layanan', async () => {
+    buildMock({ layananFase1Belum: true });
+    render(<KelolaTopikPage />);
+    expect(await screen.findByText('Informasi umum')).toBeInTheDocument();
+    const nav = screen.getByRole('navigation', { name: 'Pilih cakupan topik' });
+    expect(within(nav).getByRole('button', { name: 'Helpdesk OSS 2' })).toBeInTheDocument();
+    expect(within(nav).getByRole('button', { name: 'BPJS Kesehatan 0' })).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('gagal memuat: pesan role=alert dan baris tambah tidak ada', async () => {

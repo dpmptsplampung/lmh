@@ -23,6 +23,8 @@ import { FileText, Plus, Trash2, RefreshCw, BookOpen, CheckCircle2, Clock, Alert
 import { formatTanggal } from '@/lib/utils';
 import PageHeader from '@/components/layout/PageHeader';
 import { createClient } from '@/lib/supabase/client';
+import { KUNCI_REFERENSI, muatLayananRingkas, type LayananRingkas } from '@/lib/data/referensi';
+import { useReferensi } from '@/lib/data/klien/useReferensi';
 import { mutasiInsert, mutasiWajibBaris, pesanMutasi } from '@/lib/supabase/mutate';
 import { useToast } from '@/components/Toast';
 
@@ -38,12 +40,13 @@ interface DokumenRow {
   _potongan_count?: number;
 }
 
-interface LayananOption { id: string; nama: string }
+const LAYANAN_KOSONG: LayananRingkas[] = [];
 
 export default function AdminDokumenPage() {
   const { toast } = useToast();
   const [docs, setDocs] = useState<DokumenRow[]>([]);
-  const [layananList, setLayananList] = useState<LayananOption[]>([]);
+  // Pilihan Layanan di formulir = referensi bersama (cache memori). Gagal memuat = pilihan kosong (seperti sebelumnya).
+  const layananList = useReferensi(KUNCI_REFERENSI.layananRingkas, () => muatLayananRingkas(createClient())).data ?? LAYANAN_KOSONG;
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [embedding, setEmbedding] = useState<string | null>(null);
@@ -59,12 +62,12 @@ export default function AdminDokumenPage() {
       const supabase = createClient();
       const { data, error } = await supabase
         .from('dokumen_peraturan')
-        .select('*, layanan:layanan_id(nama)')
+        // Kolom daftar saja (= DokumenRow): `teks_utama` besar (seluruh isi peraturan) tidak dibaca daftar.
+        .select('id, judul, nomor, jenis, status, sumber_url, created_at, layanan:layanan_id(nama)')
         .order('created_at', { ascending: false });
       if (error) throw error;
-      setDocs((data ?? []) as DokumenRow[]);
-      const { data: ld } = await supabase.from('layanan').select('id, nama').order('nama');
-      setLayananList(ld ?? []);
+      // Relasi many-to-one: layanan berupa objek di runtime; tipe hasil select menebaknya sebagai array.
+      setDocs((data ?? []) as unknown as DokumenRow[]);
       setLoadError('');
     } catch {
       setLoadError('Gagal memuat dokumen');

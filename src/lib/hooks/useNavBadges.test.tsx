@@ -22,6 +22,7 @@ vi.mock('@/lib/chat/status-layanan', () => ({
 }));
 
 import { hitungBadge, muatBadge, segarkanBadge, setelUlangDeteksiRpcBadge, totalBadge, useJudulTabBadge, useNavBadges } from './useNavBadges';
+import { setelUlangPusatRealtime } from '@/lib/realtime/pusat';
 
 const ok = (count: number): HasilFake => ({ data: null, error: null, count });
 const galat: HasilFake = { data: null, error: { message: 'boom' } };
@@ -34,6 +35,8 @@ beforeEach(() => {
   Object.assign(h, buatH());
   infoHari.alasan = null;
   setelUlangDeteksiRpcBadge();
+  // Pusat realtime menyimpan refcount channel di modul; hook dari test sebelumnya tidak di-unmount.
+  setelUlangPusatRealtime();
   removeChannel.mockClear();
   setVisibility('visible');
 });

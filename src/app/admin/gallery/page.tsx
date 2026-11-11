@@ -24,6 +24,11 @@ import { mutasiWajibBaris, pesanMutasi } from '@/lib/supabase/mutate';
 import { perluMuatUlang } from '@/components/admin/mutasi-ui';
 import { useToast } from '@/components/Toast';
 
+// Kolom yang dibaca halaman ini (daftar, pratinjau, isian formulir sunting). created_at/updated_at hanya ditulis
+// (updated_at saat mengubah), tidak pernah dibaca, jadi tidak diambil.
+const KOLOM_DOKUMEN_GALERI =
+  'id, judul, kategori, urutan_tampil, file_path, jumlah_halaman, status, deskripsi, nilai_investasi, image_url';
+
 interface GalleryDoc {
   id: string;
   judul: string;
@@ -35,8 +40,6 @@ interface GalleryDoc {
   deskripsi: string | null;
   nilai_investasi: string | null;
   image_url: string | null;
-  created_at: string;
-  updated_at: string;
 }
 
 interface GalleryForm {
@@ -89,7 +92,7 @@ export default function AdminGalleryPage() {
       const supabase = createClient();
       const { data, error } = await supabase
         .from('investment_documents')
-        .select('*')
+        .select(KOLOM_DOKUMEN_GALERI)
         .order('urutan_tampil', { ascending: true });
       if (error) throw error;
       setDocs((data || []) as GalleryDoc[]);

@@ -1,6 +1,8 @@
+// Halaman statis (Server Component): tanpa data, tanpa sesi, tanpa 'use client'. Gaya di kebijakan-privasi.module.css.
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { APP_NAME } from '@/lib/constants';
+import styles from './kebijakan-privasi.module.css';
 
 /** Selaras dengan versi persetujuan reservasi dan chat. */
 const POLICY_VERSION = '1.0';
@@ -12,52 +14,27 @@ export const metadata: Metadata = {
 
 export default function KebijakanPrivasiPage() {
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        background: 'var(--surface-secondary)',
-        padding: 'var(--space-8) var(--space-4)',
-      }}
-    >
-      <article
-        style={{
-          maxWidth: '720px',
-          margin: '0 auto',
-          background: 'var(--surface-elevated)',
-          borderRadius: 'var(--radius-2xl)',
-          border: '1px solid var(--border-default)',
-          padding: 'clamp(16px, 5vw, 32px)',
-          overflowWrap: 'anywhere',
-          boxShadow: 'var(--shadow-sm)',
-        }}
-      >
-        <p style={{ fontSize: 'var(--text-sm)', marginBottom: 'var(--space-4)' }}>
-          <Link href="/" style={{ color: 'var(--color-primary-600)', display: 'inline-flex', alignItems: 'center', minHeight: 44 }}>
+    <div className={styles.halaman}>
+      <article className={styles.artikel}>
+        <p className={styles.navAtas}>
+          <Link href="/" className={styles.tautanBeranda}>
             ← Beranda
           </Link>
         </p>
 
-        <h1
-          style={{
-            fontFamily: 'var(--font-display)',
-            fontSize: 'var(--text-3xl)',
-            fontWeight: 800,
-            marginBottom: 'var(--space-2)',
-            color: 'var(--text-primary)',
-          }}
-        >
+        <h1 className={styles.judul}>
           Kebijakan Privasi
         </h1>
-        <p style={{ color: 'var(--text-secondary)', marginBottom: 'var(--space-8)', fontSize: 'var(--text-sm)' }}>
+        <p className={styles.versi}>
           Versi kebijakan: <strong>{POLICY_VERSION}</strong> · Berlaku untuk layanan digital{' '}
           {APP_NAME}
         </p>
 
-        <section style={{ marginBottom: 'var(--space-6)' }}>
-          <h2 style={{ fontSize: 'var(--text-xl)', marginBottom: 'var(--space-3)' }}>
+        <section className={styles.bagian}>
+          <h2 className={styles.subjudul}>
             1. Pengendali Data
           </h2>
-          <p style={{ color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+          <p className={styles.paragraf}>
             Pengendali data pribadi pada layanan ini adalah{' '}
             <strong>DPMPTSP Provinsi Lampung</strong> (Dinas Penanaman Modal dan Pelayanan
             Terpadu Satu Pintu Provinsi Lampung). Kontak umum: melalui kanal resmi layanan
@@ -67,14 +44,14 @@ export default function KebijakanPrivasiPage() {
           </p>
         </section>
 
-        <section style={{ marginBottom: 'var(--space-6)' }}>
-          <h2 style={{ fontSize: 'var(--text-xl)', marginBottom: 'var(--space-3)' }}>
+        <section className={styles.bagian}>
+          <h2 className={styles.subjudul}>
             2. Data yang Dikumpulkan
           </h2>
-          <p style={{ color: 'var(--text-secondary)', lineHeight: 1.7, marginBottom: 'var(--space-2)' }}>
+          <p className={styles.pengantarDaftar}>
             Sesuai kebutuhan layanan, kami dapat memproses antara lain:
           </p>
-          <ul style={{ color: 'var(--text-secondary)', lineHeight: 1.7, paddingLeft: '1.25rem' }}>
+          <ul className={styles.daftar}>
             <li>Identitas dan kontak (nama, email, nomor telepon) saat check-in, reservasi, atau chat</li>
             <li>Data kunjungan (tujuan layanan, jadwal, status antrean)</li>
             <li>Isi percakapan live chat dan preferensi FAQ</li>
@@ -83,11 +60,11 @@ export default function KebijakanPrivasiPage() {
           </ul>
         </section>
 
-        <section style={{ marginBottom: 'var(--space-6)' }}>
-          <h2 style={{ fontSize: 'var(--text-xl)', marginBottom: 'var(--space-3)' }}>
+        <section className={styles.bagian}>
+          <h2 className={styles.subjudul}>
             3. Tujuan Pemrosesan
           </h2>
-          <p style={{ color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+          <p className={styles.paragraf}>
             Data diproses untuk menyediakan layanan check-in dan antrean, reservasi kunjungan,
             live chat dan eskalasi ke petugas, notifikasi terkait layanan, peningkatan mutu
             pelayanan publik, serta kewajiban hukum dan keamanan sistem. Data tidak dijual
@@ -95,11 +72,11 @@ export default function KebijakanPrivasiPage() {
           </p>
         </section>
 
-        <section style={{ marginBottom: 'var(--space-6)' }}>
-          <h2 style={{ fontSize: 'var(--text-xl)', marginBottom: 'var(--space-3)' }}>
+        <section className={styles.bagian}>
+          <h2 className={styles.subjudul}>
             4. Retensi
           </h2>
-          <p style={{ color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+          <p className={styles.paragraf}>
             Periode retensi operasional yang berlaku saat ini adalah{' '}
             <strong>730 hari</strong> (dua tahun) sejak data terakhir relevan dengan layanan,
             kecuali ada kewajiban hukum yang mengharuskan penyimpanan lebih lama. Angka ini
@@ -108,11 +85,11 @@ export default function KebijakanPrivasiPage() {
           </p>
         </section>
 
-        <section style={{ marginBottom: 'var(--space-6)' }}>
-          <h2 style={{ fontSize: 'var(--text-xl)', marginBottom: 'var(--space-3)' }}>
+        <section className={styles.bagian}>
+          <h2 className={styles.subjudul}>
             5. Pencatatan Perilaku Penggunaan (Investment Gallery &amp; Peta Potensi)
           </h2>
-          <p style={{ color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+          <p className={styles.paragraf}>
             Untuk meningkatkan layanan investasi, kami mencatat <strong>aktivitas penggunaan</strong>
             Anda pada fitur Investment Gallery dan Peta Potensi, misalnya dokumen yang Anda buka,
             sektor yang Anda lihat, dan halaman yang Anda kunjungi. Pencatatan ini digunakan
@@ -124,11 +101,11 @@ export default function KebijakanPrivasiPage() {
           </p>
         </section>
 
-        <section style={{ marginBottom: 'var(--space-6)' }}>
-          <h2 style={{ fontSize: 'var(--text-xl)', marginBottom: 'var(--space-3)' }}>
+        <section className={styles.bagian}>
+          <h2 className={styles.subjudul}>
             6. Katalog dan formulir UMKM
           </h2>
-          <div style={{ color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+          <div className={styles.isiTeks}>
             <p>
               Profil di katalog berasal dari data kurasi petugas, satudata, dan tamu yang datang ke loket.
               Petugas memeriksa setiap profil sebelum tampil. Petugas memeriksa agar nomor telepon, email,
@@ -194,11 +171,11 @@ export default function KebijakanPrivasiPage() {
           </div>
         </section>
 
-        <section style={{ marginBottom: 'var(--space-6)' }}>
-          <h2 style={{ fontSize: 'var(--text-xl)', marginBottom: 'var(--space-3)' }}>
+        <section className={styles.bagian}>
+          <h2 className={styles.subjudul}>
             7. Hak Subjek Data
           </h2>
-          <p style={{ color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+          <p className={styles.paragraf}>
             Anda berhak meminta akses, koreksi, pembaruan, atau penghapusan data pribadi
             sepanjang diizinkan peraturan perundang-undangan yang berlaku, serta menarik
             persetujuan untuk pemrosesan yang didasarkan pada consent (dengan konsekuensi
@@ -207,11 +184,11 @@ export default function KebijakanPrivasiPage() {
           </p>
         </section>
 
-        <section style={{ marginBottom: 'var(--space-6)' }}>
-          <h2 style={{ fontSize: 'var(--text-xl)', marginBottom: 'var(--space-3)' }}>
+        <section className={styles.bagian}>
+          <h2 className={styles.subjudul}>
             8. Cara Kontak
           </h2>
-          <p style={{ color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+          <p className={styles.paragraf}>
             Untuk pertanyaan privasi atau permintaan hak subjek data, hubungi{' '}
             <strong>DPMPTSP Provinsi Lampung</strong> melalui kanal resmi layanan {APP_NAME}{' '}
             (misalnya Live Chat) atau saluran pengaduan/komunikasi publik instansi. Sertakan
@@ -219,11 +196,11 @@ export default function KebijakanPrivasiPage() {
           </p>
         </section>
 
-        <section>
-          <h2 style={{ fontSize: 'var(--text-xl)', marginBottom: 'var(--space-3)' }}>
+        <section className={styles.bagian}>
+          <h2 className={styles.subjudul}>
             9. Versi Kebijakan
           </h2>
-          <p style={{ color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+          <p className={styles.paragraf}>
             Versi kebijakan privasi yang dirujuk oleh formulir persetujuan di aplikasi adalah{' '}
             <strong>{POLICY_VERSION}</strong>. Perubahan material akan diumumkan dengan
             menaikkan nomor versi dan memperbarui teks persetujuan pada layanan yang terkait.

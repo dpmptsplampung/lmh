@@ -1,212 +1,19 @@
-'use client';
-
-import { useState, useEffect, Suspense } from 'react';
+// Kanal pengaduan publik (Server Component ber-cache). Daftar layanan dimuat di server lewat muatOpsiLayananPengaduan()
+// (klien anon tanpa cookie, unstable_cache 60 detik, tag publik-layanan) dan dioper sebagai data biasa ke formulir
+// klien (FormPengaduan.tsx). Halaman tidak membaca sesi/cookies/headers. Ikon dirender di sini sebagai elemen JSX
+// (komponen ikon tidak boleh dioper sebagai prop ke komponen klien).
 import Link from 'next/link';
-import { AlertCircle, CheckCircle2, Loader2, Send, ShieldAlert, ClipboardList } from 'lucide-react';
-import Tombol from '@/components/ui/Tombol';
-import { createClient } from '@/lib/supabase/client';
+import { ClipboardList, ShieldAlert } from 'lucide-react';
+import { muatOpsiLayananPengaduan } from '@/lib/data/publik-server';
+import FormPengaduan from './FormPengaduan';
 
-// CMP-01/CMP-05/CMP-06: formulir pengaduan publik (tanpa login wajib).
-// Dua jalur: 'layanan' (boleh diteruskan ke layanan) & 'integritas' (rahasia, hanya Admin).
+// Harus literal (dibaca statis oleh Next); sama dengan REVALIDASI_DETIK di lib/data/publik-server.ts.
+export const revalidate = 60;
 
-type LayananOpt = { id: string; nama: string };
-// Radio/checkbox cukup besar untuk disentuh (area klik = seluruh label, min 44px)
-const radioStyle: React.CSSProperties = { width: 20, height: 20, flexShrink: 0, marginTop: 2 };
-const rowStyle: React.CSSProperties = { display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-start', cursor: 'pointer', minHeight: 44 };
+export default async function PengaduanPage() {
+  // Galat memuat daftar = pilihan hanya "Umum / tidak spesifik" (sama dengan perilaku lama bila kueri gagal).
+  const { layanan } = await muatOpsiLayananPengaduan();
 
-type Phase = 'form' | 'submitting' | 'done' | 'error';
-
-function PengaduanForm() {
-  const [layananOptions, setLayananOptions] = useState<LayananOpt[]>([]);
-  const [jalur, setJalur] = useState<'layanan' | 'integritas'>('layanan');
-  const [layananId, setLayananId] = useState('');
-  const [isi, setIsi] = useState('');
-  const [kontak, setKontak] = useState('');
-  const [anonim, setAnonim] = useState(false);
-  const [phase, setPhase] = useState<Phase>('form');
-  const [error, setError] = useState('');
-  const [tiket, setTiket] = useState('');
-  const [lacakDenganNomor, setLacakDenganNomor] = useState(false);
-  const [disalin, setDisalin] = useState(false);
-
-  useEffect(() => {
-    const supabase = createClient();
-    supabase
-      .from('layanan')
-      .select('id, nama')
-      .eq('aktif', true)
-      .order('nama')
-      .then(({ data }) => setLayananOptions((data ?? []) as LayananOpt[]));
-  }, []);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    if (isi.trim().length < 10) {
-      setError('Mohon jelaskan pengaduan Anda minimal 10 karakter.');
-      return;
-    }
-    if (!anonim && !kontak.trim()) {
-      setError('Isi kontak (email/no. HP) agar kami dapat menghubungi Anda, atau pilih "Laporkan dengan anonim".');
-      return;
-    }
-    setPhase('submitting');
-    try {
-      const res = await fetch('/api/pengaduan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jalur,
-          isi: isi.trim(),
-          kontak: kontak.trim() || undefined,
-          layanan_id: layananId || undefined,
-          anonim,
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok) {
-        setError(json.error ?? 'Gagal mengirim pengaduan.');
-        setPhase('error');
-        return;
-      }
-      setTiket(json.nomor_tiket ?? '');
-      setLacakDenganNomor(json.lacak_dengan_nomor === true);
-      setPhase('done');
-    } catch {
-      setError('Gangguan jaringan. Coba lagi.');
-      setPhase('error');
-    }
-  };
-
-  if (phase === 'done') {
-    return (
-      <div className="card" style={{ textAlign: 'center', padding: 'var(--space-8)' }}>
-        <CheckCircle2 size={48} style={{ color: 'var(--color-success-500, #16a34a)', margin: '0 auto' }} />
-        <h2 style={{ marginTop: 'var(--space-4)' }}>Pengaduan Tercatat</h2>
-        <p>Nomor laporan Anda:</p>
-        <p style={{ fontSize: '1.5rem', fontWeight: 700, letterSpacing: '0.05em', fontFamily: 'monospace' }}>{tiket}</p>
-        <Tombol
-          varian="hantu"
-          ukuran="kecil"
-          onClick={() => {
-            void navigator.clipboard?.writeText(tiket).then(() => setDisalin(true), () => undefined);
-          }}
-        >
-          {disalin ? 'Nomor tersalin' : 'Salin nomor'}
-        </Tombol>
-        <p style={{ color: 'var(--color-neutral-500)', fontSize: 'var(--text-sm)' }}>
-          {anonim
-            ? 'Simpan nomor ini baik-baik: hanya nomor inilah kuncinya, kami tidak menyimpan identitas atau kontak Anda sehingga nomor yang hilang tidak dapat dipulihkan. '
-            : 'Simpan nomor laporan ini. '}
-          {lacakDenganNomor ? 'Status dan tanggapan dapat dipantau hanya dengan nomor ini. ' : 'Lacak status dengan nomor ini dan kontak Anda. '}
-          Batas verifikasi 3 hari kerja, penanganan 14 hari kerja.
-        </p>
-        <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'center', marginTop: 'var(--space-4)' }}>
-          <Tombol href="/pengaduan/lacak">Lacak Pengaduan</Tombol>
-          <Tombol href="/" varian="sekunder">Kembali ke Beranda</Tombol>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="card" style={{ display: 'grid', gap: 'var(--space-4)' }}>
-      <div>
-        <span id="jenis-pengaduan-label" style={{ fontWeight: 600, display: 'block', marginBottom: 'var(--space-2)' }}>Jenis Pengaduan</span>
-        <div role="radiogroup" aria-labelledby="jenis-pengaduan-label" style={{ display: 'grid', gap: 'var(--space-2)' }}>
-          <label style={rowStyle}>
-            <input type="radio" name="jalur" checked={jalur === 'layanan'} onChange={() => setJalur('layanan')} style={radioStyle} />
-            <span>
-              <strong>Pengaduan Layanan:</strong> antrean lama, informasi tidak jelas, sistem error.
-              Dapat diteruskan ke layanan terkait.
-            </span>
-          </label>
-          <label style={rowStyle}>
-            <input type="radio" name="jalur" checked={jalur === 'integritas'} onChange={() => setJalur('integritas')} style={radioStyle} />
-            <span style={{ color: 'var(--color-danger-600, #dc2626)' }}>
-              <strong>Pengaduan Perilaku / Integritas / Pungli:</strong> petugas minta uang, perilaku tidak pantas.
-              <em> Dirahasiakan: hanya dibaca pimpinan, tidak oleh petugas.</em>
-            </span>
-          </label>
-        </div>
-      </div>
-
-      {jalur === 'layanan' && (
-        <div>
-          <label htmlFor="layanan" style={{ fontWeight: 600, display: 'block', marginBottom: 'var(--space-2)' }}>
-            Layanan terkait (opsional)
-          </label>
-          <select id="layanan" className="input" value={layananId} onChange={(e) => setLayananId(e.target.value)}>
-            <option value="">Umum / tidak spesifik</option>
-            {layananOptions.map((l) => (
-              <option key={l.id} value={l.id}>{l.nama}</option>
-            ))}
-          </select>
-        </div>
-      )}
-
-      <div>
-        <label htmlFor="isi" style={{ fontWeight: 600, display: 'block', marginBottom: 'var(--space-2)' }}>
-          Uraian pengaduan <span style={{ color: 'red' }}>*</span>
-        </label>
-        <textarea
-          id="isi"
-          className="input"
-          rows={5}
-          value={isi}
-          onChange={(e) => setIsi(e.target.value)}
-          placeholder="Jelaskan kejadian, kapan, dan di mana. Hindari menyebut data pribadi orang lain."
-          required
-        />
-      </div>
-
-      <label style={{ ...rowStyle, alignItems: 'center' }}>
-        <input
-          type="checkbox"
-          checked={anonim}
-          onChange={(e) => {
-            setAnonim(e.target.checked);
-            // Anonim = tidak ada kontak yang ikut terkirim, termasuk yang sudah terlanjur diketik.
-            if (e.target.checked) setKontak('');
-          }}
-          style={radioStyle}
-        />
-        <span>
-          <strong>Laporkan dengan anonim.</strong> DPMPTSP tidak akan tahu siapa Anda yang melaporkan. Status tetap dapat
-          dipantau dengan nomor laporan yang Anda terima.
-        </span>
-      </label>
-
-      {!anonim && (
-        <div>
-          <label htmlFor="kontak" style={{ fontWeight: 600, display: 'block', marginBottom: 'var(--space-2)' }}>
-            Kontak (email / no. HP) agar kami dapat menghubungi Anda <span style={{ color: 'red' }}>*</span>
-          </label>
-          <input
-            id="kontak"
-            className="input"
-            type="text"
-            value={kontak}
-            onChange={(e) => setKontak(e.target.value)}
-            placeholder="contoh: nama@email.com atau 0812xxxxxxx"
-          />
-        </div>
-      )}
-
-      {error && (
-        <p style={{ color: 'var(--color-danger-600, #dc2626)', display: 'flex', gap: '6px', alignItems: 'center' }}>
-          <AlertCircle size={16} /> {error}
-        </p>
-      )}
-
-      <Tombol type="submit" ikon={Send} disabled={phase === 'submitting'} memuat={phase === 'submitting'}>
-        Kirim Pengaduan
-      </Tombol>
-    </form>
-  );
-}
-
-export default function PengaduanPage() {
   return (
     <main style={{ maxWidth: 720, margin: '0 auto', padding: 'var(--space-6) var(--space-4)' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
@@ -218,9 +25,7 @@ export default function PengaduanPage() {
           </p>
         </div>
       </div>
-      <Suspense fallback={<Loader2 className="spin" />}>
-        <PengaduanForm />
-      </Suspense>
+      <FormPengaduan layanan={layanan} />
       <p style={{ marginTop: 'var(--space-4)', textAlign: 'center' }}>
         <Link href="/pengaduan/lacak" style={{ display: 'inline-flex', gap: 6, alignItems: 'center', minHeight: 44 }}>
           <ClipboardList size={14} /> Sudah punya tiket? Lacak status pengaduan

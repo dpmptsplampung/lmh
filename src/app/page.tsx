@@ -1,23 +1,23 @@
-'use client';
-
-// Homepage = etalase layanan. Tersusun dari blok berjenis tetap (lib/homepage/blok.ts) yang diatur admin di
-// /admin/settings/landing: hero, jalur cepat, status hari ini (antrean), cari & daftar layanan, papan kinerja
-// (tercadang), ajakan, footer. Blok mati TIDAK dirender. Kartu layanan terisi otomatis dari Kelola Layanan
-// (v_layanan_publik); klik kartu membuka popup dengan alamat /?layanan=<slug>.
-import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+// Homepage = etalase layanan (Server Component ber-cache). Tersusun dari blok berjenis tetap (lib/homepage/blok.ts)
+// yang diatur admin di /admin/settings/landing: hero, jalur cepat, status hari ini (antrean), cari & daftar layanan,
+// papan kinerja (tercadang), ajakan, footer. Blok mati TIDAK dirender. Kartu layanan terisi otomatis dari Kelola
+// Layanan (v_layanan_publik); klik kartu membuka popup dengan alamat /?layanan=<slug>.
+//
+// Data (blok + layanan + pengaturan situs) dimuat di server lewat muatBerandaPublik() (klien anon tanpa cookie,
+// unstable_cache 60 detik, tag publik-beranda/publik-layanan) dan ikut di HTML awal. Halaman TIDAK membaca sesi,
+// cookies, atau headers; semua yang bergantung pengguna/peramban hidup di pulau klien kecil:
+//  - PulauPengguna: bilah navigasi (sesi + peran + menu seluler);
+//  - PulauStatus: kartu layanan + status buka hari ini + popup /?layanan= (dibungkus <Suspense> di dalamnya);
+//  - blok klien lain (BlokHero, EstimasiAntrean, dst.) hanya menerima data biasa.
+// Server Component tidak boleh mengoper fungsi atau komponen ikon ke komponen klien (ikon ditaruh di dalam isi).
 import Link from 'next/link';
-import Image from 'next/image';
-import { usePathname, useRouter } from 'next/navigation';
-import { LogOut, User, MessageSquare, Menu, X } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client';
-import { keluarDariSesi } from '@/lib/sesi-staf';
-import { WA_NUMBER, WA_DEFAULT_MESSAGE } from '@/lib/constants';
-import { getSiteSettings } from '@/lib/site-settings';
+import { MessageSquare } from 'lucide-react';
+import { muatBerandaPublik } from '@/lib/data/publik-server';
+import { blokTampil, type BlokTersusun } from '@/lib/homepage/blok';
 import { waLink } from '@/lib/utils';
 import EstimasiAntrean from '@/components/EstimasiAntrean';
-import Tombol from '@/components/ui/Tombol';
-import DaftarLayanan from '@/components/homepage/DaftarLayanan';
-import PopupDariUrl from '@/components/homepage/PopupDariUrl';
+import PulauPengguna from '@/components/homepage/PulauPengguna';
+import PulauStatus from '@/components/homepage/PulauStatus';
 import {
   BlokAjakan,
   BlokFooter,
@@ -27,142 +27,24 @@ import {
   TautanKebijakan,
   type KontakFooter,
 } from '@/components/homepage/BlokLain';
-import { blokTampil, gabungkanBlok, type BlokTersusun } from '@/lib/homepage/blok';
-import {
-  GAGAL_LAYANAN,
-  denganBatasWaktu,
-  muatBlok,
-  muatLayanan,
-  muatStatusHariIni,
-  type LayananEtalase,
-  type StatusHariIni,
-} from '@/lib/homepage/data';
 import styles from './landing.module.css';
-import etalase from '@/components/homepage/Homepage.module.css';
 
-/** Batas tunggu tiap pemuat etalase sebelum memakai bawaan. */
-const BATAS_MUAT_MS = 6000;
+// Harus literal (dibaca statis oleh Next); sama dengan REVALIDASI_DETIK di lib/data/publik-server.ts.
+export const revalidate = 60;
 
-interface UserInfo {
-  nama: string;
-  foto_url: string | null;
-  role?: string;
-}
+export default async function LandingPage() {
+  const { blok, layanan, layananGalat, pengaturan } = await muatBerandaPublik();
 
-interface DataEtalase {
-  blok: BlokTersusun[];
-  layanan: LayananEtalase[];
-  /** True bila daftar layanan GAGAL dimuat (semua tingkat query / batas waktu): beda dari kosong yang sah. */
-  layananGalat: boolean;
-  status: Map<string, StatusHariIni> | null;
-}
-
-export default function LandingPage() {
-  const [user, setUser] = useState<UserInfo | null>(null);
-  const [data, setData] = useState<DataEtalase | null>(null);
-  const [waHref, setWaHref] = useState(() => waLink(WA_NUMBER, WA_DEFAULT_MESSAGE));
-  const [contact, setContact] = useState<KontakFooter>({ address: '', hours: '', email: '' });
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const pathname = usePathname();
-  const router = useRouter();
-  const menuButtonRef = useRef<HTMLButtonElement>(null);
-  const dariKartuRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setMobileMenuOpen(false);
-  }, [pathname]);
-
-  useEffect(() => {
-    if (!mobileMenuOpen) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setMobileMenuOpen(false);
-        menuButtonRef.current?.focus();
-      }
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [mobileMenuOpen]);
-
-  useEffect(() => {
-    async function checkUser() {
-      const supabase = createClient();
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (authUser) {
-        const { data: petugas } = await supabase
-          .from('petugas')
-          .select('role')
-          .eq('auth_user_id', authUser.id)
-          .single();
-
-        setUser({
-          nama: authUser.user_metadata?.full_name || 'Pengunjung',
-          foto_url: authUser.user_metadata?.avatar_url || null,
-          role: petugas?.role || 'pengunjung',
-        });
-      }
-    }
-
-    // Tiap pemuat dibatasi waktu: permintaan yang menggantung (jaringan/DB lambat) jatuh ke bawaan setelah
-    // BATAS_MUAT_MS (blok bawaan, daftar layanan kosong, tanpa status) alih-alih membiarkan "Memuat halaman…" selamanya.
-    async function muatEtalase() {
-      const supabase = createClient();
-      const [blok, layanan, status] = await Promise.all([
-        denganBatasWaktu(muatBlok(supabase), BATAS_MUAT_MS, gabungkanBlok(null)),
-        denganBatasWaktu(muatLayanan(supabase), BATAS_MUAT_MS, GAGAL_LAYANAN),
-        denganBatasWaktu(muatStatusHariIni(supabase), BATAS_MUAT_MS, null),
-      ]);
-      setData({ blok, layanan: layanan.layanan, layananGalat: layanan.tingkat === 0, status });
-    }
-
-    async function fetchSiteSettings() {
-      const settings = await getSiteSettings([
-        'wa_number',
-        'wa_default_message',
-        'contact_address',
-        'contact_hours',
-        'contact_email',
-      ]);
-      setWaHref(waLink(settings.wa_number, settings.wa_default_message));
-      setContact({
-        address: settings.contact_address,
-        hours: settings.contact_hours,
-        email: settings.contact_email,
-      });
-    }
-
-    checkUser();
-    muatEtalase();
-    fetchSiteSettings();
-  }, []);
-
-  const bukaLayanan = useCallback(
-    (slug: string) => {
-      dariKartuRef.current = slug;
-      router.push(`/?layanan=${encodeURIComponent(slug)}`, { scroll: false });
-    },
-    [router],
-  );
-
-  // A-01: Coba lagi pada galat daftar layanan memuat ulang HANYA daftar itu (blok dan status tetap).
-  const [memuatLayananUlang, setMemuatLayananUlang] = useState(false);
-  const cobaLagiLayanan = useCallback(async () => {
-    setMemuatLayananUlang(true);
-    const hasil = await denganBatasWaktu(muatLayanan(createClient()), BATAS_MUAT_MS, GAGAL_LAYANAN);
-    setData((prev) => (prev ? { ...prev, layanan: hasil.layanan, layananGalat: hasil.tingkat === 0 } : prev));
-    setMemuatLayananUlang(false);
-  }, []);
-
-  const handleLogout = async () => {
-    const supabase = createClient();
-    await keluarDariSesi(supabase);
-    setUser(null);
+  const waHref = waLink(pengaturan.wa_number, pengaturan.wa_default_message);
+  const kontak: KontakFooter = {
+    address: pengaturan.contact_address,
+    hours: pengaturan.contact_hours,
+    email: pengaturan.contact_email,
   };
 
-  // Menu "Layanan" hanya berguna bila blok daftar layanan tampil (sebelum data siap dianggap ada).
-  const adaBlokLayanan = data ? data.blok.some((b) => b.jenis === 'layanan' && b.aktif) : true;
-  const kartu = data ? data.layanan.filter((l) => l.tampilDiHomepage) : [];
+  const tampil = blokTampil(blok);
+  // Menu "Layanan" hanya berguna bila blok daftar layanan tampil.
+  const adaBlokLayanan = tampil.some((b) => b.jenis === 'layanan');
 
   const renderBlok = (b: BlokTersusun) => {
     switch (b.jenis) {
@@ -173,124 +55,27 @@ export default function LandingPage() {
       case 'status_hari_ini':
         return <EstimasiAntrean key={b.jenis} judul={b.teks.title} penjelasan={b.teks.description} />;
       case 'layanan':
-        return (
-          <DaftarLayanan
-            key={b.jenis}
-            layanan={kartu}
-            status={data?.status ?? null}
-            teks={b.teks}
-            onBuka={bukaLayanan}
-            galat={data?.layananGalat === true}
-            onCobaLagi={() => void cobaLagiLayanan()}
-            memuatUlang={memuatLayananUlang}
-          />
-        );
+        return <PulauStatus key={b.jenis} layanan={layanan} layananGalat={layananGalat} teksDaftar={b.teks} />;
       case 'papan_kinerja':
         return <BlokPapanKinerja key={b.jenis} teks={b.teks} />;
       case 'ajakan':
         return <BlokAjakan key={b.jenis} teks={b.teks} />;
       case 'footer':
-        return <BlokFooter key={b.jenis} teks={b.teks} kontak={contact} />;
+        return <BlokFooter key={b.jenis} teks={b.teks} kontak={kontak} />;
     }
   };
 
   return (
     <div className={styles.landing}>
-      {/* Navbar */}
-      <nav className={styles.navbar}>
-        <Link href="/" className={styles.navBrand} style={{ display: 'flex', alignItems: 'center' }}>
-          <Image
-            src="/logo.png"
-            alt="Lampung Maju Hub Logo"
-            width={120}
-            height={50}
-            style={{ objectFit: 'contain' }}
-            priority
-          />
-        </Link>
+      <PulauPengguna adaBlokLayanan={adaBlokLayanan} />
 
-        <ul className={styles.navLinks}>
-          {adaBlokLayanan && <li><a href="#layanan" className={styles.navLink}>Layanan</a></li>}
-          <li><Link href="/umkm/katalog" className={styles.navLink}>UMKM</Link></li>
-          <li><Link href="/gallery" className={styles.navLink}>Investasi</Link></li>
-          <li><Link href="/chat" className={styles.navLink}>Live Chat</Link></li>
-          <li><Link href="/transparansi" className={styles.navLink}>Transparansi</Link></li>
-        </ul>
-
-        <div className={styles.navActions}>
-          {user ? (
-            <div className={styles.navUserActions}>
-              {user.role === 'admin' || user.role === 'petugas' || user.role === 'front_office' ? (
-                <Tombol href="/admin" ukuran="kecil" ikon={User} className={styles.navTombolIkon}>
-                  Panel Admin
-                </Tombol>
-              ) : (
-                <Tombol href="/me" ukuran="kecil" ikon={User} className={styles.navTombolIkon}>
-                  Dashboard Saya
-                </Tombol>
-              )}
-              <Tombol varian="hantu" ukuran="kecil" ikon={LogOut} onClick={handleLogout} aria-label="Keluar">
-                <span className="sr-only">Keluar</span>
-              </Tombol>
-            </div>
-          ) : (
-            <Tombol href="/login" ukuran="kecil" ikon={User} className={styles.navTombolIkon}>
-              Masuk
-            </Tombol>
-          )}
-          <button
-            ref={menuButtonRef}
-            type="button"
-            className={styles.menuToggle}
-            aria-expanded={mobileMenuOpen}
-            aria-controls="mobile-nav-menu"
-            aria-label={mobileMenuOpen ? 'Tutup menu navigasi' : 'Buka menu navigasi'}
-            onClick={() => setMobileMenuOpen((open) => !open)}
-          >
-            {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
-          </button>
-        </div>
-      </nav>
-
-      {mobileMenuOpen && (
-        <div id="mobile-nav-menu" className={styles.mobileMenu}>
-          <ul className={styles.mobileMenuList}>
-            {adaBlokLayanan && (
-              <li><a href="#layanan" className={styles.mobileMenuLink} onClick={() => setMobileMenuOpen(false)}>Layanan</a></li>
-            )}
-            <li><Link href="/umkm/katalog" className={styles.mobileMenuLink}>UMKM</Link></li>
-            <li><Link href="/gallery" className={styles.mobileMenuLink}>Investasi</Link></li>
-            <li><Link href="/chat" className={styles.mobileMenuLink}>Live Chat</Link></li>
-            <li><Link href="/transparansi" className={styles.mobileMenuLink}>Transparansi</Link></li>
-            <li>
-              {user ? (
-                user.role === 'admin' || user.role === 'petugas' || user.role === 'front_office' ? (
-                  <Link href="/admin" className={styles.mobileMenuLink}>Panel Admin</Link>
-                ) : (
-                  <Link href="/me" className={styles.mobileMenuLink}>Dashboard Saya</Link>
-                )
-              ) : (
-                <Link href="/login" className={styles.mobileMenuLink}>Masuk</Link>
-              )}
-            </li>
-          </ul>
-        </div>
-      )}
-
-      {/* Blok homepage: dirender hanya bila data konfigurasi siap (menghindari kilasan blok yang dimatikan admin). */}
-      {data === null ? (
-        <p className={etalase.memuat} role="status" aria-busy="true">Memuat halaman…</p>
-      ) : (
-        blokTampil(data.blok).map(renderBlok)
-      )}
+      {tampil.map(renderBlok)}
 
       {/* Selalu tampil, tidak bergantung pada blok footer. */}
-      {data !== null && <TautanKebijakan />}
+      <TautanKebijakan />
 
-      {/* Popup layanan (alamat /?layanan=<slug>); Suspense karena useSearchParams. */}
-      <Suspense fallback={null}>
-        {data && <PopupDariUrl layanan={data.layanan} status={data.status} dariKartuRef={dariKartuRef} />}
-      </Suspense>
+      {/* Blok layanan mati: tidak ada kartu, tetapi popup lewat alamat /?layanan=<slug> tetap hidup (tautan bot). */}
+      {!adaBlokLayanan && <PulauStatus layanan={layanan} layananGalat={layananGalat} />}
 
       {/* Floating Chat Widget */}
       <Link href="/chat" className={styles.floatingChat}>

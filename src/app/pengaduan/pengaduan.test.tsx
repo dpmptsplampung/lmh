@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
-vi.mock('@/lib/supabase/client', () => ({
-  createClient: () => ({
-    from: () => ({ select: () => ({ eq: () => ({ order: async () => ({ data: [{ id: 'l1', nama: 'Konsultasi OSS' }] }) }) }) }),
-  }),
+// Halaman kini Server Component: daftar layanan datang dari data publik server (lib/data/publik-server.ts memakai
+// 'server-only' dan unstable_cache, jadi ditiru di sini). Perilaku aslinya diuji di publik-server.test.ts dan pengaduan.server.test.tsx.
+vi.mock('@/lib/data/publik-server', () => ({
+  muatOpsiLayananPengaduan: async () => ({ layanan: [{ id: 'l1', nama: 'Konsultasi OSS' }], galat: false }),
 }));
 
 import PengaduanPage from './page';
@@ -23,14 +23,14 @@ const uraian = 'Petugas meminta uang di luar tarif resmi saat saya mengurus izin
 
 describe('/pengaduan (publik, anonim)', () => {
   it('teks yang tampil tidak memuat tanda pisah em dash (bahasa-inti), termasuk opsi layanan umum', async () => {
-    const { container } = render(<PengaduanPage />);
+    const { container } = render(await PengaduanPage());
     expect(container.textContent ?? '').not.toContain('—');
     expect(screen.getByRole('option', { name: 'Umum / tidak spesifik' })).toBeInTheDocument();
   });
 
   it('mencentang anonim menyembunyikan kontak dan MENGOSONGKAN kontak yang sudah terlanjur diketik', async () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ nomor_tiket: 'PABCDEFGH', lacak_dengan_nomor: true }), { status: 201 }));
-    render(<PengaduanPage />);
+    render(await PengaduanPage());
     fireEvent.change(screen.getByLabelText(/Uraian pengaduan/), { target: { value: uraian } });
     fireEvent.change(screen.getByLabelText(/Kontak/), { target: { value: '081234567890' } });
 
@@ -48,7 +48,7 @@ describe('/pengaduan (publik, anonim)', () => {
 
   it('anonim: layar sukses menjelaskan nomor adalah satu-satunya kunci dan pemantauan cukup dengan nomor', async () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ nomor_tiket: 'PABCDEFGH', lacak_dengan_nomor: true }), { status: 201 }));
-    render(<PengaduanPage />);
+    render(await PengaduanPage());
     fireEvent.change(screen.getByLabelText(/Uraian pengaduan/), { target: { value: uraian } });
     fireEvent.click(screen.getByRole('checkbox', { name: /Laporkan dengan anonim/ }));
     fireEvent.click(screen.getByRole('button', { name: /Kirim Pengaduan/ }));
@@ -60,7 +60,7 @@ describe('/pengaduan (publik, anonim)', () => {
   });
 
   it('tidak anonim tanpa kontak ditolak di klien', async () => {
-    render(<PengaduanPage />);
+    render(await PengaduanPage());
     fireEvent.change(screen.getByLabelText(/Uraian pengaduan/), { target: { value: uraian } });
     fireEvent.click(screen.getByRole('button', { name: /Kirim Pengaduan/ }));
     await waitFor(() => expect(screen.getByText(/Isi kontak/)).toBeInTheDocument());

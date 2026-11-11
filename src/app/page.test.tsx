@@ -33,11 +33,6 @@ vi.mock('@/lib/supabase/client', () => ({
   createClient: () => ({ auth: { getUser: async () => ({ data: { user: null } }) } }),
 }));
 vi.mock('@/lib/sesi-staf', () => ({ keluarDariSesi: vi.fn() }));
-vi.mock('@/lib/site-settings', () => ({
-  getSiteSettings: async () => ({
-    wa_number: '628123456789', wa_default_message: 'Halo', contact_address: 'Jl. Contoh 1', contact_hours: '', contact_email: '',
-  }),
-}));
 vi.mock('@/components/EstimasiAntrean', () => ({
   default: ({ judul }: { judul?: string }) => <section data-testid="estimasi">{judul}</section>,
 }));
@@ -51,12 +46,43 @@ vi.mock('@/lib/homepage/data', async (impor) => {
       return h.data.blok;
     },
     muatLayanan: async () => (h.data.menggantung ? new Promise<never>(() => {}) : h.data.layanan),
+    // PulauStatus (Coba lagi di klien) memakai varian ketat; hasil tiruan sama.
+    muatLayananKetat: async () => (h.data.menggantung ? new Promise<never>(() => {}) : h.data.layanan),
     muatStatusHariIni: async () => (h.data.menggantung ? new Promise<never>(() => {}) : h.data.status),
     muatAntrean: async () => h.data.antrean,
+    muatPengaturanBeranda: async () => ({
+      wa_number: '628123456789', wa_default_message: 'Halo', contact_address: 'Jl. Contoh 1', contact_hours: '', contact_email: '',
+    }),
+  };
+});
+// lib/data/publik-server.ts memakai 'server-only' (tak terselesaikan di lingkungan jsdom) dan unstable_cache, jadi di sini
+// ditiru dengan orkestrasi yang sama (pemuat berbatas waktu + bawaan). Perilaku aslinya (klien anon, cache, tag, tidak
+// menyimpan hasil tak lengkap) diuji di lib/data/publik-server.test.ts dan alur nyata di page.server.test.tsx (node).
+vi.mock('@/lib/data/publik-server', async () => {
+  const data = await import('@/lib/homepage/data');
+  const { gabungkanBlok } = await import('@/lib/homepage/blok');
+  const sb = {} as never;
+  return {
+    muatBerandaPublik: async () => {
+      const [blok, layanan, pengaturan] = await Promise.all([
+        data.denganBatasWaktu(data.muatBlok(sb), data.BATAS_MUAT_MS, gabungkanBlok(null)),
+        data.denganBatasWaktu(data.muatLayanan(sb), data.BATAS_MUAT_MS, data.GAGAL_LAYANAN),
+        data.denganBatasWaktu(data.muatPengaturanBeranda(sb), data.BATAS_MUAT_MS, null),
+      ]);
+      return {
+        blok,
+        layanan: layanan.layanan,
+        layananGalat: layanan.tingkat === 0,
+        pengaturan: pengaturan ?? { ...data.PENGATURAN_BERANDA_BAWAAN },
+      };
+    },
   };
 });
 
 import LandingPage from './page';
+
+// Beranda = Server Component async: dirender dengan menunggu elemennya (tidak ada lagi "Memuat halaman…" di klien).
+const tampil = async () => render(await LandingPage());
 
 const layanan = (id: string, nama: string, o: Partial<LayananEtalase> = {}): LayananEtalase => ({
   id,
@@ -100,7 +126,7 @@ const bawaan = DEFINISI_BLOK;
 
 describe('Homepage etalase: blok', () => {
   it('blok bawaan tampil (hero, jalur cepat, status, layanan, ajakan, footer); papan kinerja mati', async () => {
-    render(<LandingPage />);
+    await tampil();
     expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('Lampung Maju');
     expect(screen.getByRole('heading', { name: bawaan.jalur_cepat.bawaan.title })).toBeInTheDocument();
     expect(screen.getByTestId('estimasi')).toBeInTheDocument();
@@ -110,7 +136,7 @@ describe('Homepage etalase: blok', () => {
 
   it('blok yang dimatikan tidak dirender sama sekali (tanpa teks cadangan)', async () => {
     atur([baris('hero', false, 10), baris('ajakan', false, 60), baris('jalur_cepat', false, 20)]);
-    render(<LandingPage />);
+    await tampil();
     await screen.findByTestId('estimasi');
     expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
     expect(screen.queryByText(bawaan.hero.bawaan.description)).toBeNull();
@@ -120,14 +146,14 @@ describe('Homepage etalase: blok', () => {
 
   it('blok status hari ini mati -> EstimasiAntrean tidak dirender', async () => {
     atur([baris('status_hari_ini', false, 30)]);
-    render(<LandingPage />);
+    await tampil();
     await screen.findByRole('heading', { level: 1 });
     expect(screen.queryByTestId('estimasi')).toBeNull();
   });
 
   it('urutan blok mengikuti konfigurasi admin', async () => {
     atur([baris('ajakan', true, 5), baris('hero', true, 50)]);
-    render(<LandingPage />);
+    await tampil();
     const judulAjakan = await screen.findByRole('heading', { level: 2, name: bawaan.ajakan.bawaan.title });
     const judulHero = screen.getByRole('heading', { level: 1 });
     expect(judulAjakan.compareDocumentPosition(judulHero) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -135,19 +161,19 @@ describe('Homepage etalase: blok', () => {
 
   it('teks kustom admin dipakai', async () => {
     atur([baris('ajakan', true, 60, { title: 'Ayo Datang' })]);
-    render(<LandingPage />);
+    await tampil();
     expect(await screen.findByRole('heading', { level: 2, name: 'Ayo Datang' })).toBeInTheDocument();
   });
 
   it('papan kinerja yang dinyalakan menampilkan teksnya saja', async () => {
     atur([baris('papan_kinerja', true, 50, { title: 'Kinerja Layanan', description: 'Segera hadir.' })]);
-    render(<LandingPage />);
+    await tampil();
     expect(await screen.findByRole('heading', { level: 2, name: 'Kinerja Layanan' })).toBeInTheDocument();
   });
 
   it('papan kinerja menyala tanpa teks tidak menampilkan apa pun', async () => {
     atur([baris('papan_kinerja', true, 50)]);
-    const { container } = render(<LandingPage />);
+    const { container } = await tampil();
     await screen.findByRole('heading', { level: 1 });
     expect(container.querySelector('#judul-papan-kinerja')).toBeNull();
   });
@@ -155,7 +181,7 @@ describe('Homepage etalase: blok', () => {
   it('pemuat blok gagal total: halaman tetap tampil dengan bawaan (bukan crash)', async () => {
     h.data.blokGagal = true;
     h.data.layanan = { layanan: [], tingkat: 0 };
-    render(<LandingPage />);
+    await tampil();
     expect(await screen.findByRole('heading', { level: 1 })).toBeInTheDocument();
     // A-01: semua tingkat query gagal = galat (dengan Coba lagi), bukan "daftar sedang disiapkan".
     expect(screen.getByRole('alert')).toHaveTextContent(/belum dapat dimuat/i);
@@ -164,7 +190,7 @@ describe('Homepage etalase: blok', () => {
 
   it('A-01: Coba lagi memuat ulang daftar layanan dan menampilkan kartu', async () => {
     h.data.layanan = { layanan: [], tingkat: 0 };
-    render(<LandingPage />);
+    await tampil();
     const tombol = await screen.findByRole('button', { name: 'Coba lagi' });
     h.data.layanan = { layanan: [layanan('1', 'Helpdesk OSS')], tingkat: 1 };
     fireEvent.click(tombol);
@@ -174,29 +200,39 @@ describe('Homepage etalase: blok', () => {
 
   it('A-01: daftar kosong yang sah (tingkat 1) tetap pesan "sedang disiapkan", tanpa galat', async () => {
     h.data.layanan = { layanan: [], tingkat: 1 };
-    render(<LandingPage />);
+    await tampil();
     await screen.findByText(/sedang disiapkan/i);
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
-  it('permintaan menggantung: setelah 6 detik halaman tampil dengan bawaan (bukan "Memuat halaman…" selamanya)', async () => {
+  it('permintaan menggantung: setelah 6 detik halaman tampil dengan bawaan (server tidak menunggu selamanya)', async () => {
     h.data.menggantung = true;
     vi.useFakeTimers();
     try {
-      render(<LandingPage />);
-      expect(screen.getByRole('status')).toHaveTextContent('Memuat halaman');
+      let siap = false;
+      const menunggu = LandingPage().then((elemen) => {
+        siap = true;
+        return elemen;
+      });
       await act(async () => {
         await vi.advanceTimersByTimeAsync(5900);
       });
-      expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
+      expect(siap).toBe(false);
       await act(async () => {
         await vi.advanceTimersByTimeAsync(200);
       });
+      expect(siap).toBe(true);
+      render(await menunggu);
       expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument();
       // Batas waktu lewat = galat (Coba lagi), bukan "memang belum ada layanan".
       expect(screen.getByRole('alert')).toHaveTextContent(/belum dapat dimuat/i);
       expect(screen.queryByText(/sedang disiapkan/i)).toBeNull();
       expect(screen.queryByText(/Memuat halaman/)).toBeNull();
+      // Status hari ini (dimuat klien) juga menggantung: dilepas setelah 6 detik tanpa merusak halaman.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(6100);
+      });
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }
@@ -204,21 +240,21 @@ describe('Homepage etalase: blok', () => {
 
   it('tautan Kebijakan Privasi selalu ada, juga bila blok footer dimatikan', async () => {
     atur([baris('footer', false, 70)]);
-    render(<LandingPage />);
+    await tampil();
     await screen.findByRole('heading', { level: 1 });
     expect(screen.queryByText(bawaan.footer.bawaan.copyright, { exact: false })).toBeNull();
     expect(screen.getByRole('link', { name: 'Kebijakan Privasi' })).toHaveAttribute('href', '/kebijakan-privasi');
   });
 
   it('blok footer menyala: hanya satu tautan Kebijakan Privasi (tidak ganda)', async () => {
-    render(<LandingPage />);
+    await tampil();
     await screen.findByRole('heading', { level: 1 });
     expect(screen.getAllByRole('link', { name: 'Kebijakan Privasi' })).toHaveLength(1);
   });
 
   it('tautan menu "Layanan" hilang bila blok layanan mati', async () => {
     atur([baris('layanan', false, 40)]);
-    render(<LandingPage />);
+    await tampil();
     await screen.findByRole('heading', { level: 1 });
     expect(screen.queryByRole('link', { name: 'Layanan' })).toBeNull();
     expect(document.querySelector('section#layanan')).toBeNull();
@@ -230,7 +266,7 @@ describe('Homepage etalase: kartu layanan', () => {
 
   it('kartu dari data; judul memuat jumlah kartu; tidak ada layanan cadangan lama', async () => {
     atur(null, dua);
-    render(<LandingPage />);
+    await tampil();
     expect(await screen.findByRole('heading', { level: 2, name: '2 Layanan dalam Satu Atap' })).toBeInTheDocument();
     expect(screen.getAllByRole('article')).toHaveLength(2);
     expect(screen.queryByText('Balai Monitor SFR')).toBeNull();
@@ -239,14 +275,14 @@ describe('Homepage etalase: kartu layanan', () => {
 
   it('daftar kosong: tidak ada kartu cadangan', async () => {
     atur(null, []);
-    render(<LandingPage />);
+    await tampil();
     await screen.findByText(/sedang disiapkan/i);
     expect(screen.queryAllByRole('article')).toHaveLength(0);
   });
 
   it('layanan dengan tampil_di_homepage=false tidak dapat kartu dan tidak dihitung', async () => {
     atur(null, [...dua, layanan('3', 'Tersembunyi', { tampilDiHomepage: false })]);
-    render(<LandingPage />);
+    await tampil();
     expect(await screen.findByRole('heading', { level: 2, name: '2 Layanan dalam Satu Atap' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Tersembunyi/ })).toBeNull();
   });
@@ -257,7 +293,7 @@ describe('Homepage etalase: kartu layanan', () => {
       ['1', { buka: true, liburKeterangan: null, jadwal: [] }],
       ['2', { buka: false, liburKeterangan: null, jadwal: [{ hari: 4, jamMulai: '08:00', jamSelesai: '15:30' }] }],
     ]);
-    render(<LandingPage />);
+    await tampil();
     expect(await screen.findByText('Buka sekarang')).toBeInTheDocument();
     expect(screen.getByText('Tutup saat ini · Buka setiap Kamis')).toBeInTheDocument();
   });
@@ -268,7 +304,7 @@ describe('Homepage etalase: popup dan alamatnya', () => {
 
   it('klik kartu mendorong /?layanan=<slug> tanpa gulir', async () => {
     atur(null, daftar);
-    render(<LandingPage />);
+    await tampil();
     fireEvent.click(await screen.findByRole('button', { name: /Bank Lampung/ }));
     expect(h.push).toHaveBeenCalledWith('/?layanan=bank-lampung', { scroll: false });
   });
@@ -276,7 +312,7 @@ describe('Homepage etalase: popup dan alamatnya', () => {
   it('deep link ?layanan=<slug> membuka dialog layanan itu', async () => {
     atur(null, daftar);
     h.params = new URLSearchParams('layanan=helpdesk-oss');
-    render(<LandingPage />);
+    await tampil();
     const dlg = await screen.findByRole('dialog');
     expect(within(dlg).getByRole('heading', { level: 2, name: 'Helpdesk OSS' })).toBeInTheDocument();
   });
@@ -284,31 +320,31 @@ describe('Homepage etalase: popup dan alamatnya', () => {
   it('popup layanan yang tidak punya kartu tetap terbuka lewat alamat (tautan bot tidak mati)', async () => {
     atur(null, [...daftar, layanan('3', 'Tersembunyi', { tampilDiHomepage: false })]);
     h.params = new URLSearchParams('layanan=tersembunyi');
-    render(<LandingPage />);
+    await tampil();
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
   });
 
   it('slug tak dikenal (mis. layanan diarsipkan) tidak membuka dialog', async () => {
     atur(null, daftar);
     h.params = new URLSearchParams('layanan=tidak-ada');
-    render(<LandingPage />);
+    await tampil();
     await screen.findByRole('heading', { level: 1 });
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('tanpa parameter tidak ada dialog', async () => {
     atur(null, daftar);
-    render(<LandingPage />);
+    await tampil();
     await screen.findByRole('heading', { level: 1 });
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('menutup popup yang dibuka dari kartu = kembali (history.back), bukan menambah riwayat', async () => {
     atur(null, daftar);
-    const { rerender } = render(<LandingPage />);
+    const { rerender } = await tampil();
     fireEvent.click(await screen.findByRole('button', { name: /Helpdesk OSS/ }));
     h.params = new URLSearchParams('layanan=helpdesk-oss');
-    rerender(<LandingPage />);
+    rerender(await LandingPage());
     fireEvent.click(await screen.findByRole('button', { name: 'Tutup' }));
     expect(h.back).toHaveBeenCalledTimes(1);
     expect(h.replace).not.toHaveBeenCalled();
@@ -317,7 +353,7 @@ describe('Homepage etalase: popup dan alamatnya', () => {
   it('menutup popup dari deep link = replace ke / (tanpa keluar dari situs)', async () => {
     atur(null, daftar);
     h.params = new URLSearchParams('layanan=helpdesk-oss');
-    render(<LandingPage />);
+    await tampil();
     const dlg = await screen.findByRole('dialog');
     await act(async () => {}); // biarkan efek pemasang pendengar Esc selesai
     fireEvent.keyDown(dlg, { key: 'Escape' });
@@ -332,7 +368,7 @@ describe('Homepage etalase: popup dan alamatnya', () => {
     ]);
     h.data.antrean = new Map([['1', { antre: 4, dilayani: 1, estimasiTungguMenit: 30 }]]);
     h.params = new URLSearchParams('layanan=helpdesk-oss');
-    render(<LandingPage />);
+    await tampil();
     const dlg = await screen.findByRole('dialog');
     expect(within(dlg).getByText('Buka sekarang')).toBeInTheDocument();
     expect(within(dlg).getByRole('table', { name: /jadwal mingguan/i })).toBeInTheDocument();

@@ -2,16 +2,18 @@
 
 import { useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { langganStatus, langganTabel, statusTabel } from '@/lib/realtime/pusat';
 
 // Pola bersama Fase 3: refetch dipicu event realtime (jalur utama) dengan
 // debounce, polling cadangan (jalur aman bila realtime terhenti), dan
 // AbortController agar fetch lama tidak menimpa data baru.
+// Tabel postgres_changes lewat pusat realtime (G4.6): satu channel `staf-tabel-<tabel>` per tab, dipakai bersama.
 export function useRealtimeRefetch(
   refetch: () => Promise<void>,
   opts: {
     topic?: string;           // topik broadcast_changes (mis. 'antrean:publik')
     table?: string;           // tabel postgres_changes (staf authenticated)
-    tables?: string[];        // beberapa tabel postgres_changes dalam SATU channel (mis. tiket_antrean + penanganan)
+    tables?: string[];        // beberapa tabel postgres_changes; tiap tabel = satu channel bersama `staf-tabel-<tabel>` di lib/realtime/pusat.ts
     pollMs?: number;          // default 30000; jeda saat channel belum SUBSCRIBED
     pollSaatTersambungMs?: number; // default 120000; jeda saat semua channel SUBSCRIBED
   } = {},
@@ -43,9 +45,15 @@ export function useRealtimeRefetch(
 
     let aktif = true;
     let timer: ReturnType<typeof setTimeout> | null = null;
-    // Status per channel; tersambung = ada channel dan semuanya SUBSCRIBED.
-    const status: boolean[] = [];
-    const tersambung = () => status.length > 0 && status.every(Boolean);
+    const daftarTabel = kunciTabel ? kunciTabel.split(',') : [];
+    // Status per sumber; tersambung = ada sumber dan semuanya SUBSCRIBED. Topik broadcast = channel milik hook ini
+    // (null = tidak dipakai); tabel = channel bersama di pusat realtime (statusTabel).
+    let statusTopik: boolean | null = null;
+    const tersambung = () => {
+      if (statusTopik === null && daftarTabel.length === 0) return false;
+      if (statusTopik === false) return false;
+      return daftarTabel.every((t) => statusTabel(t) === 'tersambung');
+    };
     const terlihat = () => typeof document === 'undefined' || !document.hidden;
 
     const hentikanJadwal = () => {
@@ -61,11 +69,11 @@ export function useRealtimeRefetch(
         jadwalkan();
       }, tersambung() ? pollSaatTersambungMs : pollMs);
     };
-    const catatStatus = (idx: number) => (s: string) => {
+    const catatStatusTopik = (s: string) => {
       if (!aktif) return;
       const baru = s === 'SUBSCRIBED';
-      if (status[idx] === baru) return;
-      status[idx] = baru;
+      if (statusTopik === baru) return;
+      statusTopik = baru;
       jadwalkan(); // jeda berubah sesuai status terbaru
     };
     const saatVisibilitas = () => {
@@ -80,30 +88,29 @@ export function useRealtimeRefetch(
 
     const hasClient = supabase !== null && typeof supabase.channel === 'function';
     const channels: Array<ReturnType<NonNullable<typeof supabase>['channel']>> = [];
-    if (hasClient) {
-      try {
-        if (topic) {
-          const idx = status.push(false) - 1;
+    if (topic) {
+      statusTopik = false;
+      if (hasClient) {
+        try {
           channels.push(
             (supabase as NonNullable<typeof supabase>)
               .channel(`realtime-refetch-${topic}`)
               .on('broadcast', { event: '*' }, trigger)
-              .subscribe(catatStatus(idx)),
+              .subscribe(catatStatusTopik),
           );
+        } catch {
+          // Tanpa realtime: polling tetap berjalan di bawah.
         }
-        if (kunciTabel) {
-          let ch = (supabase as NonNullable<typeof supabase>).channel(
-            `realtime-refetch-table-${kunciTabel.split(',').join('+')}`,
-          );
-          for (const nama of kunciTabel.split(',')) {
-            ch = ch.on('postgres_changes', { event: '*', schema: 'public', table: nama }, trigger);
-          }
-          const idx = status.push(false) - 1;
-          channels.push(ch.subscribe(catatStatus(idx)));
-        }
-      } catch {
-        // Tanpa realtime: polling tetap berjalan di bawah.
       }
+    }
+    // Tabel: satu channel per tabel untuk seluruh tab, dibagi dengan pemakai lain (sidebar + halaman).
+    const berhenti: Array<() => void> = [];
+    const saatStatusTabel = () => {
+      if (aktif) jadwalkan(); // pusat hanya memberi tahu saat status berubah
+    };
+    for (const nama of daftarTabel) {
+      berhenti.push(langganStatus(nama, saatStatusTabel));
+      berhenti.push(langganTabel(nama, trigger));
     }
 
     jadwalkan();
@@ -117,6 +124,7 @@ export function useRealtimeRefetch(
         document.removeEventListener('visibilitychange', saatVisibilitas);
       }
       if (debounce) clearTimeout(debounce);
+      for (const f of berhenti) f();
       if (supabase && typeof supabase.removeChannel === 'function') {
         for (const ch of channels) void supabase.removeChannel(ch);
       }

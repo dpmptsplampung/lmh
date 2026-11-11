@@ -1,16 +1,21 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
+  BATAS_MUAT_MS,
+  PENGATURAN_BERANDA_BAWAAN,
   denganBatasWaktu,
   ikonKartu,
   muatAntrean,
   muatBlok,
+  muatBlokKetat,
   muatLayanan,
+  muatLayananKetat,
+  muatPengaturanBeranda,
   muatStatusHariIni,
   slugDariNama,
 } from './data';
 
-type Hasil = { data: unknown; error: { message: string } | null };
+type Hasil = { data: unknown; error: { message: string; code?: string } | null };
 
 // Supabase tiruan: setiap from(tabel).select(kolom) mengembalikan hasil berurutan per tabel; rpc() per nama.
 function tiruan(opsi: {
@@ -195,6 +200,137 @@ describe('muatStatusHariIni', () => {
   });
 });
 
+// Pemuat KETAT (jalur server ber-cache): turun ke bawaan/tingkat lebih lama HANYA untuk "objek belum ada"; galat sesaat
+// (503, jaringan, lemparan) ditandai gagal agar cadangannya tidak tersimpan sebagai hasil lengkap. Pemuat lama tak berubah.
+describe('muatLayananKetat', () => {
+  const galat = (code?: string) => ({ data: null, error: { message: 'galat', ...(code ? { code } : {}) } });
+  const tanpaSaklar = () => {
+    const b = barisPenuh();
+    delete (b as Record<string, unknown>).tampil_di_homepage;
+    return b;
+  };
+
+  it('tingkat 1 berhasil: sama dengan muatLayanan', async () => {
+    const { sb } = tiruan({ from: { v_layanan_publik: [{ data: [barisPenuh()], error: null }] } });
+    const { layanan, tingkat } = await muatLayananKetat(sb);
+    expect(tingkat).toBe(1);
+    expect(layanan).toHaveLength(1);
+  });
+
+  it.each(['42703', 'PGRST204'])('kolom belum ada (%s) -> tingkat 2 (tampil_di_homepage dianggap true)', async (kode) => {
+    const { sb, panggilan } = tiruan({
+      from: { v_layanan_publik: [galat(kode), { data: [tanpaSaklar()], error: null }] },
+    });
+    const { layanan, tingkat } = await muatLayananKetat(sb);
+    expect(tingkat).toBe(2);
+    expect(panggilan).toHaveLength(2);
+    expect(layanan[0].tampilDiHomepage).toBe(true);
+  });
+
+  it('dua tingkat "belum ada" (42703, lalu 42P01 untuk kolom lama) -> tingkat 3 dengan slug turunan', async () => {
+    const { sb } = tiruan({
+      from: {
+        v_layanan_publik: [
+          galat('42703'),
+          galat('42703'),
+          { data: [{ id: '1', nama: 'Layanan Lama', status_tampilan: 'aktif', punya_antrean: true, punya_chat: true }], error: null },
+        ],
+      },
+    });
+    const { layanan, tingkat } = await muatLayananKetat(sb);
+    expect(tingkat).toBe(3);
+    expect(layanan[0].slug).toBe('layanan-lama');
+  });
+
+  it.each([
+    ['galat tanpa kode (mis. 503)', galat()],
+    ['kode lain (PGRST001 koneksi)', galat('PGRST001')],
+    ['kode izin (42501)', galat('42501')],
+  ])('%s pada tingkat 1 -> GAGAL seketika, tidak turun ke tingkat 2', async (_nama, balasan) => {
+    const { sb, panggilan } = tiruan({
+      from: { v_layanan_publik: [balasan, { data: [tanpaSaklar()], error: null }] },
+    });
+    expect(await muatLayananKetat(sb)).toEqual({ layanan: [], tingkat: 0 });
+    expect(panggilan).toHaveLength(1);
+  });
+
+  it('lemparan jaringan pada tingkat 1 -> GAGAL seketika', async () => {
+    const { sb, panggilan } = tiruan({ from: { v_layanan_publik: ['lempar', { data: [barisPenuh()], error: null }] } });
+    expect((await muatLayananKetat(sb)).tingkat).toBe(0);
+    expect(panggilan).toHaveLength(1);
+  });
+
+  it('tingkat 1 "belum ada" lalu tingkat 2 galat sesaat -> GAGAL, tidak lanjut ke tingkat 3', async () => {
+    const { sb, panggilan } = tiruan({
+      from: { v_layanan_publik: [galat('42703'), galat(), { data: [barisPenuh()], error: null }] },
+    });
+    expect((await muatLayananKetat(sb)).tingkat).toBe(0);
+    expect(panggilan).toHaveLength(2);
+  });
+
+  it('semua tingkat "belum ada" -> GAGAL setelah tiga percobaan', async () => {
+    const { sb, panggilan } = tiruan({ from: { v_layanan_publik: [galat('42P01'), galat('42P01'), galat('42P01')] } });
+    expect((await muatLayananKetat(sb)).tingkat).toBe(0);
+    expect(panggilan).toHaveLength(3);
+  });
+
+  it('tanpa galat tetapi data bukan larik -> GAGAL (bentuk tak terduga bukan "belum ada")', async () => {
+    const { sb, panggilan } = tiruan({ from: { v_layanan_publik: [{ data: null, error: null }, { data: [barisPenuh()], error: null }] } });
+    expect((await muatLayananKetat(sb)).tingkat).toBe(0);
+    expect(panggilan).toHaveLength(1);
+  });
+
+  it('muatLayanan (perilaku lama) TIDAK berubah: galat sesaat tetap turun ke tingkat 2', async () => {
+    const { sb, panggilan } = tiruan({ from: { v_layanan_publik: [galat('PGRST001'), { data: [tanpaSaklar()], error: null }] } });
+    const { tingkat, layanan } = await muatLayanan(sb);
+    expect(tingkat).toBe(2);
+    expect(panggilan).toHaveLength(2);
+    expect(layanan[0].tampilDiHomepage).toBe(true);
+  });
+});
+
+describe('muatBlokKetat', () => {
+  const galat = (code?: string) => ({ data: null, error: { message: 'galat', ...(code ? { code } : {}) } });
+
+  it('berhasil: blok tersusun dari baris DB', async () => {
+    const { sb } = tiruan({ from: { homepage_blok: [{ data: [{ jenis: 'ajakan', aktif: false, urutan: 5, teks: {} }], error: null }] } });
+    const blok = await muatBlokKetat(sb);
+    expect(blok).toHaveLength(7);
+    expect(blok?.find((b) => b.jenis === 'ajakan')?.aktif).toBe(false);
+  });
+
+  it.each(['42P01', 'PGRST205'])('tabel belum ada (%s) -> blok bawaan yang SAH (bukan null)', async (kode) => {
+    const { sb } = tiruan({ from: { homepage_blok: [galat(kode)] } });
+    const blok = await muatBlokKetat(sb);
+    expect(blok).not.toBeNull();
+    expect(blok).toHaveLength(7);
+    expect(blok?.every((b) => b.aktif === (b.jenis !== 'papan_kinerja'))).toBe(true);
+  });
+
+  it.each([
+    ['galat tanpa kode (mis. 503)', galat()],
+    ['kode lain (PGRST001)', galat('PGRST001')],
+    ['bentuk tak terduga (data bukan larik, tanpa galat)', { data: null, error: null }],
+  ])('%s -> null (gagal dibaca)', async (_nama, balasan) => {
+    const { sb } = tiruan({ from: { homepage_blok: [balasan] } });
+    expect(await muatBlokKetat(sb)).toBeNull();
+  });
+
+  it('lemparan jaringan -> null', async () => {
+    const { sb } = tiruan({ from: { homepage_blok: ['lempar'] } });
+    expect(await muatBlokKetat(sb)).toBeNull();
+  });
+
+  it('muatBlok (perilaku lama) TIDAK berubah: galat apa pun atau lemparan -> blok bawaan', async () => {
+    for (const balasan of [galat(), galat('PGRST001'), galat('42P01'), { data: null, error: null }, 'lempar' as const]) {
+      const { sb } = tiruan({ from: { homepage_blok: [balasan] } });
+      const blok = await muatBlok(sb);
+      expect(blok).toHaveLength(7);
+      expect(blok[blok.length - 1].jenis).toBe('footer');
+    }
+  });
+});
+
 describe('muatAntrean', () => {
   it('memetakan v_antrian_loket per layanan', async () => {
     const { sb } = tiruan({
@@ -236,5 +372,84 @@ describe('denganBatasWaktu', () => {
   });
   it('mengembalikan bawaan bila promise menolak', async () => {
     await expect(denganBatasWaktu(Promise.reject(new Error('x')), 50, 'bawaan')).resolves.toBe('bawaan');
+  });
+  it('batas waktu pemuat etalase = 6 detik', () => {
+    expect(BATAS_MUAT_MS).toBe(6000);
+  });
+});
+
+// site_settings dibaca lewat klien yang DISUNTIKKAN (server: klien anon tanpa cookie), bukan klien peramban.
+describe('muatPengaturanBeranda', () => {
+  function tiruanPengaturan(hasil: Hasil | 'lempar') {
+    const jejak: { tabel?: string; kolom?: string; kunci?: string[]; batas?: number } = {};
+    const q = {
+      select(kolom: string) {
+        jejak.kolom = kolom;
+        return q;
+      },
+      in(_kolom: string, kunci: string[]) {
+        jejak.kunci = kunci;
+        return q;
+      },
+      limit(n: number) {
+        jejak.batas = n;
+        return q;
+      },
+      then(selesai: (v: Hasil) => unknown, tolak: (e: unknown) => unknown) {
+        const janji = hasil === 'lempar' ? Promise.reject(new Error('jaringan')) : Promise.resolve(hasil);
+        return janji.then(selesai, tolak);
+      },
+    };
+    const sb = {
+      from(tabel: string) {
+        jejak.tabel = tabel;
+        return q;
+      },
+    };
+    return { sb: sb as unknown as SupabaseClient, jejak };
+  }
+
+  it('membaca hanya lima kunci publik dengan batas baris', async () => {
+    const { sb, jejak } = tiruanPengaturan({ data: [], error: null });
+    await muatPengaturanBeranda(sb);
+    expect(jejak.tabel).toBe('site_settings');
+    expect(jejak.kolom).toBe('key, value');
+    expect(jejak.kunci).toEqual(['wa_number', 'wa_default_message', 'contact_address', 'contact_hours', 'contact_email']);
+    expect(jejak.batas).toBe(5);
+  });
+
+  it('nilai terisi menimpa bawaan; nilai kosong/spasi dan kunci asing diabaikan', async () => {
+    const { sb } = tiruanPengaturan({
+      data: [
+        { key: 'wa_number', value: '081200000000' },
+        { key: 'contact_address', value: 'Jl. Contoh 1' },
+        { key: 'contact_hours', value: '   ' },
+        { key: 'contact_email', value: null },
+        { key: 'kunci_rahasia', value: 'jangan-bocor' },
+      ],
+      error: null,
+    });
+    const hasil = (await muatPengaturanBeranda(sb))!;
+    expect(hasil.wa_number).toBe('081200000000');
+    expect(hasil.contact_address).toBe('Jl. Contoh 1');
+    expect(hasil.contact_hours).toBe(PENGATURAN_BERANDA_BAWAAN.contact_hours);
+    expect(hasil.contact_email).toBe(PENGATURAN_BERANDA_BAWAAN.contact_email);
+    expect(hasil.wa_default_message).toBe(PENGATURAN_BERANDA_BAWAAN.wa_default_message);
+    expect(Object.keys(hasil).sort()).toEqual(Object.keys(PENGATURAN_BERANDA_BAWAAN).sort());
+  });
+
+  it('galat query atau lemparan -> null (gagal dibaca, beda dari terbaca-tapi-kosong), tidak melempar', async () => {
+    expect(await muatPengaturanBeranda(tiruanPengaturan({ data: null, error: { message: 'x' } }).sb)).toBeNull();
+    expect(await muatPengaturanBeranda(tiruanPengaturan('lempar').sb)).toBeNull();
+  });
+
+  it('terbaca tapi kosong -> bawaan penuh (bukan null)', async () => {
+    expect(await muatPengaturanBeranda(tiruanPengaturan({ data: [], error: null }).sb)).toEqual(PENGATURAN_BERANDA_BAWAAN);
+  });
+
+  it('mengembalikan salinan: mengubah hasil tidak mengubah bawaan', async () => {
+    const hasil = (await muatPengaturanBeranda(tiruanPengaturan({ data: [], error: null }).sb))!;
+    hasil.wa_number = 'diubah';
+    expect(PENGATURAN_BERANDA_BAWAAN.wa_number).not.toBe('diubah');
   });
 });

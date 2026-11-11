@@ -4,7 +4,8 @@
 // tanpa mengunduh baris) dan dibatasi RLS; tidak ada migrasi. Satu instance di Sidebar.
 //
 // Pembaruan: realtime (tabel penanganan, chat_sesi, tiket_antrean — semuanya ada di publikasi supabase_realtime;
-// pengaduan dan saran TIDAK ada, jadi hanya terbarui lewat polling atau segarkanBadge()) + polling cadangan 30 dtk yang hanya bekerja saat tab terlihat
+// pengaduan dan saran TIDAK ada, jadi hanya terbarui lewat polling atau segarkanBadge(); channel per tabel dibagi
+// dengan halaman yang terbuka lewat lib/realtime/pusat.ts) + polling cadangan 30 dtk yang hanya bekerja saat tab terlihat
 // + refetch saat tab kembali terlihat/fokus. Galat ditelan: badge terakhir dipertahankan, kecuali Saran
 // yang dihapus agar skema belum tersedia atau galat kueri tidak menyisakan angka basi.
 import { useCallback, useEffect, useRef, useState } from 'react';

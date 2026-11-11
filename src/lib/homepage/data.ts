@@ -1,9 +1,17 @@
-// Pemuat data etalase homepage (dipakai client component `/`). Prinsip: TIDAK PERNAH melempar dan tidak
-// pernah membuat homepage 500 bila migrasi belum diterapkan; tiap pemuat turun ke bawaan/tingkat lebih lama.
+// Pemuat data etalase homepage. Semua pemuat menerima SupabaseClient sebagai argumen: server beranda
+// (lib/data/publik-server.ts) menyuntikkan klien anon tanpa cookie, pulau klien menyuntikkan klien peramban.
+// Prinsip: TIDAK PERNAH melempar dan tidak pernah membuat homepage 500 bila migrasi belum diterapkan; tiap
+// pemuat turun ke bawaan/tingkat lebih lama.
 //  - muatBlok: tabel homepage_blok (202610280001) belum ada -> blok bawaan.
 //  - muatLayanan: v_layanan_publik 3 tingkat: lengkap (202610280001) -> kolom Fase 1 (202610270001) -> kolom lama.
+//    Kedua pemuat di atas turun pada galat APA PUN (jalur klien lama). Varian *Ketat (jalur server ber-cache) turun HANYA
+//    untuk "objek belum ada" (migrasi belum diterapkan: bentuk tetap, boleh di-cache); galat lain (503, jaringan, batas
+//    waktu) ditandai gagal agar bawaan/tingkat lebih lama dari galat SESAAT tidak ikut tersimpan sebagai hasil lengkap.
 //  - muatStatusHariIni: RPC layanan_status_hari_ini() belum ada -> null (status dihilangkan, bukan ditebak).
+//  - muatPengaturanBeranda: site_settings (WhatsApp + kontak footer) gagal dibaca -> konstanta bawaan.
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { objekBelumAda } from '@/lib/akses-data/galat';
+import { CONTACT_EMAIL_FALLBACK, WA_DEFAULT_MESSAGE, WA_NUMBER } from '@/lib/constants';
 import type { JadwalHari } from '@/lib/jadwal-teks';
 import { gabungkanBlok, type BarisBlok, type BlokTersusun } from './blok';
 
@@ -32,6 +40,28 @@ export type StatusHariIni = {
 };
 
 export type AntreanLayanan = { antre: number; dilayani: number; estimasiTungguMenit: number };
+
+/** Batas tunggu tiap pemuat etalase sebelum memakai bawaan (server beranda dan pulau klien). */
+export const BATAS_MUAT_MS = 6000;
+
+/** Kunci site_settings yang dipakai beranda (tombol WhatsApp hero + kontak footer). Hanya ini yang dibaca. */
+export const KUNCI_PENGATURAN_BERANDA = [
+  'wa_number',
+  'wa_default_message',
+  'contact_address',
+  'contact_hours',
+  'contact_email',
+] as const;
+export type PengaturanBeranda = Record<(typeof KUNCI_PENGATURAN_BERANDA)[number], string>;
+
+/** Nilai bila site_settings kosong/gagal dibaca (selaras SITE_SETTING_DEFAULTS di lib/site-settings.ts). */
+export const PENGATURAN_BERANDA_BAWAAN: Readonly<PengaturanBeranda> = {
+  wa_number: WA_NUMBER,
+  wa_default_message: WA_DEFAULT_MESSAGE,
+  contact_address: '',
+  contact_hours: '',
+  contact_email: CONTACT_EMAIL_FALLBACK,
+};
 
 const KOLOM_FASE1 =
   'id, nama, slug, deskripsi, urutan, instansi_nama, instansi_singkatan, website_terkait, status_tampilan, punya_antrean, punya_chat';
@@ -135,33 +165,90 @@ export interface HasilLayanan {
  */
 export const GAGAL_LAYANAN: HasilLayanan = { layanan: [], tingkat: 0 };
 
-export async function muatLayanan(sb: SupabaseClient): Promise<HasilLayanan> {
-  const tingkat = [
-    { kolom: KOLOM_LENGKAP, turunkan: false },
-    { kolom: KOLOM_FASE1, turunkan: false },
-    { kolom: KOLOM_LAMA, turunkan: true },
-  ] as const;
-  for (let i = 0; i < tingkat.length; i++) {
+const TINGKAT_LAYANAN = [
+  { kolom: KOLOM_LENGKAP, turunkan: false },
+  { kolom: KOLOM_FASE1, turunkan: false },
+  { kolom: KOLOM_LAMA, turunkan: true },
+] as const;
+
+/**
+ * `ketat` = turun ke tingkat berikutnya HANYA bila galatnya "objek belum ada" (kolom/tabel/view: objekBelumAda);
+ * galat lain atau lemparan -> GAGAL_LAYANAN seketika. Tanpa `ketat` (perilaku lama): galat apa pun -> tingkat berikutnya.
+ */
+async function jalankanMuatLayanan(sb: SupabaseClient, ketat: boolean): Promise<HasilLayanan> {
+  for (let i = 0; i < TINGKAT_LAYANAN.length; i++) {
     try {
-      const { data, error } = await sb.from('v_layanan_publik').select(tingkat[i].kolom);
+      const { data, error } = await sb.from('v_layanan_publik').select(TINGKAT_LAYANAN[i].kolom);
       if (!error && Array.isArray(data)) {
-        return { layanan: petakan(data as unknown as BarisView[], tingkat[i].turunkan), tingkat: (i + 1) as 1 | 2 | 3 };
+        return {
+          layanan: petakan(data as unknown as BarisView[], TINGKAT_LAYANAN[i].turunkan),
+          tingkat: (i + 1) as 1 | 2 | 3,
+        };
       }
+      if (ketat && !objekBelumAda(error)) return GAGAL_LAYANAN;
     } catch {
+      if (ketat) return GAGAL_LAYANAN;
       /* coba tingkat berikutnya */
     }
   }
   return GAGAL_LAYANAN;
 }
 
-/** Blok homepage tersusun (semua jenis; yang mati ditandai aktif=false). Galat apa pun -> bawaan. */
-export async function muatBlok(sb: SupabaseClient): Promise<BlokTersusun[]> {
+export function muatLayanan(sb: SupabaseClient): Promise<HasilLayanan> {
+  return jalankanMuatLayanan(sb, false);
+}
+
+/**
+ * Seperti muatLayanan, tetapi tidak turun diam-diam pada galat sesaat (mis. 503): tingkat 2 tidak punya
+ * `tampil_di_homepage`, jadi layanan yang disembunyikan admin akan muncul lagi. Dipakai jalur server ber-cache.
+ */
+export function muatLayananKetat(sb: SupabaseClient): Promise<HasilLayanan> {
+  return jalankanMuatLayanan(sb, true);
+}
+
+/**
+ * Blok homepage tersusun untuk jalur ber-cache. null = GAGAL dibaca (503, jaringan, lemparan, bentuk tak terduga):
+ * pemanggil memakai bawaan untuk sekali ini dan tidak menyimpannya. Tabel belum ada (objekBelumAda) = bentuk tetap,
+ * hasilnya blok bawaan yang sah (bukan null).
+ */
+export async function muatBlokKetat(sb: SupabaseClient): Promise<BlokTersusun[] | null> {
   try {
     const { data, error } = await sb.from('homepage_blok').select('jenis, aktif, urutan, teks');
-    if (error || !Array.isArray(data)) return gabungkanBlok(null);
+    if (error) return objekBelumAda(error) ? gabungkanBlok(null) : null;
+    if (!Array.isArray(data)) return null;
     return gabungkanBlok(data as BarisBlok[]);
   } catch {
-    return gabungkanBlok(null);
+    return null;
+  }
+}
+
+/** Blok homepage tersusun (semua jenis; yang mati ditandai aktif=false). Galat apa pun -> bawaan. */
+export async function muatBlok(sb: SupabaseClient): Promise<BlokTersusun[]> {
+  return (await muatBlokKetat(sb)) ?? gabungkanBlok(null);
+}
+
+/**
+ * Pengaturan situs untuk beranda (site_settings dibaca publik oleh RLS `settings_public_read`). Hanya lima kunci
+ * di KUNCI_PENGATURAN_BERANDA yang diminta; nilai kosong/spasi memakai bawaan (sama dengan getSiteSettings).
+ * Galat/lemparan -> null (seperti muatStatusHariIni): pemanggil memakai PENGATURAN_BERANDA_BAWAAN dan, bila
+ * hasilnya akan di-cache, TIDAK menyimpannya. Menerima klien agar bisa dipakai klien anon di server (tanpa cookie).
+ */
+export async function muatPengaturanBeranda(sb: SupabaseClient): Promise<PengaturanBeranda | null> {
+  try {
+    const { data, error } = await sb
+      .from('site_settings')
+      .select('key, value')
+      .in('key', [...KUNCI_PENGATURAN_BERANDA])
+      .limit(KUNCI_PENGATURAN_BERANDA.length);
+    if (error || !Array.isArray(data)) return null;
+    const hasil: PengaturanBeranda = { ...PENGATURAN_BERANDA_BAWAAN };
+    for (const r of data as Array<{ key: string; value: string | null }>) {
+      const kunci = KUNCI_PENGATURAN_BERANDA.find((k) => k === r.key);
+      if (kunci && typeof r.value === 'string' && r.value.trim() !== '') hasil[kunci] = r.value;
+    }
+    return hasil;
+  } catch {
+    return null;
   }
 }
 

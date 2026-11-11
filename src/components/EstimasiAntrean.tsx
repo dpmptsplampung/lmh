@@ -6,10 +6,13 @@ import { createClient } from '@/lib/supabase/client';
 import { todayWIB } from '@/lib/time';
 import styles from './EstimasiAntrean.module.css';
 
+// Kolom v_antrian_loket yang dibaca komponen ini (kolom `tipe` ada di view tetapi tidak dipakai di sini).
+const KOLOM_LOKET_ESTIMASI =
+  'layanan_id, layanan_nama, antre_count, dilayani_count, estimasi_durasi_menit, estimasi_tunggu_total_menit, sample_count';
+
 export interface LoketEstimasi {
   layanan_id: string;
   layanan_nama: string;
-  tipe: string;
   antre_count: number;
   dilayani_count: number;
   estimasi_durasi_menit: number;
@@ -54,7 +57,7 @@ export default function EstimasiAntrean({ judul, penjelasan }: { judul?: string;
     const supabase = createClient();
     const { data, error: fetchError } = await supabase
       .from('v_antrian_loket')
-      .select('*')
+      .select(KOLOM_LOKET_ESTIMASI)
       .order('layanan_nama');
 
     if (fetchError) {
