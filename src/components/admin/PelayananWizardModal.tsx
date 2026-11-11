@@ -573,10 +573,11 @@ export default function PelayananWizardModal({
     !bacaSaja && cepat && cepat.length > 0 ? (
       <div className={styles.cepat}>
         {cepat.map((c) => (
-          <button
+          <Tombol
             key={c.label}
-            type="button"
-            className={cn('btn btn--ghost btn--sm', styles.cepatTombol)}
+            varian="hantu"
+            ukuran="kecil"
+            className={styles.cepatTombol}
             disabled={menutup}
             aria-describedby={id(`${slug}-label`)}
             onClick={() => {
@@ -585,7 +586,7 @@ export default function PelayananWizardModal({
             }}
           >
             {c.label}
-          </button>
+          </Tombol>
         ))}
       </div>
     ) : null;

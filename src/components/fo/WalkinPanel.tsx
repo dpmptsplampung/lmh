@@ -13,7 +13,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { CircleAlert, CircleCheck, ClipboardList, History, Loader2, Phone, User, UserPlus } from 'lucide-react';
+import { CircleAlert, CircleCheck, ClipboardList, History, Phone, User, UserPlus } from 'lucide-react';
+import Tombol from '@/components/ui/Tombol';
+import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 import { KATEGORI_PENGUNJUNG } from '@/lib/constants';
 import { enqueueAction } from '@/lib/offline/queue';
@@ -511,16 +513,16 @@ export default function WalkinPanel({ fokusAwal = true }: WalkinPanelProps) {
                         <span>
                           Maksud Anda <strong>{saranEmail}</strong>?
                         </span>
-                        <button
-                          type="button"
-                          className="btn btn--secondary btn--sm"
+                        <Tombol
+                          varian="sekunder"
+                          ukuran="kecil"
                           onClick={() => {
                             ubah('email', saranEmail);
                             fokusField('email');
                           }}
                         >
                           Pakai {saranEmail}
-                        </button>
+                        </Tombol>
                       </div>
                     ) : null
                   }
@@ -552,9 +554,9 @@ export default function WalkinPanel({ fokusAwal = true }: WalkinPanelProps) {
                         dan ubah bila ada yang berbeda.
                       </p>
                       <div className={styles.bannerAksi}>
-                        <button type="button" className="btn btn--ghost btn--sm" onClick={kosongkanPengunjungLama}>
+                        <Tombol varian="hantu" ukuran="kecil" onClick={kosongkanPengunjungLama}>
                           Kosongkan isian
-                        </button>
+                        </Tombol>
                       </div>
                     </div>
                   </div>
@@ -669,17 +671,15 @@ export default function WalkinPanel({ fokusAwal = true }: WalkinPanelProps) {
             <p className={styles.kemajuan}>
               {jumlahBenar} dari {URUTAN_FIELD_WALKIN.length} isian sudah benar
             </p>
-            <button type="submit" className={`btn btn--primary btn--lg ${styles.kirim}`} disabled={mengirim} aria-busy={mengirim}>
-              {mengirim ? (
-                <>
-                  <Loader2 size={18} className="animate-pulse" aria-hidden="true" /> Menyimpan…
-                </>
-              ) : (
-                <>
-                  <UserPlus size={18} aria-hidden="true" /> Daftarkan &amp; Mulai Layani
-                </>
-              )}
-            </button>
+            <Tombol
+              type="submit"
+              ikon={UserPlus}
+              className={cn(styles.besar, styles.kirim)}
+              disabled={mengirim}
+              memuat={mengirim}
+            >
+              {mengirim ? 'Menyimpan…' : 'Daftarkan & Mulai Layani'}
+            </Tombol>
           </div>
         </form>
       </div>

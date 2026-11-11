@@ -1,8 +1,3 @@
-.container {
-  padding: var(--space-8);
-
-}
-
 .header {
   display: flex;
   justify-content: space-between;
@@ -250,7 +245,6 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
-.container { padding: 0 var(--pad-page) var(--pad-page); min-width: 0; }
 .title { font-size: var(--text-lg); font-weight: 600; }
 .searchInput { width: 100%; min-width: 0; }
 .filterGroup { min-width: 0; max-width: 100%; flex: 1 1 200px; }

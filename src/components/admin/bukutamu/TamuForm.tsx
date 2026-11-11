@@ -4,7 +4,7 @@
 // (`lib/fo/walkin`): galat per isian saat meninggalkan isian, ringkasan + fokus ke galat pertama saat kirim.
 // Tombol kirim sengaja tetap aktif (kecuali sedang mengirim) agar yang kurang bisa dijelaskan, bukan disembunyikan.
 import { useRef, useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import Tombol from '@/components/ui/Tombol';
 import { formatHpTampil, normalisasiHp, periksaAsal, periksaHp, periksaNama, rapikanNama } from '@/lib/fo/walkin';
 import styles from './TamuForm.module.css';
 
@@ -148,9 +148,9 @@ export default function TamuForm({ onSubmit }: { onSubmit: (data: TamuInput) => 
         </div>
       </div>
       <div className={styles.aksi}>
-        <button type="submit" className={`btn btn--primary ${styles.tombol}`} disabled={saving}>
-          {saving ? <Loader2 size={16} className="animate-pulse" aria-hidden="true" /> : null} Catat tamu
-        </button>
+        <Tombol type="submit" className={styles.tombol} disabled={saving} memuat={saving}>
+          Catat tamu
+        </Tombol>
       </div>
     </form>
   );

@@ -43,6 +43,35 @@ const PAGE_RAKSASA = [
   'app/me/reservasi/page.tsx',
 ]
 
+/**
+ * Token yang dipakai lewat var(--x) TANPA nilai cadangan tetapi tidak didefinisikan di mana pun: bukan di
+ * src/styles/token.css (lingkup apa pun), bukan sebagai custom property lokal di modul CSS, dan bukan sebagai
+ * kunci gaya inline ('--x') di TS/TSX. Dihitung per nama (bukan per pemakaian). Awalan dinamis
+ * (var(--chart-${i})) dilewati.
+ */
+function hitungTokenTakTerdefinisi(): number {
+  const didefinisikan = new Set<string>()
+  const dipakai = new Set<string>()
+  const token = baca(join(AKAR, 'styles/token.css'))
+  for (const m of tanpaKomentarCss(token).matchAll(/(--[\w-]+)\s*:/g)) didefinisikan.add(m[1])
+  for (const p of BERKAS) {
+    const css = p.endsWith('.css')
+    const kode = /\.(ts|tsx)$/.test(p)
+    if (!css && !kode) continue
+    if (p.endsWith('styles/token.css')) continue
+    const teks = css ? tanpaKomentarCss(baca(p)) : tanpaKomentarJs(baca(p))
+    if (css) {
+      for (const m of teks.matchAll(/(?:^|[;{\s])(--[\w-]+)\s*:/g)) didefinisikan.add(m[1])
+    } else {
+      for (const m of teks.matchAll(/['"`](--[\w-]+)['"`]/g)) didefinisikan.add(m[1])
+    }
+    for (const m of teks.matchAll(/var\(\s*(--[\w-]+)\s*(,)?/g)) {
+      if (!m[2] && !m[1].endsWith('-')) dipakai.add(m[1])
+    }
+  }
+  return [...dipakai].filter((n) => !didefinisikan.has(n)).length
+}
+
 function ukur() {
   let hex = 0
   let rgb = 0
@@ -68,6 +97,8 @@ function ukur() {
       }
     }
   }
+
+  const tokenTakTerdefinisi = hitungTokenTakTerdefinisi()
 
   let kelasBtn = 0
   for (const p of tsx) {
@@ -100,6 +131,7 @@ function ukur() {
     rgb,
     zIndexLiteral,
     breakpointLuarSkala,
+    tokenTakTerdefinisi,
     kelasBtn,
     windowConfirm,
     selectBintang,

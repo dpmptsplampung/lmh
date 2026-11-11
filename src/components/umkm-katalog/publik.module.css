@@ -512,7 +512,7 @@
 .aksiForm { display: flex; flex-wrap: wrap; gap: var(--space-3); }
 .aksiForm > * { min-height: 44px; }
 
-@media (max-width: 639px) {
+@media (max-width: 640px) {
   .halaman :is(input, select, textarea) { font-size: 16px; }
   .aksiForm, .panelAksi { flex-direction: column; align-items: stretch; }
   .bantuan > button, .panelSiap .pemilik > a { align-self: stretch; }

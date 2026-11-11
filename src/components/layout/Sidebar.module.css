@@ -1,9 +1,10 @@
 /* Sidebar "Dasbor": panel putih melayang berjarak dari tepi (desktop) dan laci dari kiri (<=1024px).
-   Token dari tema dasbor (tema-dasbor.css) dengan nilai cadangan agar tetap benar sebelum tema terpasang.
-   Skala lapisan: AppBar 90 < sidebar 100 < overlay laci 140 < laci 150 < SEMUA modal halaman (>=200). */
+   Token dari tema dasbor (token.css) dengan nilai cadangan agar tetap benar sebelum tema terpasang.
+   Skala lapisan: AppBar 90 < sidebar dan overlay laci (--z-dropdown) < laci (--z-dropdown + 1) < palet perintah dan
+   SEMUA modal halaman (--z-modal). Spanduk sticky (--z-sticky) tetap di atas sidebar; urutan lama dipertahankan. */
 .sidebar {
   position: fixed;
-  z-index: 100;
+  z-index: var(--z-dropdown);
   top: calc(var(--sidebar-gap, 12px) + var(--tinggi-banner-offline, 0px));
   bottom: var(--sidebar-gap, 12px);
   left: var(--sidebar-gap, 12px);
@@ -246,7 +247,7 @@
 /* ---------- HP/tablet: laci ---------- */
 @media (max-width: 1024px) {
   .sidebar {
-    z-index: 150;
+    z-index: calc(var(--z-dropdown) + 1);
     top: 0;
     bottom: 0;
     left: 0;
@@ -270,7 +271,7 @@
     display: block;
     position: fixed;
     inset: 0;
-    z-index: 140;
+    z-index: var(--z-dropdown);
     background: var(--surface-overlay, rgba(15, 23, 42, 0.45));
   }
 

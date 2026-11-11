@@ -140,7 +140,7 @@
 .latar {
   position: fixed;
   inset: 0;
-  z-index: 1000;
+  z-index: var(--z-modal);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -345,6 +345,34 @@
   padding: var(--space-20) var(--space-8);
   text-align: center;
   color: var(--text-secondary);
+}
+
+/* Tombol ajakan hero dan CTA. Tombol belum punya ukuran "besar" maupun varian "aksen" (padanan .btn--lg dan
+   .btn--accent lama), jadi keduanya dipertahankan di sini. Warna dikunci juga pada :hover karena a:hover global
+   (spesifisitas lebih tinggi dari kelas varian) bila tidak akan menggelapkan teks tombol tautan. */
+.tombolBesar {
+  min-height: 48px;
+  padding: 0 var(--space-8);
+  font-size: var(--text-base);
+  border-radius: var(--radius-xl);
+}
+
+.tombolAksen,
+.tombolAksen:hover:not(:disabled):not([aria-disabled='true']) {
+  color: var(--text-primary);
+}
+
+.tombolAksen {
+  background: var(--color-accent-500);
+}
+
+.tombolAksen:hover:not(:disabled):not([aria-disabled='true']) {
+  background: var(--color-accent-400);
+}
+
+.ikonAkhir {
+  margin-inline-start: var(--space-2);
+  vertical-align: middle;
 }
 
 @media (max-width: 768px) {

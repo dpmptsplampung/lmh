@@ -1,33 +1,11 @@
 /* Kerangka publik Katalog UMKM: token komponen ui/* (Tombol, Field, Dialog, Lencana) dipetakan ke warna
    beranda (warna utama), latar polos tanpa gumpalan gradien, kepala putih, kaki gelap. */
 .kerangka {
-  --text-on-primary: var(--color-neutral-0);
-  --radius-button: var(--radius-lg);
-  --radius-panel: var(--radius-xl);
-  --radius-card: var(--radius-xl);
-  --fs-body: var(--text-base);
-  --bg-surface: var(--color-neutral-0);
-  --bg-surface-hover: var(--color-neutral-100);
-  --bg-surface-muted: var(--color-neutral-50);
-  --border-subtle: var(--color-neutral-200);
-  --focus-ring: 0 0 0 2px var(--color-neutral-0), 0 0 0 4px var(--color-primary-600);
+  /* Padanan publik token komponen ui/* sekarang ada di :root (token.css). Yang tersisa di sini sengaja berbeda
+     dari :root: bayangan overlay, tirai overlay, dan warna teks status info. */
   --shadow-overlay: 0 24px 48px -12px color-mix(in srgb, var(--color-neutral-900) 28%, transparent);
   --surface-overlay: color-mix(in srgb, var(--color-neutral-900) 55%, transparent);
-  --status-neutral-fg: var(--color-neutral-700);
-  --status-neutral-bg: var(--color-neutral-100);
-  --status-neutral-border: var(--color-neutral-200);
   --status-info-fg: var(--color-primary-800);
-  --status-info-bg: var(--color-primary-50);
-  --status-info-border: var(--color-primary-200);
-  --status-success-fg: var(--color-success-700);
-  --status-success-bg: var(--color-success-50);
-  --status-success-border: var(--color-success-100);
-  --status-warning-fg: color-mix(in srgb, var(--color-warning-600) 55%, var(--color-neutral-900));
-  --status-warning-bg: var(--color-warning-50);
-  --status-warning-border: color-mix(in srgb, var(--color-warning-500) 40%, var(--color-neutral-0));
-  --status-danger-fg: var(--color-danger-700);
-  --status-danger-bg: var(--color-danger-50);
-  --status-danger-border: var(--color-danger-100);
   --katalog-latar: var(--color-neutral-100);
   --katalog-tepi: clamp(16px, 4vw, 40px);
   --katalog-lebar: 1240px;
@@ -139,7 +117,7 @@
   color: var(--color-neutral-400);
 }
 
-@media (max-width: 1023px) {
+@media (max-width: 1024px) {
   .navLebar { display: none; }
 }
 @media (max-width: 720px) {

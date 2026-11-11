@@ -5,6 +5,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { AlertCircle, CheckCircle, Loader2, Shield, Lock, User, ArrowLeft } from 'lucide-react';
+import Tombol from '@/components/ui/Tombol';
 import { createClient } from '@/lib/supabase/client';
 import { resolveLoginEmail, normalizeUsername, PESAN_LOGIN_GAGAL } from '@/lib/akun/login';
 import {
@@ -254,37 +255,33 @@ function LoginContent() {
                     </div>
                   )}
 
-                  <button
-                    type="submit"
-                    className="btn btn--primary btn--lg"
-                    style={{ width: '100%', marginTop: 'var(--space-2)' }}
-                  >
+                  <Tombol type="submit" className={styles.tombolMasuk}>
                     {lupa ? 'Kirim Tautan Pemulihan' : 'Masuk Operator'}
-                  </button>
+                  </Tombol>
 
-                  <button
-                    type="button"
-                    className="btn btn--ghost btn--sm"
+                  <Tombol
+                    varian="hantu"
+                    ukuran="kecil"
                     onClick={() => {
                       setLupa(!lupa);
                       resetMessages();
                     }}
                   >
                     {lupa ? 'Kembali ke Masuk' : 'Lupa kata sandi?'}
-                  </button>
+                  </Tombol>
 
-                  <button
-                    type="button"
-                    className="btn btn--ghost btn--sm"
+                  <Tombol
+                    varian="hantu"
+                    ukuran="kecil"
+                    ikon={ArrowLeft}
                     onClick={() => {
                       setIsAdminLogin(false);
                       setLupa(false);
                       resetMessages();
                     }}
                   >
-                    <ArrowLeft size={14} />
                     Kembali ke Masuk Pengunjung
-                  </button>
+                  </Tombol>
                 </form>
               ) : (
                 /* Masuk Pengunjung (Google OAuth) */

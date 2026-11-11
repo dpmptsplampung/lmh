@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, LoaderCircle, Send } from 'lucide-react';
 import ErrorRetry from '@/components/ErrorRetry';
+import Tombol from '@/components/ui/Tombol';
 import type { KonteksSurvei } from '@/lib/survei/konteks';
 import { hapusDraf, muatDraf, simpanDraf } from '@/lib/survei/penyimpanan';
 import { buatSapaan } from '@/lib/survei/sapaan';
@@ -323,21 +324,24 @@ export default function SurveiWizard({ token, konteks, onSelesai }: SurveiWizard
           )}
           <div className={styles.navigasi}>
             {state.indeks > 0 && (
-              <button type="button" className={`btn btn--secondary ${styles.tombolNav}`} onClick={kembali}>
-                <ArrowLeft size={18} aria-hidden="true" />
+              <Tombol varian="sekunder" ikon={ArrowLeft} className={styles.tombolNav} onClick={kembali}>
                 Kembali
-              </button>
+              </Tombol>
             )}
-            <button
-              type="button"
-              className={`btn btn--primary ${styles.tombolNav}`}
+            <Tombol
+              className={styles.tombolNav}
               disabled={!siap}
               aria-describedby={siap ? undefined : 'petunjuk-lanjut'}
               onClick={lanjutAtauKirim}
             >
               {terakhir ? 'Kirim jawaban' : 'Lanjut'}
-              {terakhir ? <Send size={18} aria-hidden="true" /> : <ArrowRight size={18} aria-hidden="true" />}
-            </button>
+              {/* Tombol hanya punya ikon di depan teks; panah/pesawat penunjuk arah diletakkan di belakang label. */}
+              {terakhir ? (
+                <Send size={16} strokeWidth={1.75} aria-hidden="true" className={styles.ikonAkhir} />
+              ) : (
+                <ArrowRight size={16} strokeWidth={1.75} aria-hidden="true" className={styles.ikonAkhir} />
+              )}
+            </Tombol>
           </div>
         </div>
       )}

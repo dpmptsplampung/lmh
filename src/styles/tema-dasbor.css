@@ -1,9 +1,12 @@
 /* ============================================================
-   Tema "Dasbor" LMH (token + timpaan kelas global)
+   Tema "Dasbor" LMH (timpaan kelas global)
    ------------------------------------------------------------
    Berlaku HANYA bila ada elemen [data-tema="dasbor"] di halaman
    (layout admin dan area dasbor lain). Halaman publik tidak berubah
    karena globals.css tidak disentuh.
+
+   Nilai token tema ini (warna, radius, bayangan, dst.) ada di token.css, blok
+   kedua; berkas ini hanya berisi aturan elemen dan kelas global.
 
    Cakupan (K1, K2): token dipasang pada
      :root:has([data-tema="dasbor"])  -> html, supaya Toast dan body ikut
@@ -15,170 +18,8 @@
    sama dengan globals.css; kelas CSS Module pada elemen yang sama tetap
    bisa menimpa (mis. className="card kartuKu").
 
-   Aturan: tanpa mode gelap, tanpa warna heksadesimal di luar blok token.
+   Aturan: tanpa mode gelap, tanpa warna heksadesimal (nilai warna hanya di token.css).
    ============================================================ */
-
-/* TOKEN:MULAI */
-:is(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) {
-  color-scheme: light;
-
-  /* Primer (biru, pengganti indigo). Nama lama dipertahankan. */
-  --color-primary-50: #eff6ff;
-  --color-primary-100: #dbeafe;
-  --color-primary-200: #bfdbfe;
-  --color-primary-300: #93c5fd;
-  --color-primary-400: #60a5fa;
-  --color-primary-500: #3b82f6;
-  --color-primary-600: #2563eb;
-  --color-primary-700: #1d4ed8;
-  --color-primary-800: #1e40af;
-  --color-primary-900: #1e3a8a;
-
-  /* Permukaan */
-  --bg-canvas: #eceff4;
-  --bg-surface: #ffffff;
-  --bg-surface-muted: #f5f7fa;
-  --bg-surface-hover: #f1f5f9;
-  --border-subtle: #e6eaf0;
-  --border-default: #dfe4ec;
-  --border-hover: #cbd5e1;
-  --border-focus: var(--color-primary-600);
-
-  /* Teks. Catatan: --text-tertiary HANYA di atas putih (4,76:1); di atas kanvas gagal AA. */
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-tertiary: #64748b;
-  --text-inverse: #ffffff;
-  --text-on-primary: #ffffff;
-  --text-link: var(--color-primary-700); /* 700: 600 fica 4,48:1 di atas kanvas, gagal AA */
-
-  /* Alias kaca ke datar (nama lama, nilai baru) */
-  --glass-bg: var(--bg-surface);
-  --glass-bg-strong: var(--bg-surface);
-  --glass-bg-subtle: var(--bg-surface-muted);
-  --glass-border: var(--border-subtle);
-  --glass-blur: 0px;
-  --glass-shadow: var(--shadow-card);
-  --surface-primary: var(--bg-surface);
-  --surface-elevated: var(--bg-surface);
-  --surface-secondary: var(--bg-surface-muted);
-  --surface-overlay: rgba(15, 23, 42, 0.45);
-
-  /* Navigasi */
-  --nav-fg: #475569;
-  --nav-fg-hover: #0f172a;
-  --nav-bg-hover: #f1f5f9;
-  --nav-active-bg: #0f131b;
-  --nav-active-fg: #ffffff;
-  --nav-badge-bg: #6a4fe0;
-  --nav-badge-fg: #ffffff;
-  --nav-group-label: #64748b;
-
-  /* Status */
-  --status-success-fg: #047857;
-  --status-success-bg: #ecfdf5;
-  --status-success-border: #a7f3d0;
-  --status-warning-fg: #b45309;
-  --status-warning-bg: #fffbeb;
-  --status-warning-border: #fde68a;
-  --status-danger-fg: #b91c1c;
-  --status-danger-bg: #fef2f2;
-  --status-danger-border: #fecaca;
-  --status-info-fg: #1d4ed8;
-  --status-info-bg: #eff6ff;
-  --status-info-border: #bfdbfe;
-  --status-neutral-fg: #475569;
-  --status-neutral-bg: #f1f5f9;
-  --status-neutral-border: #e2e8f0;
-  --trend-up-fg: var(--status-success-fg);
-  --trend-up-bg: var(--status-success-bg);
-  --trend-up-border: var(--status-success-border);
-  --trend-down-fg: var(--status-danger-fg);
-  --trend-down-bg: var(--status-danger-bg);
-  --trend-down-border: var(--status-danger-border);
-  --trend-flat-fg: var(--status-neutral-fg);
-  --trend-flat-bg: var(--status-neutral-bg);
-  --trend-flat-border: var(--status-neutral-border);
-
-  /* Radius */
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-button: 10px;
-  --radius-card: 16px;
-  --radius-panel: 20px;
-  --radius-xl: var(--radius-card);
-  --radius-2xl: var(--radius-panel);
-  --radius-full: 9999px;
-
-  /* Bayangan */
-  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04);
-  --shadow-card-hover: 0 4px 12px rgba(15, 23, 42, 0.06);
-  --shadow-panel: 0 1px 3px rgba(15, 23, 42, 0.06), 0 8px 24px -12px rgba(15, 23, 42, 0.1);
-  --shadow-overlay: 0 24px 48px -12px rgba(15, 23, 42, 0.18);
-  --shadow-xs: var(--shadow-card);
-  --shadow-sm: var(--shadow-card);
-  --shadow-md: var(--shadow-card-hover);
-  --shadow-lg: var(--shadow-card-hover);
-  --shadow-xl: var(--shadow-panel);
-  --shadow-2xl: var(--shadow-overlay);
-  --shadow-glow: none;
-  --shadow-glow-accent: none;
-
-  /* Fokus: dua lapis (celah putih + cincin biru). Di atas pil gelap: cincin terang. */
-  --focus-color: var(--color-primary-600);
-  --focus-ring: 0 0 0 2px var(--bg-surface), 0 0 0 4px var(--color-primary-600);
-  --focus-ring-gelap: 0 0 0 2px var(--color-primary-300);
-
-  /* Tipografi (lantai px: root font mengecil di HP, 0.75rem jadi 10,5px) */
-  --fs-page-title: 1.5rem;
-  --fs-card-title: 0.9375rem;
-  --fs-kpi: 1.875rem;
-  --fs-table-head: max(0.75rem, 12px);
-  --fs-body: max(0.875rem, 14px);
-  --fs-small: max(0.75rem, 12px);
-
-  /* Tata letak */
-  --gap-grid: 20px;
-  --pad-card: 20px;
-  --pad-page: 24px;
-  --target: 40px;
-  --target-sentuh: 44px;
-  --sidebar-gap: 12px;
-  --sidebar-panel-width: 256px;
-  --sidebar-width: calc(var(--sidebar-panel-width) + 2 * var(--sidebar-gap));
-  --drawer-width: min(300px, 86vw);
-  --appbar-height: 56px;
-  --content-max: 1440px;
-
-  /* Grafik */
-  --chart-1: #2563eb;
-  --chart-2: #7c3aed;
-  --chart-3: #059669;
-  --chart-4: #ea580c;
-  --chart-5: #0284c7;
-  --chart-6: #db2777;
-  --chart-compare: #64748b;
-  --chart-grid: var(--border-subtle);
-  --chart-axis: #64748b;
-  --chart-bar-muted: #e2e8f0;
-  --chart-target: var(--status-danger-fg);
-}
-
-@media (max-width: 1024px) {
-  :is(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) {
-    --sidebar-width: 0px;
-    --gap-grid: 16px;
-  }
-}
-
-@media (max-width: 640px) {
-  :is(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) {
-    --pad-card: 16px;
-    --pad-page: 16px;
-  }
-}
-/* TOKEN:SELESAI */
 
 /* ---- Kanvas ---- */
 body:has([data-tema="dasbor"]) {
@@ -689,11 +530,6 @@ body:has([data-tema="dasbor"])::before {
    tautan tidak dicetak sebagai URL. Halaman /admin/pesan-perilaku/cetak punya
    aturan cetak sendiri (#laporan-cetak); isinya tidak disentuh di sini. */
 @media print {
-  :is(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) {
-    --sidebar-width: 0px;
-    --pad-page: 0px;
-  }
-
   body:has([data-tema="dasbor"]),
   [data-tema="dasbor"] {
     background: var(--bg-surface);

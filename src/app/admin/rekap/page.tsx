@@ -10,8 +10,9 @@
 // Satu definisi "dilayani" untuk semua angka (lihat DEFINISI_DILAYANI). Tidak ada tombol "Rollup": selalu terkini.
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { ClipboardCheck, Download, MessageCircle, RefreshCw, Users } from 'lucide-react';
+import { ClipboardCheck, Download, Inbox, MessageCircle, RefreshCw, Users } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
+import IsiHalaman from '@/components/layout/IsiHalaman';
 import RoleNote from '@/components/admin/RoleNote';
 import Tombol from '@/components/ui/Tombol';
 import Kartu from '@/components/ui/Kartu';
@@ -21,6 +22,8 @@ import Tabel, { type KolomTabel } from '@/components/ui/Tabel';
 import Field from '@/components/ui/Field';
 import Galat from '@/components/ui/Galat';
 import CatatanKeadaan from '@/components/ui/CatatanKeadaan';
+import Skeleton from '@/components/ui/Skeleton';
+import StatusKosong from '@/components/ui/StatusKosong';
 import PemilihRentang from '@/components/ui/PemilihRentang';
 import { BISA_DIFOKUS } from '@/components/ui/fokus';
 import Pagination from '@/components/Pagination';
@@ -294,9 +297,13 @@ function RekapTerpadu() {
   };
 
   const daftarTab = bagianTampil.map(({ kunci, label }) => ({ kunci, label }));
-  const kosongTabel = (teks: string) => (
-    <CatatanKeadaan jenis={galatMuat ? 'info' : 'kosong'}>{pesanKosong(teks)}</CatatanKeadaan>
-  );
+  // Kosong sungguhan = StatusKosong. Sedang memuat ulang atau gagal memuat bukan "memang kosong": tetap catatan.
+  const kosongTabel = (teks: string) =>
+    memuat || galatMuat ? (
+      <CatatanKeadaan jenis={galatMuat ? 'info' : 'kosong'}>{pesanKosong(teks)}</CatatanKeadaan>
+    ) : (
+      <StatusKosong ikon={Inbox} judul={teks} />
+    );
 
   return (
     <>
@@ -306,7 +313,7 @@ function RekapTerpadu() {
         </Tombol>
       </PageHeader>
 
-      <div className={styles.wadah}>
+      <IsiHalaman>
         {info && <RoleNote>{info.label} Setiap unduhan tercatat.</RoleNote>}
         <p className={styles.definisi}>{DEFINISI_DILAYANI}</p>
 
@@ -411,12 +418,18 @@ function RekapTerpadu() {
                 </div>
               </div>
               <Kartu padding="tanpa">
-                <TabelDataPelayanan
-                  rows={data?.rows ?? []}
-                  kolom={kolom}
-                  tampilan={tampilan}
-                  keadaan={pesanKosong('Belum ada pelayanan dilayani pada rentang ini.')}
-                />
+                {memuat && !data ? (
+                  <Skeleton bentuk="baris" jumlah={5} label="Memuat data pelayanan" />
+                ) : data && data.rows.length === 0 && !memuat && !galatMuat ? (
+                  kosongTabel('Belum ada pelayanan dilayani pada rentang ini.')
+                ) : (
+                  <TabelDataPelayanan
+                    rows={data?.rows ?? []}
+                    kolom={kolom}
+                    tampilan={tampilan}
+                    keadaan={pesanKosong('Belum ada pelayanan dilayani pada rentang ini.')}
+                  />
+                )}
                 {data && <Pagination page={halaman} pageSize={UKURAN_HALAMAN} total={data.total} onPageChange={setHalaman} />}
               </Kartu>
             </>
@@ -436,7 +449,7 @@ function RekapTerpadu() {
             </Kartu>
           )}
         </div>
-      </div>
+      </IsiHalaman>
     </>
   );
 }

@@ -16,11 +16,13 @@ import { ArrowRight, CheckCircle2, UserRound, X } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import CatatanKeadaan from '@/components/ui/CatatanKeadaan';
 import Galat from '@/components/ui/Galat';
-import { BISA_DIFOKUS } from '@/components/ui/fokus';
+import Kartu from '@/components/ui/Kartu';
 import KartuStatistik from '@/components/ui/KartuStatistik';
 import Lencana from '@/components/ui/Lencana';
 import Skeleton from '@/components/ui/Skeleton';
 import StatusKosong from '@/components/ui/StatusKosong';
+import Tabel, { type KolomTabel } from '@/components/ui/Tabel';
+import Tombol from '@/components/ui/Tombol';
 import AmbilAlihTiketModal, { type TiketAmbilAlih } from '@/components/admin/AmbilAlihTiketModal';
 import PemberitahuanAmbilAlih from '@/components/admin/PemberitahuanAmbilAlih';
 import { bolehKoordinatorAmbilAlihFo, muatKoordinator } from '@/lib/akses-data/lingkup';
@@ -304,6 +306,73 @@ export default function PenangananFoPage() {
     return r.hasil ?? 'Selesai';
   };
 
+  /** Sel pengunjung bertumpuk: nama, saluran, dan (riwayat) email bila sudah dilengkapi. */
+  const selPengunjung = (nama: string, saluran: string, email?: string | null) => (
+    <span className={styles.selTumpuk}>
+      {nama}
+      <span className={styles.meta}>{saluran}</span>
+      {email && <span className={styles.meta}>Email: {email}</span>}
+    </span>
+  );
+
+  const kolomLain: KolomTabel<PenangananBerjalan>[] = [
+    { kunci: 'mulai', judul: 'Mulai', render: (b) => formatJamWIB(b.mulai_at) },
+    {
+      kunci: 'pengunjung',
+      judul: 'Pengunjung',
+      render: (b) => selPengunjung(satu(b.kunjungan)?.nama ?? '-', labelSaluran(b.saluran)),
+    },
+    { kunci: 'fo', judul: 'Front Office', render: (b) => namaFo(b) },
+    ...(stafSaya?.koordinator
+      ? [
+          {
+            kunci: 'aksi',
+            judul: 'Aksi',
+            peran: 'aksi' as const,
+            render: (b: PenangananBerjalan) => {
+              const k = satu(b.kunjungan);
+              return bolehKoordinatorAmbilAlihFo(stafSaya, b) ? (
+                <Tombol varian="sekunder" ukuran="kecil"
+                  aria-label={`Ambil alih penanganan ${k?.nama ?? ''}`.trim()}
+                  onClick={() => setAmbilAlih({ id: b.id, nomor_display: k?.nama ?? '', pemilik_nama: namaFo(b) })}>
+                  Ambil alih
+                </Tombol>
+              ) : (
+                <span className={styles.meta}>{b.saluran === 'chat' ? 'Live chat: tidak dapat diambil alih' : '-'}</span>
+              );
+            },
+          },
+        ]
+      : []),
+  ];
+
+  const kolomRiwayat: KolomTabel<PenangananRiwayat>[] = [
+    {
+      kunci: 'waktu',
+      judul: 'Waktu',
+      render: (r) => (
+        <span className={styles.kolWaktu}>{formatJamWIB(r.mulai_at)}–{formatJamWIB(r.selesai_at)}</span>
+      ),
+    },
+    {
+      kunci: 'pengunjung',
+      judul: 'Pengunjung',
+      render: (r) => selPengunjung(satu(r.kunjungan)?.nama ?? '-', labelSaluran(r.saluran), satu(r.kunjungan)?.email),
+    },
+    { kunci: 'fo', judul: 'Front Office', render: (r) => namaFo(r) },
+    { kunci: 'hasil', judul: 'Hasil', render: (r) => labelHasil(r) },
+    {
+      kunci: 'topik',
+      judul: 'Topik',
+      render: (r) => <span className={styles.kolTeks} title={r.topik ?? undefined}>{r.topik ?? '-'}</span>,
+    },
+    {
+      kunci: 'catatan',
+      judul: 'Catatan',
+      render: (r) => <span className={styles.kolTeks} title={r.catatan ?? undefined}>{r.catatan ?? '-'}</span>,
+    },
+  ];
+
   return (
     <>
       <PageHeader
@@ -334,9 +403,9 @@ export default function PenangananFoPage() {
                 </>
               )}
               <div>
-                <button type="button" className="btn btn--ghost btn--sm" onClick={() => setHasil(null)}>
-                  <X size={14} aria-hidden="true" /> Tutup pemberitahuan
-                </button>
+                <Tombol varian="hantu" ukuran="kecil" ikon={X} onClick={() => setHasil(null)}>
+                  Tutup pemberitahuan
+                </Tombol>
               </div>
             </div>
           )}
@@ -395,26 +464,27 @@ export default function PenangananFoPage() {
                       />
                     ) : (
                       <div className={styles.aksiKartu}>
-                        <button
-                          type="button"
+                        <Tombol
+                          ukuran="kecil"
+                          ikon={CheckCircle2}
                           ref={(el) => {
                             if (el) tombolSelesaiRef.current.set(b.id, el);
                             else tombolSelesaiRef.current.delete(b.id);
                           }}
-                          className="btn btn--primary btn--sm"
                           onClick={() => setFormSelesaiId(b.id)}
                           aria-label={`Selesaikan penanganan ${nama}`}
                         >
-                          <CheckCircle2 size={14} aria-hidden="true" /> Selesaikan
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn--secondary btn--sm"
+                          Selesaikan
+                        </Tombol>
+                        <Tombol
+                          varian="sekunder"
+                          ukuran="kecil"
+                          ikon={ArrowRight}
                           onClick={() => setEskalasiUntuk(b)}
                           aria-label={`Eskalasi ${nama} ke layanan`}
                         >
-                          <ArrowRight size={14} aria-hidden="true" /> Eskalasi ke layanan
-                        </button>
+                          Eskalasi ke layanan
+                        </Tombol>
                       </div>
                     )}
                   </li>
@@ -433,48 +503,15 @@ export default function PenangananFoPage() {
             {berjalanLain.length === 0 ? (
               <StatusKosong ikon={UserRound} judul="Tidak ada pengunjung yang sedang ditangani Front Office lain." />
             ) : (
-              <div className={styles.tabelWadah} role="region" {...BISA_DIFOKUS} aria-label="Penanganan Front Office lain">
-                <table className={styles.tabel}>
-                  <caption>Pengunjung yang sedang ditangani Front Office lain (hanya dapat dilihat)</caption>
-                  <thead>
-                    <tr>
-                      <th scope="col">Mulai</th>
-                      <th scope="col">Pengunjung</th>
-                      <th scope="col">Front Office</th>
-                      {stafSaya?.koordinator && <th scope="col">Aksi</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {berjalanLain.map((b) => {
-                      const k = satu(b.kunjungan);
-                      return (
-                        <tr key={b.id}>
-                          <td>{formatJamWIB(b.mulai_at)}</td>
-                          <td>
-                            {k?.nama ?? '-'}
-                            <br />
-                            <span className={styles.meta}>{labelSaluran(b.saluran)}</span>
-                          </td>
-                          <td>{namaFo(b)}</td>
-                          {stafSaya?.koordinator && (
-                            <td>
-                              {bolehKoordinatorAmbilAlihFo(stafSaya, b) ? (
-                                <button type="button" className="btn btn--secondary btn--sm"
-                                  aria-label={`Ambil alih penanganan ${k?.nama ?? ''}`.trim()}
-                                  onClick={() => setAmbilAlih({ id: b.id, nomor_display: k?.nama ?? '', pemilik_nama: namaFo(b) })}>
-                                  Ambil alih
-                                </button>
-                              ) : (
-                                <span className={styles.meta}>{b.saluran === 'chat' ? 'Live chat: tidak dapat diambil alih' : '-'}</span>
-                              )}
-                            </td>
-                          )}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              <Kartu padding="tanpa" as="div">
+                <Tabel
+                  kolom={kolomLain}
+                  baris={berjalanLain}
+                  kunciBaris="id"
+                  caption="Pengunjung yang sedang ditangani Front Office lain (hanya dapat dilihat)"
+                  kartuDiHp
+                />
+              </Kartu>
             )}
           </section>
         )}
@@ -492,46 +529,15 @@ export default function PenangananFoPage() {
           ) : riwayat.length === 0 ? (
             <StatusKosong ikon={CheckCircle2} judul="Belum ada penanganan yang selesai hari ini." />
           ) : (
-            <div className={styles.tabelWadah} role="region" {...BISA_DIFOKUS} aria-label="Riwayat penanganan Front Office">
-              <table className={styles.tabel}>
-                <caption>Riwayat penanganan Front Office hari ini</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Waktu</th>
-                    <th scope="col">Pengunjung</th>
-                    <th scope="col">Front Office</th>
-                    <th scope="col">Hasil</th>
-                    <th scope="col">Topik</th>
-                    <th scope="col">Catatan</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {riwayat.map((r) => {
-                    const k = satu(r.kunjungan);
-                    return (
-                      <tr key={r.id}>
-                        <td className={styles.kolWaktu}>{formatJamWIB(r.mulai_at)}–{formatJamWIB(r.selesai_at)}</td>
-                        <td>
-                          {k?.nama ?? '-'}
-                          <br />
-                          <span className={styles.meta}>{labelSaluran(r.saluran)}</span>
-                          {k?.email && (
-                            <>
-                              <br />
-                              <span className={styles.meta}>Email: {k.email}</span>
-                            </>
-                          )}
-                        </td>
-                        <td>{namaFo(r)}</td>
-                        <td>{labelHasil(r)}</td>
-                        <td className={styles.kolTeks} title={r.topik ?? undefined}>{r.topik ?? '-'}</td>
-                        <td className={styles.kolTeks} title={r.catatan ?? undefined}>{r.catatan ?? '-'}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <Kartu padding="tanpa" as="div">
+              <Tabel
+                kolom={kolomRiwayat}
+                baris={riwayat}
+                kunciBaris="id"
+                caption="Riwayat penanganan Front Office hari ini"
+                kartuDiHp
+              />
+            </Kartu>
           )}
         </section>
       </div>

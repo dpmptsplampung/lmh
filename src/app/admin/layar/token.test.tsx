@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 // Bagian token halaman Layar admin: token baru 8 angka (diketik dengan remote TV), token lama tetap bisa dipakai dan dicabut.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, cleanup, fireEvent, act } from '@testing-library/react';
+import { render, screen, waitFor, cleanup, fireEvent, act, within } from '@testing-library/react';
+import { formatTanggal } from '@/lib/utils';
 import { formatTokenTampilan, tokenBerupaAngka, tautanLayar } from './tokenTampilan';
 
 const toastMock = vi.hoisted(() => vi.fn());
@@ -121,6 +122,29 @@ describe('Admin Layar: token 8 angka', () => {
     await waitFor(() =>
       expect(m.fetchMock).toHaveBeenCalledWith('/api/admin/layar', expect.objectContaining({ body: JSON.stringify({ aksi: 'cabut', id: 't2' }) })),
     );
+  });
+
+  // Karakterisasi tabel token aktif (G3 3.6): jumlah baris/kolom dan teks sel harus sama sebelum dan sesudah pindah ke <Tabel>.
+  it('tabel token aktif: empat kolom, satu baris per token, teks sel tetap', async () => {
+    pasang();
+    render(<AdminLayarPage />);
+    await screen.findByText('4820 5917');
+    const tabel = screen.getByRole('table', { name: 'Token akses layar TV aktif' });
+    expect(within(tabel).getAllByRole('columnheader').map(h => h.textContent)).toEqual(['Nama Layar', 'Kode Layar', 'Dibuat', 'Aksi']);
+    const baris = within(tabel).getAllByRole('row');
+    expect(baris).toHaveLength(3); // kepala + dua token
+    expect(baris[1].children).toHaveLength(4);
+    expect(baris[2].children).toHaveLength(4);
+    const teks = (b: HTMLElement, i: number) => b.children[i].textContent?.trim();
+    expect(teks(baris[1], 0)).toBe('Layar Lobi');
+    expect(teks(baris[1], 1)).toBe('4820 5917');
+    expect(teks(baris[1], 2)).toBe(formatTanggal('2026-11-03T00:00:00Z'));
+    expect(teks(baris[2], 0)).toBe('Layar Lama');
+    expect(teks(baris[2], 1)).toBe('a1b2c3d4e5f60718293a4b5c6d7e8f90Kode lama, masih berlaku');
+    expect(teks(baris[2], 2)).toBe(formatTanggal('2026-10-01T00:00:00Z'));
+    expect(within(baris[1]).getByRole('button', { name: /salin tautan layar lobi/i })).toBeInTheDocument();
+    expect(within(baris[1]).getByRole('link', { name: /buka/i })).toHaveAttribute('href', '/layar/48205917');
+    expect(within(baris[1]).getByRole('button', { name: /cabut layar lobi/i })).toBeInTheDocument();
   });
 
   it('teks bantuan menyebut kode 8 angka untuk remote TV', async () => {

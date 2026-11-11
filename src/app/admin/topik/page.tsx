@@ -14,7 +14,7 @@ import tampilan from './page.dasbor.module.css';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, List } from 'lucide-react';
 import Kartu from '@/components/ui/Kartu';
-import { BISA_DIFOKUS } from '@/components/ui/fokus';
+import Tabel, { type KolomTabel } from '@/components/ui/Tabel';
 import Skeleton from '@/components/ui/Skeleton';
 import Galat from '@/components/ui/Galat';
 import StatusKosong from '@/components/ui/StatusKosong';
@@ -220,6 +220,61 @@ export default function KelolaTopikPage() {
     }
   };
 
+  const kolomTopik: KolomTabel<Topik>[] = [
+    { kunci: 'nama', judul: 'Topik', judulBaris: true, render: (t) => (
+      <SelTeksInline
+        nilai={t.nama}
+        label={`nama topik ${t.nama}`}
+        maxLength={NAMA_MAX}
+        validasi={(baru) => validasiNama(baru, t.id)}
+        onSimpan={(baru) => ubahNama(t, baru)}
+      />
+    ) },
+    { kunci: 'urutan', judul: 'Urutan', render: (t, i) => {
+      const sedang = sibuk.has(t.id);
+      return (
+        <div className={styles.geser}>
+          <Tombol
+            type="button"
+            id={`${idDasar}-${t.id}-naik`}
+            varian="hantu" ukuran="kecil"
+            aria-label={`Naikkan ${t.nama}`}
+            disabled={!bisaGeser(daftar, i, -1) || sedang}
+            onClick={() => void geser(i, -1)}>
+            <ArrowUp size={14} aria-hidden="true" />
+          </Tombol>
+          <Tombol
+            type="button"
+            id={`${idDasar}-${t.id}-turun`}
+            varian="hantu" ukuran="kecil"
+            aria-label={`Turunkan ${t.nama}`}
+            disabled={!bisaGeser(daftar, i, 1) || sedang}
+            onClick={() => void geser(i, 1)}>
+            <ArrowDown size={14} aria-hidden="true" />
+          </Tombol>
+        </div>
+      );
+    } },
+    { kunci: 'status', judul: 'Status', render: (t) => {
+      const sedang = sibuk.has(t.id);
+      return (
+        <label className={styles.saklarBaris}>
+          <input
+            type="checkbox"
+            role="switch"
+            className="saklar"
+            aria-label={`Aktif: ${t.nama}`}
+            checked={t.aktif}
+            disabled={sedang}
+            aria-busy={sedang || undefined}
+            onChange={() => void ubahAktif(t)}
+          />
+          <span>{t.aktif ? 'Aktif' : 'Nonaktif'}</span>
+        </label>
+      );
+    } },
+  ];
+
   return (
     <>
       <PageHeader
@@ -270,76 +325,13 @@ export default function KelolaTopikPage() {
             ) : galatMuat ? (
               <Galat pesan={galatMuat} onRetry={() => { setLoading(true); void muat(); }} />
             ) : (
-              <div className="table-wrapper" role="region" aria-label={`Topik penanganan ${namaCakupan}`} {...BISA_DIFOKUS}><table className="table">
-                <caption className="sr-only">Topik penanganan {namaCakupan}</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Topik</th>
-                    <th scope="col">Urutan</th>
-                    <th scope="col">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {daftar.length === 0 && (
-                    <tr>
-                      <td colSpan={3} className="kosong-sel">
-                        <StatusKosong ikon={List} judul={`Belum ada topik untuk ${namaCakupan}.`} isi="Tulis namanya di baris paling bawah untuk membuatnya." />
-                      </td>
-                    </tr>
-                  )}
-                  {daftar.map((t, i) => {
-                    const sedang = sibuk.has(t.id);
-                    return (
-                      <tr key={t.id}>
-                        <td className="kol-utama">
-                          <SelTeksInline
-                            nilai={t.nama}
-                            label={`nama topik ${t.nama}`}
-                            maxLength={NAMA_MAX}
-                            validasi={(baru) => validasiNama(baru, t.id)}
-                            onSimpan={(baru) => ubahNama(t, baru)}
-                          />
-                        </td>
-                        <td>
-                          <div className={styles.geser}>
-                            <Tombol
-                              type="button"
-                              id={`${idDasar}-${t.id}-naik`}
-                              varian="hantu" ukuran="kecil"
-                              aria-label={`Naikkan ${t.nama}`}
-                              disabled={!bisaGeser(daftar, i, -1) || sedang}
-                              onClick={() => void geser(i, -1)}>
-                              <ArrowUp size={14} aria-hidden="true" />
-                            </Tombol>
-                            <Tombol
-                              type="button"
-                              id={`${idDasar}-${t.id}-turun`}
-                              varian="hantu" ukuran="kecil"
-                              aria-label={`Turunkan ${t.nama}`}
-                              disabled={!bisaGeser(daftar, i, 1) || sedang}
-                              onClick={() => void geser(i, 1)}>
-                              <ArrowDown size={14} aria-hidden="true" />
-                            </Tombol>
-                          </div>
-                        </td>
-                        <td>
-                          <label className={styles.saklarBaris}>
-                            <input
-                              type="checkbox"
-                              role="switch"
-                              className="saklar"
-                              aria-label={`Aktif: ${t.nama}`}
-                              checked={t.aktif}
-                              disabled={sedang}
-                              aria-busy={sedang || undefined}
-                              onChange={() => void ubahAktif(t)}
-                            />
-                            <span>{t.aktif ? 'Aktif' : 'Nonaktif'}</span>
-                          </label>
-                        </td>
-                      </tr>
-                    );
-                  })}
+              <Tabel
+                caption={`Topik penanganan ${namaCakupan}`}
+                kolom={kolomTopik}
+                baris={daftar}
+                kunciBaris="id"
+                kosong={<StatusKosong ikon={List} judul={`Belum ada topik untuk ${namaCakupan}.`} isi="Tulis namanya di baris paling bawah untuk membuatnya." />}
+                akhir={
                   <BarisTambah
                     kolom={3}
                     labelTombol="Tambah"
@@ -347,8 +339,7 @@ export default function KelolaTopikPage() {
                     bidang={[{ kunci: 'nama', label: 'Topik baru', placeholder: `+ Tambah topik ${namaCakupan}`, maxLength: NAMA_MAX }]}
                     onTambah={tambah}
                   />
-                </tbody>
-              </table></div>
+                } />
             )}
           </Kartu>
         </div>

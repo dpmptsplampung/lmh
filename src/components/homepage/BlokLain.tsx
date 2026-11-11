@@ -25,6 +25,8 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { APP_NAME } from '@/lib/constants';
+import Tombol from '@/components/ui/Tombol';
+import { cn } from '@/lib/utils';
 import landing from '@/app/landing.module.css';
 import styles from './Homepage.module.css';
 
@@ -55,20 +57,24 @@ export function BlokHero({ teks, waHref }: { teks: Teks; waHref: string }) {
         </h1>
         <p className={landing.heroDescription}>{teks.description}</p>
         <div className={landing.heroActions}>
-          <Link href={teks.cta_primary_link} className="btn btn--primary btn--lg">
-            <ClipboardCheck size={20} aria-hidden="true" />
+          <Tombol href={teks.cta_primary_link} ikon={ClipboardCheck} className={styles.tombolBesar}>
             {teks.cta_primary_text}
-          </Link>
+          </Tombol>
           {kedua === 'wa' ? (
-            <a href={waHref} target="_blank" rel="noopener noreferrer" className="btn btn--secondary btn--lg">
-              <MessageCircle size={20} aria-hidden="true" />
+            <Tombol
+              href={waHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              varian="sekunder"
+              ikon={MessageCircle}
+              className={styles.tombolBesar}
+            >
               {teks.cta_secondary_text}
-            </a>
+            </Tombol>
           ) : (
-            <Link href={kedua} className="btn btn--secondary btn--lg">
-              <MessageCircle size={20} aria-hidden="true" />
+            <Tombol href={kedua} varian="sekunder" ikon={MessageCircle} className={styles.tombolBesar}>
               {teks.cta_secondary_text}
-            </Link>
+            </Tombol>
           )}
         </div>
       </div>
@@ -129,10 +135,11 @@ export function BlokAjakan({ teks }: { teks: Teks }) {
       <div className={landing.ctaContent}>
         <h2 className={landing.ctaTitle}>{teks.title}</h2>
         <p className={landing.ctaDescription}>{teks.description}</p>
-        <Link href={teks.button_link} className="btn btn--accent btn--lg">
+        <Tombol href={teks.button_link} className={cn(styles.tombolBesar, styles.tombolAksen)}>
           {teks.button_text}
-          <ArrowRight size={20} aria-hidden="true" />
-        </Link>
+          {/* Tombol hanya punya ikon di depan teks; panah penunjuk diletakkan di belakang label. */}
+          <ArrowRight size={16} strokeWidth={1.75} aria-hidden="true" className={styles.ikonAkhir} />
+        </Tombol>
       </div>
     </section>
   );

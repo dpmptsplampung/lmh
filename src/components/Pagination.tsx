@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import Tombol from '@/components/ui/Tombol';
 
 interface PaginationProps {
   page: number;
@@ -31,26 +32,32 @@ export default function Pagination({ page, pageSize, total, onPageChange }: Pagi
         Halaman {currentPage + 1} dari {totalPages} • total {total} data
       </span>
       <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-        <button
-          type="button"
-          className="btn btn--secondary btn--sm"
+        <Tombol
+          varian="sekunder"
+          ukuran="kecil"
+          ikon={ChevronLeft}
           onClick={() => onPageChange(currentPage - 1)}
           disabled={currentPage <= 0}
           aria-label="Halaman sebelumnya"
         >
-          <ChevronLeft size={14} />
           Sebelumnya
-        </button>
-        <button
-          type="button"
-          className="btn btn--secondary btn--sm"
+        </Tombol>
+        <Tombol
+          varian="sekunder"
+          ukuran="kecil"
           onClick={() => onPageChange(currentPage + 1)}
           disabled={currentPage >= totalPages - 1}
           aria-label="Halaman berikutnya"
         >
           Berikutnya
-          <ChevronRight size={14} />
-        </button>
+          {/* Tombol hanya punya ikon di depan teks; ikon belakang diletakkan di dalam label. */}
+          <ChevronRight
+            size={16}
+            strokeWidth={1.75}
+            aria-hidden="true"
+            style={{ marginInlineStart: 'var(--space-2)', verticalAlign: 'middle' }}
+          />
+        </Tombol>
       </div>
     </div>
   );

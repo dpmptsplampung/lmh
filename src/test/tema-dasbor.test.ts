@@ -4,16 +4,19 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const akar = resolve(__dirname, '../..');
+// Token ada di satu berkas (token.css); tema-dasbor.css hanya berisi aturan elemen/komponen.
 const tema = readFileSync(resolve(akar, 'src/styles/tema-dasbor.css'), 'utf8');
+const token = readFileSync(resolve(akar, 'src/styles/token.css'), 'utf8');
 const globals = readFileSync(resolve(akar, 'src/styles/globals.css'), 'utf8');
 const layout = readFileSync(resolve(akar, 'src/app/layout.tsx'), 'utf8');
 
 const MULAI = '/* TOKEN:MULAI */';
 const SELESAI = '/* TOKEN:SELESAI */';
-const blokToken = tema.slice(tema.indexOf(MULAI), tema.indexOf(SELESAI));
-const luarToken = tema.replace(blokToken, '');
+const blokToken = token.slice(token.indexOf(MULAI), token.indexOf(SELESAI));
+// tema-dasbor.css tidak lagi memuat token: seluruh isinya adalah "di luar blok token".
+const luarToken = tema;
 
-/** Token :root lama yang SENGAJA diwarisi dari globals.css (tidak diganti tema). */
+/** Token :root lama yang SENGAJA diwarisi dari lingkup publik token.css (tidak diganti tema). */
 const SENGAJA_DIWARISI = [
   // Aksen, sukses, peringatan, bahaya: "tidak diubah" (SISTEM-DESAIN §2.2)
   '--color-accent-50', '--color-accent-100', '--color-accent-200', '--color-accent-300',
@@ -56,7 +59,7 @@ function petaToken(css: string): Map<string, string> {
 }
 
 const petaTema = petaToken(blokToken);
-const petaGlobals = petaToken(blokRoot(globals));
+const petaGlobals = petaToken(blokRoot(token));
 
 function selesaikan(nilai: string, kedalaman = 0): string {
   if (kedalaman > 10) throw new Error(`var() melingkar: ${nilai}`);
@@ -94,7 +97,7 @@ describe('tema-dasbor: cakupan dan token', () => {
   });
 
   it('(a) setiap token :root lama punya nilai di cakupan atau tercantum sebagai sengaja diwarisi', () => {
-    const lama = [...new Set(namaToken(blokRoot(globals)))];
+    const lama = [...new Set(namaToken(blokRoot(token)))];
     expect(lama.length).toBeGreaterThan(100);
     const diTema = new Set(namaToken(blokToken));
     const hilang = lama.filter((n) => !diTema.has(n) && !SENGAJA_DIWARISI.includes(n));
@@ -102,7 +105,7 @@ describe('tema-dasbor: cakupan dan token', () => {
   });
 
   it('daftar "sengaja diwarisi" tidak basi dan tidak tumpang tindih dengan tema', () => {
-    const lama = new Set(namaToken(blokRoot(globals)));
+    const lama = new Set(namaToken(blokRoot(token)));
     const diTema = new Set(namaToken(blokToken));
     expect(SENGAJA_DIWARISI.filter((n) => !lama.has(n))).toEqual([]);
     expect(SENGAJA_DIWARISI.filter((n) => diTema.has(n))).toEqual([]);
@@ -158,7 +161,10 @@ describe('tema-dasbor: kontras WCAG AA (dihitung dari nilai token)', () => {
     ['--text-secondary', '--bg-surface'],
     ['--text-secondary', '--bg-surface-muted'],
     ['--text-secondary', '--bg-surface-hover'],
+    ['--text-tertiary', '--bg-canvas'],
     ['--text-tertiary', '--bg-surface'],
+    ['--text-tertiary', '--bg-surface-muted'],
+    ['--text-tertiary', '--bg-surface-hover'],
     ['--text-on-primary', '--color-primary-600'],
     ['--text-on-primary', '--color-primary-700'],
     ['--text-link', '--bg-surface'],
@@ -201,10 +207,6 @@ describe('tema-dasbor: kontras WCAG AA (dihitung dari nilai token)', () => {
     expect(kontras(fg, bg)).toBeGreaterThanOrEqual(3);
   });
 
-  it('--text-tertiary memang gagal AA di atas kanvas, jadi tidak boleh dipakai di sana', () => {
-    expect(kontras('--text-tertiary', '--bg-canvas')).toBeLessThan(4.5);
-  });
-
   it('(b) --text-tertiary tidak dipasang pada kanvas, body, atau elemen yang bisa berada di luar kartu', () => {
     const aturan = [...luarToken.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ sel: m[1], isi: m[2] }));
     const pakaiTersier = aturan.filter((a) => /color:\s*var\(--text-tertiary\)/.test(a.isi));
@@ -215,6 +217,27 @@ describe('tema-dasbor: kontras WCAG AA (dihitung dari nilai token)', () => {
     const kanvas = aturan.filter((a) => /background(-color)?:\s*var\(--bg-canvas\)/.test(a.isi));
     expect(kanvas.length).toBeGreaterThan(0);
     for (const a of kanvas) expect(a.isi).not.toMatch(/--text-tertiary/);
+  });
+});
+
+describe('token z-index: skala berurutan (kontrak di kepala token.css)', () => {
+  const angka = (n: string) => Number(petaGlobals.get(n));
+  it('dropdown < sticky < modal < overlay < toast, semuanya >= 1000', () => {
+    const urut = ['--z-dropdown', '--z-sticky', '--z-modal', '--z-overlay', '--z-toast'].map(angka);
+    expect(urut.every((n) => Number.isInteger(n) && n >= 1000)).toBe(true);
+    expect([...urut].sort((x, y) => x - y)).toEqual(urut);
+    expect(new Set(urut).size).toBe(urut.length);
+  });
+
+  it('toast tetap di atas modal dan gerbang layar penuh', () => {
+    expect(angka('--z-toast')).toBeGreaterThan(angka('--z-overlay'));
+    expect(angka('--z-toast')).toBeGreaterThan(angka('--z-modal'));
+    const toast = readFileSync(resolve(akar, 'src/components/Toast.module.css'), 'utf8');
+    expect(toast).toMatch(/z-index:\s*var\(--z-toast/);
+  });
+
+  it('tema dasbor tidak menimpa skala z-index', () => {
+    expect([...petaTema.keys()].filter((n) => n.startsWith('--z-'))).toEqual([]);
   });
 });
 
@@ -235,11 +258,14 @@ describe('tema-dasbor: aturan berkas', () => {
     // komentar menyebut #laporan-cetak (id), itu bukan warna: sudah lolos karena huruf non-heksa
   });
 
-  it('(f) layout.tsx mengimpor tema sesudah globals.css, tanpa dependensi atau font baru', () => {
+  it('(f) layout.tsx mengimpor token.css paling awal, lalu globals.css, lalu tema; tanpa dependensi atau font baru', () => {
+    const iToken = layout.indexOf('import "@/styles/token.css"');
     const iGlobals = layout.indexOf('import "@/styles/globals.css"');
     const iTema = layout.indexOf('import "@/styles/tema-dasbor.css"');
-    expect(iGlobals).toBeGreaterThan(-1);
+    expect(iToken).toBeGreaterThan(-1);
+    expect(iGlobals).toBeGreaterThan(iToken);
     expect(iTema).toBeGreaterThan(iGlobals);
+    expect(token).not.toMatch(/@import|@font-face|url\(/);
     expect(tema).not.toMatch(/@import|@font-face|url\(/);
   });
 

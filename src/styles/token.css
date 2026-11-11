@@ -1,0 +1,453 @@
+/* ============================================================
+   Lampung Maju Hub: token desain (SATU berkas sumber)
+   ------------------------------------------------------------
+   Diimpor paling awal di app/layout.tsx, sebelum globals.css dan
+   tema-dasbor.css. Dua berkas itu TIDAK mendefinisikan custom property;
+   hanya aturan elemen dan komponen. Menambah atau mengubah token = di sini.
+
+   Dua lingkup, nilainya SENGAJA berbeda (keputusan pemilik 2026-11-11:
+   tema publik tetap berbeda dari dasbor):
+     :root                                                 tema publik (indigo, kaca)
+     :is(:root:has([data-tema="dasbor"]), [data-tema="dasbor"])   tema dasbor (biru, datar)
+   Token semantik (--bg-surface, --border-subtle, --fs-body, dst.) punya
+   padanan publik di :root supaya tidak kosong di luar dasbor; dasbor
+   menimpanya di blok bawah. Penjaga: src/test/token-peta.test.ts.
+
+   Kontrak breakpoint (CSS tidak menerima var() di @media, jadi ditulis di sini):
+     max-width: 640px      HP
+     max-width: 1024px     tablet, sidebar menciut
+     min-width: 1280px     lebar
+     pointer: coarse       target sentuh >= var(--target-sentuh)
+   Layar TV (layar-token.module.css) dikecualikan.
+
+   Kontrak z-index: nilai >= 100 HANYA lewat var(--z-*), naik berurutan:
+     --z-dropdown 1000   kerangka dan menu di atas konten (sidebar, laci, nav lengket galeri, popover)
+     --z-sticky   1100   spanduk lengket (offline, sesi, header landing); tetap di atas sidebar
+     --z-modal    1200   dialog, panel samping, palet perintah, lembar bawah kalender di HP
+     --z-overlay  1300   gerbang layar penuh (pelengkapan profil), lompat-ke-konten
+     --z-toast    1400   toast, selalu paling atas
+   Selisih kecil di dalam satu pita boleh ditulis calc(var(--z-x) + n) (mis. laci di atas overlay-nya).
+   Nilai lokal < 100 (tumpukan di dalam satu komponen) boleh literal.
+   ============================================================ */
+
+/* ---- Lingkup publik (:root) ---- */
+:root {
+  /* Brand Colors — inspired by Lampung's vibrant culture */
+  --color-primary-50: #eef2ff;
+  --color-primary-100: #e0e7ff;
+  --color-primary-200: #c7d2fe;
+  --color-primary-300: #a5b4fc;
+  --color-primary-400: #818cf8;
+  --color-primary-500: #6366f1;
+  --color-primary-600: #4f46e5;
+  --color-primary-700: #4338ca;
+  --color-primary-800: #3730a3;
+  --color-primary-900: #312e81;
+
+  /* Accent — warm gold */
+  --color-accent-50: #fffbeb;
+  --color-accent-100: #fef3c7;
+  --color-accent-200: #fde68a;
+  --color-accent-300: #fcd34d;
+  --color-accent-400: #fbbf24;
+  --color-accent-500: #f59e0b;
+  --color-accent-600: #d97706;
+  --color-accent-700: #b45309;
+
+  /* Success */
+  --color-success-50: #ecfdf5;
+  --color-success-100: #d1fae5;
+  --color-success-500: #10b981;
+  --color-success-600: #059669;
+  --color-success-700: #047857;
+
+  /* Warning */
+  --color-warning-50: #fffbeb;
+  --color-warning-500: #f59e0b;
+  --color-warning-600: #d97706;
+
+  /* Danger */
+  --color-danger-50: #fef2f2;
+  --color-danger-100: #fee2e2;
+  --color-danger-500: #ef4444;
+  --color-danger-600: #dc2626;
+  --color-danger-700: #b91c1c;
+
+  /* Neutral */
+  --color-neutral-0: #ffffff;
+  --color-neutral-50: #f8fafc;
+  --color-neutral-100: #f1f5f9;
+  --color-neutral-200: #e2e8f0;
+  --color-neutral-300: #cbd5e1;
+  --color-neutral-400: #94a3b8;
+  --color-neutral-500: #64748b;
+  --color-neutral-600: #475569;
+  --color-neutral-700: #334155;
+  --color-neutral-800: #1e293b;
+  --color-neutral-900: #0f172a;
+  --color-neutral-950: #020617;
+
+  /* Surface — glass system */
+  --surface-primary: rgba(255, 255, 255, 0.62);
+  --surface-secondary: #eef1fb;
+  --surface-elevated: rgba(255, 255, 255, 0.62);
+  --surface-overlay: rgba(15, 23, 42, 0.6);
+
+  /* Glass tokens */
+  --glass-bg: rgba(255, 255, 255, 0.62);
+  --glass-bg-strong: rgba(255, 255, 255, 0.78);   /* navbar, sidebar, modal */
+  --glass-bg-subtle: rgba(255, 255, 255, 0.45);   /* stat card, badge area */
+  --glass-border: rgba(255, 255, 255, 0.65);
+  --glass-shadow: 0 8px 32px rgba(31, 38, 135, 0.10);
+  --glass-blur: 16px;
+
+  /* Text */
+  --text-primary: var(--color-neutral-900);
+  --text-secondary: var(--color-neutral-600);
+  --text-tertiary: var(--color-neutral-500);
+  --text-inverse: #ffffff;
+  --text-link: var(--color-primary-600);
+
+  /* Border */
+  --border-default: var(--color-neutral-200);
+  --border-hover: var(--color-neutral-300);
+  --border-focus: var(--color-primary-500);
+
+  /* Typography */
+  --font-sans: var(--font-inter), 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-display: var(--font-jakarta), var(--font-inter), sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+
+  /* Font Sizes */
+  /* Lantai 12px: root font mengecil di HP (14px), tanpa lantai 0.75rem = 10.5px */
+  --text-xs: max(0.75rem, 12px);
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.875rem;
+  --text-4xl: 2.25rem;
+  --text-5xl: 3rem;
+
+  /* Spacing */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-20: 5rem;
+  --space-24: 6rem;
+
+  /* Border Radius */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  --shadow-glow: 0 0 20px rgba(99, 102, 241, 0.15);
+  --shadow-glow-accent: 0 0 20px rgba(245, 158, 11, 0.15);
+
+  /* Transitions */
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-base: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 350ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-spring: 500ms cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* Z-Index Scale */
+  --z-dropdown: 1000;
+  --z-sticky: 1100;
+  --z-modal: 1200;
+  --z-overlay: 1300;
+  --z-toast: 1400;
+
+  /* Layout */
+  --sidebar-width: 280px;
+  --header-height: 64px;
+  --max-content-width: 1280px;
+
+
+  /* ---- Token semantik (padanan publik) ----
+     Dulu hanya ada di tema dasbor sehingga kosong di luar dasbor. Nilai di bawah mengikuti tampilan
+     publik yang sudah berlaku (Katalog UMKM dan nilai cadangan komponen bersama), jadi tidak mengubah
+     rupa halaman yang selama ini memakainya; dasbor menimpa semuanya lewat blok di bawah.
+     --chart-* SENGAJA tidak didefinisikan di sini: IkmPanel (publik) memakai var(--chart-N, warna) dan
+     deret warna cadangannya hanya benar bila token kosong di luar dasbor. */
+
+  /* Permukaan */
+  --bg-canvas: var(--surface-secondary);
+  --bg-surface: var(--color-neutral-0);
+  --bg-surface-muted: var(--color-neutral-50);
+  --bg-surface-hover: var(--color-neutral-100);
+  --border-subtle: var(--border-default);
+  --text-on-primary: var(--text-inverse);
+
+  /* Navigasi (hanya dipakai kerangka dasbor; nilai sama dengan dasbor) */
+  --nav-fg: var(--color-neutral-600);
+  --nav-fg-hover: var(--color-neutral-900);
+  --nav-bg-hover: var(--color-neutral-100);
+  --nav-active-bg: #0f131b;
+  --nav-active-fg: var(--color-neutral-0);
+  --nav-badge-bg: #6a4fe0;
+  --nav-badge-fg: var(--color-neutral-0);
+  --nav-group-label: var(--color-neutral-500);
+
+  /* Status */
+  --status-success-fg: var(--color-success-700);
+  --status-success-bg: var(--color-success-50);
+  --status-success-border: var(--color-success-100);
+  --status-warning-fg: color-mix(in srgb, var(--color-warning-600) 55%, var(--color-neutral-900));
+  --status-warning-bg: var(--color-warning-50);
+  --status-warning-border: color-mix(in srgb, var(--color-warning-500) 40%, var(--color-neutral-0));
+  --status-danger-fg: var(--color-danger-700);
+  --status-danger-bg: var(--color-danger-50);
+  --status-danger-border: var(--color-danger-100);
+  --status-info-fg: var(--color-primary-700);
+  --status-info-bg: var(--color-primary-50);
+  --status-info-border: var(--color-primary-200);
+  --status-neutral-fg: var(--color-neutral-700);
+  --status-neutral-bg: var(--color-neutral-100);
+  --status-neutral-border: var(--color-neutral-200);
+  --trend-up-fg: var(--status-success-fg);
+  --trend-up-bg: var(--status-success-bg);
+  --trend-up-border: var(--status-success-border);
+  --trend-down-fg: var(--status-danger-fg);
+  --trend-down-bg: var(--status-danger-bg);
+  --trend-down-border: var(--status-danger-border);
+  --trend-flat-fg: var(--status-neutral-fg);
+  --trend-flat-bg: var(--status-neutral-bg);
+  --trend-flat-border: var(--status-neutral-border);
+
+  /* Radius */
+  --radius-button: var(--radius-lg);
+  --radius-card: var(--radius-xl);
+  --radius-panel: var(--radius-xl);
+
+  /* Bayangan */
+  --shadow-card: var(--shadow-xs);
+  --shadow-card-hover: var(--shadow-md);
+  --shadow-panel: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  --shadow-overlay: var(--shadow-lg);
+
+  /* Fokus */
+  --focus-color: var(--color-primary-600);
+  --focus-ring: 0 0 0 2px var(--color-neutral-0), 0 0 0 4px var(--color-primary-600);
+  --focus-ring-gelap: 0 0 0 2px var(--color-primary-300);
+
+  /* Tipografi semantik */
+  --fs-page-title: 1.5rem;
+  --fs-card-title: 0.9375rem;
+  --fs-kpi: 1.875rem;
+  --fs-table-head: var(--text-xs);
+  --fs-body: var(--text-base);
+  --fs-small: var(--text-xs);
+
+  /* Tata letak semantik */
+  --gap-grid: var(--space-5);
+  --pad-card: var(--space-5);
+  --pad-page: var(--space-6);
+  --target: 40px;
+  --target-sentuh: 44px;
+  --sidebar-gap: 12px;
+  --sidebar-panel-width: 256px;
+  --drawer-width: min(300px, 86vw);
+  --appbar-height: 56px;
+  --content-max: 1440px;
+}
+@media (max-width: 1024px) {
+  :root {
+    --sidebar-width: 0px;
+  }
+}
+
+@media (max-width: 768px) {
+  :root {
+    --header-height: 56px;
+  }
+}
+
+/* ---- Lingkup dasbor ---- */
+/* TOKEN:MULAI */
+:is(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) {
+  color-scheme: light;
+
+  /* Primer (biru, pengganti indigo). Nama lama dipertahankan. */
+  --color-primary-50: #eff6ff;
+  --color-primary-100: #dbeafe;
+  --color-primary-200: #bfdbfe;
+  --color-primary-300: #93c5fd;
+  --color-primary-400: #60a5fa;
+  --color-primary-500: #3b82f6;
+  --color-primary-600: #2563eb;
+  --color-primary-700: #1d4ed8;
+  --color-primary-800: #1e40af;
+  --color-primary-900: #1e3a8a;
+
+  /* Permukaan */
+  --bg-canvas: #eceff4;
+  --bg-surface: #ffffff;
+  --bg-surface-muted: #f5f7fa;
+  --bg-surface-hover: #f1f5f9;
+  --border-subtle: #e6eaf0;
+  --border-default: #dfe4ec;
+  --border-hover: #cbd5e1;
+  --border-focus: var(--color-primary-600);
+
+  /* Teks. --text-tertiary lulus AA (>= 4,5:1) di kanvas, surface, surface-muted, dan surface-hover
+     (dibuktikan test rumus WCAG di src/test/tema-dasbor.test.ts). */
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-tertiary: #5c6b82;
+  --text-inverse: #ffffff;
+  --text-on-primary: #ffffff;
+  --text-link: var(--color-primary-700); /* 700: 600 fica 4,48:1 di atas kanvas, gagal AA */
+
+  /* Alias kaca ke datar (nama lama, nilai baru) */
+  --glass-bg: var(--bg-surface);
+  --glass-bg-strong: var(--bg-surface);
+  --glass-bg-subtle: var(--bg-surface-muted);
+  --glass-border: var(--border-subtle);
+  --glass-blur: 0px;
+  --glass-shadow: var(--shadow-card);
+  --surface-primary: var(--bg-surface);
+  --surface-elevated: var(--bg-surface);
+  --surface-secondary: var(--bg-surface-muted);
+  --surface-overlay: rgba(15, 23, 42, 0.45);
+
+  /* Navigasi */
+  --nav-fg: #475569;
+  --nav-fg-hover: #0f172a;
+  --nav-bg-hover: #f1f5f9;
+  --nav-active-bg: #0f131b;
+  --nav-active-fg: #ffffff;
+  --nav-badge-bg: #6a4fe0;
+  --nav-badge-fg: #ffffff;
+  --nav-group-label: #64748b;
+
+  /* Status */
+  --status-success-fg: #047857;
+  --status-success-bg: #ecfdf5;
+  --status-success-border: #a7f3d0;
+  --status-warning-fg: #b45309;
+  --status-warning-bg: #fffbeb;
+  --status-warning-border: #fde68a;
+  --status-danger-fg: #b91c1c;
+  --status-danger-bg: #fef2f2;
+  --status-danger-border: #fecaca;
+  --status-info-fg: #1d4ed8;
+  --status-info-bg: #eff6ff;
+  --status-info-border: #bfdbfe;
+  --status-neutral-fg: #475569;
+  --status-neutral-bg: #f1f5f9;
+  --status-neutral-border: #e2e8f0;
+  --trend-up-fg: var(--status-success-fg);
+  --trend-up-bg: var(--status-success-bg);
+  --trend-up-border: var(--status-success-border);
+  --trend-down-fg: var(--status-danger-fg);
+  --trend-down-bg: var(--status-danger-bg);
+  --trend-down-border: var(--status-danger-border);
+  --trend-flat-fg: var(--status-neutral-fg);
+  --trend-flat-bg: var(--status-neutral-bg);
+  --trend-flat-border: var(--status-neutral-border);
+
+  /* Radius */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-button: 10px;
+  --radius-card: 16px;
+  --radius-panel: 20px;
+  --radius-xl: var(--radius-card);
+  --radius-2xl: var(--radius-panel);
+  --radius-full: 9999px;
+
+  /* Bayangan */
+  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-card-hover: 0 4px 12px rgba(15, 23, 42, 0.06);
+  --shadow-panel: 0 1px 3px rgba(15, 23, 42, 0.06), 0 8px 24px -12px rgba(15, 23, 42, 0.1);
+  --shadow-overlay: 0 24px 48px -12px rgba(15, 23, 42, 0.18);
+  --shadow-xs: var(--shadow-card);
+  --shadow-sm: var(--shadow-card);
+  --shadow-md: var(--shadow-card-hover);
+  --shadow-lg: var(--shadow-card-hover);
+  --shadow-xl: var(--shadow-panel);
+  --shadow-2xl: var(--shadow-overlay);
+  --shadow-glow: none;
+  --shadow-glow-accent: none;
+
+  /* Fokus: dua lapis (celah putih + cincin biru). Di atas pil gelap: cincin terang. */
+  --focus-color: var(--color-primary-600);
+  --focus-ring: 0 0 0 2px var(--bg-surface), 0 0 0 4px var(--color-primary-600);
+  --focus-ring-gelap: 0 0 0 2px var(--color-primary-300);
+
+  /* Tipografi (lantai px: root font mengecil di HP, 0.75rem jadi 10,5px) */
+  --fs-page-title: 1.5rem;
+  --fs-card-title: 0.9375rem;
+  --fs-kpi: 1.875rem;
+  --fs-table-head: max(0.75rem, 12px);
+  --fs-body: max(0.875rem, 14px);
+  --fs-small: max(0.75rem, 12px);
+
+  /* Tata letak */
+  --gap-grid: 20px;
+  --pad-card: 20px;
+  --pad-page: 24px;
+  --target: 40px;
+  --target-sentuh: 44px;
+  --sidebar-gap: 12px;
+  --sidebar-panel-width: 256px;
+  --sidebar-width: calc(var(--sidebar-panel-width) + 2 * var(--sidebar-gap));
+  --drawer-width: min(300px, 86vw);
+  --appbar-height: 56px;
+  --content-max: 1440px;
+
+  /* Grafik */
+  --chart-1: #2563eb;
+  --chart-2: #7c3aed;
+  --chart-3: #059669;
+  --chart-4: #ea580c;
+  --chart-5: #0284c7;
+  --chart-6: #db2777;
+  --chart-compare: #64748b;
+  --chart-grid: var(--border-subtle);
+  --chart-axis: #64748b;
+  --chart-bar-muted: #e2e8f0;
+  --chart-target: var(--status-danger-fg);
+}
+
+@media (max-width: 1024px) {
+  :is(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) {
+    --sidebar-width: 0px;
+    --gap-grid: 16px;
+  }
+}
+
+@media (max-width: 640px) {
+  :is(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) {
+    --pad-card: 16px;
+    --pad-page: 16px;
+  }
+}
+
+/* Cetak: tanpa ruang sidebar dan tanpa bantalan halaman (aturan cetak lain ada di tema-dasbor.css). */
+@media print {
+  :is(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) {
+    --sidebar-width: 0px;
+    --pad-page: 0px;
+  }
+}
+/* TOKEN:SELESAI */

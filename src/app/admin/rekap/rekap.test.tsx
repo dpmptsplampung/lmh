@@ -90,7 +90,7 @@ describe('/admin/rekap (terpadu)', () => {
     expect((screen.getByLabelText('Unit') as HTMLSelectElement).value).toBe('fo');
   });
 
-  it('Ringkas: sel dua baris (tanggal/jam, nama/kontak), badge hasil, dan detail lengkap lewat tombol Detail', async () => {
+  it('Ringkas: sel dua baris (tanggal/jam, nama/kontak), badge hasil, dan detail lengkap lewat tombol Lihat detail', async () => {
     params.nilai = new URLSearchParams('bagian=data');
     rute({
       lingkup: { ...LINGKUP, unit_opsi: ['fo', 'layanan'], opsi_layanan: [{ id: 'L1', nama: 'BPJS', form_pendataan: null }] },
@@ -113,14 +113,14 @@ describe('/admin/rekap (terpadu)', () => {
     expect(screen.getByText('0812 · andi@x.id')).toBeInTheDocument();
     expect(screen.getByText('Selesai')).toBeInTheDocument();
     expect(screen.queryByText('Mengurus kartu yang hilang di jalan')).not.toBeInTheDocument();
-    const tombol = screen.getByRole('button', { name: 'Detail pelayanan Andi' });
-    expect(tombol).toHaveAttribute('aria-expanded', 'false');
-    fireEvent.click(tombol);
-    expect(tombol).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByText('Mengurus kartu yang hilang di jalan')).toBeInTheDocument();
-    expect(screen.getByText('Sudah dibantu')).toBeInTheDocument();
-    // Klik baris juga menutup.
+    // Klik baris tidak membuka apa pun (tidak ada <tr onClick>); detail hanya lewat tombol di kolom Aksi.
     fireEvent.click(screen.getAllByText('Sari')[0]);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Lihat detail pelayanan Andi' }));
+    const panel = screen.getByRole('dialog', { name: 'Detail pelayanan Andi' });
+    expect(within(panel).getByText('Mengurus kartu yang hilang di jalan')).toBeInTheDocument();
+    expect(within(panel).getByText('Sudah dibantu')).toBeInTheDocument();
+    fireEvent.click(within(panel).getByRole('button', { name: 'Tutup dialog' }));
     expect(screen.queryByText('Mengurus kartu yang hilang di jalan')).not.toBeInTheDocument();
   });
 
@@ -348,6 +348,36 @@ describe('/admin/rekap (terpadu)', () => {
       // Memuat = kerangka (Skeleton) berlabel, bukan angka 0.
       expect(within(kartuRingkasan()).getByText('Memuat Dilayani (periode)')).toBeInTheDocument();
       expect(within(kartuRingkasan()).queryByText('0')).toBeNull();
+    });
+
+    it('G3.4: muat awal tab Data Pelayanan = kerangka (Skeleton) berlabel, bukan tabel kosong bertuliskan "Memuat…"', async () => {
+      params.nilai = new URLSearchParams('bagian=data');
+      mockFetch.mockImplementation((url: string) => {
+        const bagian = new URL(url, 'http://x').searchParams.get('bagian') ?? '';
+        if (bagian === 'lingkup') return json({ ...LINGKUP, unit_opsi: ['fo', 'layanan'], opsi_layanan: [] });
+        return new Promise(() => {}); // data tidak pernah selesai
+      });
+      render(<AdminRekapPage />);
+      expect(await screen.findByText('Memuat data pelayanan')).toBeInTheDocument();
+      expect(screen.queryByRole('columnheader')).toBeNull();
+      expect(screen.queryByText('Memuat…')).toBeNull();
+    });
+
+    it('G3.4: Data Pelayanan memang kosong = StatusKosong (bukan catatan), tanpa tabel', async () => {
+      params.nilai = new URLSearchParams('bagian=data');
+      rute({ lingkup: { ...LINGKUP, unit_opsi: ['fo', 'layanan'], opsi_layanan: [] }, data: { total: 0, form_type: null, rows: [] } });
+      render(<AdminRekapPage />);
+      expect(await screen.findByText('Belum ada pelayanan dilayani pada rentang ini.')).toBeInTheDocument();
+      expect(screen.queryByRole('note', { name: /Belum ada data/ })).toBeNull();
+      expect(document.querySelector('[data-jenis="kosong"]')).toBeNull();
+      expect(screen.queryByRole('columnheader')).toBeNull();
+    });
+
+    it('G3.4: Rekap Harian kosong = StatusKosong di dalam tabel', async () => {
+      rute({ lingkup: LINGKUP, harian: { rows: [], ringkasan: { jumlah: 0, tatap_muka: 0, live_chat: 0, per_unit: [] } } });
+      render(<AdminRekapPage />);
+      expect(await screen.findByText('Belum ada pelayanan dilayani pada rentang ini.')).toBeInTheDocument();
+      expect(document.querySelector('[data-jenis="kosong"]')).toBeNull();
     });
 
     it('B-10: galat memuat harian: kartu "—" dan tabel tidak menyatakan "belum ada pelayanan"', async () => {

@@ -62,4 +62,66 @@ describe('Tabel', () => {
     expect(screen.getByText('Belum ada antrean')).toBeInTheDocument();
     expect(screen.queryByRole('table')).toBeNull();
   });
+
+  it('tanpa akhir, perilaku lama tetap: baris kosong tanpa node kosong = tabel dengan kepala dan tbody kosong', () => {
+    render(<Tabel kolom={KOLOM} baris={[]} kunciBaris="id" caption="Antrean" />);
+    const table = screen.getByRole('table', { name: 'Antrean' });
+    expect(screen.getAllByRole('columnheader')).toHaveLength(4);
+    expect(table.querySelectorAll('tbody tr')).toHaveLength(0);
+  });
+
+  describe('akhir (baris tambahan di ujung tbody)', () => {
+    const BarisAkhir = () => (
+      <tr data-testid="baris-akhir">
+        <td colSpan={4}>
+          <input aria-label="Nama baru" />
+        </td>
+      </tr>
+    );
+
+    it('dirender di dalam <tbody> setelah semua baris data, dan sel-selnya terbaca di tabel yang sama', () => {
+      render(<Tabel kolom={KOLOM} baris={DATA} kunciBaris="id" caption="Antrean" akhir={<BarisAkhir />} />);
+      const table = screen.getByRole('table', { name: 'Antrean' });
+      const tbody = table.querySelector('tbody') as HTMLElement;
+      const akhir = screen.getByTestId('baris-akhir');
+      expect(akhir.parentElement).toBe(tbody);
+      const baris = Array.from(tbody.children);
+      expect(baris).toHaveLength(3);
+      expect(baris[2]).toBe(akhir);
+      expect(within(table).getByRole('textbox', { name: 'Nama baru' })).toBeInTheDocument();
+    });
+
+    it('kosong + akhir: tabel tetap dirender (kepala dan akhir), pesan kosong menjadi satu baris selebar tabel sebelum akhir', () => {
+      render(
+        <Tabel kolom={KOLOM} baris={[]} kunciBaris="id" caption="Antrean" kosong={<p>Belum ada antrean</p>} akhir={<BarisAkhir />} />,
+      );
+      const table = screen.getByRole('table', { name: 'Antrean' });
+      expect(screen.getAllByRole('columnheader')).toHaveLength(4);
+      const tbody = table.querySelector('tbody') as HTMLElement;
+      const baris = Array.from(tbody.children);
+      expect(baris).toHaveLength(2);
+      const selKosong = baris[0].querySelector('td') as HTMLElement;
+      expect(selKosong).toHaveAttribute('colspan', '4');
+      expect(selKosong).toHaveTextContent('Belum ada antrean');
+      expect(baris[1]).toBe(screen.getByTestId('baris-akhir'));
+    });
+
+    it('akhir tanpa kosong dan baris kosong: hanya akhir di tbody', () => {
+      render(<Tabel kolom={KOLOM} baris={[]} kunciBaris="id" caption="Antrean" akhir={<BarisAkhir />} />);
+      const tbody = screen.getByRole('table', { name: 'Antrean' }).querySelector('tbody') as HTMLElement;
+      expect(Array.from(tbody.children)).toEqual([screen.getByTestId('baris-akhir')]);
+    });
+
+    it('memuat tetap menang atas akhir: kerangka saja, tanpa tabel dan tanpa baris akhir', () => {
+      render(<Tabel kolom={KOLOM} baris={[]} kunciBaris="id" caption="Antrean" memuat akhir={<BarisAkhir />} />);
+      expect(screen.queryByRole('table')).toBeNull();
+      expect(screen.queryByTestId('baris-akhir')).toBeNull();
+    });
+
+    it('akhir ber-isi kosong (null/false) diperlakukan sebagai tidak ada: kosong menggantikan tabel seperti biasa', () => {
+      render(<Tabel kolom={KOLOM} baris={[]} kunciBaris="id" caption="Antrean" kosong={<p>Belum ada antrean</p>} akhir={false} />);
+      expect(screen.getByText('Belum ada antrean')).toBeInTheDocument();
+      expect(screen.queryByRole('table')).toBeNull();
+    });
+  });
 });

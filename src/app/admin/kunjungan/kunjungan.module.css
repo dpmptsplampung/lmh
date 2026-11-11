@@ -1,12 +1,4 @@
 /* Kunjungan (gaya Dasbor): kepala halaman, bar alat berkartu, tabel dalam kartu. Token dari tema-dasbor.css. */
-.halaman {
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap-grid);
-  padding: 0 var(--pad-page) var(--pad-page);
-  max-width: var(--content-max);
-}
-
 .alat {
   display: flex;
   flex-direction: column;

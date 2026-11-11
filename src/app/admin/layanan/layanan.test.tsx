@@ -5,6 +5,7 @@ import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-li
 vi.mock('@/components/layout/PageHeader', () => ({ default: () => null }));
 vi.mock('@/components/Toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 
+import { formatTanggal } from '@/lib/utils';
 import KelolaLayananPage from './page';
 
 const lay = (o: Record<string, unknown>) => ({
@@ -374,6 +375,21 @@ describe('kelola layanan', () => {
       await waitFor(() => expect(Array.from(instansi.options).map((o) => o.textContent)).toContain('Bank Lampung (BL)'));
     });
 
+    // Karakterisasi tabel Instansi (G3 3.6): memakai <Tabel> dengan baris tambah di ujung tbody yang sama.
+    it('Instansi: tabel bernama, tiga kolom (Aksi hanya untuk pembaca layar), baris tambah di tbody yang sama dengan baris data', async () => {
+      render(<KelolaLayananPage />);
+      const tabel = await screen.findByRole('table', { name: 'Daftar instansi' });
+      expect(within(tabel).getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['Nama', 'Singkatan', 'Aksi']);
+      expect(screen.getByRole('region', { name: 'Daftar instansi' })).toHaveAttribute('tabindex', '0');
+      const baris = Array.from((tabel.querySelector('tbody') as HTMLElement).children);
+      expect(baris).toHaveLength(2); // satu instansi + baris tambah
+      expect(within(baris[0] as HTMLElement).getByRole('button', { name: 'Ubah nama instansi Dinas Penanaman Modal' })).toBeTruthy();
+      expect(within(baris[0] as HTMLElement).getByRole('button', { name: 'Ubah singkatan instansi Dinas Penanaman Modal' })).toBeTruthy();
+      expect(baris[0].children).toHaveLength(3);
+      expect(within(baris[1] as HTMLElement).getByRole('textbox', { name: 'Nama instansi baru' })).toBeTruthy();
+      expect(within(baris[1] as HTMLElement).getByRole('button', { name: 'Tambah instansi' })).toBeTruthy();
+    });
+
     it('Instansi: nama terlalu pendek ditolak di klien tanpa POST', async () => {
       render(<KelolaLayananPage />);
       await screen.findByRole('heading', { name: 'Instansi' });
@@ -381,6 +397,37 @@ describe('kelola layanan', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Tambah instansi' }));
       expect((await screen.findByRole('alert')).textContent).toMatch(/2 sampai 150 karakter/);
       expect(panggilan('POST', '/api/admin/instansi')).toHaveLength(0);
+    });
+
+    // Karakterisasi tabel "Diarsipkan" (G3 3.6): jumlah baris/kolom dan teks sel harus sama sebelum dan sesudah pindah ke <Tabel>.
+    it('tabel Diarsipkan (Admin): empat kolom, satu baris per layanan arsip, teks sel tetap', async () => {
+      layananList = [
+        lay({ slug: 'helpdesk-oss', instansi_id: 'i1', urutan: 10, deskripsi: null, konten_sumber_url: null, website_terkait: [], diarsipkan_at: null }),
+        lay({ id: 'l9', nama: 'Layanan Lama', aktif: false, instansi_id: 'i1', diarsipkan_at: '2026-10-20T03:00:00Z', website_terkait: [] }),
+        lay({ id: 'l7', nama: 'Layanan Lawas', aktif: false, diarsipkan_at: null, website_terkait: [] }),
+      ];
+      render(<KelolaLayananPage />);
+      const tabel = await screen.findByRole('table', { name: 'Daftar layanan yang diarsipkan' });
+      expect(within(tabel).getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['Layanan', 'Instansi', 'Diarsipkan pada', 'Aksi']);
+      const baris = within(tabel).getAllByRole('row');
+      expect(baris).toHaveLength(3); // kepala + dua layanan arsip
+      const teksSel = (b: HTMLElement) => Array.from(b.children).map((c) => c.textContent?.trim());
+      expect(baris[1].children).toHaveLength(4);
+      expect(baris[2].children).toHaveLength(4);
+      expect(teksSel(baris[1]).slice(0, 3)).toEqual(['Layanan Lama', 'DPMPTSP', formatTanggal('2026-10-20T03:00:00Z')]);
+      expect(teksSel(baris[2]).slice(0, 3)).toEqual(['Layanan Lawas', '—', '—']);
+      expect(within(baris[1]).getByRole('button', { name: 'Aktifkan lagi Layanan Lama' })).toBeTruthy();
+      expect(within(baris[1]).getByRole('button', { name: 'Hapus permanen Layanan Lama' })).toBeTruthy();
+    });
+
+    it('tabel Diarsipkan: tombol di sel Aksi bisa dipakai dengan keyboard (Enter pada tombol terfokus)', async () => {
+      render(<KelolaLayananPage />);
+      const tabel = await screen.findByRole('table', { name: 'Daftar layanan yang diarsipkan' });
+      const hapus = within(tabel).getByRole('button', { name: 'Hapus permanen Layanan Lama' });
+      hapus.focus();
+      expect(document.activeElement).toBe(hapus);
+      fireEvent.click(hapus);
+      expect(await screen.findByRole('dialog', { name: /Hapus permanen Layanan Lama/ })).toBeTruthy();
     });
 
     it('Instansi: nama dan singkatan diedit langsung di sel (PATCH satu field); bentrok nama tampil sebagai galat di bawah input', async () => {
@@ -422,6 +469,21 @@ describe('kelola layanan', () => {
     for (const nama of [/^Tambah layanan/, /^Kelola Instansi/, /^Arsipkan/, /^Aktifkan lagi/, /^Hapus permanen/]) {
       expect(screen.queryByRole('button', { name: nama })).toBeNull();
     }
+  });
+
+  it('Front Office: tabel Diarsipkan hanya tiga kolom (tanpa kolom Aksi)', async () => {
+    fetchMock = vi.fn((url: string) => {
+      const ok = (b: unknown) => Promise.resolve({ ok: true, json: () => Promise.resolve(b) });
+      if (url === '/api/admin/layanan') return ok({ layanan: [lay({}), lay({ id: 'l9', nama: 'Layanan Lama', aktif: false, diarsipkan_at: '2026-10-20T03:00:00Z' })], instansi: [], bisa_ubah: false });
+      return ok({});
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<KelolaLayananPage />);
+    const tabel = await screen.findByRole('table', { name: 'Daftar layanan yang diarsipkan' });
+    expect(within(tabel).getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['Layanan', 'Instansi', 'Diarsipkan pada']);
+    const baris = within(tabel).getAllByRole('row');
+    expect(baris).toHaveLength(2);
+    expect(Array.from(baris[1].children).map((c) => c.textContent?.trim())).toEqual(['Layanan Lama', '—', formatTanggal('2026-10-20T03:00:00Z')]);
   });
 
   it('Front Office: mode baca saja, tanpa tombol ubah maupun toggle bot', async () => {

@@ -404,7 +404,9 @@ describe('Saran admin: kontras lencana Belum ditinjau', () => {
     const { readFileSync } = await import('node:fs');
     const { resolve } = await import('node:path');
     const css = readFileSync(resolve(process.cwd(), 'src/components/ui/Lencana.module.css'), 'utf8');
-    const globals = readFileSync(resolve(process.cwd(), 'src/styles/tema-dasbor.css'), 'utf8');
+    // Lingkup dasbor di token.css (blok sesudah penanda TOKEN:MULAI); lingkup publik ada lebih awal.
+    const tokenCss = readFileSync(resolve(process.cwd(), 'src/styles/token.css'), 'utf8');
+    const globals = tokenCss.slice(tokenCss.indexOf('/* TOKEN:MULAI */'));
     const token = (nama: string): string => {
       const m = globals.match(new RegExp(`--${nama}:\\s*([^;]+);`));
       expect(m, nama).toBeTruthy();

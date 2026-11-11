@@ -266,6 +266,13 @@
   color: var(--text-secondary);
 }
 
+/* Tombol kirim walk-in. Tombol belum punya ukuran "besar" (padanan .btn--lg lama). */
+.besar {
+  min-height: 48px;
+  padding: 0 var(--space-6);
+  font-size: var(--text-base);
+}
+
 .kirim {
   margin-left: auto;
 }

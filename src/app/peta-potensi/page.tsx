@@ -7,8 +7,9 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Map, Building2, FileText, TrendingUp, Lock } from 'lucide-react';
-import Link from 'next/link';
+import Tombol from '@/components/ui/Tombol';
 import { createClient } from '@/lib/supabase/client';
+import styles from './peta-potensi.module.css';
 
 const SEKTOR = [
   { id: 'pertanian', label: 'Pertanian & Perkebunan', icon: '🌾', deskripsi: 'Sawit, karet, lada, singkong, dan komoditas unggulan Lampung' },
@@ -119,10 +120,9 @@ export default function PetaPotensiPage() {
         </div>
         {/* Investment Gallery link */}
         <div style={{ marginTop: 'var(--space-12)', textAlign: 'center' }}>
-          <Link href="/gallery" className="btn btn--primary btn--lg">
-            <FileText size={18} />
+          <Tombol href="/gallery" ikon={FileText} className={styles.tombolBesar}>
             Lihat Investment Gallery &amp; Dokumen IPRO
-          </Link>
+          </Tombol>
           <p style={{ marginTop: 'var(--space-3)', fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)' }}>
             Dokumen profil investasi, potensi wilayah, dan IPRO tersedia untuk investor terdaftar.
           </p>
@@ -136,9 +136,7 @@ export default function PetaPotensiPage() {
           <p style={{ color: 'var(--text-secondary)', marginBottom: 'var(--space-4)' }}>
             Hubungi tim DPMPTSP Provinsi Lampung untuk informasi lebih lanjut dan pendampingan investasi.
           </p>
-          <Link href="/chat" className="btn btn--primary">
-            Konsultasi via Live Chat
-          </Link>
+          <Tombol href="/chat">Konsultasi via Live Chat</Tombol>
         </div>
       </div>
     </div>

@@ -42,10 +42,11 @@ describe('AkhirSurvei', () => {
     expect(screen.getByRole('heading', { name: 'Ada yang ingin Anda sampaikan?' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Punya saran?' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Mengalami hal yang kurang baik?' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Sampaikan saran' })).toHaveClass('btn--primary');
-    expect(screen.getByRole('button', { name: 'Laporkan pengaduan' })).toHaveClass('btn--primary');
+    // Kelas varian Tombol (CSS Module) dikenali dari namanya: `utama` = tombol utama.
+    expect(screen.getByRole('button', { name: 'Sampaikan saran' }).className).toMatch(/utama/);
+    expect(screen.getByRole('button', { name: 'Laporkan pengaduan' }).className).toMatch(/utama/);
     // "Selesai" tidak boleh bersaing dengan dua ajakan di atasnya.
-    expect(screen.getByRole('button', { name: 'Selesai' })).not.toHaveClass('btn--primary');
+    expect(screen.getByRole('button', { name: 'Selesai' }).className).not.toMatch(/utama/);
   });
 
   it('pengaduan memakai kalimat anonim dari pemilik dan tidak menyebut "Jangan catat data diri"', () => {

@@ -26,6 +26,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import Skeleton from '@/components/ui/Skeleton';
+import Tombol from '@/components/ui/Tombol';
 import { formatTanggal } from '@/lib/utils';
 import FoTolakReservasiDialog from '@/components/admin/FoTolakReservasiDialog';
 import { createClient } from '@/lib/supabase/client';
@@ -298,9 +299,9 @@ export default function ScanPanel() {
               {kameraGalat && (
                 <div role="alert" className={styles.scannerGalat}>
                   <p>Gagal mengakses kamera. Pastikan izin kamera diberikan, atau masukkan token secara manual di bawah.</p>
-                  <button type="button" className="btn btn--secondary btn--sm" onClick={nyalakanKamera}>
+                  <Tombol varian="sekunder" ukuran="kecil" onClick={nyalakanKamera}>
                     Coba Lagi
-                  </button>
+                  </Tombol>
                 </div>
               )}
               <div className={styles.scannerPreview} ref={scannerRef} hidden={kameraGalat} />
@@ -308,9 +309,9 @@ export default function ScanPanel() {
               {statusKamera === 'dijeda' && (
                 <div className={styles.kameraDijeda}>
                   <p>Kamera dimatikan karena halaman sempat tidak terlihat. Nyalakan lagi bila Anda siap memindai.</p>
-                  <button type="button" className="btn btn--primary btn--sm" onClick={nyalakanKamera}>
-                    <Camera size={16} aria-hidden="true" /> Nyalakan Kamera
-                  </button>
+                  <Tombol ukuran="kecil" ikon={Camera} onClick={nyalakanKamera}>
+                    Nyalakan Kamera
+                  </Tombol>
                 </div>
               )}
 
@@ -347,15 +348,15 @@ export default function ScanPanel() {
                     onKeyDown={(e) => { if (e.key === 'Enter') void handleManualLookup(); }}
                     autoComplete="off"
                   />
-                  <button
-                    type="button"
-                    className="btn btn--primary btn--sm"
+                  <Tombol
+                    ukuran="kecil"
+                    ikon={Search}
+                    className={styles.tombolIkon}
                     onClick={() => void handleManualLookup()}
                     disabled={scanState === 'mencari'}
-                    aria-label="Cari token"
                   >
-                    <Search size={16} aria-hidden="true" />
-                  </button>
+                    <span className="sr-only">Cari token</span>
+                  </Tombol>
                 </div>
               </div>
             </div>
@@ -385,9 +386,9 @@ export default function ScanPanel() {
                   <XCircle size={48} className={styles.notFoundIcon} aria-hidden="true" />
                   <h3 className={styles.judulHasil}>Gagal Membaca</h3>
                   <p className={styles.teksHasil}>{galatCari}</p>
-                  <button type="button" className="btn btn--secondary btn--sm" onClick={handleReset}>
-                    <RotateCcw size={14} aria-hidden="true" /> Scan Ulang
-                  </button>
+                  <Tombol varian="sekunder" ukuran="kecil" ikon={RotateCcw} onClick={handleReset}>
+                    Scan Ulang
+                  </Tombol>
                 </div>
               )}
 
@@ -396,9 +397,9 @@ export default function ScanPanel() {
                   <XCircle size={48} className={styles.notFoundIcon} aria-hidden="true" />
                   <h3 className={styles.judulHasil}>{PESAN_QR[statusQr].judul}</h3>
                   <p className={styles.teksHasil}>{PESAN_QR[statusQr].teks}</p>
-                  <button type="button" className="btn btn--secondary btn--sm" onClick={handleReset}>
-                    <RotateCcw size={14} aria-hidden="true" /> Scan Ulang
-                  </button>
+                  <Tombol varian="sekunder" ukuran="kecil" ikon={RotateCcw} onClick={handleReset}>
+                    Scan Ulang
+                  </Tombol>
                 </div>
               )}
 
@@ -411,9 +412,9 @@ export default function ScanPanel() {
                     {result?.tanggal ? ` (${formatDate(result.tanggal)})` : ''}. QR code tidak dapat digunakan lagi.
                     Minta pengunjung membuat reservasi baru.
                   </p>
-                  <button type="button" className="btn btn--secondary btn--sm" onClick={handleReset}>
-                    <RotateCcw size={14} aria-hidden="true" /> Scan Ulang
-                  </button>
+                  <Tombol varian="sekunder" ukuran="kecil" ikon={RotateCcw} onClick={handleReset}>
+                    Scan Ulang
+                  </Tombol>
                 </div>
               )}
 
@@ -488,39 +489,34 @@ export default function ScanPanel() {
 
                   <div className={styles.actionButtons}>
                     {bisaCheckin && (
-                      <button
-                        type="button"
-                        className="btn btn--primary btn--lg"
+                      <Tombol
+                        ikon={ArrowRight}
+                        className={styles.tombolBesar}
                         style={{ width: '100%' }}
                         onClick={() => void handleCheckIn()}
                         disabled={processing}
-                        aria-busy={processing}
+                        memuat={processing}
                       >
-                        {processing ? (
-                          <><Loader2 size={18} className="animate-spin" aria-hidden="true" /> Memproses...</>
-                        ) : (
-                          <><ArrowRight size={18} aria-hidden="true" /> Check-in &amp; mulai layani</>
-                        )}
-                      </button>
+                        {processing ? 'Memproses...' : 'Check-in & mulai layani'}
+                      </Tombol>
                     )}
 
                     {bisaTolak && (
-                      <button
-                        type="button"
-                        className="btn btn--danger btn--lg"
+                      <Tombol
+                        varian="bahaya"
+                        ikon={XCircle}
+                        className={styles.tombolBesar}
                         style={{ width: '100%' }}
                         onClick={() => setDialogTolak(true)}
                         disabled={processing}
                       >
-                        <XCircle size={18} aria-hidden="true" />
                         Tolak Pengunjung
-                      </button>
+                      </Tombol>
                     )}
 
-                    <button type="button" className="btn btn--ghost btn--sm" onClick={handleReset} disabled={processing}>
-                      <RotateCcw size={14} aria-hidden="true" />
+                    <Tombol varian="hantu" ukuran="kecil" ikon={RotateCcw} onClick={handleReset} disabled={processing}>
                       Scan Pengunjung Lain
-                    </button>
+                    </Tombol>
                   </div>
                 </div>
               )}
@@ -545,10 +541,9 @@ export default function ScanPanel() {
                   </div>
                   <h3 className={styles.judulHasil}>Reservasi Ditolak</h3>
                   <p className={styles.teksHasil}>Reservasi {result?.nama} dibatalkan dan tercatat beserta alasannya.</p>
-                  <button type="button" className="btn btn--primary btn--lg" onClick={handleReset}>
-                    <QrCode size={18} aria-hidden="true" />
+                  <Tombol ikon={QrCode} className={styles.tombolBesar} onClick={handleReset}>
                     Scan Pengunjung Berikutnya
-                  </button>
+                  </Tombol>
                 </div>
               )}
             </div>

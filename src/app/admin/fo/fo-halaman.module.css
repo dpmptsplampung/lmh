@@ -125,49 +125,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-.tabelWadah {
-  overflow-x: auto;
-  max-width: 100%;
-  min-width: 0;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-card);
-  background: var(--bg-surface);
-}
-
-.tabel {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: var(--text-sm);
-}
-
-.tabel caption {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-}
-
-.tabel th,
-.tabel td {
-  padding: var(--space-3) var(--space-4);
-  text-align: left;
-  vertical-align: top;
-  border-bottom: 1px solid var(--border-default);
-}
-
-.tabel th {
-  font-size: var(--text-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-tertiary);
-}
-
-.tabel tr:last-child td {
-  border-bottom: 0;
-}
-
 @media (max-width: 1024px) {
   .halaman {
     padding: 0 var(--pad-page) var(--pad-page);
@@ -186,16 +143,28 @@
   border: 0;
 }
 
-/* Sel teks bebas di tabel riwayat: satu baris dengan elipsis (isi lengkap di atribut title); waktu tidak patah */
-.tabel td.kolTeks {
+/* Sel di tabel riwayat (komponen Tabel): teks bebas satu baris dengan elipsis (isi lengkap di atribut title); waktu tidak patah */
+.kolTeks {
+  display: block;
   max-width: 280px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.tabel td.kolWaktu {
+.kolWaktu {
   white-space: nowrap;
+}
+
+/* Sel pengunjung: nama lalu saluran (dan email) bertumpuk */
+.selTumpuk {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.selTumpuk > .meta {
+  display: block;
 }
 
 .statistik {
@@ -205,7 +174,6 @@
 }
 .kartu { min-width: 0; border-color: var(--border-subtle); }
 .nama, .meta, .keperluan { overflow-wrap: anywhere; }
-.tabelWadah:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 @media (min-width: 1200px) { .daftar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 640px) {
   .statistik { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }

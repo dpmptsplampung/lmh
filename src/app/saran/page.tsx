@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { AlertCircle, CheckCircle2, Lightbulb, Loader2, Send } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Lightbulb, Send } from 'lucide-react';
+import Tombol from '@/components/ui/Tombol';
 
 // Kotak saran publik: tanpa login dan tanpa harus selesai dilayani. Nama opsional; tidak ada kaitan ke kunjungan atau akun.
 const BATAS_ISI = 2000;
@@ -63,8 +64,8 @@ export default function SaranPage() {
           <h2 style={{ marginTop: 'var(--space-4)' }}>Terima kasih, saran Anda sudah kami terima.</h2>
           <p style={{ color: 'var(--color-neutral-500)' }}>Masukan Anda membantu kami melayani lebih baik.</p>
           <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'center', marginTop: 'var(--space-4)' }}>
-            <Link href="/" className="btn btn--primary">Kembali ke Beranda</Link>
-            <Link href="/pengaduan" className="btn btn--secondary">Sampaikan Pengaduan</Link>
+            <Tombol href="/">Kembali ke Beranda</Tombol>
+            <Tombol href="/pengaduan" varian="sekunder">Sampaikan Pengaduan</Tombol>
           </div>
         </div>
       ) : (
@@ -119,9 +120,9 @@ export default function SaranPage() {
             </p>
           )}
 
-          <button type="submit" className="btn btn--primary" disabled={phase === 'submitting'}>
-            {phase === 'submitting' ? <Loader2 size={16} className="spin" aria-hidden="true" /> : <Send size={16} aria-hidden="true" />} Kirim Saran
-          </button>
+          <Tombol type="submit" ikon={Send} disabled={phase === 'submitting'} memuat={phase === 'submitting'}>
+            Kirim Saran
+          </Tombol>
         </form>
       )}
 

@@ -9,6 +9,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { todayWIB } from '@/lib/time';
 import { Search, RefreshCw, QrCode, Users } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
+import IsiHalaman from '@/components/layout/IsiHalaman';
 import Pagination from '@/components/Pagination';
 import CatatanKeadaan from '@/components/ui/CatatanKeadaan';
 import Galat from '@/components/ui/Galat';
@@ -112,11 +113,11 @@ function KunjunganMemuat() {
   return (
     <>
       <PageHeader title="Kunjungan" description="Memuat daftar kunjungan…" />
-      <div className={styles.halaman}>
+      <IsiHalaman>
         <Kartu padding="tanpa" as="div">
           <Tabel kolom={[]} baris={[]} kunciBaris={() => 0} caption="daftar kunjungan" memuat />
         </Kartu>
-      </div>
+      </IsiHalaman>
     </>
   );
 }
@@ -506,7 +507,7 @@ function KunjunganIsi() {
         </Tombol>
       </PageHeader>
 
-      <div className={styles.halaman}>
+      <IsiHalaman>
         <CatatanKeadaan jenis="info">Penyelesaian layanan dilakukan di menu Antrean.</CatatanKeadaan>
 
         <Kartu padding="rapat" as="div" className={styles.alat}>
@@ -587,7 +588,7 @@ function KunjunganIsi() {
             {!loading && <Pagination page={page} pageSize={PAGE_SIZE} total={totalCount} onPageChange={ubahHalaman} />}
           </Kartu>
         )}
-      </div>
+      </IsiHalaman>
 
       {qrKunjunganId && (
         <SurveiQrDialog key={qrKunjunganId} kunjunganId={qrKunjunganId} onTutup={() => setQrKunjunganId(null)} />

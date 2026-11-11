@@ -17,7 +17,7 @@ import Lencana from '@/components/ui/Lencana';
 import StatusKosong from '@/components/ui/StatusKosong';
 import Skeleton from '@/components/ui/Skeleton';
 import Galat from '@/components/ui/Galat';
-import { BISA_DIFOKUS } from '@/components/ui/fokus';
+import Tabel, { type KolomTabel } from '@/components/ui/Tabel';
 import { formatTanggal } from '@/lib/utils';
 import { useToast } from '@/components/Toast';
 import { createClient } from '@/lib/supabase/client';
@@ -289,6 +289,25 @@ export default function AdminLayarPage() {
   const activeTokens  = tokens.filter(t => t.aktif);
   const revokedTokens = tokens.filter(t => !t.aktif);
 
+  const kolomToken: KolomTabel<LayarToken>[] = [
+    { kunci: 'nama', judul: 'Nama Layar', judulBaris: true, peran: 'utama' },
+    { kunci: 'token', judul: 'Kode Layar', render: t => (
+      <div>
+        {tokenBerupaAngka(t.token)
+          ? <code className={tokenStyles.kode}>{formatTokenTampilan(t.token)}</code>
+          : <><code className={tokenStyles.kodeLama}>{t.token}</code><span className={tokenStyles.petunjuk}>Kode lama, masih berlaku</span></>}
+      </div>
+    ) },
+    { kunci: 'dibuat', judul: 'Dibuat', render: t => <span className={styles.tanggal}>{formatTanggal(t.created_at)}</span> },
+    { kunci: 'aksi', judul: 'Aksi', peran: 'aksi', render: t => (
+      <div className={styles.aksiToken}>
+        <Tombol varian="hantu" ukuran="kecil" ikon={copied === t.token ? CheckCircle2 : Copy} onClick={() => void handleCopy(t.token)} aria-label={`Salin tautan ${t.nama}`}>{copied === t.token ? 'Disalin' : 'Salin tautan'}</Tombol>
+        <Tombol varian="sekunder" ukuran="kecil" ikon={ExternalLink} href={`/layar/${t.token}`} eksternal target="_blank" rel="noopener noreferrer" title="Buka layar di tab baru">Buka</Tombol>
+        <Tombol varian="bahaya" ukuran="kecil" ikon={XCircle} onClick={() => setCabutToken({ id: t.id, nama: t.nama })} aria-label={`Cabut ${t.nama}`} title="Cabut akses token ini">Cabut</Tombol>
+      </div>
+    ) },
+  ];
+
   return (
     <>
       <DialogKonfirmasi
@@ -379,24 +398,7 @@ export default function AdminLayarPage() {
           ) : activeTokens.length === 0 ? (
             <StatusKosong ikon={Monitor} judul="Belum Ada Layar" isi="Tambah token di atas untuk membuat layar TV pertama." />
           ) : (
-            <div className={styles.tabelWadah} role="region" aria-label="Daftar layar aktif" {...BISA_DIFOKUS}>
-              <table className={`table ${styles.tabel}`}>
-                <caption className="sr-only">Token akses layar TV aktif</caption>
-                <thead><tr><th scope="col">Nama Layar</th><th scope="col">Kode Layar</th><th scope="col">Dibuat</th><th scope="col">Aksi</th></tr></thead>
-                <tbody>{activeTokens.map(t => (
-                  <tr key={t.id}>
-                    <th scope="row">{t.nama}</th>
-                    <td>{tokenBerupaAngka(t.token) ? <code className={tokenStyles.kode}>{formatTokenTampilan(t.token)}</code> : <><code className={tokenStyles.kodeLama}>{t.token}</code><span className={tokenStyles.petunjuk}>Kode lama, masih berlaku</span></>}</td>
-                    <td className={styles.tanggal}>{formatTanggal(t.created_at)}</td>
-                    <td><div className={styles.aksiToken}>
-                      <Tombol varian="hantu" ukuran="kecil" ikon={copied === t.token ? CheckCircle2 : Copy} onClick={() => void handleCopy(t.token)} aria-label={`Salin tautan ${t.nama}`}>{copied === t.token ? 'Disalin' : 'Salin tautan'}</Tombol>
-                      <Tombol varian="sekunder" ukuran="kecil" ikon={ExternalLink} href={`/layar/${t.token}`} eksternal target="_blank" rel="noopener noreferrer" title="Buka layar di tab baru">Buka</Tombol>
-                      <Tombol varian="bahaya" ukuran="kecil" ikon={XCircle} onClick={() => setCabutToken({ id: t.id, nama: t.nama })} aria-label={`Cabut ${t.nama}`} title="Cabut akses token ini">Cabut</Tombol>
-                    </div></td>
-                  </tr>
-                ))}</tbody>
-              </table>
-            </div>
+            <Tabel caption="Token akses layar TV aktif" kolom={kolomToken} baris={activeTokens} kunciBaris="id" kartuDiHp />
           )}
         </Kartu>
         {revokedTokens.length > 0 && <Kartu judul={`Token Dicabut (${revokedTokens.length})`}>

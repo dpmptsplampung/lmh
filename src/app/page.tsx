@@ -15,6 +15,7 @@ import { WA_NUMBER, WA_DEFAULT_MESSAGE } from '@/lib/constants';
 import { getSiteSettings } from '@/lib/site-settings';
 import { waLink } from '@/lib/utils';
 import EstimasiAntrean from '@/components/EstimasiAntrean';
+import Tombol from '@/components/ui/Tombol';
 import DaftarLayanan from '@/components/homepage/DaftarLayanan';
 import PopupDariUrl from '@/components/homepage/PopupDariUrl';
 import {
@@ -220,25 +221,22 @@ export default function LandingPage() {
           {user ? (
             <div className={styles.navUserActions}>
               {user.role === 'admin' || user.role === 'petugas' || user.role === 'front_office' ? (
-                <Link href="/admin" className="btn btn--primary btn--sm">
-                  <User size={16} />
+                <Tombol href="/admin" ukuran="kecil" ikon={User} className={styles.navTombolIkon}>
                   Panel Admin
-                </Link>
+                </Tombol>
               ) : (
-                <Link href="/me" className="btn btn--primary btn--sm">
-                  <User size={16} />
+                <Tombol href="/me" ukuran="kecil" ikon={User} className={styles.navTombolIkon}>
                   Dashboard Saya
-                </Link>
+                </Tombol>
               )}
-              <button className="btn btn--ghost btn--sm" onClick={handleLogout} aria-label="Keluar">
-                <LogOut size={16} />
-              </button>
+              <Tombol varian="hantu" ukuran="kecil" ikon={LogOut} onClick={handleLogout} aria-label="Keluar">
+                <span className="sr-only">Keluar</span>
+              </Tombol>
             </div>
           ) : (
-            <Link href="/login" className="btn btn--primary btn--sm">
-              <User size={16} />
+            <Tombol href="/login" ukuran="kecil" ikon={User} className={styles.navTombolIkon}>
               Masuk
-            </Link>
+            </Tombol>
           )}
           <button
             ref={menuButtonRef}

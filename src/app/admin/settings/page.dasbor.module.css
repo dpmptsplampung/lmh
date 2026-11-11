@@ -3,4 +3,4 @@
 .bidang { display: grid; gap: var(--space-5); }
 .kontak { grid-column: 2; grid-row: 1 / span 2; }
 .aksi { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: var(--space-3); }
-@media (max-width: 767px) { .form { grid-template-columns: minmax(0, 1fr); } .kontak { grid-column: auto; grid-row: auto; } }
+@media (max-width: 768px) { .form { grid-template-columns: minmax(0, 1fr); } .kontak { grid-column: auto; grid-row: auto; } }

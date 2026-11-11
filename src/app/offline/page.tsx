@@ -1,5 +1,5 @@
-import Link from 'next/link';
 import { WifiOff, ArrowLeft } from 'lucide-react';
+import Tombol from '@/components/ui/Tombol';
 import styles from './offline.module.css';
 
 export const metadata = {
@@ -18,10 +18,11 @@ export default function OfflinePage() {
           Koneksi internet tidak tersedia. Beberapa fitur mungkin tidak dapat
           diakses. Perubahan Anda akan disinkronkan saat online kembali.
         </p>
-        <Link href="/" className="btn btn--primary btn--lg">
-          <ArrowLeft size={20} />
+        {/* Halaman ini Server Component: komponen ikon tidak boleh dioper lewat prop `ikon` ke Tombol (client). */}
+        <Tombol href="/" className={styles.tombolBesar}>
+          <ArrowLeft size={16} strokeWidth={1.75} aria-hidden="true" className={styles.ikonAwal} />
           Kembali ke Beranda
-        </Link>
+        </Tombol>
       </div>
     </div>
   );

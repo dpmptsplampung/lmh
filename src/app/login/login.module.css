@@ -229,3 +229,13 @@
   .loginHeader { padding: var(--space-8) var(--space-5) var(--space-4); }
   .loginBody { padding: var(--space-2) var(--space-5) var(--space-8); }
 }
+
+/* Pengganti .btn--lg lebar penuh untuk tombol kirim: Tombol tidak punya ukuran besar. */
+.tombolMasuk {
+  width: 100%;
+  margin-top: var(--space-2);
+  min-height: 48px;
+  padding: 0 var(--space-8);
+  font-size: var(--text-base);
+  border-radius: var(--radius-xl);
+}

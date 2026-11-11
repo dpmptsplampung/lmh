@@ -8,8 +8,10 @@ Kontrak: `.tim/desain-baru/SISTEM-DESAIN.md` §3.2 dan §3.3. Semua komponen mem
 | `KartuStatistik` | `label`, `nilai`, `ikon?`, `tren?: {persen, arah, arahBaik?}`, `pembanding?`, `href?`, `memuat?`. Waktu tunggu: `arahBaik: 'turun'` |
 | `Lencana` | `nada`, `ikon?`, `titik?`; makna selalu dalam teks |
 | `Tombol` | `varian`, `ukuran`, `ikon?`, `memuat?`, `href?` (tautan). `memuat` = aria-busy + aria-disabled (fokus tidak hilang), teks dan lebar tetap |
-| `Tabel<T>` | `kolom`, `baris`, `kunciBaris`, `caption` (wajib), `kosong?`, `memuat?`, `padat?`, `kartuDiHp?` (A14). Kolom: `angka`, `judulBaris`, `peran: 'utama'｜'aksi'`, `sembunyiDiHp` |
-| `Dialog`, `PanelSamping` | `terbuka`, `onTutup`, `judul`, `deskripsi?`, `kaki?`, `dikunci?`, `tutupDenganLatar?`; fokus lewat `useDialogFokus`; tanpa portal |
+| `Tabel<T>` | `kolom`, `baris`, `kunciBaris`, `caption` (wajib), `kosong?`, `akhir?`, `memuat?`, `padat?`, `kartuDiHp?` (A14). Kolom: `angka`, `judulBaris`, `peran: 'utama'｜'aksi'`, `sembunyiDiHp`. `akhir` = `<tr>` tambahan di ujung `<tbody>` (mis. `BarisTambah`): tabel tetap dirender saat `baris` kosong dan `kosong` menjadi satu baris selebar tabel sebelum `akhir`; tanpa `akhir`, `kosong` tetap menggantikan seluruh tabel. Sel `akhir` harus selaras dengan `kolom.length`; jangan dipadukan dengan `kartuDiHp` bila barisnya berisi input |
+| `Dialog`, `PanelSamping` | `terbuka`, `onTutup`, `judul`, `deskripsi?`, `kaki?`, `dikunci?`, `tutupDenganLatar?`; `Dialog` juga `lebarMaks?` (px, bawaan 560; untuk isi lebar seperti penampil dokumen). Keduanya tipis di atas `KerangkaModal` (satu-satunya cangkang modal: fokus lewat `useDialogFokus`, Esc, kunci gulir, tanpa portal) |
+| `KerangkaModal` | dasar `Dialog`/`PanelSamping`/`DialogKonfirmasi`; pakai langsung hanya bila perlu `onKirim` (kotak jadi `<form>`, tombol aksi di `kaki` bertipe submit), `labelTutup`, atau `peran="alertdialog"` |
+| `IsiHalaman` (di `components/layout/`) | pembungkus isi halaman admin di bawah `PageHeader`: `lebar: 'penuh'｜'baca'`. Satu-satunya pemegang padding halaman, lebar maksimum, dan jarak antaranak; modul halaman tidak mengulanginya |
 | `DialogKonfirmasi` | pengganti `window.confirm`: `terbuka`, `judul`, `deskripsi?`, `labelSetuju?`, `labelBatal?`, `berbahaya?`, `memuat?`, `onSetuju`, `onBatal`. `role="alertdialog"`, fokus awal di Batal, Esc = `onBatal`, terkunci saat `memuat`. Pola pakai: state `{ id } \| null` -> `terbuka={!!state}` |
 | `Field` | `label`, `bantuan?`, `galat?`, `wajib?`; anak = satu input/select/textarea (atau fungsi) |
 | `Tab` + `PanelTab` | `<Tab id label tab aktif onGanti />` dan `<PanelTab idTab={id} kunci aktif>` |
@@ -25,6 +27,30 @@ Kontrak: `.tim/desain-baru/SISTEM-DESAIN.md` §3.2 dan §3.3. Semua komponen mem
 | `grafik/BilahStatus` | deretan status hari ini |
 
 Tes grafik di jsdom: `grafik/stubUkuran.ts` (`stubUkuranGrafik`, `stubGerakDikurangi`).
+
+## Aturan "satu tombol, satu modal, satu tabel"
+
+Tiga hal ini dulu ditulis ulang di tiap halaman. Sekarang masing-masing punya satu rumah; jangan membuat versi baru di modul halaman.
+
+- **Tombol**: pakai `Tombol` (`varian` utama/sekunder/hantu/bahaya, `ukuran` kecil/normal, `href` untuk tautan). `Tombol` adalah komponen client, jadi **Server Component tidak boleh mengoper prop `ikon`** (komponen ikon tidak bisa melewati batas server-client; `next build` gagal saat prerender). Di halaman server, taruh elemen ikon di dalam isi tombol (lihat `app/offline/page.tsx`). Kelas `.btn` lama sedang dihabiskan; jumlah sisanya dijaga pagar `src/test/anggaran-kode.test.ts` (angka hanya boleh turun). Tidak ada varian "teks": tautan biasa pakai `<a>` ber-kelas tautan.
+- **Modal**: `Dialog` untuk isi, `DialogKonfirmasi` untuk konfirmasi (jangan `window.confirm`), `PanelSamping` untuk panel. Semuanya bersumber di `KerangkaModal`. Jangan menulis overlay, jebakan fokus, atau penangan Esc sendiri.
+- **Tabel**: pakai `Tabel<T>` (caption wajib, region bisa digulir, `kartuDiHp` bila baris perlu jadi kartu di HP). Tabel dengan baris input atau baris tambah memakai `akhir`, bukan `<table>` tulisan tangan.
+
+## Token, z-index, dan titik putus
+
+Sumber tunggal: `src/styles/token.css`. Dua blok: `:root` untuk halaman publik dan `[data-tema="dasbor"]` untuk dasbor. Tema publik memang berbeda dari dasbor (keputusan pemilik); jangan menyeragamkannya.
+
+- **Z-index**: nilai >= 100 hanya lewat `var(--z-*)`: `--z-dropdown` (1000) < `--z-sticky` (1100) < `--z-modal` (1200) < `--z-overlay` (1300) < `--z-toast` (1400). Selisih kecil dalam satu pita: `calc(var(--z-x) + n)`.
+- **Titik putus**: hanya `640px`, `1024px`, `1280px` (CSS tidak menerima `var()` di `@media`, jadi ditulis literal). Titik di luar skala dihitung oleh pagar anggaran dan hanya boleh turun.
+- **Warna**: lewat `var(--...)`. Hex/`rgb()` tertulis langsung juga dihitung pagar anggaran.
+- **Pagar anggaran**: `src/test/anggaran-kode.json` memuat batas atas tiap kebiasaan buruk. Menurunkan angka = bagus dan wajib dicatat di berkas JSON; menaikkannya berarti ada yang salah, perbaiki kodenya, bukan angkanya.
+
+## Sengaja tidak dibuat
+
+- Pustaka komponen eksternal, Tailwind, atau Storybook: proyek tunggal pemilik, CSS Modules cukup, dan tiap dependensi menambah beban bundel di tier gratis.
+- Varian tombol "teks"/"tautan": belum ada kebutuhan yang tidak terlayani `<a>`.
+- Tema publik yang diseragamkan dengan dasbor: dibatalkan pemilik (Tahap 2 token).
+- Portal untuk modal: modal dirender di tempat supaya ikut tema pembungkusnya.
 
 ## Pemilih tanggal (`PemilihTanggal`, `PemilihRentang`)
 

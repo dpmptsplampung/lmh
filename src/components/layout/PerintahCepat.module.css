@@ -1,7 +1,7 @@
 .latar {
   position: fixed;
   inset: 0;
-  z-index: 300;
+  z-index: var(--z-modal);
   display: flex;
   justify-content: center;
   align-items: flex-start;

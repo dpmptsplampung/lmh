@@ -1,7 +1,7 @@
 .latar {
   position: fixed;
   inset: 0;
-  z-index: 1000;
+  z-index: var(--z-modal);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -103,6 +103,14 @@
 .tutup:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Pembungkus <form> (prop onKirim): meneruskan rantai flex kotak -> badan (gulir) -> kaki (tetap di dasar). */
+.isian {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .badan {

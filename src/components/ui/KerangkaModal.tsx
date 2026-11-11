@@ -1,7 +1,7 @@
 'use client';
 
 import { X } from 'lucide-react';
-import { useEffect, useId, useRef, type ReactNode } from 'react';
+import { useEffect, useId, useRef, type FormEvent, type ReactNode } from 'react';
 import { useDialogFokus } from '@/components/admin/useDialogFokus';
 import { cn } from '@/lib/utils';
 import styles from './KerangkaModal.module.css';
@@ -21,6 +21,15 @@ export interface KerangkaModalProps {
   className?: string;
   /** Peran ARIA kotak. Bawaan 'dialog'; konfirmasi tindakan memakai 'alertdialog'. */
   peran?: 'dialog' | 'alertdialog';
+  /** Nama aksesibel tombol Tutup di kepala. */
+  labelTutup?: string;
+  /** Lebar maksimum kotak dalam px; menggantikan lebar bawaan varian. */
+  lebarMaks?: number;
+  /**
+   * Dialog formulir: badan dan kaki dibungkus satu <form noValidate>, jadi tombol type="submit" di `kaki` ikut
+   * mengirim isian di `children`. Form berada DI DALAM elemen role="dialog" (kepala di luar form).
+   */
+  onKirim?: (e: FormEvent<HTMLFormElement>) => void;
   children: ReactNode;
 }
 
@@ -38,6 +47,9 @@ export default function KerangkaModal({
   lebar = 'sedang',
   className,
   peran = 'dialog',
+  labelTutup = 'Tutup dialog',
+  lebarMaks,
+  onKirim,
   children,
 }: KerangkaModalProps) {
   const wadah = useRef<HTMLDivElement>(null);
@@ -74,6 +86,13 @@ export default function KerangkaModal({
 
   if (!terbuka) return null;
 
+  const isi = (
+    <>
+      <div className={styles.badan}>{children}</div>
+      {kaki && <footer className={styles.kaki}>{kaki}</footer>}
+    </>
+  );
+
   return (
     <div ref={latar} className={cn(styles.latar, varian === 'samping' && styles.latarSamping)}>
       <div
@@ -83,6 +102,7 @@ export default function KerangkaModal({
         aria-labelledby={idJudul}
         aria-describedby={deskripsi ? idDesk : undefined}
         tabIndex={-1}
+        style={lebarMaks ? { maxWidth: lebarMaks } : undefined}
         className={cn(
           styles.kotak,
           varian === 'dialog' ? styles.dialog : cn(styles.samping, lebar === 'lebar' ? styles.sampingLebar : styles.sampingSedang),
@@ -100,12 +120,17 @@ export default function KerangkaModal({
               </p>
             )}
           </div>
-          <button type="button" className={styles.tutup} onClick={onTutup} disabled={dikunci} aria-label="Tutup dialog">
+          <button type="button" className={styles.tutup} onClick={onTutup} disabled={dikunci} aria-label={labelTutup}>
             <X size={18} strokeWidth={1.75} aria-hidden="true" />
           </button>
         </header>
-        <div className={styles.badan}>{children}</div>
-        {kaki && <footer className={styles.kaki}>{kaki}</footer>}
+        {onKirim ? (
+          <form noValidate onSubmit={onKirim} className={styles.isian}>
+            {isi}
+          </form>
+        ) : (
+          isi
+        )}
       </div>
     </div>
   );

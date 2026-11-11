@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { AlertCircle, CheckCircle2, Loader2, Send, ShieldAlert, ClipboardList } from 'lucide-react';
+import Tombol from '@/components/ui/Tombol';
 import { createClient } from '@/lib/supabase/client';
 
 // CMP-01/CMP-05/CMP-06: formulir pengaduan publik (tanpa login wajib).
@@ -84,15 +85,15 @@ function PengaduanForm() {
         <h2 style={{ marginTop: 'var(--space-4)' }}>Pengaduan Tercatat</h2>
         <p>Nomor laporan Anda:</p>
         <p style={{ fontSize: '1.5rem', fontWeight: 700, letterSpacing: '0.05em', fontFamily: 'monospace' }}>{tiket}</p>
-        <button
-          type="button"
-          className="btn btn--ghost btn--sm"
+        <Tombol
+          varian="hantu"
+          ukuran="kecil"
           onClick={() => {
             void navigator.clipboard?.writeText(tiket).then(() => setDisalin(true), () => undefined);
           }}
         >
           {disalin ? 'Nomor tersalin' : 'Salin nomor'}
-        </button>
+        </Tombol>
         <p style={{ color: 'var(--color-neutral-500)', fontSize: 'var(--text-sm)' }}>
           {anonim
             ? 'Simpan nomor ini baik-baik: hanya nomor inilah kuncinya, kami tidak menyimpan identitas atau kontak Anda sehingga nomor yang hilang tidak dapat dipulihkan. '
@@ -101,8 +102,8 @@ function PengaduanForm() {
           Batas verifikasi 3 hari kerja, penanganan 14 hari kerja.
         </p>
         <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'center', marginTop: 'var(--space-4)' }}>
-          <Link href="/pengaduan/lacak" className="btn btn--primary">Lacak Pengaduan</Link>
-          <Link href="/" className="btn btn--secondary">Kembali ke Beranda</Link>
+          <Tombol href="/pengaduan/lacak">Lacak Pengaduan</Tombol>
+          <Tombol href="/" varian="sekunder">Kembali ke Beranda</Tombol>
         </div>
       </div>
     );
@@ -198,9 +199,9 @@ function PengaduanForm() {
         </p>
       )}
 
-      <button type="submit" className="btn btn--primary" disabled={phase === 'submitting'}>
-        {phase === 'submitting' ? <Loader2 size={16} className="spin" /> : <Send size={16} />} Kirim Pengaduan
-      </button>
+      <Tombol type="submit" ikon={Send} disabled={phase === 'submitting'} memuat={phase === 'submitting'}>
+        Kirim Pengaduan
+      </Tombol>
     </form>
   );
 }

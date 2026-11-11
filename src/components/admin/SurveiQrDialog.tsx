@@ -7,6 +7,7 @@
 // pemanggil boleh membukanya secara spekulatif. Selama memuat tidak ada yang dirender (tanpa kerangka berkedip).
 import { useEffect, useRef, useState } from 'react';
 import QRCodeDisplay from '@/components/QRCode';
+import Tombol from '@/components/ui/Tombol';
 import { clientEnv } from '@/lib/env/client';
 import { createClient } from '@/lib/supabase/client';
 import { ambilQrSurvei, urlSurvei } from '@/lib/survei/staf';
@@ -66,9 +67,9 @@ export default function SurveiQrDialog({ kunjunganId, onTutup }: Props) {
   if (!keadaan) return null;
 
   const tombolTutup = (
-    <button type="button" className="btn btn--secondary btn--sm" onClick={onTutup}>
+    <Tombol varian="sekunder" ukuran="kecil" onClick={onTutup}>
       Tutup
-    </button>
+    </Tombol>
   );
 
   if (keadaan.tahap === 'galat') {

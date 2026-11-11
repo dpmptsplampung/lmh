@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import Tombol from '@/components/ui/Tombol';
 
 export default function NotFound() {
   return (
@@ -22,9 +22,7 @@ export default function NotFound() {
         Halaman yang Anda cari tidak tersedia atau telah dipindahkan. Silakan kembali ke
         beranda.
       </p>
-      <Link href="/" className="btn btn--primary">
-        Kembali ke Beranda
-      </Link>
+      <Tombol href="/">Kembali ke Beranda</Tombol>
     </div>
   );
 }

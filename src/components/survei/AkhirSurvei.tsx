@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, CircleCheck, Lightbulb, Loader2, ShieldAlert } from 'lucide-react';
+import { ArrowRight, CircleCheck, Lightbulb, ShieldAlert } from 'lucide-react';
+import Tombol from '@/components/ui/Tombol';
 import styles from './survei.module.css';
 
 interface AkhirSurveiProps {
@@ -133,10 +134,10 @@ export default function AkhirSurvei({ token, onSelesai }: AkhirSurveiProps) {
                       <CircleCheck size={18} aria-hidden="true" /> {TEKS[j].terkirim}
                     </p>
                   ) : (
-                    <button type="button" className={`btn btn--primary ${styles.tombolAksi}`} onClick={() => bukaForm(j)}>
+                    <Tombol className={styles.tombolAksi} onClick={() => bukaForm(j)}>
                       {TEKS[j].tombol}
-                      <ArrowRight size={18} aria-hidden="true" />
-                    </button>
+                      <ArrowRight size={16} strokeWidth={1.75} aria-hidden="true" className={styles.ikonAkhir} />
+                    </Tombol>
                   )}
                 </div>
               </section>
@@ -180,25 +181,24 @@ export default function AkhirSurvei({ token, onSelesai }: AkhirSurveiProps) {
           <p className={styles.catatanAnonim}>{anonim ? TEKS[terbuka].catatanAnonim : CATATAN_TERCATAT}</p>
           {galat && <p className={styles.galatPesan} role="alert">{galat}</p>}
           <div className={styles.barisAksi}>
-            <button type="button" className="btn btn--ghost" onClick={() => setTerbuka(null)} disabled={status[terbuka] === 'mengirim'}>
+            <Tombol varian="hantu" onClick={() => setTerbuka(null)} disabled={status[terbuka] === 'mengirim'}>
               Batal
-            </button>
-            <button type="submit" className="btn btn--primary" disabled={!isi.trim() || status[terbuka] === 'mengirim'}>
-              {status[terbuka] === 'mengirim' ? <Loader2 size={16} className={styles.putar} aria-hidden="true" /> : null}
+            </Tombol>
+            <Tombol
+              type="submit"
+              disabled={!isi.trim() || status[terbuka] === 'mengirim'}
+              memuat={status[terbuka] === 'mengirim'}
+            >
               Kirim
-            </button>
+            </Tombol>
           </div>
         </form>
       )}
 
       {terbuka === null && (
-        <button
-          type="button"
-          className={`btn btn--ghost ${styles.tombolNav}`}
-          onClick={onSelesai ?? (() => router.replace('/'))}
-        >
+        <Tombol varian="hantu" className={styles.tombolNav} onClick={onSelesai ?? (() => router.replace('/'))}>
           Selesai
-        </button>
+        </Tombol>
       )}
     </section>
   );
