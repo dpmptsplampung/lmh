@@ -29,7 +29,8 @@ function pelanggaran(isi: string, nama = 'contoh.ts'): string[] {
       if (/^toLocale(?:Date|Time)?String$/.test(metode)) {
         const penerima = node.expression.expression.getText(sumber);
         // Dua formatter ini menerima number, bukan Date; timeZone tidak berlaku untuk angka.
-        const angka = nama === 'src/lib/rekap/format.ts' && metode === 'toLocaleString'
+        // Normalisasi pemisah path: di Windows `relative()` memakai backslash.
+        const angka = nama.replaceAll('\\', '/') === 'src/lib/rekap/format.ts' && metode === 'toLocaleString'
           && ['(rasio * 100)', 'menit'].includes(penerima);
         const opsi = node.arguments[1];
         const zona = opsi && ts.isObjectLiteralExpression(opsi) && opsi.properties.some((properti) =>

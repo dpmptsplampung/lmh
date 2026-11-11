@@ -43,10 +43,10 @@ Rencana dalam `rekap_pelayanan_inti` (salinan tanpa predikat lingkup, butir 2): 
 
 Panggilan PostgREST ke RPC rekap/UMKM rata-rata 71-270 ms (277, 64, 205, 130, 113 panggilan); view `v_rekap_pelayanan_oss`/`perizinan` 18-25 ms; `rollup_rekap_harian` 38 ms.
 
-## Kesimpulan
+## Kesimpulan (dikoreksi 2026-11-11)
 
-1. Di sisi database rekap CEPAT (4-17 ms hangat pada data sekarang). Lambatnya halaman rekap bukan dari eksekusi SQL, melainkan dari rantai request (1 `auth.getUser` + 4-7 panggilan berurutan) dan jarak jaringan. Rata-rata nyata per panggilan 71-270 ms menunjukkan biaya per round-trip, bukan komputasi.
-2. `vercel.json` berisi `{}` (tidak ada `regions`). Bila fungsi Vercel berjalan di region bawaan (AS timur) sementara Supabase di Singapura, setiap panggilan DB membayar ratusan ms. Region fungsi aktual HARUS dicek pemilik di dasbor Vercel (Project Settings > Functions). Menetapkan region Singapura (`sin1`) adalah kemenangan murah baru untuk G1.
-3. Memparalelkan route rekap (G2) tetap berguna karena memotong jumlah round-trip, tetapi menulis ulang `rekap_pelayanan_inti` jadi satu lintasan (migrasi `202611110001`) hampir tidak menghemat waktu DB pada volume ini: turunkan prioritasnya, jangan dipaksakan.
-4. UMKM: 9.999 profil terbit melewati ambang spec (> 2.000 profil) dan kueri dingin 285-745 ms melewati ambang 150 ms, jadi tugas bersyarat indeks trigram `umkm_cari_katalog` DIJALANKAN. Halaman hangat 39-104 ms.
+1. Eksekusi SQL rekap di database CEPAT (4-17 ms hangat pada data sekarang).
+2. KOREKSI: kesimpulan awal bahwa "lambat = jarak jaringan, region Vercel salah" TIDAK terbukti. Pemilik mengonfirmasi fungsi Vercel sudah di Singapura (`sin1`), jadi tidak ada jarak lintas benua. Dan angka `pg_stat_statements` (rata-rata 71-270 ms per panggilan) adalah waktu eksekusi SISI DATABASE, bukan waktu jaringan; saya salah menafsirkannya. Selisih antara 14 ms (`EXPLAIN` langsung) dan 71-270 ms (lewat PostgREST) belum dijelaskan: kandidat penyebab adalah pola panggilan PostgREST (peran/klaim JWT, RLS), beban bersamaan di CPU free tier, dan panggilan dingin.
+3. Rantai 1 `auth.getUser` + 4-7 panggilan berurutan tetap memperbesar waktu total; G1 1.6 memangkasnya. Pengukuran yang menentukan: header `Server-Timing` (G0.2) dari browser pada produksi setelah deploy, per langkah.
+4. UMKM: 9.999 profil terbit melewati ambang spec (> 2.000), jadi indeks trigram dikerjakan (lihat `hasil-sesudah-g2.md`).
 5. Salinan `rekap_pelayanan_inti` literal (butir 2) tidak representatif; jangan dijadikan dasar keputusan.
