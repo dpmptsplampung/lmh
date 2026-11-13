@@ -133,3 +133,33 @@ describe('useRekapAbsensi', () => {
     }
   });
 });
+
+describe('useRekapAbsensi: tanggal berganti saat terbuka (perbaikan 2026-11-13)', () => {
+  it('lipatan terbuka lalu tanggal diganti = baca ulang untuk tanggal baru; tertutup = tidak membaca', async () => {
+    const { result, rerender } = pasang(profil('admin', ''), '2026-11-04');
+    rerender({ tanggal: '2026-11-05', currentUser: profil('admin', '') }); // tertutup: tidak membaca
+    expect(muatAbsensiRekap).not.toHaveBeenCalled();
+
+    await act(async () => { await result.current.alihkan(); });
+    expect(muatAbsensiRekap).toHaveBeenCalledTimes(1);
+
+    vi.mocked(muatAbsensiRekap).mockResolvedValueOnce(ok([absen({ id: 'a-2', tanggal: '2026-11-06' })]));
+    await act(async () => { rerender({ tanggal: '2026-11-06', currentUser: profil('admin', '') }); });
+    expect(muatAbsensiRekap).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(muatAbsensiRekap).mock.calls[1][1]).toEqual({ tanggal: '2026-11-06', layananId: null });
+    expect(result.current.rekapAbsensi.map((a) => a.id)).toEqual(['a-2']);
+  });
+
+  it('respons basi dibuang: hanya permintaan tanggal terakhir yang mengisi rekap', async () => {
+    let lepasLama!: (v: HasilAntrean<BarisAbsensi[]>) => void;
+    const { result, rerender } = pasang(profil('admin', ''), '2026-11-04');
+    vi.mocked(muatAbsensiRekap).mockImplementationOnce(() => new Promise((r) => { lepasLama = r; }));
+    let buka!: Promise<void>;
+    act(() => { buka = result.current.alihkan(); }); // permintaan 04 menggantung
+    vi.mocked(muatAbsensiRekap).mockResolvedValueOnce(ok([absen({ id: 'baru', tanggal: '2026-11-05' })]));
+    await act(async () => { rerender({ tanggal: '2026-11-05', currentUser: profil('admin', '') }); });
+    await act(async () => { lepasLama(ok([absen({ id: 'lama', tanggal: '2026-11-04' })])); await buka; });
+    expect(result.current.rekapAbsensi.map((a) => a.id)).toEqual(['baru']);
+    expect(result.current.rekapLoading).toBe(false);
+  });
+});

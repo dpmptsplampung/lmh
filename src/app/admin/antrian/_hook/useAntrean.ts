@@ -6,7 +6,7 @@
 // Penjaga permintaan basi: tiap muat diberi nomor; hanya respons permintaan TERAKHIR yang boleh mengisi layar, apa pun
 // urutan selesainya. Skeleton (`loading`) hanya untuk muat awal / ganti parameter; muat ulang dari Realtime, polling, dan
 // setelah aksi berjalan senyap (`menyegarkan`, tabel tetap; B-01). Keadaan = reducer murni (_logika/keadaanAntrean.ts).
-import { useCallback, useEffect, useReducer, useRef } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useReducer, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { todayWIB } from '@/lib/time';
 import { useRealtimeRefetch } from '@/lib/hooks/useRealtimeRefetch';
@@ -154,8 +154,15 @@ export function useAntrean({ tanggal, filterStatus, halaman }: ParamAntreanHalam
 
   /** Muat dengan skeleton: muat awal, ganti parameter, tombol "Coba lagi". */
   const muat = useCallback(() => jalankanMuat(false), [jalankanMuat]);
-  /** Muat ulang tanpa membongkar tabel (Realtime, polling, setelah aksi). */
-  const muatSenyap = useCallback(() => jalankanMuat(true), [jalankanMuat]);
+  /**
+   * Muat ulang tanpa membongkar tabel (Realtime, polling, setelah aksi). Selalu memakai tanggal/tab/halaman TERBARU
+   * lewat ref: aksi (Mulai/Selesai) memanggil fungsi ini setelah RPC selesai, dan pengguna mungkin sudah pindah tab.
+   */
+  const jalankanMuatRef = useRef(jalankanMuat);
+  useLayoutEffect(() => {
+    jalankanMuatRef.current = jalankanMuat;
+  }, [jalankanMuat]);
+  const muatSenyap = useCallback(() => jalankanMuatRef.current(true), []);
 
   // Muat awal dan setiap ganti tanggal/halaman/status.
   useEffect(() => {

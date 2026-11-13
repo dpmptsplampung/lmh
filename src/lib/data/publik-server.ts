@@ -289,15 +289,15 @@ export function rentangKuartalWIB(sekarang: Date = new Date()): { mulai: string;
 const ikmKosong = (layananId: string, nama: string): IkmRow => ({ layanan_id: layananId, layanan_nama: nama, ikm: null, responden: 0 });
 
 /**
- * SENGAJA tabel `layanan` tanpa filter aktif (hanya bukan 'modul_publik'): daftar yang terlihat pengguna sama dengan
- * kueri peramban sebelumnya. Gagal membaca satu layanan = barisnya N/A seperti sebelumnya, tetapi hasil tidak disimpan.
+ * Tabel `layanan` aktif = true dan bukan 'modul_publik'. Layanan yang diarsipkan (aktif=false) tidak tampil
+ * (keputusan pemilik 2026-11-13). Gagal membaca satu layanan = barisnya N/A, tetapi hasil tidak disimpan.
  */
 async function muatTransparansiMentah(sb: SupabaseClient, mulai: string, selesai: string): Promise<Termuat<HasilTransparansiPublik>> {
   const diperbaruiPada = new Date().toISOString();
   const gagal: Termuat<HasilTransparansiPublik> = { data: { rows: [], diperbaruiPada, galat: true }, lengkap: false };
   try {
     const { data, error } = await denganBatasWaktu<{ data: unknown; error: unknown }>(
-      sb.from('layanan').select('id, nama').neq('tipe', 'modul_publik').order('nama').limit(BATAS_LAYANAN),
+      sb.from('layanan').select('id, nama').eq('aktif', true).neq('tipe', 'modul_publik').order('nama').limit(BATAS_LAYANAN),
       BATAS_MUAT_MS,
       { data: null, error: 'batas waktu' },
     );

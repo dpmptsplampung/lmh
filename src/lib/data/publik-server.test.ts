@@ -689,6 +689,7 @@ describe('muatTransparansiPublik (IKM publik per layanan, kuartal berjalan)', ()
 
     const langkah = dipakai(panggilan, 'layanan')[0].langkah;
     expect(langkah).toContainEqual(['select', 'id, nama']);
+    expect(langkah).toContainEqual(['eq', 'aktif', true]); // layanan arsip tidak tampil
     expect(langkah).toContainEqual(['neq', 'tipe', 'modul_publik']);
     expect(langkah).toContainEqual(['order', 'nama']);
     expect(langkah.some(([nama, n]) => nama === 'limit' && typeof n === 'number' && n > 0)).toBe(true);

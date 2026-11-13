@@ -267,3 +267,19 @@ describe('useAntrean: siklus hidup', () => {
     expect(spyError).not.toHaveBeenCalled();
   });
 });
+
+describe('useAntrean: muatSenyap memakai parameter terbaru (perbaikan 2026-11-13)', () => {
+  it('muatSenyap yang dipegang sebelum pindah tab/tanggal tetap memuat parameter TERBARU, bukan yang lama', async () => {
+    const { result, rerender } = pasang({ filterStatus: 'aktif', halaman: 0 });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    const muatSenyapLama = result.current.muatSenyap; // seperti `muatSenyap` yang dipegang aksi saat tombol diklik
+
+    rerender({ tanggal: hariIni, filterStatus: 'selesai', halaman: 1 });
+    await waitFor(() => expect(vi.mocked(muatAntrean)).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => { await muatSenyapLama(); });
+    const terakhir = vi.mocked(muatAntrean).mock.calls.at(-1)![1] as ParamMuatAntrean;
+    expect(terakhir).toMatchObject({ status: ['selesai'], halaman: 1 });
+  });
+});
