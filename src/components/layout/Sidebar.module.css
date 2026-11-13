@@ -12,7 +12,7 @@
   display: flex;
   flex-direction: column;
   padding: 12px;
-  background: var(--bg-surface, #fff);
+  background: var(--bg-surface);
   border-radius: var(--radius-panel, 20px);
   box-shadow: var(--shadow-panel, 0 1px 3px rgba(15, 23, 42, 0.06), 0 8px 24px -12px rgba(15, 23, 42, 0.1));
   outline: none;
@@ -40,7 +40,7 @@
   font-weight: 650;
   letter-spacing: -0.01em;
   line-height: 1.2;
-  color: var(--text-primary, #0f172a);
+  color: var(--text-primary);
 }
 
 .tutup {
@@ -53,12 +53,12 @@
   border: 0;
   border-radius: var(--radius-lg, 12px);
   background: transparent;
-  color: var(--text-secondary, #475569);
+  color: var(--text-secondary);
   cursor: pointer;
 }
 
 .tutup:hover {
-  background: var(--nav-bg-hover, #f1f5f9);
+  background: var(--nav-bg-hover);
 }
 
 .tutup:focus-visible {
@@ -107,7 +107,7 @@
   border: 0;
   border-radius: var(--radius-md, 8px);
   background: transparent;
-  color: var(--nav-group-label, #64748b);
+  color: var(--nav-group-label);
   font: inherit;
   font-size: 0.6875rem;
   font-weight: 600;
@@ -119,7 +119,7 @@
 
 .groupHeader:hover,
 .groupHeaderActive {
-  color: var(--text-primary, #0f172a);
+  color: var(--text-primary);
 }
 
 .groupHeader:focus-visible,
@@ -157,27 +157,27 @@
   min-height: var(--target, 40px);
   padding: 0 10px;
   border-radius: var(--radius-lg, 12px);
-  color: var(--nav-fg, #475569);
+  color: var(--nav-fg);
   font-size: 0.875rem;
   font-weight: 500;
   text-decoration: none;
 }
 
 .navItem:hover {
-  background: var(--nav-bg-hover, #f1f5f9);
-  color: var(--nav-fg-hover, #0f172a);
+  background: var(--nav-bg-hover);
+  color: var(--nav-fg-hover);
 }
 
 .navItemActive,
 .navItemActive:hover {
-  background: var(--nav-active-bg, #0f131b);
-  color: var(--nav-active-fg, #fff);
+  background: var(--nav-active-bg);
+  color: var(--nav-active-fg);
   font-weight: 600;
 }
 
 /* Di atas pil gelap: cincin fokus terang. */
 .navItemActive:focus-visible {
-  box-shadow: 0 0 0 2px var(--color-primary-300, #93c5fd);
+  box-shadow: 0 0 0 2px var(--color-primary-300);
 }
 
 .navIcon {
@@ -200,8 +200,8 @@
   height: 20px;
   padding: 0 6px;
   border-radius: var(--radius-full, 9999px);
-  background: var(--nav-badge-bg, #6a4fe0);
-  color: var(--nav-badge-fg, #fff);
+  background: var(--nav-badge-bg);
+  color: var(--nav-badge-fg);
   font-size: 0.75rem;
   font-weight: 600;
   line-height: 20px;
@@ -224,7 +224,7 @@
   gap: 2px;
   margin-top: 12px;
   padding-top: 10px;
-  border-top: 1px solid var(--border-subtle, #e6eaf0);
+  border-top: 1px solid var(--border-subtle);
 }
 
 .overlay {

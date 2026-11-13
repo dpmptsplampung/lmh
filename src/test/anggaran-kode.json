@@ -1,5 +1,5 @@
 {
-  "hex": 145,
+  "hex": 46,
   "rgb": 58,
   "zIndexLiteral": 0,
   "breakpointLuarSkala": 41,
@@ -8,5 +8,11 @@
   "windowConfirm": 0,
   "selectBintang": 2,
   "kueriDiPage": 96,
-  "barisPageRaksasa": 584
+  "barisPageRaksasa": 584,
+  "hexLuarModul": 5,
+  "rgbLuarModul": 14,
+  "zIndexLuarModul": 0,
+  "breakpointLuarModul": 4,
+  "hexInline": 9,
+  "zIndexInline": 1
 }

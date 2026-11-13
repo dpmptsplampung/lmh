@@ -12,15 +12,15 @@
   padding: 8px 10px;
   border: 0;
   border-radius: var(--radius-lg, 12px);
-  background: var(--bg-surface-muted, #f5f7fa);
-  color: var(--text-primary, #0f172a);
+  background: var(--bg-surface-muted);
+  color: var(--text-primary);
   text-align: left;
   font: inherit;
   cursor: pointer;
 }
 
 .kartu:hover {
-  background: var(--bg-surface-hover, #f1f5f9);
+  background: var(--bg-surface-hover);
 }
 
 .kartu:focus-visible,
@@ -36,7 +36,7 @@
   width: 32px;
   height: 32px;
   border-radius: 9px;
-  background: var(--color-primary-600, #2563eb);
+  background: var(--color-primary-600);
   color: #fff;
   font-size: 0.75rem;
   font-weight: 650;
@@ -63,12 +63,12 @@
 
 .peran {
   font-size: 0.75rem;
-  color: var(--text-tertiary, #64748b);
+  color: var(--text-tertiary);
 }
 
 .ikon {
   flex: none;
-  color: var(--text-tertiary, #64748b);
+  color: var(--text-tertiary);
 }
 
 .menu {
@@ -78,8 +78,8 @@
   right: 0;
   top: calc(100% + 6px);
   padding: 6px;
-  background: var(--bg-surface, #fff);
-  border: 1px solid var(--border-subtle, #e6eaf0);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg, 12px);
   box-shadow: var(--shadow-overlay, 0 24px 48px -12px rgba(15, 23, 42, 0.18));
 }
@@ -94,7 +94,7 @@
   border: 0;
   border-radius: var(--radius-md, 8px);
   background: transparent;
-  color: var(--text-primary, #0f172a);
+  color: var(--text-primary);
   font: inherit;
   text-align: left;
   text-decoration: none;
@@ -102,9 +102,9 @@
 }
 
 .butir svg {
-  color: var(--text-tertiary, #64748b);
+  color: var(--text-tertiary);
 }
 
 .butir:hover {
-  background: var(--bg-surface-hover, #f1f5f9);
+  background: var(--bg-surface-hover);
 }

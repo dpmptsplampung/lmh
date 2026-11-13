@@ -5,7 +5,7 @@
   padding: 14px;
   border-radius: var(--radius-card, 16px);
   color: #fff;
-  background: linear-gradient(155deg, var(--color-primary-700, #1d4ed8) 0%, var(--color-primary-900, #1e3a8a) 100%);
+  background: linear-gradient(155deg, var(--color-primary-700) 0%, var(--color-primary-900) 100%);
 }
 
 .atas {
@@ -65,7 +65,7 @@
 
 .ciut:focus-visible,
 .tombol:focus-visible {
-  outline: 2px solid var(--color-primary-300, #93c5fd);
+  outline: 2px solid var(--color-primary-300);
   outline-offset: 2px;
 }
 
@@ -135,14 +135,14 @@
   margin-top: 12px;
   border-radius: var(--radius-button, 10px);
   background: #fff;
-  color: var(--color-primary-700, #1d4ed8);
+  color: var(--color-primary-700);
   font-size: 0.875rem;
   font-weight: 600;
   text-decoration: none;
 }
 
 .tombol:hover {
-  background: var(--color-primary-50, #eff6ff);
+  background: var(--color-primary-50);
 }
 
 /* Desktop: jendela pendek memprioritaskan menu. Di laci (<=1024px) widget selalu ada dan ikut menggulir. */

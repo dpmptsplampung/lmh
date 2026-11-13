@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 import anggaran from './anggaran-kode.json'
+import ts from 'typescript'
 
 /**
  * Penjaga anggaran kode (SPEC refaktor arsitektur-UI §3, §5, §7).
@@ -72,6 +73,62 @@ function hitungTokenTakTerdefinisi(): number {
   return [...dipakai].filter((n) => !didefinisikan.has(n)).length
 }
 
+function ukurCssLuarModul(isi: string) {
+  const teks = tanpaKomentarCss(isi)
+  const tanpaVar = teks.split('\n').filter((l) => !/^\s*--[\w-]+\s*:/.test(l)).join('\n')
+  let breakpointLuarModul = 0
+  for (const m of teks.matchAll(/@media[^{]*/g)) {
+    for (const w of m[0].matchAll(/(?:max|min)-width\s*:\s*(\d+)px/g)) {
+      if (!SKALA.has(Number(w[1]))) breakpointLuarModul++
+    }
+  }
+  return {
+    hexLuarModul: hitung(tanpaVar, /#[0-9a-fA-F]{3,8}\b/g),
+    rgbLuarModul: hitung(tanpaVar, /\brgba?\(/g),
+    zIndexLuarModul: [...tanpaVar.matchAll(/z-index\s*:\s*(\d+)/g)].filter((m) => Number(m[1]) >= 100).length,
+    breakpointLuarModul,
+  }
+}
+
+function ukurInline(teks: string) {
+  const source = ts.createSourceFile('inline.tsx', teks, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+  let hexInline = 0
+  let zIndexInline = 0
+  const diperiksa = new Set<ts.Node>()
+  const deklarasi = new Map<string, ts.Expression>()
+  function kumpulkan(node: ts.Node) {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) deklarasi.set(node.name.text, node.initializer)
+    ts.forEachChild(node, kumpulkan)
+  }
+  kumpulkan(source)
+  function periksa(node: ts.Node) {
+    if (diperiksa.has(node)) return
+    diperiksa.add(node)
+    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) || ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node)) {
+      hexInline += hitung(node.text, /#[0-9a-fA-F]{3,8}\b/g)
+    }
+    if (ts.isPropertyAssignment(node) && node.name.getText(source).replace(/["']/g, '') === 'zIndex') {
+      const nilai = node.initializer
+      if ((ts.isNumericLiteral(nilai) || ts.isStringLiteral(nilai)) && /^\d+$/.test(nilai.text) && Number(nilai.text) >= 100) zIndexInline++
+    }
+    ts.forEachChild(node, periksa)
+  }
+  function kunjungi(node: ts.Node) {
+    if (ts.isJsxAttribute(node) && node.name.getText(source) === 'style' && node.initializer) {
+      periksa(node.initializer)
+      if (ts.isJsxExpression(node.initializer) && node.initializer.expression && ts.isIdentifier(node.initializer.expression)) {
+        const nilai = deklarasi.get(node.initializer.expression.text)
+        if (nilai) periksa(nilai)
+      }
+    }
+    if (ts.isVariableDeclaration(node) && node.initializer && node.type && /\bCSSProperties\b/.test(node.type.getText(source))) periksa(node.initializer)
+    if (ts.isAsExpression(node) && /\bCSSProperties\b/.test(node.type.getText(source))) periksa(node.expression)
+    ts.forEachChild(node, kunjungi)
+  }
+  kunjungi(source)
+  return { hexInline, zIndexInline }
+}
+
 function ukur() {
   let hex = 0
   let rgb = 0
@@ -98,6 +155,17 @@ function ukur() {
     }
   }
 
+  const luarModul = { hexLuarModul: 0, rgbLuarModul: 0, zIndexLuarModul: 0, breakpointLuarModul: 0 }
+  for (const nama of ['globals.css', 'tema-dasbor.css']) {
+    const hasil = ukurCssLuarModul(baca(join(AKAR, 'styles', nama)))
+    for (const k of Object.keys(luarModul) as (keyof typeof luarModul)[]) luarModul[k] += hasil[k]
+  }
+  const inline = { hexInline: 0, zIndexInline: 0 }
+  for (const p of tsx) {
+    const hasil = ukurInline(baca(p))
+    inline.hexInline += hasil.hexInline
+    inline.zIndexInline += hasil.zIndexInline
+  }
   const tokenTakTerdefinisi = hitungTokenTakTerdefinisi()
 
   let kelasBtn = 0
@@ -127,6 +195,8 @@ function ukur() {
   }
 
   return {
+    ...luarModul,
+    ...inline,
     hex,
     rgb,
     zIndexLiteral,
@@ -165,4 +235,20 @@ describe('anggaran kode (hanya boleh turun)', () => {
   it('lima page.tsx raksasa ada', () => {
     for (const r of PAGE_RAKSASA) expect(BERKAS.map(rel)).toContain(r)
   })
+})
+
+
+describe('cakupan anggaran tambahan', () => {
+  it('mengukur CSS global termasuk breakpoint dan z-index', () => {
+    expect(ukurCssLuarModul('a { color: #abc; background: rgb(1, 2, 3); z-index: 100 } @media (max-width: 700px) {}')).toEqual({ hexLuarModul: 1, rgbLuarModul: 1, zIndexLuarModul: 1, breakpointLuarModul: 1 })
+  })
+
+  it('mengukur warna dan z-index pada style inline tanpa menghitung atribut lain', () => {
+    expect(ukurInline('<div title="#abc" style={{ color: "#abc", zIndex: 100 }} />')).toEqual({ hexInline: 1, zIndexInline: 1 })
+  })
+})
+
+
+it('mengukur objek style bernama dan tidak menghitung warna teks biasa', () => {
+  expect(ukurInline(`const gaya = { color: '#fff', zIndex: 101 }; const pesan = '#fff'; <div style={gaya} title={pesan} />`)).toEqual({ hexInline: 1, zIndexInline: 1 })
 })

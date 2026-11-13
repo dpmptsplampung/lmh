@@ -760,7 +760,7 @@
 
 .galatPesan {
   margin: 0;
-  color: var(--color-danger-600, #dc2626);
+  color: var(--color-danger-600);
   font-size: var(--text-sm);
 }
 

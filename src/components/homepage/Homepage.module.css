@@ -33,7 +33,7 @@
 }
 
 .chip_tutup {
-  background: var(--color-neutral-100, #f1f5f9);
+  background: var(--color-neutral-100);
   color: var(--text-secondary);
 }
 
@@ -66,8 +66,8 @@
   align-items: center;
   gap: var(--space-2);
   padding: 0 var(--space-4);
-  background: var(--glass-bg-strong, #fff);
-  border: 1px solid var(--border-default, #cbd5e1);
+  background: var(--glass-bg-strong);
+  border: 1px solid var(--border-default);
   border-radius: var(--radius-lg);
   color: var(--text-secondary);
 }
@@ -158,7 +158,7 @@
   /* Opak: token --surface-elevated adalah kaca 62% tanpa blur sehingga teks di belakang popup tembus dan sulit dibaca. */
   background: #fff;
   color: var(--text-primary);
-  border: 1px solid var(--border-default, #e2e8f0);
+  border: 1px solid var(--border-default);
   border-radius: var(--radius-2xl, 16px);
   box-shadow: var(--shadow-xl, 0 20px 40px rgba(0, 0, 0, 0.2));
   outline: none;
@@ -170,7 +170,7 @@
   justify-content: space-between;
   gap: var(--space-3);
   padding: var(--space-5) var(--space-6);
-  border-bottom: 1px solid var(--border-default, #e2e8f0);
+  border-bottom: 1px solid var(--border-default);
 }
 
 .dialogJudul {
@@ -245,7 +245,7 @@
   padding: var(--space-1) 0;
   text-align: left;
   font-weight: 400;
-  border-bottom: 1px solid var(--border-default, #e2e8f0);
+  border-bottom: 1px solid var(--border-default);
 }
 
 .jadwal th {
