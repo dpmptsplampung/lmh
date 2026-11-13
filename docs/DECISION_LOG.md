@@ -847,3 +847,26 @@ Matriks: `docs/analysis/04-RBAC-MATRIX.md` §6.4. PDP: `docs/KEBIJAKAN_PDP.md`.
 4. **Uji perilaku** (transaksi ROLLBACK terhadap produksi) lolos: 0002=84, 0003-0005=150, 0007/0008=101, 0009=106, 0012=61 (`--akhir-hari`), 0013=26; 0006 dan 0011 hanya tercakup sebagai prasyarat (`--pre`) dan test statis. Dua bug skrip uji diperbaiki (cast tipe `"char"` di `scripts/test-wp24.mjs`; fixture chat di `scripts/test-perbaikan-review.mjs`; commit `d7344e3`).
 5. **Belum terbukti**: pemeriksaan kesehatan dari luar (deployment dilindungi Vercel Authentication; domain `lmh.lampungprov.go.id` tidak ter-resolve dari mesin penguji), tampilan di browser, konkurensi sejati, kueri rekap FO pada PostgREST sungguhan, `session_id` JWT stabil setelah refresh.
 6. **Sisa langkah** (`docs/RUNBOOK_FO_ESKALASI.md` §12): pemeriksaan kesehatan dari jaringan yang berakses, uji asap di browser, pembuktian `session_id`, menyalakan flag `sesi_tunggal_aktif` (hanya sesudah butir itu dan login ulang staf), komunikasi ke staf.
+
+## Refaktor arsitektur dan UI G0-G10 (2026-11-11 s.d. 2026-11-13)
+
+Konteks: rencana `docs/superpowers/plans/2026-11-11-refaktor-arsitektur-ui.md`, hasil `docs/superpowers/audits/ukur/hasil-sesudah.md`.
+
+### Keputusan pemilik (2026-11-11)
+
+1. **Tanpa staging**: harness PGlite (`scripts/lokal-rantai/`) dan test kontrak menggantikannya; migrasi ke produksi hanya setelah host dan daftar migrasi ditampilkan dan pemilik setuju.
+2. **Tema publik berbeda dari tema dasbor**: satu berkas `token.css`, dua blok; penyatuan tema dibatalkan.
+3. **Filter UMKM**: jenis (Bahan Baku, Produksi, Jasa) dipilih dulu, kategori kosong sampai jenis dipilih; label "Produksi" untuk nilai DB "Produk".
+4. **Cache publik boleh tertinggal 60 detik**; polling cadangan layar TV 20 detik saat Realtime tersambung.
+5. **Rust tidak dipakai**: bottleneck ada di SQL dan jaringan, bukan CPU aplikasi.
+
+### Keputusan 2026-11-13
+
+1. **`/transparansi` hanya menampilkan layanan aktif** (`layanan.aktif = true`); layanan arsip tidak tampil. Menjawab temuan bawaan lama.
+2. **Rentang kuartal transparansi memakai WIB** (dulu UTC peramban): jumlah responden di hari batas bisa sedikit berbeda. Diterima.
+3. **`admin/antrian`**: muat ulang setelah aksi memakai tab/tanggal TERBARU (bukan yang tertangkap saat klik); rekap absen dimuat ulang saat tanggal berganti selagi lipatan terbuka, respons basi dibuang, nama CSV memakai tanggal data yang dimuat.
+4. **Enam token CSS tak terdefinisi** diganti token semantik yang sudah ada (`--status-*`, `--bg-canvas/surface`, `--border-default`), bukan token baru, karena `src/test/token-peta.test.ts` melarang nama baru di luar peta.
+5. **Kueri statistik/absensi di `lib/data/antrean.ts` tanpa batas baris**: dicatat sebagai pengecualian tertulis (total tepat lewat `count`; rata-rata durasi berbasis sampel bila > 1000 tiket selesai/hari per lingkup); jalan keluarnya agregat di RPC bila volume tumbuh.
+6. **Kunci cache publik berversi**: `denganCache` menerima `versi`; `layanan`, `beranda`, `faq` naik ke v2 saat bentuk hasilnya berubah (temuan review: entri cache lama tanpa `chatbotAktif` mematikan bot). FAQ publik meminta batas+1 dan menandai `terpotong`; `/chat` memuat FAQ per Layanan di klien bila terpotong (temuan review: FAQ di posisi > 500 hilang).
+7. **Revalidasi cache FAQ** setelah simpan/hapus/alih aktif hanya dipanggil untuk Admin (route-nya Admin saja).
+8. **Cara kerja**: Sonnet melaksanakan, Opus mendesain dan mereview, Codex (`gpt-6.1-sol`/`terra`) mereview independen dan menghapus `.btn` global; PM mengintegrasikan dan menjalankan gerbang. Review independen Codex atas G5-G9 menemukan dua regresi P2 pada data awal chat (butir 6), keduanya diperbaiki dengan test.
