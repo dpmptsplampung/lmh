@@ -282,8 +282,7 @@ describe('tema-dasbor: aturan berkas', () => {
 
   it('menimpa semua kelas global yang dijanjikan (SISTEM-DESAIN §3.2)', () => {
     const kelas = [
-      '.card', '.card--interactive', '.glass', '.glass--strong', '.btn', '.btn--primary', '.btn--secondary',
-      '.btn--accent', '.btn--danger', '.btn--ghost', '.btn--sm', '.btn--lg', '.btn--icon', '.badge',
+      '.card', '.card--interactive', '.glass', '.glass--strong', '.badge',
       '.badge--menunggu', '.badge--selesai', '.badge--draft', '.badge--pending', '.badge--published',
       '.badge--nonaktif', '.badge--aktif', '.badge--bot', '.badge--eskalasi', '.table', '.table-wrapper',
       '.stat-card', '.stat-card__icon', '.stat-card__value', '.stat-card__label', '.form-label',
@@ -305,15 +304,7 @@ describe('tema-dasbor: aturan berkas', () => {
     expect(modul).toContain('var(--toast-garis)');
   });
 
-  it('tautan berbentuk tombol tidak kehilangan warna teks saat hover (a:hover globals)', () => {
-    expect(luarToken).toMatch(/a\.btn--primary:hover,[^{]*a\.btn--danger:hover\s*\{\s*color:\s*var\(--text-on-primary\)/);
-    expect(luarToken).toMatch(/a\.btn--secondary:hover[^{]*\{\s*color:\s*var\(--text-primary\)/);
-  });
-
-  it('tombol utama biru solid tanpa gradasi; kartu tanpa blur', () => {
-    const utama = luarToken.match(/\.btn--primary \{([^}]*)\}/)?.[1] ?? '';
-    expect(utama).toContain('background: var(--color-primary-600)');
-    expect(utama).not.toMatch(/gradient/);
+  it('kartu tanpa blur', () => {
     const kartu = luarToken.match(/\) \.card \{([^}]*)\}/)?.[1] ?? '';
     expect(kartu).toContain('backdrop-filter: none');
     expect(kartu).toContain('var(--radius-card)');
@@ -331,7 +322,7 @@ describe('tema-dasbor: aturan berkas', () => {
 
   it('(A20) cetak: sembunyikan sidebar, bilah atas, toast, tombol; kartu tanpa bayangan; tautan tanpa URL', () => {
     const cetak = luarToken.slice(luarToken.indexOf('@media print'));
-    for (const s of ['aside', 'nav[aria-label="Menu admin"]', '[data-cetak="sembunyi"]', '[data-toast]', '.btn']) {
+    for (const s of ['aside', 'nav[aria-label="Menu admin"]', '[data-cetak="sembunyi"]', '[data-toast]', 'button', '[role="button"]']) {
       expect(cetak).toContain(s);
     }
     expect(cetak).toMatch(/display:\s*none/);

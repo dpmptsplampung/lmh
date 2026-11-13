@@ -88,125 +88,9 @@ body:has([data-tema="dasbor"])::before {
   box-shadow: var(--shadow-card);
 }
 
-/* ---- Tombol ---- */
-:where(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) .btn {
-  min-height: var(--target);
-  min-width: var(--target);
-  padding: 0 var(--space-4);
-  font-size: var(--fs-body);
-  font-weight: 600;
-  border: 1px solid transparent;
-  border-radius: var(--radius-button);
-  transition: background-color var(--transition-fast), border-color var(--transition-fast),
-    color var(--transition-fast), box-shadow var(--transition-fast), transform 100ms ease-out;
-}
-
-:where(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) .btn:active {
-  transform: scale(0.98);
-}
-
-:where(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) .btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  transform: none;
-}
-
-:where(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) .btn--primary {
-  background: var(--color-primary-600);
-  border-color: var(--color-primary-600);
-  color: var(--text-on-primary);
-  box-shadow: none;
-}
-
-:where(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) .btn--primary:hover:not(:disabled) {
-  background: var(--color-primary-700);
-  border-color: var(--color-primary-700);
-  box-shadow: none;
-}
-
-:where(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) .btn--secondary {
-  background: var(--bg-surface);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  color: var(--text-primary);
-  border-color: var(--border-default);
-}
-
-:where(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) .btn--secondary:hover:not(:disabled) {
-  background: var(--bg-surface-hover);
-  border-color: var(--border-hover);
-}
-
-:where(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) .btn--accent {
-  background: var(--color-accent-500);
-  border-color: var(--color-accent-500);
-  color: var(--text-primary);
-  box-shadow: none;
-}
-
-:where(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) .btn--accent:hover:not(:disabled) {
-  background: var(--color-accent-400);
-  border-color: var(--color-accent-400);
-  box-shadow: none;
-}
-
-:where(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) .btn--danger {
-  background: var(--color-danger-600);
-  border-color: var(--color-danger-600);
-  color: var(--text-on-primary);
-}
-
-:where(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) .btn--danger:hover:not(:disabled) {
-  background: var(--color-danger-700);
-  border-color: var(--color-danger-700);
-}
-
-:where(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) .btn--ghost {
-  background: transparent;
-  color: var(--text-secondary);
-}
-
-:where(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) .btn--ghost:hover:not(:disabled) {
-  background: var(--bg-surface-hover);
-  color: var(--text-primary);
-}
-
-:where(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) .btn--sm {
-  min-height: 32px;
-  padding: 0 var(--space-3);
-  font-size: var(--fs-small);
-}
-
-:where(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) .btn--lg {
-  min-height: 48px;
-  padding: 0 var(--space-6);
-  font-size: var(--text-base);
-  border-radius: var(--radius-lg);
-}
-
-:where(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) .btn--icon {
-  padding: 0;
-  width: var(--target);
-  height: var(--target);
-  min-width: var(--target);
-  min-height: var(--target);
-}
-
 /* ---- Tautan ---- */
 :where(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) a:hover {
   color: var(--color-primary-800);
-}
-
-/* globals.css: a:hover menang atas warna .btn; kembalikan warna tombol berbentuk tautan */
-:where(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) a.btn--primary:hover,
-:where(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) a.btn--danger:hover {
-  color: var(--text-on-primary);
-}
-
-:where(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) a.btn--secondary:hover,
-:where(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) a.btn--accent:hover,
-:where(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) a.btn--ghost:hover {
-  color: var(--text-primary);
 }
 
 /* ---- Lencana ---- */
@@ -457,21 +341,6 @@ body:has([data-tema="dasbor"])::before {
 
 /* ---- Target sentuh (A18): layar sentuh atau lebar sempit ---- */
 @media (pointer: coarse), (max-width: 768px) {
-  :where(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) .btn,
-  :where(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) .btn--icon {
-    min-height: var(--target-sentuh);
-    min-width: var(--target-sentuh);
-  }
-
-  :where(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) .btn--icon {
-    width: var(--target-sentuh);
-    height: var(--target-sentuh);
-  }
-
-  :where(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) .btn--sm {
-    min-height: var(--target-sentuh);
-  }
-
   :where(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) [role="menuitem"],
   :where(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) [role="menuitemradio"],
   :where(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) [role="menuitemcheckbox"],
@@ -520,9 +389,6 @@ body:has([data-tema="dasbor"])::before {
     animation: none;
   }
 
-  :where(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) .btn:active {
-    transform: none;
-  }
 }
 
 /* ---- Cetak (A20) ----
@@ -542,7 +408,7 @@ body:has([data-tema="dasbor"])::before {
   :is(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) [data-cetak="sembunyi"],
   :is(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) [data-toast],
   :is(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) .skip-link,
-  :is(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) :is(.btn, button, [role="button"]):not(#laporan-cetak *) {
+  :is(:root:has([data-tema="dasbor"]), [data-tema="dasbor"]) :is(button, [role="button"]):not(#laporan-cetak *) {
     display: none;
   }
 
