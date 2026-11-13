@@ -94,12 +94,17 @@ export async function GET(request: NextRequest) {
     return sukses({ rows: daftar((data as { rows?: unknown } | null)?.rows).map(petaBarisKinerja), dilayani });
   }
 
-  // bagian === 'data': satu halaman (detail hanya untuk halaman ini) + total dari DB.
-  const [{ data, error }, rk] = await Promise.all([
+  // Definisi dan formulir hanya bergantung pada Layanan, sehingga dimuat bersama RPC setelah lingkup lolos.
+  // Tampung penolakan agar urutan galat tetap ringkasan, RPC, definisi, jawaban, lalu formulir.
+  const [{ data, error }, rk, [field, form]] = await Promise.all([
     pengukur.ukur('rpc_data', async () => await supabase.rpc('rekap_data_pelayanan', {
       ...argData(q), p_batas: q.page_size, p_lewati: q.page * q.page_size, p_setelah: null, p_hitung: !hemat,
     })),
     ambilRingkasan(),
+    Promise.allSettled([
+      pengukur.ukur('field_khusus', () => muatFieldKhusus(supabase, q.layanan_id)),
+      pengukur.ukur('form_layanan', () => formLayanan(supabase, q.layanan_id)),
+    ]),
   ]);
   if (rk.res) return rk.res;
   const dilayani = rk.dilayani;
@@ -110,7 +115,8 @@ export async function GET(request: NextRequest) {
   // ketat) hanya untuk pelayanan yang sudah lolos RPC di atas.
   let kolom_khusus: FieldKhusus[] = [];
   try {
-    kolom_khusus = await pengukur.ukur('field_khusus', () => muatFieldKhusus(supabase, q.layanan_id));
+    if (field.status === 'rejected') throw field.reason;
+    kolom_khusus = field.value;
     if (kolom_khusus.length > 0) {
       const jawaban = await pengukur.ukur('jawaban_khusus', () => muatJawabanKhusus(supabase, rows.filter((r) => r.sumber === 'penanganan').map((r) => r.pelayanan_id)));
       rows = lampirkanKhusus(rows, jawaban);
@@ -118,7 +124,8 @@ export async function GET(request: NextRequest) {
   } catch (e) {
     return responsGalatRekap(e, LABEL);
   }
-  const form_type = await pengukur.ukur('form_layanan', () => formLayanan(supabase, q.layanan_id));
+  if (form.status === 'rejected') throw form.reason;
+  const form_type = form.value;
   return sukses({
     dilayani,
     total: hemat ? null : Number(b.total ?? 0) || 0,

@@ -4,7 +4,7 @@
 // Ringkasan (IKM, SPAK, response rate) bersifat GLOBAL (seluruh pelayanan digabung, tanpa pemecahan per unit; keputusan pemilik
 // 2026-11-03): IKM dan SPAK dihitung dari jawaban yang sama dengan sheet data (`ringkasan-global.ts`); response rate datang dari
 // RPC `ringkasan_response_rate` yang HARUS dipanggil dengan klien sesi pengguna (dijaga peran_saya()): pemanggil menyuplainya.
-import ExcelJS from 'exceljs';
+import type ExcelJS from 'exceljs';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { fetchAllPages, type FetchAllPagesResult } from '@/lib/rekap/exportAll';
 import { awalHariBerikutnyaWIB, awalHariWIB, formatTanggalId } from '@/lib/rekap/format';
@@ -304,7 +304,8 @@ function buatSheetLegenda(wb: ExcelJS.Workbook) {
 }
 
 export async function buildSurveiWorkbook(data: DataSurvei): Promise<Buffer> {
-  const wb = new ExcelJS.Workbook();
+  const { default: Excel } = await import('exceljs');
+  const wb = new Excel.Workbook();
   wb.creator = 'DPMPTSP Lampung';
   wb.created = new Date();
   buatSheetSpak(wb, data.spak);

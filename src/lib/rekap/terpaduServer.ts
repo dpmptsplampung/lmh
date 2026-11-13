@@ -64,6 +64,8 @@ export function argData(q: { dari: string; sampai: string; unit?: string; layana
 
 /** Batas baris satu berkas Excel; satu panggilan RPC maksimal 1000 baris (dibatasi juga di DB). */
 export const MAKS_BARIS_EKSPOR = 50_000;
+// Pengecualian target 5000: RPC rekap_data_pelayanan membatasi p_batas lewat LEAST(..., 1000).
+// HALAMAN_EKSPOR tetap 1000; menaikkannya ke 5000 membutuhkan migrasi RPC terlebih dahulu.
 export const HALAMAN_EKSPOR = 1000;
 
 type BalasanData = { rows?: unknown; berikut?: unknown; total?: unknown };
