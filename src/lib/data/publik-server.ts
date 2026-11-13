@@ -75,7 +75,12 @@ export type FaqPublik = {
   layanan_id: string | null;
   urutan: number | null;
 };
-export type HasilFaqPublik = { faq: FaqPublik[]; galat: boolean };
+export type HasilFaqPublik = {
+  faq: FaqPublik[];
+  galat: boolean;
+  /** True bila FAQ aktif melebihi BATAS_FAQ: daftar ini PARSIAL, jadi pemakai tidak boleh menganggapnya lengkap. */
+  terpotong?: boolean;
+};
 
 /** Pilihan layanan pada formulir pengaduan publik. */
 export type OpsiLayananPengaduan = { id: string; nama: string };
@@ -117,13 +122,16 @@ type Termuat<T> = { data: T; lengkap: boolean };
 /**
  * Membungkus pemuat dengan unstable_cache (tag + revalidate 60). `nama` masuk kunci cache (cb ketiga fungsi bertubuh
  * sama, jadi `nama` WAJIB unik). Galat tak terduga -> `bawaanGalat()` + dicatat; galat internal Next diteruskan.
- * Data Cache bertahan lintas deploy: naikkan sufiks `-v1` bila BENTUK hasil sebuah fungsi berubah.
+ * Data Cache bertahan lintas deploy: naikkan `versi` (sufiks `-v<versi>` pada kunci) bila BENTUK hasil sebuah fungsi
+ * berubah, supaya entri deploy lama tidak dipakai (G6: `layanan`/`beranda` menambah chatbotAktif+tipe, `faq` menambah
+ * `terpotong`; ketiganya versi 2).
  */
 function denganCache<T, A extends string[] = []>(
   nama: string,
   tag: TagPublik[],
   muat: (sb: SupabaseClient, ...arg: A) => Promise<Termuat<T>>,
   bawaanGalat: () => T,
+  versi = 1,
 ): (...arg: A) => Promise<T> {
   // Argumen (hanya string) ikut kunci cache: Next menambahkan JSON argumen ke kunci tiap pemanggilan.
   const tersimpan = unstable_cache(
@@ -132,7 +140,7 @@ function denganCache<T, A extends string[] = []>(
       if (!lengkap) throw new TidakDisimpan(data);
       return data;
     },
-    [`publik-${nama}-v1`],
+    [`publik-${nama}-v${versi}`],
     { tags: tag, revalidate: REVALIDASI_DETIK },
   );
   return async (...arg: A) => {
@@ -179,7 +187,7 @@ const berandaBawaanGalat = (): BerandaPublik => ({
 });
 
 /** Beranda berisi daftar layanan, jadi ikut tag layanan: simpan layanan di Admin segera tampil di beranda. */
-export const muatBerandaPublik = denganCache('beranda', [TAG_PUBLIK.beranda, TAG_PUBLIK.layanan], muatBerandaMentah, berandaBawaanGalat);
+export const muatBerandaPublik = denganCache('beranda', [TAG_PUBLIK.beranda, TAG_PUBLIK.layanan], muatBerandaMentah, berandaBawaanGalat, 2);
 
 // ---------------------------------------------------------------------------------------------------------------
 // Layanan publik (v_layanan_publik, fallback berlapis hanya untuk "kolom belum ada" di muatLayananKetat)
@@ -196,6 +204,7 @@ export const muatLayananPublik = denganCache<HasilLayananPublik>(
   [TAG_PUBLIK.layanan],
   muatLayananMentah,
   () => ({ layanan: [], galat: true }),
+  2,
 );
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -211,13 +220,14 @@ async function muatFaqMentah(sb: SupabaseClient): Promise<Termuat<HasilFaqPublik
         .select(KOLOM_FAQ)
         .eq('aktif', true)
         .order('urutan', { ascending: true })
-        .limit(BATAS_FAQ),
+        .limit(BATAS_FAQ + 1), // satu baris lebih: bila terisi, daftar terpotong
       BATAS_MUAT_MS,
       { data: null, error: 'batas waktu' },
     );
     if (error || !Array.isArray(data)) return gagal;
     const faq: FaqPublik[] = [];
-    for (const r of data as unknown as Array<Record<string, unknown>>) {
+    const terpotong = data.length > BATAS_FAQ;
+    for (const r of (data as unknown as Array<Record<string, unknown>>).slice(0, BATAS_FAQ)) {
       if (typeof r.id !== 'string' || typeof r.pertanyaan !== 'string' || typeof r.jawaban !== 'string') continue;
       faq.push({
         id: r.id,
@@ -227,7 +237,7 @@ async function muatFaqMentah(sb: SupabaseClient): Promise<Termuat<HasilFaqPublik
         urutan: typeof r.urutan === 'number' ? r.urutan : null,
       });
     }
-    return { data: { faq, galat: false }, lengkap: true };
+    return { data: { faq, galat: false, terpotong }, lengkap: true };
   } catch {
     return gagal;
   }
@@ -238,6 +248,7 @@ export const muatFaqPublik = denganCache<HasilFaqPublik>(
   [TAG_PUBLIK.faq],
   muatFaqMentah,
   () => ({ faq: [], galat: true }),
+  2,
 );
 
 // ---------------------------------------------------------------------------------------------------------------

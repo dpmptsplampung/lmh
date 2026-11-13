@@ -15,7 +15,8 @@ export default async function PublicChatPage() {
   return (
     <ChatKlien
       layananAwal={layanan.galat ? null : layananChatDariEtalase(layanan.layanan)}
-      faqAwal={faq.galat ? null : faq.faq}
+      // Terpotong (> batas FAQ global) = parsial: null agar klien memuat FAQ per Layanan sendiri.
+      faqAwal={faq.galat || faq.terpotong ? null : faq.faq}
     />
   );
 }

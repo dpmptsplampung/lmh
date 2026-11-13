@@ -67,6 +67,13 @@ describe('halaman /chat (server)', () => {
     expect(el2.props.faqAwal).toBeNull();
   });
 
+  it('FAQ terpotong (melebihi batas global) -> null supaya klien memuat FAQ per Layanan sendiri', async () => {
+    h.layanan.mockResolvedValue({ galat: false, layanan: [] });
+    h.faq.mockResolvedValue({ galat: false, terpotong: true, faq: [faq] });
+    const el = (await PublicChatPage()) as ReactElement<{ layananAwal: unknown; faqAwal: unknown }>;
+    expect(el.props.faqAwal).toBeNull();
+  });
+
   it('ISR 60 detik, tanpa use client, tanpa sesi/cookies', () => {
     expect(modulHalaman.revalidate).toBe(60);
     const sumber = readFileSync(join(process.cwd(), 'src/app/chat/page.tsx'), 'utf8').replace(/\/\/.*$/gm, '');

@@ -160,6 +160,13 @@ describe('konfigurasi cache', () => {
     for (const p of PEMBUNGKUS) expect(p.opsi?.revalidate).toBe(60);
   });
 
+  it('kunci cache yang bentuk hasilnya berubah di G6 (layanan, beranda, faq) berversi 2 agar entri deploy lama tidak terpakai', () => {
+    const kunci = (nama: string) => PEMBUNGKUS.find((p) => p.keyParts?.some((k) => k.includes(`publik-${nama}-`)))?.keyParts?.[0];
+    expect(kunci('layanan')).toBe('publik-layanan-v2');
+    expect(kunci('beranda')).toBe('publik-beranda-v2');
+    expect(kunci('faq')).toBe('publik-faq-v2');
+  });
+
   it('tag: beranda memuat tag beranda + layanan (isinya daftar layanan), layanan = layanan, faq = faq', () => {
     const tag = (nama: string) => PEMBUNGKUS.find((p) => p.keyParts?.some((k) => k.includes(nama)))?.opsi?.tags;
     expect(tag('beranda')).toEqual([TAG_PUBLIK.beranda, TAG_PUBLIK.layanan]);
@@ -573,6 +580,22 @@ describe('muatFaqPublik', () => {
     expect(langkah).toContainEqual(['order', 'urutan', { ascending: true }]);
     expect(langkah.some(([nama, n]) => nama === 'limit' && typeof n === 'number' && n > 0)).toBe(true);
     expect(JSON.parse(JSON.stringify(hasil))).toEqual(hasil);
+  });
+
+  it('FAQ aktif melebihi batas 500: daftar dipotong ke 500 dan ditandai terpotong; di bawah batas tidak', async () => {
+    const baris = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `f${i}`, pertanyaan: 'Q', jawaban: 'A', layanan_id: null, urutan: i }));
+    const { panggilan } = pasang({ from: { faq_knowledge_base: [{ data: baris(501), error: null }] } });
+    const hasil = await muatFaqPublik();
+    expect(hasil.galat).toBe(false);
+    expect(hasil.faq).toHaveLength(500);
+    expect(hasil.terpotong).toBe(true);
+    const langkah = dipakai(panggilan, 'faq_knowledge_base')[0].langkah;
+    expect(langkah).toContainEqual(['limit', 501]);
+  });
+
+  it('FAQ di bawah batas: terpotong false', async () => {
+    pasang({ from: { faq_knowledge_base: [{ data: [{ id: 'f1', pertanyaan: 'Q', jawaban: 'A', layanan_id: null, urutan: 1 }], error: null }] } });
+    expect((await muatFaqPublik()).terpotong).toBe(false);
   });
 
   it('galat -> { faq: [], galat: true } dan tidak disimpan', async () => {
