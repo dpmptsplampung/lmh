@@ -8,6 +8,7 @@ type Pendengar = (payload: { new: Record<string, unknown> }) => void;
 const rt = vi.hoisted(() => ({
   topik: [] as string[],
   pendengar: new Map<string, Pendengar>(),
+  status: new Map<string, (s: string) => void>(),
   dilepas: 0,
 }));
 const data = vi.hoisted(() => ({ riwayat: vi.fn(), sinkron: vi.fn() }));
@@ -20,7 +21,10 @@ vi.mock('@/lib/supabase/client', () => ({
         rt.pendengar.set(f.table, cb);
         return ch;
       };
-      ch.subscribe = () => ch;
+      ch.subscribe = (cb?: (s: string) => void) => {
+        if (cb) rt.status.set(topik, cb);
+        return ch;
+      };
       return ch;
     },
     removeChannel: () => {
@@ -38,6 +42,7 @@ import type { PercakapanRingkas } from '@/lib/chat/percakapan';
 import type { ChatMsg } from '../merge';
 import { useMesinChat } from './useMesinChat';
 import { usePesan } from './usePesan';
+import { setelUlangKanal } from '@/lib/realtime/kanal';
 
 const m = (id: string, created_at: string, over: Partial<ChatMsg> = {}): ChatMsg => ({ id, pengirim: 'bot', isi: id, created_at, ...over });
 const percakapan = (over: Partial<PercakapanRingkas> = {}) =>
@@ -62,13 +67,19 @@ const buka = (r: ReturnType<typeof pasang>, p: PercakapanRingkas) =>
   });
 
 beforeEach(() => {
+  setelUlangKanal();
   rt.topik.length = 0;
   rt.pendengar.clear();
+  rt.status.clear();
   rt.dilepas = 0;
   data.riwayat.mockReset().mockResolvedValue({ data: { messages: [], adaLebih: false, status: null }, error: null });
   data.sinkron.mockReset().mockResolvedValue({ data: { messages: null, status: null }, error: null });
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
 
 describe('usePesan: riwayat', () => {
   it('riwayat awal dari sesi terakhir; status diterapkan hanya bila ada sesi terbuka', async () => {
@@ -168,5 +179,74 @@ describe('usePesan: sinkronisasi dan Realtime', () => {
     expect(r.result.current.pesan.pesan).toEqual([m('a', '1', { local: 'failed' })]);
     act(() => r.result.current.pesan.ganti([]));
     expect(r.result.current.pesan.pesan).toEqual([]);
+  });
+});
+
+describe('usePesan: Realtime tahan putus dan polling cadangan', () => {
+  const maju = (ms: number) => act(async () => {
+    await vi.advanceTimersByTimeAsync(ms);
+  });
+  const status = (topik: string, s: string) => act(async () => {
+    rt.status.get(topik)?.(s);
+  });
+
+  it('CLOSED: channel sesi dibuka ulang ber-backoff (satu channel aktif), SUBSCRIBED = catch-up sinkron', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const r = pasang();
+    buka(r, percakapan());
+    await maju(0);
+    expect(rt.topik).toEqual(['chat-sesi-s-A']);
+    await status('chat-sesi-s-A', 'SUBSCRIBED');
+    await status('chat-sesi-s-A', 'CLOSED');
+    expect(rt.dilepas).toBe(1);
+    await maju(1_999);
+    expect(rt.topik).toEqual(['chat-sesi-s-A']);
+    await maju(1);
+    expect(rt.topik).toEqual(['chat-sesi-s-A', 'chat-sesi-s-A']);
+    const sebelum = data.sinkron.mock.calls.length;
+    await status('chat-sesi-s-A', 'SUBSCRIBED');
+    expect(data.sinkron.mock.calls.length).toBe(sebelum + 1);
+    r.unmount();
+    expect(rt.dilepas).toBe(2);
+    await maju(300_000);
+    expect(rt.topik).toHaveLength(2); // tidak dibuka lagi setelah unmount
+  });
+
+  it('tersambung: poll tiap 120 dtk (bukan 30); tidak tersambung: tiap 5 dtk', async () => {
+    vi.useFakeTimers();
+    const r = pasang();
+    buka(r, percakapan());
+    await maju(0);
+    await status('chat-sesi-s-A', 'SUBSCRIBED');
+    const awal = data.sinkron.mock.calls.length; // muat awal + catch-up
+    await maju(119_000);
+    expect(data.sinkron.mock.calls.length).toBe(awal);
+    await maju(1_000);
+    expect(data.sinkron.mock.calls.length).toBe(awal + 1);
+
+    await status('chat-sesi-s-A', 'CHANNEL_ERROR');
+    await maju(0); // putus: satu sinkron segera (perilaku lama `rt !== 'ok'`)
+    const putus = data.sinkron.mock.calls.length;
+    await maju(5_000);
+    expect(data.sinkron.mock.calls.length).toBe(putus + 1);
+    await maju(5_000);
+    expect(data.sinkron.mock.calls.length).toBe(putus + 2);
+  });
+
+  it('ganti sesi: status sesi lama tidak terbawa; SUBSCRIBED channel baru memicu catch-up sesi baru', async () => {
+    vi.useFakeTimers();
+    const r = pasang();
+    buka(r, percakapan());
+    await maju(0);
+    await status('chat-sesi-s-A', 'SUBSCRIBED');
+    buka(r, percakapan({ layananId: 'L2', sesiTerakhirId: 's-B', sesiTerbukaId: 's-B' }));
+    await maju(0);
+    expect(rt.topik).toEqual(['chat-sesi-s-A', 'chat-sesi-s-B']);
+    expect(data.sinkron).toHaveBeenLastCalledWith('s-B'); // muat awal: channel baru belum tersambung
+    const sebelum = data.sinkron.mock.calls.length;
+    await status('chat-sesi-s-B', 'SUBSCRIBED');
+    expect(data.sinkron.mock.calls.length).toBe(sebelum + 1);
+    expect(data.sinkron).toHaveBeenLastCalledWith('s-B');
   });
 });

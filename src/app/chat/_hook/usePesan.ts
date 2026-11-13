@@ -3,14 +3,15 @@
 // Pesan percakapan aktif (rencana refaktor 2026-11-11 tugas 6.3): daftar pesan, riwayat lintas sesi (awal + halaman lebih
 // lama), dan sinkronisasi sesi berjalan lewat satu channel Realtime `chat-sesi-<id>` (INSERT chat_pesan + UPDATE status
 // chat_sesi) dengan catch-up saat SUBSCRIBED dan polling cadangan (merge.ts). Channel tetap per sesi dengan payload:
-// pusat Realtime staf (lib/realtime/pusat.ts) hanya untuk tabel tanpa filter baris.
+// pusat Realtime staf (lib/realtime/pusat.ts) hanya untuk tabel tanpa filter baris. Channel dibuka lewat
+// lib/realtime/kanal.ts sehingga dibuka ulang ber-backoff setelah CLOSED (dulu klien terjebak di polling cepat).
 //
 // Penjaga respons basi:
 // - Riwayat (C2-07): tiap muat riwayat awal memegang nomor + AbortController sendiri; respons yang bukan milik percakapan
 //   aktif dibuang. "Muat pesan sebelumnya" memakai nomor yang sedang aktif (tidak menaikkannya).
 // - Sinkronisasi (R4): respons hanya berlaku bila nomor sinkron, generasi percakapan, dan sesi masih sama.
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
+import { bukaKanal } from '@/lib/realtime/kanal';
 import type { PercakapanRingkas } from '@/lib/chat/percakapan';
 import { muatRiwayatChat, sinkronPesanChat } from '@/lib/data/chat-pengunjung';
 import { mergeMessages, rtFromStatus, useFallbackPoll, useOnSubscribed, type ChatMsg, type RtState } from '../merge';
@@ -30,7 +31,10 @@ export function usePesan({ keadaan, ref: mesinRef, kirim }: MesinChat) {
   const abortRef = useRef<AbortController | null>(null);
   const awalRef = useRef<PercakapanRingkas | null>(null);
   const seqRef = useRef(0);
-  const [rt, setRt] = useState<RtState>('connecting');
+  // Status Realtime milik channel sesi tertentu: berganti sesi = 'connecting' lagi, sehingga SUBSCRIBED channel baru
+  // memicu catch-up (status 'ok' sesi lama tidak boleh menutupi celah sebelum channel baru tersambung).
+  const [rtSesi, setRtSesi] = useState<{ sesiId: string; rt: RtState } | null>(null);
+  const rt: RtState = rtSesi && rtSesi.sesiId === sesiId ? rtSesi.rt : 'connecting';
 
   // ----- Operasi daftar pesan (dipakai useSesiChat dan useKirim) -----
   const gabung = useCallback((masuk: ChatMsg[]) => setPesan((prev) => mergeMessages(prev, masuk)), []);
@@ -126,41 +130,42 @@ export function usePesan({ keadaan, ref: mesinRef, kirim }: MesinChat) {
 
   useEffect(() => {
     if (!sesiId) return;
-    const sb = createClient();
-    let aktif = true;
-    const channel = sb
-      .channel(`chat-sesi-${sesiId}`)
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'chat_pesan', filter: `sesi_id=eq.${sesiId}` },
-        (payload) => {
-          const baru = payload.new as ChatMsg & { sesi_id?: string };
-          if (baru.sesi_id && baru.sesi_id !== mesinRef.current.sesiId) return; // R4: bukan percakapan aktif
-          gabung([baru]);
-        },
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'chat_sesi', filter: `id=eq.${sesiId}` },
-        (payload) => {
-          const baru = payload.new as { id?: string; status: StatusSesi };
-          if (baru.id && baru.id !== mesinRef.current.sesiId) return; // R4: bukan percakapan aktif
-          kirim({ jenis: 'status', status: baru.status });
-        },
-      )
-      .subscribe((s) => {
-        if (aktif) setRt(rtFromStatus(s));
-      });
-    return () => {
-      aktif = false;
-      sb.removeChannel(channel);
-    };
+    return bukaKanal({
+      topik: `chat-sesi-${sesiId}`,
+      pasang: (ch) =>
+        ch
+          .on(
+            'postgres_changes',
+            { event: 'INSERT', schema: 'public', table: 'chat_pesan', filter: `sesi_id=eq.${sesiId}` },
+            (payload) => {
+              const baru = payload.new as ChatMsg & { sesi_id?: string };
+              if (baru.sesi_id && baru.sesi_id !== mesinRef.current.sesiId) return; // R4: bukan percakapan aktif
+              gabung([baru]);
+            },
+          )
+          .on(
+            'postgres_changes',
+            { event: 'UPDATE', schema: 'public', table: 'chat_sesi', filter: `id=eq.${sesiId}` },
+            (payload) => {
+              const baru = payload.new as { id?: string; status: StatusSesi };
+              if (baru.id && baru.id !== mesinRef.current.sesiId) return; // R4: bukan percakapan aktif
+              kirim({ jenis: 'status', status: baru.status });
+            },
+          ),
+      saatStatus: (s) => setRtSesi({ sesiId, rt: rtFromStatus(s) }),
+    });
   }, [sesiId, gabung, kirim, mesinRef]);
 
   const live = !!sesiId && status !== 'selesai' && tampilan === 'percakapan';
-  // Catch-up saat channel SUBSCRIBED (awal & reconnect); poll hanya cadangan.
+  // Catch-up saat channel SUBSCRIBED (awal, ganti sesi, dan reconnect); poll hanya cadangan.
   useOnSubscribed(rt, sinkron, live);
-  useFallbackPoll(sinkron, rt, { fastMs: 5000, slowMs: 30000, enabled: live });
+  // Jeda poll (setiap poll = satu invocation Vercel /api/chat/messages):
+  // - 5 dtk saat channel belum/tidak tersambung: Realtime tidak bisa diandalkan, poll menjadi jalur utama.
+  // - 120 dtk saat tersambung (dulu 30 dtk): pesan baru datang lewat INSERT Realtime, celah sebelum tersambung dan setelah
+  //   putus ditutup catch-up saat SUBSCRIBED, dan tab yang terlihat lagi / kembali online langsung sinkron. Poll lambat
+  //   hanya jaring pengaman bila socket mati diam-diam tanpa status; 120 dtk sama dengan jeda saat tersambung di
+  //   useRealtimeRefetch dan memangkas poll pengunjung yang sehat dari 120 menjadi 30 per jam.
+  useFallbackPoll(sinkron, rt, { fastMs: 5000, slowMs: 120_000, enabled: live });
   useEffect(() => {
     if (sesiId && rt !== 'ok') {
       const t = setTimeout(sinkron, 0); // muat awal bila realtime belum tersambung

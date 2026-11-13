@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-// Kontrak useDaftarSesi (tugas 7.2): profil dibaca sekali sebelum muat pertama, satu channel Realtime `chat-admin`,
+// Kontrak useDaftarSesi (tugas 7.2): profil dibaca sekali sebelum muat pertama, Realtime satu channel per tabel (chat_sesi
+// lewat pusat `staf-tabel-chat_sesi`, INSERT chat_pesan lewat `chat-admin` yang dibuka ulang setelah CLOSED),
 // filter layanan petugas, tautan ?sesi=, galat daftar vs galat tahap, pilihan sesi + penanda terbaca, dan filter "selesai".
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
@@ -11,28 +12,33 @@ const m = vi.hoisted(() => ({
   kontak: vi.fn(),
   pengikat: [] as Array<{ filter: { event: string; table: string }; fn: (payload?: unknown) => void }>,
   status: null as null | ((s: string) => void),
+  statusPer: {} as Record<string, (s: string) => void>,
   kanal: [] as string[],
   dilepas: vi.fn(),
   statusAwal: 'SUBSCRIBED',
 }));
 
 vi.mock('@/lib/supabase/client', () => {
-  const channel = {
-    on: (_t: string, filter: { event: string; table: string }, fn: (payload?: unknown) => void) => {
-      m.pengikat.push({ filter, fn });
-      return channel;
-    },
-    subscribe: (cb: (s: string) => void) => {
-      m.status = cb;
-      cb(m.statusAwal);
-      return channel;
-    },
+  const buatChannel = (nama: string) => {
+    const channel = {
+      on: (_t: string, filter: { event: string; table: string }, fn: (payload?: unknown) => void) => {
+        m.pengikat.push({ filter, fn });
+        return channel;
+      },
+      subscribe: (cb: (s: string) => void) => {
+        m.status = cb;
+        m.statusPer[nama] = cb;
+        cb(m.statusAwal);
+        return channel;
+      },
+    };
+    return channel;
   };
   return {
     createClient: () => ({
       channel: (nama: string) => {
         m.kanal.push(nama);
-        return channel;
+        return buatChannel(nama);
       },
       removeChannel: m.dilepas,
     }),
@@ -46,6 +52,8 @@ vi.mock('@/lib/data/chat-staf', async (asli) => ({
 }));
 
 import { useDaftarSesi } from './useDaftarSesi';
+import { langganTabel, setelUlangPusatRealtime } from '@/lib/realtime/pusat';
+import { setelUlangKanal } from '@/lib/realtime/kanal';
 
 const sesi = (o: Partial<RingkasSesi> = {}): RingkasSesi => ({
   id: 's1', status: 'eskalasi', layanan_id: 'l1', pengunjung_id: null, ditangani_oleh: null,
@@ -60,6 +68,9 @@ const pasang = () => renderHook(() => useDaftarSesi({ toast }));
 
 beforeEach(() => {
   vi.clearAllMocks();
+  setelUlangPusatRealtime();
+  setelUlangKanal();
+  m.statusPer = {};
   m.pengikat.length = 0;
   m.kanal.length = 0;
   m.status = null;
@@ -88,13 +99,66 @@ describe('useDaftarSesi: muat awal dan Realtime', () => {
     expect(m.profil.mock.invocationCallOrder[0]).toBeLessThan(m.daftar.mock.invocationCallOrder[0]);
   });
 
-  it('membuka SATU channel `chat-admin` dengan binding chat_sesi (*) dan chat_pesan (INSERT); dilepas saat unmount', async () => {
+  it('satu channel per tabel: chat_sesi (*) lewat pusat, chat_pesan (INSERT) di `chat-admin`; keduanya dilepas saat unmount', async () => {
     const { result, unmount } = pasang();
     await waitFor(() => expect(result.current.dimuat).toBe(true));
-    expect(m.kanal).toEqual(['chat-admin']);
+    expect(m.kanal).toEqual(['staf-tabel-chat_sesi', 'chat-admin']);
     expect(m.pengikat.map((p) => `${p.filter.event}:${p.filter.table}`)).toEqual(['*:chat_sesi', 'INSERT:chat_pesan']);
     unmount();
+    expect(m.dilepas).toHaveBeenCalledTimes(2);
+  });
+
+  it('sidebar sudah berlangganan chat_sesi: tidak ada channel chat_sesi kedua, rt langsung ok', async () => {
+    const hentiSidebar = langganTabel('chat_sesi', () => {});
+    const { result, unmount } = pasang();
+    await waitFor(() => expect(result.current.dimuat).toBe(true));
+    expect(m.kanal).toEqual(['staf-tabel-chat_sesi', 'chat-admin']);
+    expect(result.current.rt).toBe('ok');
+    unmount();
+    expect(m.dilepas).toHaveBeenCalledTimes(1); // channel bersama tetap dipakai sidebar
+    hentiSidebar();
+    expect(m.dilepas).toHaveBeenCalledTimes(2);
+  });
+
+  it('rt gabungan: chat_sesi putus = down; tersambung lagi = ok + catch-up daftar', async () => {
+    const { result } = pasang();
+    await waitFor(() => expect(result.current.rt).toBe('ok'));
+    await act(async () => {
+      m.statusPer['staf-tabel-chat_sesi']('CHANNEL_ERROR');
+    });
+    expect(result.current.rt).toBe('down');
+    const sebelum = m.daftar.mock.calls.length;
+    await act(async () => {
+      m.statusPer['staf-tabel-chat_sesi']('SUBSCRIBED');
+    });
+    expect(result.current.rt).toBe('ok');
+    await waitFor(() => expect(m.daftar.mock.calls.length).toBeGreaterThan(sebelum));
+  });
+
+  it('`chat-admin` CLOSED: rt down, dibuka ulang ber-backoff (satu channel), SUBSCRIBED = ok + catch-up', async () => {
+    const { result } = pasang();
+    await waitFor(() => expect(result.current.rt).toBe('ok'));
+    vi.useFakeTimers();
+    const acak = vi.spyOn(Math, 'random').mockReturnValue(0);
+    m.statusAwal = 'CHANNEL_ERROR'; // channel baru belum tersambung saat subscribe
+    await act(async () => {
+      m.statusPer['chat-admin']('CLOSED');
+    });
+    expect(result.current.rt).toBe('down');
     expect(m.dilepas).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
+    expect(m.kanal.filter((k) => k === 'chat-admin')).toHaveLength(2);
+    expect(m.kanal.filter((k) => k === 'staf-tabel-chat_sesi')).toHaveLength(1);
+    expect(m.pengikat.at(-1)?.filter).toMatchObject({ event: 'INSERT', table: 'chat_pesan' });
+    const sebelum = m.daftar.mock.calls.length;
+    await act(async () => {
+      m.statusPer['chat-admin']('SUBSCRIBED');
+    });
+    expect(result.current.rt).toBe('ok');
+    expect(m.daftar.mock.calls.length).toBeGreaterThan(sebelum);
+    acak.mockRestore();
   });
 
   it('event chat_sesi memuat ulang daftar', async () => {

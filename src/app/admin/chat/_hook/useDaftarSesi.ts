@@ -1,16 +1,20 @@
 'use client';
 
 // Daftar sesi chat staf + pilihan sesi (rencana refaktor 2026-11-11 tugas 7.2): profil petugas dibaca sekali, daftar sesi dan
-// tahap penanganan lewat lib/data/chat-staf.ts, dan SATU channel Realtime `chat-admin` untuk daftar sesi DAN pesan sesi
-// terpilih. Channel ini sengaja tidak dipindah ke lib/realtime/pusat.ts: pusat hanya memberi tahu "ada perubahan" tanpa
-// payload, sedangkan INSERT `chat_pesan` membawa pesan yang langsung digabung ke utas (lihat `langganPesanBaru`, dipakai
-// usePesanSesi). Pemuatan ulang daftar: throttle 400 ms dari event, catch-up saat SUBSCRIBED, polling cadangan (15 dtk saat
-// Realtime tak sehat, 60 dtk saat sehat karena baris yang keluar dari lingkup tidak mengirim event).
+// tahap penanganan lewat lib/data/chat-staf.ts. Realtime (audit 2026-11-13, satu channel per tabel per tab): chat_sesi lewat
+// pusat (lib/realtime/pusat.ts, channel `staf-tabel-chat_sesi` yang juga dipakai sidebar) cukup memberi sinyal muat ulang;
+// INSERT chat_pesan tetap di channel sendiri `chat-admin` (lib/realtime/kanal.ts, dibuka ulang setelah CLOSED) karena
+// payloadnya langsung digabung ke utas (`langganPesanBaru`, dipakai usePesanSesi), sedangkan pusat tanpa payload.
+// `rt` gabungan: 'ok' hanya bila kedua sumber tersambung. Pemuatan ulang daftar: throttle 400 ms dari event, catch-up saat
+// `rt` menjadi 'ok', polling cadangan (15 dtk saat Realtime tak sehat, 60 dtk saat sehat karena baris yang keluar dari
+// lingkup tidak mengirim event).
 //
 // Penjaga permintaan basi: tiap muat diberi nomor; hanya respons TERAKHIR yang boleh mengisi layar.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { makeThrottle, rtFromStatus, useFallbackPoll, useOnSubscribed, type ChatMsg, type RtState } from '@/app/chat/merge';
+import { bukaKanal } from '@/lib/realtime/kanal';
+import { langganStatus, langganTabel, statusTabel, type StatusTabel } from '@/lib/realtime/pusat';
 import {
   muatDaftarSesiStaf,
   muatKontakSesi,
@@ -25,6 +29,13 @@ type Toast = (pesan: string, jenis?: 'success' | 'error' | 'warning' | 'info') =
 
 /** Pesan INSERT `chat_pesan` dari Realtime beserta sesi asalnya. */
 export type PesanBaru = ChatMsg & { sesi_id: string };
+
+/** `chat-admin` + chat_sesi di pusat. Pusat hanya kenal tersambung/putus; putus sebelum pernah tersambung = menyambung. */
+function gabungRt(pesan: RtState, sesi: StatusTabel, sesiPernahTersambung: boolean): RtState {
+  if (pesan === 'ok' && sesi === 'tersambung') return 'ok';
+  if (pesan === 'down' || (sesi === 'putus' && sesiPernahTersambung)) return 'down';
+  return 'connecting';
+}
 
 export interface OpsiDaftarSesi {
   toast: Toast;
@@ -121,15 +132,27 @@ export function useDaftarSesi({ toast }: OpsiDaftarSesi) {
     };
   }, []);
 
-  // Inisialisasi (profil petugas) + satu channel realtime untuk daftar sesi DAN pesan sesi terpilih.
+  // Inisialisasi (profil petugas), lalu Realtime: chat_sesi lewat pusat, INSERT chat_pesan lewat channel `chat-admin`.
   useEffect(() => {
     const supabase = createClient();
     let active = true;
-    let channel: ReturnType<typeof supabase.channel> | null = null;
+    const berhenti: Array<() => void> = [];
     let cadangan: ReturnType<typeof setTimeout> | null = null;
     // Throttle leading+trailing (400ms): tidak kelaparan saat event beruntun.
     const throttle = makeThrottle(() => { void muatUlang(); }, 400);
     const refetchSoon = throttle.call;
+
+    let [rtPesan, rtSesi, sesiPernahTersambung]: [RtState, StatusTabel, boolean] = ['connecting', 'putus', false];
+    const perbaruiRt = () => {
+      if (!active) return;
+      rtRef.current = gabungRt(rtPesan, rtSesi, sesiPernahTersambung);
+      setRt(rtRef.current);
+    };
+    const catatSesi = (s: StatusTabel) => {
+      rtSesi = s;
+      sesiPernahTersambung ||= s === 'tersambung';
+      perbaruiRt();
+    };
 
     async function init() {
       try {
@@ -144,20 +167,24 @@ export function useDaftarSesi({ toast }: OpsiDaftarSesi) {
 
         if (!active) return;
 
-        channel = supabase
-          .channel('chat-admin')
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_sesi' }, refetchSoon)
-          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_pesan' }, (payload) => {
-            const pesan = payload.new as PesanBaru;
-            for (const fn of [...pendengarPesan.current]) fn(pesan);
-            refetchSoon();
-          })
-          .subscribe((status) => {
-            if (active) {
-              rtRef.current = rtFromStatus(status);
-              setRt(rtRef.current);
-            }
-          });
+        // Pengamat status dipasang sebelum langganan agar SUBSCRIBED yang datang seketika tidak terlewat.
+        berhenti.push(langganStatus('chat_sesi', catatSesi), langganTabel('chat_sesi', refetchSoon));
+        if (statusTabel('chat_sesi') === 'tersambung') catatSesi('tersambung'); // channel bersama sudah tersambung
+        berhenti.push(
+          bukaKanal({
+            topik: 'chat-admin',
+            pasang: (ch) =>
+              ch.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_pesan' }, (payload) => {
+                const pesan = payload.new as PesanBaru;
+                for (const fn of [...pendengarPesan.current]) fn(pesan);
+                refetchSoon();
+              }),
+            saatStatus: (status) => {
+              rtPesan = rtFromStatus(status);
+              perbaruiRt();
+            },
+          }),
+        );
         // Daftar awal dimuat saat SUBSCRIBED (catch-up); bila realtime tak tersambung, muat sekali.
         cadangan = setTimeout(() => {
           if (active && rtRef.current !== 'ok') void muatUlang();
@@ -176,7 +203,7 @@ export function useDaftarSesi({ toast }: OpsiDaftarSesi) {
       active = false;
       throttle.cancel();
       if (cadangan) clearTimeout(cadangan);
-      if (channel) supabase.removeChannel(channel);
+      for (const f of berhenti) f();
     };
   }, [muatUlang]);
 

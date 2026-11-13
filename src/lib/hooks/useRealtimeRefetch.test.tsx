@@ -188,6 +188,49 @@ describe('useRealtimeRefetch', () => {
       unmount();
     });
 
+    it('peristiwa Realtime saat tersembunyi: nol refetch; kembali terlihat: tepat satu', () => {
+      vi.useFakeTimers();
+      setelUlangPusatRealtime();
+      channels.length = 0;
+      const refetch = vi.fn(async () => {});
+      const { unmount } = renderHook(() => useRealtimeRefetch(refetch, { table: 'penanganan', pollMs: 30_000 }));
+      const ubah = pemicu.get(channels[0])!;
+      setHidden(true);
+      act(() => { ubah(); ubah(); ubah(); });
+      vi.advanceTimersByTime(300_000);
+      expect(refetch).not.toHaveBeenCalled();
+      setHidden(false);
+      expect(refetch).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(1_000); // tidak ada debounce tertunda yang menjadi request kedua
+      expect(refetch).toHaveBeenCalledTimes(1);
+      unmount();
+    });
+
+    it('peristiwa lalu tab disembunyikan selama debounce: nol refetch; kembali terlihat: tepat satu', () => {
+      const { refetch, unmount } = mulai();
+      const kanalTopik = channels.filter((c) => c.topic === 'realtime-refetch-t').at(-1)!;
+      act(() => { pemicu.get(kanalTopik)?.(); });
+      setHidden(true);
+      vi.advanceTimersByTime(10_000);
+      expect(refetch).not.toHaveBeenCalled();
+      setHidden(false);
+      expect(refetch).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(1_000);
+      expect(refetch).toHaveBeenCalledTimes(1);
+      unmount();
+    });
+
+    it('peristiwa saat terlihat tetap memicu satu refetch setelah debounce 500 ms', () => {
+      const { refetch, unmount } = mulai();
+      const kanalTopik = channels.filter((c) => c.topic === 'realtime-refetch-t').at(-1)!;
+      act(() => { pemicu.get(kanalTopik)?.(); pemicu.get(kanalTopik)?.(); });
+      vi.advanceTimersByTime(499);
+      expect(refetch).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(refetch).toHaveBeenCalledTimes(1);
+      unmount();
+    });
+
     it('(e) unmount: tidak ada timer tersisa dan status terlambat diabaikan', () => {
       const { refetch, unmount } = mulai();
       unmount();

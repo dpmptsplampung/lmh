@@ -37,13 +37,26 @@ export function useRealtimeRefetch(
     } catch {
       supabase = null;
     }
+    const terlihat = () => typeof document === 'undefined' || !document.hidden;
+    let aktif = true;
     let debounce: ReturnType<typeof setTimeout> | null = null;
+    // Tab tersembunyi: peristiwa Realtime tidak memicu request (polling juga berhenti); data dianggap basi dan
+    // saatVisibilitas melakukan SATU refetch saat tab terlihat lagi. Refetch itu memang selalu dilakukan (polling yang
+    // berhenti juga membuat data basi, dan baris yang keluar dari lingkup tidak mengirim peristiwa), jadi tanda basi
+    // tidak perlu disimpan terpisah: berapa pun peristiwa selama tersembunyi, hasilnya tepat satu refetch.
+    const batalkanDebounce = () => {
+      if (debounce) { clearTimeout(debounce); debounce = null; }
+    };
     const trigger = () => {
-      if (debounce) clearTimeout(debounce);
-      debounce = setTimeout(() => { void refetchRef.current(); }, 500);
+      batalkanDebounce();
+      if (!aktif || !terlihat()) return;
+      debounce = setTimeout(() => {
+        debounce = null;
+        // Tab disembunyikan selama jeda debounce: ditunda ke refetch saat terlihat lagi.
+        if (aktif && terlihat()) void refetchRef.current();
+      }, 500);
     };
 
-    let aktif = true;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const daftarTabel = kunciTabel ? kunciTabel.split(',') : [];
     // Status per sumber; tersambung = ada sumber dan semuanya SUBSCRIBED. Topik broadcast = channel milik hook ini
@@ -54,7 +67,6 @@ export function useRealtimeRefetch(
       if (statusTopik === false) return false;
       return daftarTabel.every((t) => statusTabel(t) === 'tersambung');
     };
-    const terlihat = () => typeof document === 'undefined' || !document.hidden;
 
     const hentikanJadwal = () => {
       if (timer) { clearTimeout(timer); timer = null; }
@@ -79,10 +91,13 @@ export function useRealtimeRefetch(
     const saatVisibilitas = () => {
       if (!aktif) return;
       if (terlihat()) {
+        // Satu refetch saat kembali terlihat; debounce yang tersisa dibatalkan agar tidak menjadi request kedua.
+        batalkanDebounce();
         void refetchRef.current();
         jadwalkan();
       } else {
         hentikanJadwal();
+        batalkanDebounce();
       }
     };
 
@@ -123,7 +138,7 @@ export function useRealtimeRefetch(
       if (typeof document !== 'undefined') {
         document.removeEventListener('visibilitychange', saatVisibilitas);
       }
-      if (debounce) clearTimeout(debounce);
+      batalkanDebounce();
       for (const f of berhenti) f();
       if (supabase && typeof supabase.removeChannel === 'function') {
         for (const ch of channels) void supabase.removeChannel(ch);
