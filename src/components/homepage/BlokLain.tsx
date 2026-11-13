@@ -26,7 +26,6 @@ import {
 } from 'lucide-react';
 import { APP_NAME } from '@/lib/constants';
 import Tombol from '@/components/ui/Tombol';
-import { cn } from '@/lib/utils';
 import landing from '@/app/landing.module.css';
 import styles from './Homepage.module.css';
 
@@ -57,7 +56,7 @@ export function BlokHero({ teks, waHref }: { teks: Teks; waHref: string }) {
         </h1>
         <p className={landing.heroDescription}>{teks.description}</p>
         <div className={landing.heroActions}>
-          <Tombol href={teks.cta_primary_link} ikon={ClipboardCheck} className={styles.tombolBesar}>
+          <Tombol href={teks.cta_primary_link} ikon={ClipboardCheck} ukuran="besar">
             {teks.cta_primary_text}
           </Tombol>
           {kedua === 'wa' ? (
@@ -67,12 +66,12 @@ export function BlokHero({ teks, waHref }: { teks: Teks; waHref: string }) {
               rel="noopener noreferrer"
               varian="sekunder"
               ikon={MessageCircle}
-              className={styles.tombolBesar}
+              ukuran="besar"
             >
               {teks.cta_secondary_text}
             </Tombol>
           ) : (
-            <Tombol href={kedua} varian="sekunder" ikon={MessageCircle} className={styles.tombolBesar}>
+            <Tombol href={kedua} varian="sekunder" ikon={MessageCircle} ukuran="besar">
               {teks.cta_secondary_text}
             </Tombol>
           )}
@@ -135,10 +134,8 @@ export function BlokAjakan({ teks }: { teks: Teks }) {
       <div className={landing.ctaContent}>
         <h2 className={landing.ctaTitle}>{teks.title}</h2>
         <p className={landing.ctaDescription}>{teks.description}</p>
-        <Tombol href={teks.button_link} className={cn(styles.tombolBesar, styles.tombolAksen)}>
+        <Tombol href={teks.button_link} ukuran="besar" varian="aksen" ikonAkhir={ArrowRight}>
           {teks.button_text}
-          {/* Tombol hanya punya ikon di depan teks; panah penunjuk diletakkan di belakang label. */}
-          <ArrowRight size={16} strokeWidth={1.75} aria-hidden="true" className={styles.ikonAkhir} />
         </Tombol>
       </div>
     </section>

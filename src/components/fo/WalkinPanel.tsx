@@ -15,7 +15,6 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { CircleAlert, CircleCheck, ClipboardList, History, Phone, User, UserPlus } from 'lucide-react';
 import Tombol from '@/components/ui/Tombol';
-import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 import { KATEGORI_PENGUNJUNG } from '@/lib/constants';
 import { enqueueAction } from '@/lib/offline/queue';
@@ -674,7 +673,8 @@ export default function WalkinPanel({ fokusAwal = true }: WalkinPanelProps) {
             <Tombol
               type="submit"
               ikon={UserPlus}
-              className={cn(styles.besar, styles.kirim)}
+              ukuran="besar"
+              className={styles.kirim}
               disabled={mengirim}
               memuat={mengirim}
             >

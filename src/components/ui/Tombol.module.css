@@ -41,6 +41,13 @@
   font-size: var(--text-sm);
 }
 
+.besar {
+  min-height: 48px;
+  padding: 0 var(--space-8);
+  font-size: var(--text-base);
+  border-radius: var(--radius-xl);
+}
+
 .utama {
   background: var(--color-primary-600);
   color: var(--text-on-primary);
@@ -84,6 +91,15 @@
   filter: brightness(0.92);
 }
 
+.aksen {
+  background: var(--color-accent-500);
+  color: var(--text-primary);
+}
+
+.aksen:hover:not(:disabled):not([aria-disabled='true']) {
+  background: var(--color-accent-400);
+}
+
 /* Tombol bertipe tautan (<a href>): `a:hover` global (0,1,1) mengalahkan warna varian (0,1,0).
    Kunci warna saat hover (0,2,0) supaya teks putih di latar berwarna tidak menggelap. */
 .utama:hover,
@@ -91,7 +107,8 @@
   color: var(--text-on-primary);
 }
 
-.sekunder:hover {
+.sekunder:hover,
+.aksen:hover {
   color: var(--text-primary);
 }
 
@@ -127,6 +144,11 @@
 
   .kecil {
     min-height: 40px;
+  }
+
+  /* Ditulis ulang di sini: aturan .tombol di atas muncul lebih akhir dan akan menurunkan 48px jadi 44px. */
+  .besar {
+    min-height: 48px;
   }
 }
 

@@ -9,7 +9,6 @@ import { useRouter } from 'next/navigation';
 import { Map, Building2, FileText, TrendingUp, Lock } from 'lucide-react';
 import Tombol from '@/components/ui/Tombol';
 import { createClient } from '@/lib/supabase/client';
-import styles from './peta-potensi.module.css';
 
 const SEKTOR = [
   { id: 'pertanian', label: 'Pertanian & Perkebunan', icon: '🌾', deskripsi: 'Sawit, karet, lada, singkong, dan komoditas unggulan Lampung' },
@@ -120,7 +119,7 @@ export default function PetaPotensiPage() {
         </div>
         {/* Investment Gallery link */}
         <div style={{ marginTop: 'var(--space-12)', textAlign: 'center' }}>
-          <Tombol href="/gallery" ikon={FileText} className={styles.tombolBesar}>
+          <Tombol href="/gallery" ikon={FileText} ukuran="besar">
             Lihat Investment Gallery &amp; Dokumen IPRO
           </Tombol>
           <p style={{ marginTop: 'var(--space-3)', fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)' }}>

@@ -134,9 +134,8 @@ export default function AkhirSurvei({ token, onSelesai }: AkhirSurveiProps) {
                       <CircleCheck size={18} aria-hidden="true" /> {TEKS[j].terkirim}
                     </p>
                   ) : (
-                    <Tombol className={styles.tombolAksi} onClick={() => bukaForm(j)}>
+                    <Tombol className={styles.tombolAksi} ikonAkhir={ArrowRight} onClick={() => bukaForm(j)}>
                       {TEKS[j].tombol}
-                      <ArrowRight size={16} strokeWidth={1.75} aria-hidden="true" className={styles.ikonAkhir} />
                     </Tombol>
                   )}
                 </div>

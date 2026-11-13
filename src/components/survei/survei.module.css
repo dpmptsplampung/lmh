@@ -480,12 +480,6 @@
   font-size: var(--text-base);
 }
 
-/* Ikon di belakang label (Tombol hanya menyediakan ikon di depan teks). */
-.ikonAkhir {
-  margin-inline-start: var(--space-2);
-  vertical-align: middle;
-}
-
 /* Dua tombol sebaris harus muat di kolom 296px (320px - gutter): padding Tombol bawaan dipersempit. */
 .navigasi .tombolNav {
   padding-inline: var(--space-3);

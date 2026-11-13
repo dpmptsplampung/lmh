@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { Plus } from 'lucide-react';
+import { ArrowRight, Plus } from 'lucide-react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import Tombol from './Tombol';
 
@@ -84,5 +84,54 @@ describe('Tombol', () => {
     const ref = { current: null as HTMLButtonElement | null };
     render(<Tombol ref={ref}>Simpan</Tombol>);
     expect(ref.current).toBe(screen.getByRole('button', { name: 'Simpan' }));
+  });
+  it('ukuran="besar" dan varian="aksen" menambah kelas masing-masing', () => {
+    render(
+      <Tombol ukuran="besar" varian="aksen">
+        Mulai
+      </Tombol>,
+    );
+    const b = screen.getByRole('button', { name: 'Mulai' });
+    expect(b.className).toMatch(/besar/);
+    expect(b.className).toMatch(/aksen/);
+    expect(b.className).not.toMatch(/utama/);
+  });
+
+  it('ikonAkhir dirender di belakang teks dan disembunyikan dari pembaca layar', () => {
+    const { container } = render(
+      <Tombol ikonAkhir={ArrowRight} ikon={Plus}>
+        Lanjut
+      </Tombol>,
+    );
+    const b = screen.getByRole('button', { name: 'Lanjut' });
+    const svg = container.querySelectorAll('svg');
+    expect(svg).toHaveLength(2);
+    svg.forEach((el) => expect(el).toHaveAttribute('aria-hidden', 'true'));
+    // Urutan anak: ikon depan, teks, ikon akhir.
+    expect(b.firstElementChild?.tagName.toLowerCase()).toBe('svg');
+    expect(b.children[1].tagName.toLowerCase()).toBe('span');
+    expect(b.lastElementChild?.tagName.toLowerCase()).toBe('svg');
+  });
+
+  it('ikonAkhir bekerja juga pada tautan, dan tidak bocor ke DOM', () => {
+    const { container } = render(
+      <Tombol href="/x" ikonAkhir={ArrowRight}>
+        Buka
+      </Tombol>,
+    );
+    const a = screen.getByRole('link', { name: 'Buka' });
+    expect(a.lastElementChild?.tagName.toLowerCase()).toBe('svg');
+    expect(container.querySelector('[ikonakhir],[ikonAkhir]')).toBeNull();
+  });
+
+  it('memuat dengan ikonAkhir: spinner menggantikan ikon akhir, lebar tetap (satu svg)', () => {
+    const { container } = render(
+      <Tombol memuat ikonAkhir={ArrowRight}>
+        Kirim
+      </Tombol>,
+    );
+    const svg = container.querySelectorAll('svg');
+    expect(svg).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Kirim' }).lastElementChild).toBe(svg[0]);
   });
 });

@@ -491,7 +491,7 @@ export default function ScanPanel() {
                     {bisaCheckin && (
                       <Tombol
                         ikon={ArrowRight}
-                        className={styles.tombolBesar}
+                        ukuran="besar"
                         style={{ width: '100%' }}
                         onClick={() => void handleCheckIn()}
                         disabled={processing}
@@ -505,7 +505,7 @@ export default function ScanPanel() {
                       <Tombol
                         varian="bahaya"
                         ikon={XCircle}
-                        className={styles.tombolBesar}
+                        ukuran="besar"
                         style={{ width: '100%' }}
                         onClick={() => setDialogTolak(true)}
                         disabled={processing}
@@ -541,7 +541,7 @@ export default function ScanPanel() {
                   </div>
                   <h3 className={styles.judulHasil}>Reservasi Ditolak</h3>
                   <p className={styles.teksHasil}>Reservasi {result?.nama} dibatalkan dan tercatat beserta alasannya.</p>
-                  <Tombol ikon={QrCode} className={styles.tombolBesar} onClick={handleReset}>
+                  <Tombol ikon={QrCode} ukuran="besar" onClick={handleReset}>
                     Scan Pengunjung Berikutnya
                   </Tombol>
                 </div>

@@ -19,7 +19,7 @@ export default function OfflinePage() {
           diakses. Perubahan Anda akan disinkronkan saat online kembali.
         </p>
         {/* Halaman ini Server Component: komponen ikon tidak boleh dioper lewat prop `ikon` ke Tombol (client). */}
-        <Tombol href="/" className={styles.tombolBesar}>
+        <Tombol href="/" ukuran="besar">
           <ArrowLeft size={16} strokeWidth={1.75} aria-hidden="true" className={styles.ikonAwal} />
           Kembali ke Beranda
         </Tombol>

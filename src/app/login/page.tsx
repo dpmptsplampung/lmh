@@ -255,7 +255,7 @@ function LoginContent() {
                     </div>
                   )}
 
-                  <Tombol type="submit" className={styles.tombolMasuk}>
+                  <Tombol type="submit" ukuran="besar" className={styles.tombolMasuk}>
                     {lupa ? 'Kirim Tautan Pemulihan' : 'Masuk Operator'}
                   </Tombol>
 

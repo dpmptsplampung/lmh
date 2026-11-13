@@ -329,18 +329,13 @@ export default function SurveiWizard({ token, konteks, onSelesai }: SurveiWizard
               </Tombol>
             )}
             <Tombol
+              ikonAkhir={terakhir ? Send : ArrowRight}
               className={styles.tombolNav}
               disabled={!siap}
               aria-describedby={siap ? undefined : 'petunjuk-lanjut'}
               onClick={lanjutAtauKirim}
             >
               {terakhir ? 'Kirim jawaban' : 'Lanjut'}
-              {/* Tombol hanya punya ikon di depan teks; panah/pesawat penunjuk arah diletakkan di belakang label. */}
-              {terakhir ? (
-                <Send size={16} strokeWidth={1.75} aria-hidden="true" className={styles.ikonAkhir} />
-              ) : (
-                <ArrowRight size={16} strokeWidth={1.75} aria-hidden="true" className={styles.ikonAkhir} />
-              )}
             </Tombol>
           </div>
         </div>
