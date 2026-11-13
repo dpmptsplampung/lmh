@@ -34,3 +34,15 @@ Bagian ini menyentuh DB produksi atau membutuhkan deploy, jadi tidak dijalankan 
 3. Jumlah request per menit tab admin diam dan layar TV (panel Network, 5 menit), serta daftar chunk per rute (`next build`).
 
 Status penerapan: dua migrasi G2 (`202611110002_nav_lencana`, `202611110003_umkm_cari_indeks`) sudah diterapkan ke produksi atas persetujuan pemilik. Kode branch ini belum di-merge ke `main`, sehingga produksi masih menjalankan kode lama.
+
+## 4. Penyimpangan dari spec yang ditemukan audit independen (2026-11-13)
+
+Audit baca-saja atas implementasi terhadap spec menemukan lima penyimpangan yang tidak tercantum di bagian 1-3:
+
+1. **Rekap belum dua tahap** (spec 6.1): `api/admin/rekap/terpadu` memuat `field_khusus`, `jawaban_khusus`, `form_layanan` berurutan setelah RPC. Diperbaiki pada gelombang perbaikan audit (lihat catatan commit).
+2. **Ekspor 1000 baris per panggilan, bukan 5000** (spec 6.1): RPC `rekap_data_pelayanan` membatasi `LEAST(..., 1000)` di DB (`202611010005`); menaikkannya butuh migrasi. Data setahun baru sekitar 869 baris, jadi dicatat sebagai pengecualian tertulis, bukan dikerjakan.
+3. **Dua halaman publik belum di server** (spec bagian 5): `/standar-pelayanan` dan `/gallery`. `/standar-pelayanan` diperbaiki pada gelombang perbaikan audit; `/gallery` (512 baris, klien) belum.
+4. **Definisi token lokal di katalog UMKM** (`katalog.module.css`, `kerangka.module.css`) masih ada (spec: dihapus). Disengaja dan berkomentar; belum disatukan.
+5. **`IsiHalaman` dipakai 10 dari 40 halaman admin**; sekitar 18 modul CSS admin masih punya pembungkus `.halaman/.wadah/.isi/.container`.
+
+Tambahan dari audit: tab tersembunyi masih menjalankan refetch pada tiap peristiwa Realtime (target spec: 0 request); channel ganda pada `chat_sesi` di `/admin/chat`; `chat-admin` dan `chat-sesi-<id>` tidak dibuka ulang setelah CLOSED. Ketiganya diperbaiki pada gelombang perbaikan audit.

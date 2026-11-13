@@ -1596,3 +1596,25 @@ Bucket privat/publik sama menonaktifkan draf dan publikasi foto. Ketiga migrasi 
 - Verifikasi baca-saja sesudahnya: enam kolom revisi, dua kolom foto, tabel `umkm_produk`, tujuh fungsi baru,
   `mutasi`/`mutasi_pemilik` memakai `tulis_revisi`, `umkm_profil_publik` versi baru; anon tetap boleh
   `umkm_profil_publik` dan tidak boleh `umkm_private.produk_json`. Katalog produksi 0 profil saat penerapan.
+
+## 202611110002 dan 202611110003: refaktor G2, lencana navigasi dan indeks pencarian UMKM (SUDAH DITERAPKAN)
+
+Aditif (kode lama tidak memakainya; kode refaktor memakainya dengan jalur cadangan bila fungsi belum ada).
+
+- `202611110002_nav_lencana.sql`: fungsi `nav_lencana_saya(...)` (`SECURITY INVOKER`, RLS pemanggil tetap membatasi angka)
+  menggantikan sampai 8 kueri head-count per tik di sidebar admin. Rollback: `docs/rollback-nav-lencana-202611110002.sql`.
+- `202611110003_umkm_cari_indeks.sql`: indeks trigram `umkm_katalog_spesifik`, `umkm_katalog_kategori`,
+  `umkm_produk_nama_trgm` dan `umkm_cari_katalog` ditulis ulang (hasil dan urutan identik dengan `202611100003`).
+  Rollback: `docs/rollback-umkm-cari-indeks-202611110003.sql`.
+- Diterapkan 2026-11-11 ke pooler Supabase `aws-1-ap-southeast-1` (produksi) atas persetujuan pemilik, atomik
+  (`--atomic`, didahului `--dry-run`). Staging tidak ada; bukti perilaku lokal = harness PGlite dan test kontrak.
+  Pengukuran sesudahnya: `docs/superpowers/audits/ukur/hasil-sesudah-g2.md` (pencarian kata kunci 104 ke 20 ms hangat).
+- Migrasi rekap `202611110001` TIDAK dibuat: SQL rekap sudah cepat (4-17 ms hangat).
+
+### Catatan status judul "BELUM DITERAPKAN" (2026-11-13)
+
+Sebagian judul "BELUM DITERAPKAN" di berkas ini tertinggal dari penerapan sebenarnya. Contoh yang terbukti dari
+dokumen ini sendiri: survei `202611020001` harus sudah ada karena `202611030001`/`0003` (diterapkan 2026-10-28)
+menjaganya sebagai prasyarat, dan `202611100001`-`0003` diterapkan 2026-11-10 (bagian di atas). Status tiap migrasi
+yang lain BELUM diperiksa ulang terhadap produksi. Sebelum mengandalkan sebuah judul, cek baca-saja ledger
+migrasi di produksi (setelah menampilkan host dan disetujui pemilik); jangan menerapkan ulang berdasarkan judul saja.
