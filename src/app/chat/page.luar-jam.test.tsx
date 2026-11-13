@@ -5,7 +5,7 @@ import { render, screen, waitFor, fireEvent, cleanup } from '@testing-library/re
 
 vi.mock('@/lib/supabase/client', () => ({ createClient: vi.fn() }));
 
-import PublicChatPage from './page';
+import PublicChatPage from './ChatKlien';
 import { createClient } from '@/lib/supabase/client';
 import type { OpsiHarness } from './chat.test-utils';
 import { L_BANK, STATUS_BUKA, STATUS_TUTUP, barisRpc, siapkanHarness } from './chat.test-utils';

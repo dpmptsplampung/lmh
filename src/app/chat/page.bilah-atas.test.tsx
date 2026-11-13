@@ -5,7 +5,7 @@ import { render, screen, cleanup } from '@testing-library/react';
 
 vi.mock('@/lib/supabase/client', () => ({ createClient: vi.fn() }));
 
-import PublicChatPage from './page';
+import PublicChatPage from './ChatKlien';
 import { createClient } from '@/lib/supabase/client';
 import { barisRpc, siapkanHarness } from './chat.test-utils';
 

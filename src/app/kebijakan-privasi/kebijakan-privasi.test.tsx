@@ -1,16 +1,30 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import KebijakanPrivasiPage from './page';
 
 // /checkin kini halaman informasi tanpa consent (K3); consent PDP pengunjung ada di reservasi dan chat.
-const RESERVASI_SOURCE = readFileSync(join(process.cwd(), 'src/app/me/reservasi/page.tsx'), 'utf8');
-const CHAT_SOURCE = readFileSync(join(process.cwd(), 'src/app/chat/page.tsx'), 'utf8');
+// Sejak refaktor G9 sumber reservasi tersebar: versi kebijakan di lapisan data, tautan di bagian tampilan.
+const BAGIAN_RESERVASI = join(process.cwd(), 'src/app/me/reservasi/_bagian');
+const RESERVASI_SOURCE = [
+  readFileSync(join(process.cwd(), 'src/lib/data/reservasi.ts'), 'utf8'),
+  ...readdirSync(BAGIAN_RESERVASI)
+    .filter((n) => /\.tsx?$/.test(n) && !/\.test\.tsx?$/.test(n))
+    .map((n) => readFileSync(join(BAGIAN_RESERVASI, n), 'utf8')),
+].join('\n');
+// Sejak refaktor G6 sumber chat tersebar: ChatKlien.tsx (CONSENT_VERSION) dan bagian tampilan (tautan kebijakan).
+const BAGIAN_CHAT = join(process.cwd(), 'src/app/chat/_bagian');
+const CHAT_SOURCE = [
+  readFileSync(join(process.cwd(), 'src/app/chat/ChatKlien.tsx'), 'utf8'),
+  ...readdirSync(BAGIAN_CHAT)
+    .filter((n) => /\.tsx?$/.test(n) && !/\.test\.tsx?$/.test(n))
+    .map((n) => readFileSync(join(BAGIAN_CHAT, n), 'utf8')),
+].join('\n');
 
 function consentVersionFrom(source: string): string {
-  const match = source.match(/const\s+CONSENT_VERSION\s*=\s*['"]([^'"]+)['"]/);
+  const match = source.match(/const\s+(?:CONSENT_VERSION|VERSI_KEBIJAKAN_RESERVASI)\s*=\s*['"]([^'"]+)['"]/);
   if (!match) throw new Error('CONSENT_VERSION not found');
   return match[1];
 }

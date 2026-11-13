@@ -44,7 +44,7 @@ vi.mock('@/lib/supabase/client', () => {
   };
 });
 
-import PublicChatPage from './page';
+import PublicChatPage from './ChatKlien';
 
 describe('chat pengunjung: nama layanan pada percakapan yang dibuka', () => {
   beforeEach(() => {

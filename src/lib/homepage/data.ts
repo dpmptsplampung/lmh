@@ -31,6 +31,10 @@ export type LayananEtalase = {
   punyaChat: boolean;
   /** false = tanpa kartu, tetapi popup /?layanan=<slug> tetap bisa dibuka. */
   tampilDiHomepage: boolean;
+  /** Bot FAQ menjawab di live chat Layanan ini (halaman /chat). */
+  chatbotAktif: boolean;
+  /** Jenis layanan (mis. 'modul_publik' bukan layanan chat); null bila kolom tidak terbaca. */
+  tipe: string | null;
 };
 
 export type StatusHariIni = {
@@ -63,10 +67,11 @@ export const PENGATURAN_BERANDA_BAWAAN: Readonly<PengaturanBeranda> = {
   contact_email: CONTACT_EMAIL_FALLBACK,
 };
 
+// `tipe` dan `chatbot_aktif` (dipakai /chat) sudah ada di view sejak 202610090004, jadi ikut di semua tingkat.
 const KOLOM_FASE1 =
-  'id, nama, slug, deskripsi, urutan, instansi_nama, instansi_singkatan, website_terkait, status_tampilan, punya_antrean, punya_chat';
+  'id, nama, slug, deskripsi, urutan, instansi_nama, instansi_singkatan, website_terkait, status_tampilan, punya_antrean, punya_chat, tipe, chatbot_aktif';
 const KOLOM_LENGKAP = `${KOLOM_FASE1}, tampil_di_homepage`;
-const KOLOM_LAMA = 'id, nama, status_tampilan, punya_antrean, punya_chat';
+const KOLOM_LAMA = 'id, nama, status_tampilan, punya_antrean, punya_chat, tipe, chatbot_aktif';
 
 /**
  * Menunggu `janji` paling lama `ms`; lewat batas atau menolak -> `bawaan`. Dipakai halaman agar permintaan yang
@@ -145,6 +150,8 @@ function petakan(rows: BarisView[], turunkanSlug: boolean): LayananEtalase[] {
       punyaAntrean: r.punya_antrean !== false,
       punyaChat: r.punya_chat !== false,
       tampilDiHomepage: r.tampil_di_homepage !== false,
+      chatbotAktif: r.chatbot_aktif === true,
+      tipe: teks(r.tipe),
     });
   }
   return hasil.sort((a, b) => a.urutan - b.urutan || a.nama.localeCompare(b.nama, 'id'));

@@ -17,6 +17,8 @@ const layanan = (id: string, nama: string, o: Partial<LayananEtalase> = {}): Lay
   punyaAntrean: true,
   punyaChat: true,
   tampilDiHomepage: true,
+  chatbotAktif: false,
+  tipe: null,
   ...o,
 });
 

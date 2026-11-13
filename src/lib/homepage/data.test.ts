@@ -57,10 +57,33 @@ const barisPenuh = (o: Record<string, unknown> = {}) => ({
   punya_antrean: true,
   punya_chat: true,
   tampil_di_homepage: true,
+  tipe: 'konsultatif',
+  chatbot_aktif: true,
   ...o,
 });
 
 describe('muatLayanan', () => {
+  it('memetakan chatbotAktif dan tipe (dipakai /chat); kolom tak terbaca = false / null', async () => {
+    const { sb, panggilan } = tiruan({
+      from: {
+        v_layanan_publik: [{
+          data: [
+            barisPenuh({ id: 'a', nama: 'A', slug: 'a', tipe: 'modul_publik', chatbot_aktif: false }),
+            (() => { const b = barisPenuh({ id: 'b', nama: 'B', slug: 'b' }); delete (b as Record<string, unknown>).tipe; delete (b as Record<string, unknown>).chatbot_aktif; return b; })(),
+          ],
+          error: null,
+        }],
+      },
+    });
+    const { layanan } = await muatLayanan(sb);
+    expect(panggilan[0].kolom).toContain('chatbot_aktif');
+    expect(panggilan[0].kolom).toContain('tipe');
+    expect(layanan.find((l) => l.id === 'a')).toMatchObject({ chatbotAktif: false, tipe: 'modul_publik' });
+    expect(layanan.find((l) => l.id === 'b')).toMatchObject({ chatbotAktif: false, tipe: null });
+    const { sb: sb2 } = tiruan({ from: { v_layanan_publik: [{ data: [barisPenuh()], error: null }] } });
+    expect((await muatLayanan(sb2)).layanan[0]).toMatchObject({ chatbotAktif: true, tipe: 'konsultatif' });
+  });
+
   it('tingkat 1: view lengkap, diurutkan menurut urutan lalu nama', async () => {
     const { sb, panggilan } = tiruan({
       from: {

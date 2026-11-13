@@ -1,19 +1,24 @@
 'use client';
 
-// Daftar Layanan chat dan FAQ cepat (rencana refaktor 2026-11-11 tugas 6.3). Keduanya data publik yang kelak datang dari
-// server sebagai props (tugas 6.5); sampai saat itu dimuat di sini lewat lib/data/chat-pengunjung.ts.
+// Daftar Layanan chat dan FAQ cepat (rencana refaktor 2026-11-11 tugas 6.3 dan 6.5). Keduanya data publik yang datang dari
+// server sebagai data awal (page.tsx); klien memuatnya sendiri lewat lib/data/chat-pengunjung.ts HANYA bila data awal tidak
+// ada atau tidak lengkap (`null`: gagal dimuat di server), sehingga muat awal tidak membuat query dari browser.
 //
 // T7: gagal memuat Layanan = galat yang jelas + Coba lagi, BUKAN daftar cadangan palsu (id palsu pasti gagal saat sesi
 // dibuat dan membuat pengunjung menyalahkan koneksi internetnya). S14: gagal memuat FAQ tidak boleh tampil sebagai daftar
 // kosong senyap.
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { muatFaqChat, muatLayananChat, type FaqChat, type LayananChat } from '@/lib/data/chat-pengunjung';
+import { faqUntukLayanan, type DataAwalChat } from '../_logika/dataAwal';
 import { urutkanFaq } from '../_logika/turunan';
 
-export function useReferensiChat() {
-  const [layanan, setLayanan] = useState<LayananChat[]>([]);
-  const [memuatLayanan, setMemuatLayanan] = useState(true);
+export function useReferensiChat(awal?: Partial<DataAwalChat>) {
+  // Data awal dibaca sekali saat mount: berubahnya props kemudian tidak mengganti data yang sudah dipegang.
+  const awalRef = useRef(awal);
+  const layananAwal = awal?.layanan ?? null;
+  const [layanan, setLayanan] = useState<LayananChat[]>(layananAwal ?? []);
+  const [memuatLayanan, setMemuatLayanan] = useState(layananAwal === null);
   const [galatLayanan, setGalatLayanan] = useState(false);
   // Dinaikkan tombol Coba lagi untuk memuat ulang.
   const [muatLayananKe, setMuatLayananKe] = useState(0);
@@ -23,6 +28,8 @@ export function useReferensiChat() {
   const [galatFaq, setGalatFaq] = useState(false);
 
   useEffect(() => {
+    // Data awal dari server lengkap: tidak perlu query; muat ulang hanya lewat Coba lagi (muatLayananKe > 0).
+    if (muatLayananKe === 0 && awalRef.current?.layanan) return;
     let batal = false;
     async function muat() {
       try {
@@ -56,6 +63,13 @@ export function useReferensiChat() {
 
   // FAQ untuk chip "FAQ Cepat": FAQ layanan percakapan + FAQ umum. Gagal -> galatFaq (pesan + Coba lagi), tanpa cadangan.
   const muatFaq = useCallback(async (layananId: string) => {
+    // FAQ aktif seluruh layanan sudah dari server: pilih yang berlaku untuk Layanan ini tanpa query.
+    const faqAwal = awalRef.current?.faq;
+    if (faqAwal) {
+      setFaq(urutkanFaq(faqUntukLayanan(faqAwal, layananId), layananId));
+      setGalatFaq(false);
+      return;
+    }
     setMemuatFaq(true);
     try {
       const hasil = await muatFaqChat(createClient(), layananId);

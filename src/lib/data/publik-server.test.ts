@@ -487,6 +487,20 @@ describe('muatBerandaPublik', () => {
 });
 
 describe('muatLayananPublik', () => {
+  it('membawa chatbotAktif dan tipe (dipakai /chat) dan memilih kolomnya secara eksplisit', async () => {
+    const t = pasang({
+      from: {
+        v_layanan_publik: [{ data: [barisLayanan({ chatbot_aktif: true, tipe: 'konsultatif' }), barisLayanan({ id: 'id-2', nama: 'Modul', slug: 'modul', tipe: 'modul_publik' })], error: null }],
+      },
+    });
+    const hasil = await muatLayananPublik();
+    expect(hasil.layanan[0]).toMatchObject({ chatbotAktif: true, tipe: 'konsultatif' });
+    expect(hasil.layanan[1]).toMatchObject({ chatbotAktif: false, tipe: 'modul_publik' });
+    const kolom = String(dipakai(t.panggilan, 'v_layanan_publik')[0]?.langkah.find((l) => l[0] === 'select')?.[1] ?? '');
+    expect(kolom).toContain('chatbot_aktif');
+    expect(kolom).toContain('tipe');
+  });
+
   it('mengembalikan layanan publik penuh (termasuk yang tanpa kartu beranda)', async () => {
     pasang({
       from: {
