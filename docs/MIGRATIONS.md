@@ -1,5 +1,7 @@
 # Database Migrations
 
+> **Status penerapan:** tanda "BELUM DITERAPKAN" di tabel dan teks lama di bawah adalah riwayat saat ditulis. Status sebenarnya di produksi (diperiksa baca-saja 2026-11-13) ada di bagian "Status penerapan terverifikasi (2026-11-13)" di akhir berkas.
+
 ## Baseline Fresh-Only
 
 Direktori `supabase/migrations/` berisi lima migrasi final-state untuk proyek yang belum pernah dideploy:
@@ -73,7 +75,7 @@ sehingga perubahan yang bisa memutus alur pengguna (mis. policy `visit`/`kunjung
 Runbook lengkap RBAC Tahap 0: `docs/RUNBOOK_RBAC_TAHAP0.md`. Tes perilaku (transaksi + ROLLBACK): `npm run test:rls:tahap0`.
 Skrip ini menyentuh DB produksi (terapan nyata butuh izin CEO).
 
-## Layanan dinamis Fase 1 (202610270001, 202610270002) — BELUM DITERAPKAN
+## Layanan dinamis Fase 1 (202610270001, 202610270002) — SUDAH DITERAPKAN (terverifikasi 2026-11-13)
 
 | Versi | Berkas | Isi | Status |
 |---|---|---|---|
@@ -109,7 +111,7 @@ node scripts/apply-migration.mjs supabase/migrations/202610270002_jadwal_tunggal
 - Migrasi `202610260001` ada di branch lain (`claude/busy-poitras-cb912c`). Bila kedua branch di-merge, `supabase/migrations/MANIFEST.json` perlu digabung (entri dari kedua branch dipertahankan).
 - Setelah diterapkan, ledger produksi tertinggal lagi (`apply-migration` tidak menulis ledger): ulangi verifikasi ledger.
 
-## Homepage etalase Fase 2 (202610280001) — BELUM DITERAPKAN
+## Homepage etalase Fase 2 (202610280001) — SUDAH DITERAPKAN (terverifikasi 2026-11-13)
 
 | Versi | Berkas | Isi | Status |
 |---|---|---|---|
@@ -149,7 +151,7 @@ ORDER BY urutan, nama;
 
 Jalankan keduanya lalu cocokkan judul lama dengan nama layanan secara manual.
 
-## Fase 3 layanan dinamis: Koordinator, akses data per orang, rekap terpadu (202610290001, 202610290002) — BELUM DITERAPKAN
+## Fase 3 layanan dinamis: Koordinator, akses data per orang, rekap terpadu (202610290001, 202610290002) — SUDAH DITERAPKAN (terverifikasi 2026-11-13)
 
 | Versi | Berkas | Isi | Status |
 |---|---|---|---|
@@ -178,7 +180,7 @@ node scripts/apply-migration.mjs supabase/migrations/202610290002_rekap_terpadu.
 
 **Rollback (urutan terbalik, atomik, dry-run dulu):** `docs/rollback-rekap-terpadu-202610290002.sql` (menghapus fungsi rekap baru), lalu `docs/rollback-koordinator-akses-data-202610290001.sql` (memulihkan `boleh_penanganan` 0013 + penandanya, `boleh_kunjungan` 0009, policy Pendataan/rekap_harian/visit lama, mencabut hak RPC ambil alih; kolom `petugas.koordinator` dan tabel `ambil_alih_pendataan` dibiarkan, B1). Rollback 0012/0013 kini menolak selama penanda 0029 masih ada.
 
-## Fase 4 layanan dinamis: Pendataan Khusus, selesai tiket/chat dengan pendataan (202610300001, 202610300002) — BELUM DITERAPKAN
+## Fase 4 layanan dinamis: Pendataan Khusus, selesai tiket/chat dengan pendataan (202610300001, 202610300002) — SUDAH DITERAPKAN (terverifikasi 2026-11-13)
 
 | Versi | Berkas | Isi | Status |
 |---|---|---|---|
@@ -207,7 +209,7 @@ node scripts/apply-migration.mjs supabase/migrations/202610300002_selesai_dengan
 6. `audit_log` kini memuat nilai lama/baru identitas yang dikoreksi petugas saat chat selesai (`chat_pendataan_identitas`). `audit_log` hanya terbaca Admin dan **tidak** dianonimkan job retensi (lihat `docs/KEBIJAKAN_PDP.md`): tindak lanjut bila DPO menilai perlu.
 7. Rollback tidak disediakan: migrasi aditif; bila perlu menonaktifkan fitur, sembunyikan semua isian Khusus di Admin (alur selesai kembali seperti sebelumnya).
 
-## Fase 5 layanan dinamis: live chat per Layanan, bot di luar jam, email ke petugas (202610310001, 202610310002, 202610310003) — BELUM DITERAPKAN
+## Fase 5 layanan dinamis: live chat per Layanan, bot di luar jam, email ke petugas (202610310001, 202610310002, 202610310003) — SUDAH DITERAPKAN (terverifikasi 2026-11-13)
 
 | Versi | Berkas | Isi | Status |
 |---|---|---|---|
@@ -394,6 +396,8 @@ Dry-run terhadap produksi 2026-10-14 (siang, read-only, di-ROLLBACK, saat 0003 b
 
 ## Survei terpadu Fase A (202611020001-202611020004)
 
+Status 2026-11-13: `0001`-`0003` terbukti terpasang di produksi; `0004` (`survei_notifikasi`) fungsinya ada tetapi tidak terbukti khusus oleh migrasi ini.
+
 Spesifikasi: `docs/superpowers/specs/2026-10-26-survei-terpadu-design.md`; rencana: `docs/superpowers/plans/2026-10-26-survei-terpadu-fase-a.md`. Seri empat migrasi ADITIF (tanpa menghapus kolom atau data produksi) untuk survei terpadu (SPAK + SKM 11 unsur) dengan undangan berbasis QR. Urutan penerapan 0001 -> 0002 -> 0003 -> 0004; urutan rollback kebalikannya (0004 pertama, 0001 terakhir). Semuanya DITULIS tetapi BELUM DITERAPKAN: penerapan hanya oleh pemilik setelah konfirmasi CEO, lewat `scripts/apply-migration.mjs --atomic` (dry-run dulu). Perilaku diuji lebih dulu di PGlite lokal (`scripts/lokal/`, tanpa DB nyata); itu BUKAN pengganti dry-run pada DB nyata.
 
 | Versi | Berkas | Prasyarat | Rollback | Status |
@@ -527,7 +531,7 @@ sehingga perubahan yang bisa memutus alur pengguna (mis. policy `visit`/`kunjung
 Runbook lengkap RBAC Tahap 0: `docs/RUNBOOK_RBAC_TAHAP0.md`. Tes perilaku (transaksi + ROLLBACK): `npm run test:rls:tahap0`.
 Skrip ini menyentuh DB produksi (terapan nyata butuh izin CEO).
 
-## Migrasi forward yang sudah ditulis tetapi BELUM diterapkan
+## Migrasi forward yang pernah ditulis tetapi belum diterapkan (RIWAYAT; kini tercatat di ledger, lihat status terverifikasi 2026-11-13)
 
 | Versi | Isi | Status | Rollback |
 |---|---|---|---|
@@ -755,7 +759,7 @@ sehingga perubahan yang bisa memutus alur pengguna (mis. policy `visit`/`kunjung
 Runbook lengkap RBAC Tahap 0: `docs/RUNBOOK_RBAC_TAHAP0.md`. Tes perilaku (transaksi + ROLLBACK): `npm run test:rls:tahap0`.
 Skrip ini menyentuh DB produksi (terapan nyata butuh izin CEO).
 
-## Migrasi forward yang sudah ditulis tetapi BELUM diterapkan
+## Migrasi forward yang pernah ditulis tetapi belum diterapkan (RIWAYAT; kini tercatat di ledger, lihat status terverifikasi 2026-11-13)
 
 | Versi | Isi | Status | Rollback |
 |---|---|---|---|
@@ -983,7 +987,7 @@ sehingga perubahan yang bisa memutus alur pengguna (mis. policy `visit`/`kunjung
 Runbook lengkap RBAC Tahap 0: `docs/RUNBOOK_RBAC_TAHAP0.md`. Tes perilaku (transaksi + ROLLBACK): `npm run test:rls:tahap0`.
 Skrip ini menyentuh DB produksi (terapan nyata butuh izin CEO).
 
-## Migrasi forward yang sudah ditulis tetapi BELUM diterapkan
+## Migrasi forward yang pernah ditulis tetapi belum diterapkan (RIWAYAT; kini tercatat di ledger, lihat status terverifikasi 2026-11-13)
 
 | Versi | Isi | Status | Rollback |
 |---|---|---|---|
@@ -1176,7 +1180,7 @@ node scripts/fill-migration-ledger.mjs                    # dry-run pengisi ledg
 
 Keduanya membaca `DIRECT_URL` dari `.env.local` (nilainya tidak pernah dicetak), memakai `BEGIN READ ONLY` + SELECT saja, dan berakhir dengan ROLLBACK. Parser penanda ada di `scripts/lib/migration-markers.mjs`; ujinya `src/test/migration-markers.test.ts`. Ujinya ikut `npm test` (ditempatkan di `src/test/` karena `vitest.config.ts` hanya meng-include `src/**` dan `supabase/migrations/**`).
 
-## Fase 6 layanan dinamis: saran pengunjung lama pada isian Nama/HP Front Office (202611010001) — BELUM DITERAPKAN
+## Fase 6 layanan dinamis: saran pengunjung lama pada isian Nama/HP Front Office (202611010001) — SUDAH DITERAPKAN (terverifikasi 2026-11-13)
 
 | Versi | Berkas | Isi | Status |
 |---|---|---|---|
@@ -1202,7 +1206,7 @@ node scripts/apply-migration.mjs supabase/migrations/202611010001_fo_cari_pengun
 8. `buku_tamu` terbaca semua FO untuk semua tanggal: SENGAJA (keputusan pemilik 2026-10-27); hanya ditandai nama pencatat di halaman Buku Tamu.
 9. Rollback: `docs/rollback-fo-cari-pengunjung-202611010001.sql` (hanya menghapus objek baru; baris `audit_log` dibiarkan).
 
-## Penutupan celah `tiket_antrean` (202611010002) — BELUM DITERAPKAN
+## Penutupan celah `tiket_antrean` (202611010002) — objek ada di produksi tetapi tidak terbukti khusus oleh migrasi ini, lihat status terverifikasi 2026-11-13
 
 | Versi | Berkas | Isi | Status |
 |---|---|---|---|
@@ -1221,7 +1225,7 @@ node scripts/apply-migration.mjs supabase/migrations/202611010002_tiket_antrean_
 
 **Terbukti dengan:** `node scripts/lokal-rantai/skenario-akses-data.mjs` (PGlite, seluruh rantai migrasi pada skema asli; sebelum migrasi ini 3 cek tiket gagal, sesudahnya 115/115 lolos). `buku_tamu` sengaja TIDAK dibatasi (keputusan pemilik): meja FO bersama, hanya ditandai nama pencatat di UI.
 
-## Identitas pengunjung satu kesatuan (202611010003, 202611010004) — BELUM DITERAPKAN
+## Identitas pengunjung satu kesatuan (202611010003, 202611010004) — 0003 SUDAH DITERAPKAN; 0004 (backfill data) tidak terbukti lewat objek, lihat status terverifikasi 2026-11-13
 
 Keputusan pemilik 2026-10-27: `kunjungan` adalah DATA INDUK yang diisi FO (email boleh kosong di FO); pengunjung yang dieskalasi wajib punya email nyata saat layanan selesai, dan identitas yang dilengkapi petugas layanan kembali ke data induk. Rencana: `docs/superpowers/plans/2026-11-01-identitas-satu-kesatuan.md`.
 
@@ -1254,7 +1258,7 @@ node scripts/apply-migration.mjs supabase/migrations/202611010004_backfill_ident
 7. Rollback `202611010003`: `docs/rollback-identitas-satu-kesatuan-202611010003.sql` (identitas yang sudah ditulis balik tidak dikembalikan; jejak di `audit_log`).
 8. Tidak dicakup: chat live (pengunjung login Google selalu punya email, tidak ada perubahan antarmuka); FO Koordinator/FO lain membaca hasil lengkap hanya lewat data induk atau sesuai lingkup Fase 3.
 
-## Data Pelayanan = Layanan lain (202611010005) — BELUM DITERAPKAN
+## Data Pelayanan = Layanan lain (202611010005) — SUDAH DITERAPKAN (terverifikasi 2026-11-13)
 
 Di Rekap, Helpdesk OSS dan Non OSS (volume terbanyak) punya tab sendiri; tab **Data Pelayanan** kini berisi Layanan lain saja. Pengecualian dilakukan di DB agar total, halaman, dan unduhan Excel ikut benar.
 
@@ -1373,7 +1377,7 @@ Prasyarat: `email_nyata()` (`202611010003`, belum diterapkan), `sesi_valid`, `st
 - Isi layar TV (`v_layar_antrian`, `panggilan_layar`) dapat dibaca anon tanpa token; token layar bukan kontrol akses DB. Isinya wajib bebas PII. Di staging, uji sekali bahwa payload Realtime untuk anon tidak memuat `tiket_id`.
 - Migrasi perbaikan `202611040001_perbaikan_tinjauan_akhir.sql` (setelah 0015) menutup temuan keamanan P1 dan sejumlah P2; terapkan bersama 0015 dalam jendela rilis yang sama.
 
-### 202611040001_perbaikan_tinjauan_akhir.sql (BELUM diterapkan)
+### 202611040001_perbaikan_tinjauan_akhir.sql (SUDAH DITERAPKAN, terverifikasi 2026-11-13)
 
 Perbaikan hasil tinjauan keamanan, QA, dan UI 2026-11-04. Prasyarat: 202611030013, 0014, dan 0015 sudah diterapkan. Terapkan dengan `--atomic`, hanya setelah staging lolos, dalam jendela rilis yang sama dengan 0015 dan klien barunya.
 
@@ -1410,7 +1414,7 @@ Perbaikan hasil tinjauan keamanan, QA, dan UI 2026-11-04. Prasyarat: 20261103001
 - Perintah rilis sesudah persetujuan pemilik dan uji staging, belum dijalankan:
   `node scripts/apply-migration.mjs supabase/migrations/202611090001_umkm_inti.sql --atomic --dry-run`,
   lalu `node scripts/apply-migration.mjs supabase/migrations/202611090001_umkm_inti.sql --atomic`.
-- Status: BELUM DITERAPKAN ke staging atau produksi. Tidak ada commit, push, atau perubahan data nyata dalam pekerjaan ini.
+- Status saat ditulis: BELUM DITERAPKAN. Sejak itu terpasang di produksi (terverifikasi 2026-11-13).
 
 ## 202611090002 sampai 202611090004: UMKM tahap A G2 (belum diterapkan)
 
@@ -1438,7 +1442,7 @@ Perbaikan hasil tinjauan keamanan, QA, dan UI 2026-11-04. Prasyarat: 20261103001
 - Uji lokal: kontrak adjacent, route JWT/zod/envelope/no-store, storage HEAD/CopyObject dan kegagalan,
   DB pekerjaan/balasan pertama, serta A1/A2 pada rantai PGlite. Tidak membuktikan transaksi dua koneksi,
   IAM, bucket/CDN R2 sungguhan atau staging. Gate penuh/build dijalankan koordinator.
-- Status: BELUM DITERAPKAN ke staging/produksi. Rilis hanya sesudah staging dan persetujuan pemilik
+- Status saat ditulis: BELUM DITERAPKAN (UMKM `202611090001`-`0012` kemudian diterapkan 2026-11-09, terverifikasi 2026-11-13). Rilis hanya sesudah staging dan persetujuan pemilik
   melalui prosedur resmi `--atomic --dry-run`, lalu `--atomic`, satu migrasi sesuai urutan.
 
 Perbaikan G2 sebelum penerapan: `0002` mengganti `ada_kontak` dengan pembuangan UUID/nominal Rp
@@ -1611,10 +1615,18 @@ Aditif (kode lama tidak memakainya; kode refaktor memakainya dengan jalur cadang
   Pengukuran sesudahnya: `docs/superpowers/audits/ukur/hasil-sesudah-g2.md` (pencarian kata kunci 104 ke 20 ms hangat).
 - Migrasi rekap `202611110001` TIDAK dibuat: SQL rekap sudah cepat (4-17 ms hangat).
 
-### Catatan status judul "BELUM DITERAPKAN" (2026-11-13)
+### Status penerapan terverifikasi (2026-11-13)
 
-Sebagian judul "BELUM DITERAPKAN" di berkas ini tertinggal dari penerapan sebenarnya. Contoh yang terbukti dari
-dokumen ini sendiri: survei `202611020001` harus sudah ada karena `202611030001`/`0003` (diterapkan 2026-10-28)
-menjaganya sebagai prasyarat, dan `202611100001`-`0003` diterapkan 2026-11-10 (bagian di atas). Status tiap migrasi
-yang lain BELUM diperiksa ulang terhadap produksi. Sebelum mengandalkan sebuah judul, cek baca-saja ledger
-migrasi di produksi (setelah menampilkan host dan disetujui pemilik); jangan menerapkan ulang berdasarkan judul saja.
+Pemeriksaan baca-saja terhadap produksi (pooler Supabase `aws-1-ap-southeast-1`, `scripts/verify-migration-ledger.mjs`:
+`BEGIN READ ONLY`, hanya SELECT, ROLLBACK). Ledger `supabase_migrations.schema_migrations` memuat 68 entri sampai
+`202610140015`; 57 file sesudahnya tidak tercatat karena diterapkan lewat `apply-migration.mjs`, yang tidak menulis ledger.
+
+- **Terbukti terpasang (48 migrasi tak tercatat):** seluruh Fase 1-5 (`202610270001` s.d. `202610310003`), `202611010001`,
+  `202611010003`, `202611010005`, survei `202611020001`-`0003`, `202611030001`-`0006`, `0008`-`0015`, `202611040001`,
+  UMKM `202611090001`-`0012` dan `202611100001`-`0003`, serta G2 `202611110002`-`0003`.
+- **Tak terbukti lewat objek (8), bukan tanda masalah:** `202608040001`, `202608080001`, `202608310001`, `202608310003`,
+  `202611010002`, `202611010004` (backfill data), `202611020004`, `202611030007` (data/fungsi bersama atau tanpa DDL terukur).
+- **Satu objek hilang:** `202609020001_estimasi_hari_libur` kehilangan indeks `idx_hari_libur_tanggal` (dampak performa kecil).
+  JANGAN diterapkan ulang: migrasi itu membuat ulang policy `hari_libur_staff_write` yang sengaja di-DROP oleh `202610080002`.
+- **Tidak ada migrasi yang menunggu untuk diterapkan** pada kode refaktor G0-G10.
+- Jangan menjalankan `supabase db push --include-all` di produksi: ledger belum diisi, jadi 57 migrasi itu dianggap pending.
