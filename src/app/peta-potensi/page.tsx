@@ -78,7 +78,7 @@ export default function PetaPotensiPage() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg-primary)' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--bg-canvas)' }}>
       {/* Header */}
       <div style={{ background: 'var(--color-primary-700)', color: '#fff', padding: 'var(--space-16) var(--space-8)', textAlign: 'center' }}>
         <Map size={48} style={{ marginBottom: 'var(--space-4)', opacity: 0.9 }} />
@@ -101,8 +101,8 @@ export default function PetaPotensiPage() {
               key={s.id}
               onClick={() => logSektorView(s.id)}
               style={{
-                background: 'var(--bg-card)',
-                border: '1px solid var(--border-primary)',
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border-default)',
                 borderRadius: 'var(--radius-xl)',
                 padding: 'var(--space-6)',
                 textAlign: 'left',
