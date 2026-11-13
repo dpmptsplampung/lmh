@@ -125,7 +125,7 @@ describe('POST /api/admin/revalidasi', () => {
   });
 
   describe('sukses', () => {
-    it.each(['publik-beranda', 'publik-layanan', 'publik-faq'])(
+    it.each(['publik-beranda', 'publik-layanan', 'publik-faq', 'publik-transparansi', 'publik-standar'])(
       'tag %s diterima: revalidateTag(tag, { expire: 0 }) tepat sekali, respons { ok: true }',
       async (tag) => {
         const res = await rute.POST(req({ tag }));
@@ -147,8 +147,10 @@ describe('POST /api/admin/revalidasi', () => {
       }
     });
 
-    it('tiga tag inti selalu ada di TAG_PUBLIK (penjaga bila konstanta server berubah)', () => {
-      expect(Object.values(TAG_PUBLIK)).toEqual(expect.arrayContaining(['publik-beranda', 'publik-layanan', 'publik-faq']));
+    it('tag inti selalu ada di TAG_PUBLIK (penjaga bila konstanta server berubah)', () => {
+      expect(Object.values(TAG_PUBLIK)).toEqual(
+        expect.arrayContaining(['publik-beranda', 'publik-layanan', 'publik-faq', 'publik-transparansi', 'publik-standar']),
+      );
     });
 
     it('badan dengan kunci tambahan tetap hanya memakai tag (tidak ada tag kedua yang diteruskan)', async () => {

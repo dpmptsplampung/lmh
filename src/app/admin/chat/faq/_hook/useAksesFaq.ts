@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { muatLayananFaq, muatProfilFaq, ubahBotLayanan, type LayananFaq } from '@/lib/data/faq';
+import { TAG_PUBLIK_KLIEN, segarkanPublik } from '@/lib/data/klien/segarkanPublik';
 import { lingkupFaq, turunkanAksesFaq } from '../_logika/aksesFaq';
 
 type Toast = (pesan: string, jenis?: 'success' | 'error' | 'warning' | 'info') => void;
@@ -100,6 +101,8 @@ export function useAksesFaq({ toast }: OpsiAksesFaq) {
     } else {
       setLayananList((prev) => prev.map((l) => (l.id === id ? { ...l, chatbot_aktif: baru } : l)));
       toast(baru ? 'Bot layanan ini diaktifkan.' : 'Bot layanan ini dinonaktifkan.', 'success');
+      // chatbot_aktif dibaca /chat dan beranda dari cache publik. Hanya Admin sampai sini (dijaga di atas), jadi aman memanggil route Admin.
+      void segarkanPublik([TAG_PUBLIK_KLIEN.layanan, TAG_PUBLIK_KLIEN.beranda]);
     }
     setTogglingBot(false);
   };

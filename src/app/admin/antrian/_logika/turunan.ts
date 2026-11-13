@@ -10,7 +10,7 @@ import type {
 import { bolehMulaiTiket, bolehSelesaikanTiket, formPendataanLayanan } from '@/lib/pelayanan';
 import { formatTanggal } from '@/lib/utils';
 import type { NadaLencana } from '@/components/ui/Lencana';
-import type { OpsiLayananPanel, TiketPanel } from '../PanelSekarang';
+import type { OpsiLayananPanel, TiketPanel } from '../_bagian/PanelSekarang';
 import type { FilterStatus } from '../antrianUrl';
 
 // ── Embed tiket (relasi PostgREST bisa berupa objek atau larik) ───────────────────────────────────────────────
@@ -90,13 +90,16 @@ export const labelAsal = (asal: string): string => (asal === 'reservasi' ? 'Rese
 /** "2026-11-04" -> "4 November 2026" (kalender WIB; jam 12 siang menghindari geseran hari). */
 export const tanggalPanjang = (t: string): string => formatTanggal(`${t}T12:00:00+07:00`);
 
-/** Durasi tiket selesai ("25 menit"): dari mulai layan, jatuh ke waktu masuk kunjungan lalu waktu terbit. '—' bila belum selesai. */
-export function durasiTeks(a: TiketBaris): string {
+/**
+ * Durasi tiket selesai ("25 menit"): dari mulai layan, jatuh ke waktu masuk kunjungan lalu waktu terbit. '—' bila belum
+ * selesai. `sekarang` (dioper pemanggil, fungsi tetap murni) hanya dipakai bila tiket tak punya satu pun waktu awal.
+ */
+export function durasiTeks(a: TiketBaris, sekarang: Date): string {
   if (!a.waktu_selesai) return '—';
   const waktuMasuk = kunjunganDari(a)?.waktu_masuk ?? a.waktu_terbit;
   const mulai = a.waktu_mulai_layan
     ? new Date(a.waktu_mulai_layan).getTime()
-    : new Date(waktuMasuk || new Date().toISOString()).getTime();
+    : new Date(waktuMasuk || sekarang.toISOString()).getTime();
   const menit = Math.round((new Date(a.waktu_selesai).getTime() - mulai) / 60000);
   return `${menit} menit`;
 }

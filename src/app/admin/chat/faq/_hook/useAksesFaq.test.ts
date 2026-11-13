@@ -7,6 +7,11 @@ import type { HasilFaq, LayananFaq } from '@/lib/data/faq';
 const m = vi.hoisted(() => ({ muatProfilFaq: vi.fn(), muatLayananFaq: vi.fn(), ubahBotLayanan: vi.fn() }));
 vi.mock('@/lib/supabase/client', () => ({ createClient: () => ({}) }));
 vi.mock('@/lib/data/faq', () => m);
+const segarkan = vi.hoisted(() => vi.fn());
+vi.mock('@/lib/data/klien/segarkanPublik', async (impor) => ({
+  ...(await impor<typeof import('@/lib/data/klien/segarkanPublik')>()),
+  segarkanPublik: segarkan,
+}));
 
 import { useAksesFaq } from './useAksesFaq';
 
@@ -61,9 +66,12 @@ describe('useAksesFaq', () => {
     expect(m.ubahBotLayanan).toHaveBeenCalledWith({}, 'l1', false);
     expect(toast).toHaveBeenCalledWith('Bot layanan ini dinonaktifkan.', 'success');
     expect(result.current.botLayanan?.chatbot_aktif).toBe(false);
+    expect(segarkan).toHaveBeenCalledTimes(1);
+    expect(segarkan).toHaveBeenCalledWith(['publik-layanan', 'publik-beranda']);
     m.ubahBotLayanan.mockResolvedValueOnce(galat('Anda tidak berwenang'));
     await act(async () => { await result.current.ubahBot('l1', false); });
     expect(toast).toHaveBeenLastCalledWith('Gagal memperbarui status bot. Anda tidak berwenang', 'error');
+    expect(segarkan).toHaveBeenCalledTimes(1); // gagal: cache tidak dibuang
     expect(result.current.botLayanan?.chatbot_aktif).toBe(false);
   });
 
@@ -73,5 +81,6 @@ describe('useAksesFaq', () => {
     await waitFor(() => expect(result.current.siapMuat).toBe(true));
     await act(async () => { await result.current.ubahBot('l1', true); });
     expect(m.ubahBotLayanan).not.toHaveBeenCalled();
+    expect(segarkan).not.toHaveBeenCalled(); // route revalidasi hanya Admin
   });
 });

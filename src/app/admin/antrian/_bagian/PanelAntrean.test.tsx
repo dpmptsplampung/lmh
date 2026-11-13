@@ -4,7 +4,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 
-vi.mock('../PanelSekarang', () => ({
+vi.mock('./PanelSekarang', () => ({
   default: (p: {
     sedangDilayani: { id: string } | null; berikutnya: { id: string; nomor_display: string } | null;
     layananOpsi: Array<{ id: string; nama: string }>; layananId: string | null; tanpaTiketSaya?: boolean;

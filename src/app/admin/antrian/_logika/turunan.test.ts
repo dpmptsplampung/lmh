@@ -132,21 +132,29 @@ describe('label', () => {
   });
 });
 
+const SEKARANG = new Date('2026-11-04T05:00:00.000Z');
+
 describe('durasiTeks', () => {
   it('tanda hubung bila belum selesai; dihitung dari mulai layan; tanpa mulai dari waktu masuk lalu waktu terbit', () => {
-    expect(durasiTeks(tiket())).toBe('—');
-    expect(durasiTeks(tiket({ status: 'dilayani', waktu_mulai_layan: '2026-11-04T02:00:00.000Z' }))).toBe('—');
+    expect(durasiTeks(tiket(), SEKARANG)).toBe('—');
+    expect(durasiTeks(tiket({ status: 'dilayani', waktu_mulai_layan: '2026-11-04T02:00:00.000Z' }), SEKARANG)).toBe('—');
     expect(durasiTeks(tiket({
       status: 'selesai', waktu_mulai_layan: '2026-11-04T02:00:00.000Z', waktu_selesai: '2026-11-04T02:25:00.000Z',
-    }))).toBe('25 menit');
+    }), SEKARANG)).toBe('25 menit');
     expect(durasiTeks(tiket({
       status: 'selesai', waktu_mulai_layan: null, waktu_selesai: '2026-11-04T01:35:00.000Z',
       kunjungan: { nama: 'x', asal: 'reservasi', waktu_masuk: '2026-11-04T01:05:00.000Z' },
-    }))).toBe('30 menit');
+    }), SEKARANG)).toBe('30 menit');
     expect(durasiTeks(tiket({
       status: 'selesai', waktu_mulai_layan: null, waktu_selesai: '2026-11-04T01:30:00.000Z',
       waktu_terbit: '2026-11-04T01:00:00.000Z', kunjungan: null,
-    }))).toBe('30 menit');
+    }), SEKARANG)).toBe('30 menit');
+  });
+
+  it('tanpa waktu mulai maupun waktu masuk/terbit: memakai argumen sekarang, bukan jam sistem', () => {
+    const tanpaAwal = tiket({ status: 'selesai', waktu_mulai_layan: null, waktu_selesai: '2026-11-04T05:20:00.000Z', waktu_terbit: '', kunjungan: null });
+    expect(durasiTeks(tanpaAwal, SEKARANG)).toBe('20 menit');
+    expect(durasiTeks(tanpaAwal, new Date('2026-11-04T04:00:00.000Z'))).toBe('80 menit');
   });
 });
 

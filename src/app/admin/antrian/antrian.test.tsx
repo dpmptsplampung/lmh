@@ -17,9 +17,9 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(nav.query),
 }));
 
-// Panel Sekarang (A1/A3) diuji terpisah (PanelSekarang.test.tsx, antrian.panel.test.tsx): di sini dikosongkan agar nama
+// Panel Sekarang (A1/A3) diuji terpisah (_bagian/PanelSekarang.test.tsx, antrian.panel.test.tsx): di sini dikosongkan agar nama
 // pengunjung dan tombol Panggil/Mulai/Selesai panel tidak bertabrakan dengan pencarian pada tabel.
-vi.mock('./PanelSekarang', () => ({ default: () => null }));
+vi.mock('./_bagian/PanelSekarang', () => ({ default: () => null }));
 
 vi.mock('@/lib/supabase/client', () => ({
   createClient: vi.fn(),

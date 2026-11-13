@@ -59,8 +59,8 @@ vi.mock('@/components/WalkinWizard', () => ({
 
 // Panel Sekarang diuji terpisah; di sini diganti tiruan yang mengekspos props turunan sebagai atribut dan memanggil
 // penangan halaman lewat tombol (mengunci batas antara halaman dan panel). Ekspor lain dipertahankan.
-vi.mock('./PanelSekarang', async (importAsli) => {
-  const asli = await importAsli<typeof import('./PanelSekarang')>();
+vi.mock('./_bagian/PanelSekarang', async (importAsli) => {
+  const asli = await importAsli<typeof import('./_bagian/PanelSekarang')>();
   type Tiket = {
     id: string; nomor_display: string; layananNama: string; namaPengunjung: string; waktu: string | null;
     bolehMulai: boolean; bolehSelesai: boolean;

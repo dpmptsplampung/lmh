@@ -1,9 +1,8 @@
 'use client';
 
-// Daftar FAQ, filter, dialog, dan aksi halaman Kelola FAQ (refaktor G8, tugas 8.2). Hook tanpa JSX: kueri dan pemanggil route
-// lewat lib/data/faq.ts, aturan akses dari useAksesFaq (../_logika/aksesFaq.ts), penyaringan murni di ../_logika/saringFaq.ts.
-// Setelah simpan/hapus/alih status FAQ sukses, cache FAQ publik dibuang (POST /api/admin/revalidasi, tag `publik-faq`);
-// gagal membuangnya tidak menggagalkan aksi dan tidak ditampilkan (cache publik kedaluwarsa sendiri dalam 60 detik).
+// Daftar FAQ, filter, dialog, dan aksi halaman Kelola FAQ (refaktor G8, tugas 8.2). Hook tanpa JSX: kueri lewat lib/data/faq.ts,
+// akses dari useAksesFaq, logika murni di ../_logika/. Setelah simpan/hapus/alih status FAQ sukses, cache FAQ publik dibuang
+// (tag `publik-faq`); gagal membuangnya tidak menggagalkan aksi (cache kedaluwarsa sendiri dalam 60 detik).
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { UMUM_KEY, type FAQ, type IsianFaq } from '@/components/admin/faq/types';
@@ -17,6 +16,15 @@ import {
   ubahFaq,
   ubahStatusFaq,
 } from '@/lib/data/faq';
+import {
+  PESAN_PROSES_GAGAL,
+  PESAN_PROSES_GAGAL_SESUDAH_SIMPAN,
+  dasarDariIsian,
+  himpunanDengan,
+  himpunanTanpa,
+  ringkasanProsesMassal,
+  teksFaqBerubah,
+} from '../_logika/aksiFaq';
 import { adaFilterAktif, kunciAwalTambah, potongHalaman, saringFaq, type FilterStatus } from '../_logika/saringFaq';
 import type { AksesFaqHook } from './useAksesFaq';
 
@@ -26,9 +34,6 @@ const ACK_KEY = 'lmh_faq_tanggung_jawab';
 const bacaAck = () => {
   try { return sessionStorage.getItem(ACK_KEY) === '1'; } catch { return false; }
 };
-
-const PESAN_PROSES_GAGAL = 'Bot belum bisa memproses FAQ ini. Coba lagi beberapa saat lagi.';
-const PESAN_PROSES_GAGAL_SESUDAH_SIMPAN = 'FAQ tersimpan, tetapi belum bisa diproses bot. Coba lagi dari daftar.';
 
 export type DialogFaq =
   | { jenis: 'tambah'; pertanyaanAwal?: string }
@@ -44,10 +49,7 @@ export interface OpsiFaq {
 export function useFaq({ akses, toast }: OpsiFaq) {
   const { siapMuat, lingkup, isPetugas, opsiLayanan, isAdmin } = akses;
 
-  /**
-   * Fire-and-forget: kegagalan sengaja diabaikan (lihat catatan atas berkas). Route revalidasi hanya menerima Admin,
-   * jadi Petugas/Front Office melewatinya (cache publik tetap kedaluwarsa sendiri dalam 60 dtk).
-   */
+  /** Fire-and-forget. Route revalidasi hanya menerima Admin, jadi Petugas/Front Office melewatinya. */
   const segarkanCachePublik = () => {
     if (isAdmin) void buangCacheFaqPublik();
   };
@@ -105,18 +107,13 @@ export function useFaq({ akses, toast }: OpsiFaq) {
     muatUlangDaftar();
   };
 
-  // Pemrosesan bot (embedding) satu FAQ. Kegagalan tidak membatalkan penyimpanan: FAQ tetap tersimpan dan lencana
-  // "Menunggu diproses bot" tampil.
+  // Pemrosesan bot (embedding) satu FAQ. Gagal tidak membatalkan simpan: lencana "Menunggu diproses bot" tampil.
   const prosesFaq = async (id: string, sesudahSimpan: boolean) => {
-    setMemprosesIds((prev) => new Set(prev).add(id));
+    setMemprosesIds((prev) => himpunanDengan(prev, id));
     const h = await prosesEmbedFaq(id, sesudahSimpan ? PESAN_PROSES_GAGAL_SESUDAH_SIMPAN : PESAN_PROSES_GAGAL);
     if (h.error) toast(h.error.pesan, 'error');
     else if (h.data === 'diproses' && !sesudahSimpan) toast('FAQ diproses. Bot sudah bisa memakainya.', 'success');
-    setMemprosesIds((prev) => {
-      const baru = new Set(prev);
-      baru.delete(id);
-      return baru;
-    });
+    setMemprosesIds((prev) => himpunanTanpa(prev, id));
     muatUlangDaftar();
   };
 
@@ -128,17 +125,14 @@ export function useFaq({ akses, toast }: OpsiFaq) {
     if (h.error) {
       toast(h.error.pesan, 'error');
     } else {
-      const { diproses, gagal, sisa } = h.data;
-      toast(
-        `${diproses} FAQ diproses.` + (gagal ? ` ${gagal} belum berhasil, coba lagi.` : '') + (sisa ? ` ${sisa} masih menunggu.` : ''),
-        gagal ? 'error' : 'success',
-      );
+      const { pesan, jenis } = ringkasanProsesMassal(h.data);
+      toast(pesan, jenis);
     }
     setProsesMassal(false);
     muatUlangDaftar();
   };
 
-  // Aktif/Nonaktif per FAQ lewat lencana status. Aturan akses sama dengan menyimpan FAQ (RLS menegakkannya).
+  // Aktif/Nonaktif per FAQ lewat lencana status (RLS menegakkan akses).
   const alihAktif = async (faq: FAQ) => {
     if (togglingId) return;
     setTogglingId(faq.id);
@@ -162,17 +156,12 @@ export function useFaq({ akses, toast }: OpsiFaq) {
       setAcked(true);
     }
     const sb = createClient();
-    const dasar = {
-      pertanyaan: isian.pertanyaan.trim(),
-      jawaban: isian.jawaban.trim(),
-      dasarHukum: isian.dasarHukum.trim() || null,
-      urutan: isian.urutan,
-    };
+    const dasar = dasarDariIsian(isian);
     let id: string | null;
     let perluProses: boolean;
     if (dialog?.jenis === 'ubah') {
       const faq = dialog.faq;
-      const teksBerubah = dasar.pertanyaan !== faq.pertanyaan || dasar.jawaban !== faq.jawaban;
+      const teksBerubah = teksFaqBerubah(faq, dasar);
       const h = await ubahFaq(sb, { ...dasar, id: faq.id, hapusEmbedding: teksBerubah });
       // Isian dialog sengaja dipertahankan agar pengguna tidak kehilangan tulisannya.
       if (h.error) {
@@ -212,7 +201,6 @@ export function useFaq({ akses, toast }: OpsiFaq) {
     return null;
   };
 
-  // Daftar tampil: pencarian + status + cakupan di sisi klien.
   const filter = useMemo(() => ({ cari, status: filterStatus, cakupan: filterCakupan }), [cari, filterStatus, filterCakupan]);
   const tampil = useMemo(() => saringFaq(faqList, filter), [faqList, filter]);
   const potong = potongHalaman(tampil, halaman);

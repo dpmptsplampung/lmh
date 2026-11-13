@@ -11,6 +11,7 @@ export const TAG_PUBLIK_KLIEN = {
   beranda: 'publik-beranda',
   layanan: 'publik-layanan',
   faq: 'publik-faq',
+  standar: 'publik-standar',
 } as const;
 export type TagPublikKlien = (typeof TAG_PUBLIK_KLIEN)[keyof typeof TAG_PUBLIK_KLIEN];
 

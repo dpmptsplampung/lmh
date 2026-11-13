@@ -681,7 +681,18 @@ describe('kelola layanan', () => {
         tidakAdaYangDibuang();
       });
 
-      it('toggle bot tidak membuang cache (chatbot_aktif tidak dibaca etalase publik)', async () => {
+      it('toggle bot berhasil: tag etalase dibuang (chatbot_aktif dibaca /chat dan beranda), cache referensi tidak disentuh', async () => {
+        render(<KelolaLayananPage />);
+        fireEvent.click(await screen.findByRole('switch', { name: 'Bot Helpdesk OSS' }));
+        await waitFor(() => expect(patchCalls()).toHaveLength(1));
+        await waitFor(() => expect(h.segarkan).toHaveBeenCalled());
+        expect(h.segarkan).toHaveBeenCalledTimes(1);
+        expect(h.segarkan).toHaveBeenCalledWith(TAG_ETALASE);
+        expect(h.buangCache).not.toHaveBeenCalled();
+      });
+
+      it('toggle bot gagal (500): tidak ada yang dibuang', async () => {
+        gagalkan((url, metode) => metode === 'PATCH' && url === '/api/admin/layanan/l1/bot');
         render(<KelolaLayananPage />);
         fireEvent.click(await screen.findByRole('switch', { name: 'Bot Helpdesk OSS' }));
         await waitFor(() => expect(patchCalls()).toHaveLength(1));

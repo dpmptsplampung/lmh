@@ -4,7 +4,7 @@
 // (turunan murni di _logika/turunan.ts) dan meneruskan aksinya ke penangan halaman. Hanya tampilan dari props;
 // Layanan yang dipilih Admin/FO disimpan halaman (null = Layanan pertama yang punya tiket menunggu).
 import type { ProfilPetugasAntrean, TiketBaris } from '@/lib/data/antrean';
-import PanelSekarang, { type TiketPanel } from '../PanelSekarang';
+import PanelSekarang, { type TiketPanel } from './PanelSekarang';
 import { bolehLihatSemuaLayanan, turunkanPanel } from '../_logika/turunan';
 import type { AksiTiket } from './SelAksi';
 

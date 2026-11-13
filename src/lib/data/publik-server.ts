@@ -43,6 +43,7 @@ export const TAG_PUBLIK = {
   layanan: 'publik-layanan',
   faq: 'publik-faq',
   transparansi: 'publik-transparansi',
+  standar: 'publik-standar',
 } as const;
 export type TagPublik = (typeof TAG_PUBLIK)[keyof typeof TAG_PUBLIK];
 
@@ -85,6 +86,23 @@ export type HasilFaqPublik = {
 /** Pilihan layanan pada formulir pengaduan publik. */
 export type OpsiLayananPengaduan = { id: string; nama: string };
 export type HasilOpsiLayananPengaduan = { layanan: OpsiLayananPengaduan[]; galat: boolean };
+
+/** Layanan aktif + standar pelayanannya (/standar-pelayanan); JSON-aman (Map disusun halaman). */
+export type StandarPublik = {
+  layanan_id: string;
+  persyaratan: string | null;
+  prosedur: string | null;
+  jangka_waktu: string | null;
+  biaya: string | null;
+  produk_layanan: string | null;
+  penanganan_pengaduan: string | null;
+  maklumat: string | null;
+};
+export type HasilStandarPublik = {
+  layanan: OpsiLayananPengaduan[];
+  standar: StandarPublik[];
+  galat: boolean;
+};
 
 /** IKM publik per layanan untuk kuartal berjalan (/transparansi); JSON-aman. */
 export type HasilTransparansiPublik = {
@@ -283,6 +301,62 @@ export const muatOpsiLayananPengaduan = denganCache<HasilOpsiLayananPengaduan>(
   [TAG_PUBLIK.layanan],
   muatOpsiLayananMentah,
   () => ({ layanan: [], galat: true }),
+);
+
+// ---------------------------------------------------------------------------------------------------------------
+// Standar pelayanan (/standar-pelayanan): tabel layanan aktif + standar_pelayanan (RLS `standar_public_read`: aktif = true)
+// ---------------------------------------------------------------------------------------------------------------
+
+const KOLOM_STANDAR = 'layanan_id, persyaratan, prosedur, jangka_waktu, biaya, produk_layanan, penanganan_pengaduan, maklumat';
+const teksAtauNull = (nilai: unknown): string | null => (typeof nilai === 'string' ? nilai : null);
+
+/**
+ * Layanan aktif (urut nama, sama dengan kueri lama halaman) dan standar aktif. Salah satu gagal = hasil tidak lengkap
+ * (tidak disimpan di Data Cache): daftar layanan tanpa standar akan tampak "sedang disusun" secara keliru.
+ */
+async function muatStandarMentah(sb: SupabaseClient): Promise<Termuat<HasilStandarPublik>> {
+  const gagal: Termuat<HasilStandarPublik> = { data: { layanan: [], standar: [], galat: true }, lengkap: false };
+  try {
+    const ambil = (kueri: PromiseLike<unknown>) =>
+      denganBatasWaktu<{ data: unknown; error: unknown }>(kueri as PromiseLike<{ data: unknown; error: unknown }>, BATAS_MUAT_MS, {
+        data: null,
+        error: 'batas waktu',
+      });
+    const [daftar, baku] = await Promise.all([
+      ambil(sb.from('layanan').select('id, nama').eq('aktif', true).order('nama').limit(BATAS_LAYANAN)),
+      ambil(sb.from('standar_pelayanan').select(KOLOM_STANDAR).eq('aktif', true).limit(BATAS_LAYANAN)),
+    ]);
+    if (daftar.error || !Array.isArray(daftar.data) || baku.error || !Array.isArray(baku.data)) return gagal;
+    const layanan: OpsiLayananPengaduan[] = [];
+    for (const r of daftar.data as Array<Record<string, unknown>>) {
+      if (typeof r.id === 'string' && typeof r.nama === 'string') layanan.push({ id: r.id, nama: r.nama });
+    }
+    const standar: StandarPublik[] = [];
+    for (const r of baku.data as Array<Record<string, unknown>>) {
+      if (typeof r.layanan_id !== 'string') continue;
+      standar.push({
+        layanan_id: r.layanan_id,
+        persyaratan: teksAtauNull(r.persyaratan),
+        prosedur: teksAtauNull(r.prosedur),
+        jangka_waktu: teksAtauNull(r.jangka_waktu),
+        biaya: teksAtauNull(r.biaya),
+        produk_layanan: teksAtauNull(r.produk_layanan),
+        penanganan_pengaduan: teksAtauNull(r.penanganan_pengaduan),
+        maklumat: teksAtauNull(r.maklumat),
+      });
+    }
+    return { data: { layanan, standar, galat: false }, lengkap: true };
+  } catch {
+    return gagal;
+  }
+}
+
+/** Ikut tag layanan juga: mengarsipkan/mengaktifkan layanan di Admin mengubah daftar layanan halaman ini. */
+export const muatStandarPublik = denganCache<HasilStandarPublik>(
+  'standar',
+  [TAG_PUBLIK.standar, TAG_PUBLIK.layanan],
+  muatStandarMentah,
+  () => ({ layanan: [], standar: [], galat: true }),
 );
 
 // ---------------------------------------------------------------------------------------------------------------

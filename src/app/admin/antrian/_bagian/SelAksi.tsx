@@ -53,7 +53,7 @@ export interface SelAksiProps {
 }
 
 export default function SelAksi({ tiket: a, pengguna, aksi, statusSurvei }: SelAksiProps) {
-  const durasi = durasiTeks(a);
+  const durasi = durasiTeks(a, new Date());
   const pelayanNama = namaPelayanDari(a);
   const milikSaya = bolehSelesaikanTiket(pengguna, a);
   const sibuk = aksi.sedangProses.has(a.id);

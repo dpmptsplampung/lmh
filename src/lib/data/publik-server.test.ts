@@ -52,6 +52,7 @@ import {
   muatFaqPublik,
   muatLayananPublik,
   muatOpsiLayananPengaduan,
+  muatStandarPublik,
   muatTransparansiPublik,
   rentangKuartalWIB,
 } from './publik-server';
@@ -149,14 +150,15 @@ describe('konfigurasi cache', () => {
       layanan: 'publik-layanan',
       faq: 'publik-faq',
       transparansi: 'publik-transparansi',
+      standar: 'publik-standar',
     });
     expect(REVALIDASI_DETIK).toBe(60);
   });
 
-  it('lima fungsi publik masing-masing dibungkus unstable_cache dengan kunci unik dan revalidate 60', () => {
-    expect(PEMBUNGKUS).toHaveLength(5);
+  it('enam fungsi publik masing-masing dibungkus unstable_cache dengan kunci unik dan revalidate 60', () => {
+    expect(PEMBUNGKUS).toHaveLength(6);
     const kunci = PEMBUNGKUS.map((p) => JSON.stringify(p.keyParts));
-    expect(new Set(kunci).size).toBe(5);
+    expect(new Set(kunci).size).toBe(6);
     for (const p of PEMBUNGKUS) expect(p.opsi?.revalidate).toBe(60);
   });
 
@@ -178,6 +180,12 @@ describe('konfigurasi cache', () => {
     const tag = (nama: string) => PEMBUNGKUS.find((p) => p.keyParts?.some((k) => k.includes(nama)))?.opsi?.tags;
     expect(tag('pengaduan')).toEqual([TAG_PUBLIK.layanan]);
     expect(tag('transparansi')).toEqual([TAG_PUBLIK.transparansi, TAG_PUBLIK.layanan]);
+  });
+
+  it('tag: standar pelayanan ikut tag standar + layanan (daftar layanannya); kunci berversi', () => {
+    const p = PEMBUNGKUS.find((x) => x.keyParts?.some((k) => k.includes('publik-standar-')));
+    expect(p?.opsi?.tags).toEqual([TAG_PUBLIK.standar, TAG_PUBLIK.layanan]);
+    expect(p?.keyParts?.[0]).toBe('publik-standar-v1');
   });
 
   it('hanya tag dari daftar izin yang dipakai (selaras route revalidasi 4.5)', () => {
@@ -674,6 +682,87 @@ describe('muatOpsiLayananPengaduan (pilihan layanan formulir pengaduan)', () => 
   it('tidak mengakses cookies() atau headers()', async () => {
     pasang({ from: { layanan: [{ data: [], error: null }] } });
     await muatOpsiLayananPengaduan();
+    expect(h.cookies).not.toHaveBeenCalled();
+    expect(h.headers).not.toHaveBeenCalled();
+  });
+});
+
+describe('muatStandarPublik (standar pelayanan per layanan)', () => {
+  const baris = (o: Record<string, unknown> = {}) => ({
+    layanan_id: 'l1',
+    persyaratan: 'KTP',
+    prosedur: null,
+    jangka_waktu: '3 hari',
+    biaya: 'Gratis',
+    produk_layanan: 'Sertifikat',
+    penanganan_pengaduan: 'Kanal pengaduan',
+    maklumat: 'Maklumat',
+    ...o,
+  });
+
+  it('membaca layanan aktif dan standar aktif dengan kolom eksplisit, berbatas; hasil JSON-aman', async () => {
+    const { panggilan } = pasang({
+      from: {
+        layanan: [{ data: [{ id: 'l1', nama: 'Bank Lampung' }, { id: 5, nama: 'rusak' }], error: null }],
+        standar_pelayanan: [{ data: [baris(), { layanan_id: 9 }, baris({ layanan_id: 'l2', persyaratan: 7 })], error: null }],
+      },
+    });
+    const hasil = await muatStandarPublik();
+    expect(hasil.galat).toBe(false);
+    expect(hasil.layanan).toEqual([{ id: 'l1', nama: 'Bank Lampung' }]);
+    expect(hasil.standar).toHaveLength(2);
+    expect(hasil.standar[0]).toEqual(baris());
+    expect(hasil.standar[1]).toMatchObject({ layanan_id: 'l2', persyaratan: null });
+    expect(JSON.parse(JSON.stringify(hasil))).toEqual(hasil);
+
+    const lay = dipakai(panggilan, 'layanan')[0].langkah;
+    expect(lay).toContainEqual(['select', 'id, nama']);
+    expect(lay).toContainEqual(['eq', 'aktif', true]);
+    expect(lay).toContainEqual(['order', 'nama']);
+    const std = dipakai(panggilan, 'standar_pelayanan')[0].langkah;
+    expect(std).toContainEqual(['select', 'layanan_id, persyaratan, prosedur, jangka_waktu, biaya, produk_layanan, penanganan_pengaduan, maklumat']);
+    expect(std).toContainEqual(['eq', 'aktif', true]);
+    for (const langkah of [lay, std]) {
+      expect(langkah.some(([nama, n]) => nama === 'limit' && typeof n === 'number' && n > 0)).toBe(true);
+    }
+    expect(JSON.stringify(std)).not.toContain('"*"');
+  });
+
+  it('hasil sukses disimpan; panggilan kedua dijawab cache', async () => {
+    const { panggilan } = pasang({
+      from: { layanan: [{ data: [], error: null }], standar_pelayanan: [{ data: [], error: null }] },
+    });
+    expect(await muatStandarPublik()).toEqual({ layanan: [], standar: [], galat: false });
+    expect(h.memo.size).toBe(1);
+    await muatStandarPublik();
+    expect(dipakai(panggilan, 'standar_pelayanan')).toHaveLength(1);
+  });
+
+  it.each([
+    ['daftar layanan gagal', { layanan: [galatDb], standar_pelayanan: [{ data: [], error: null }] }],
+    ['standar gagal', { layanan: [{ data: [{ id: 'l1', nama: 'A' }], error: null }], standar_pelayanan: [galatDb] }],
+    ['lemparan jaringan', { layanan: ['lempar' as const], standar_pelayanan: [{ data: [], error: null }] }],
+  ])('%s: { galat: true } dan TIDAK disimpan; setelah pulih terbaca lagi', async (_nama, from) => {
+    pasang({ from });
+    expect(await muatStandarPublik()).toEqual({ layanan: [], standar: [], galat: true });
+    expect(h.memo.size).toBe(0);
+    pasang({ from: { layanan: [{ data: [{ id: 'l1', nama: 'A' }], error: null }], standar_pelayanan: [{ data: [], error: null }] } });
+    expect((await muatStandarPublik()).layanan).toHaveLength(1);
+    expect(h.memo.size).toBe(1);
+  });
+
+  it('permintaan menggantung menjadi galat setelah batas waktu (tidak disimpan)', async () => {
+    vi.useFakeTimers();
+    pasang({ from: { layanan: ['menggantung'], standar_pelayanan: [{ data: [], error: null }] } });
+    const janji = muatStandarPublik();
+    await vi.advanceTimersByTimeAsync(6100);
+    expect(await janji).toEqual({ layanan: [], standar: [], galat: true });
+    expect(h.memo.size).toBe(0);
+  });
+
+  it('tidak mengakses cookies() atau headers()', async () => {
+    pasang({ from: { layanan: [{ data: [], error: null }], standar_pelayanan: [{ data: [], error: null }] } });
+    await muatStandarPublik();
     expect(h.cookies).not.toHaveBeenCalled();
     expect(h.headers).not.toHaveBeenCalled();
   });

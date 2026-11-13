@@ -153,6 +153,7 @@ export default function KelolaLayananPage() {
   const ubahBot = async (row: LayananRow) => {
     try {
       await adminFetch(`/api/admin/layanan/${row.id}/bot`, 'PATCH', { aktif: !row.chatbot_aktif });
+      etalaseBerubah(); // /chat dan beranda membaca chatbot_aktif dari cache publik
       toast(`Bot ${row.nama} ${row.chatbot_aktif ? 'dimatikan' : 'dihidupkan'}.`, 'success');
       await load();
     } catch (e) {
