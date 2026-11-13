@@ -1,55 +1,4 @@
-/* Wizard Pendataan Pelayanan (gaya Dasbor): cangkang modal bertahap. Token dari tema-dasbor.css. */
-.latar {
-  position: fixed;
-  inset: 0;
-  z-index: var(--z-modal);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-4);
-  background: var(--surface-overlay);
-  outline: none;
-}
-
-.kotak {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  max-width: 760px;
-  max-height: calc(100dvh - 2rem);
-  overflow: hidden;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-card);
-  background: var(--bg-surface);
-  box-shadow: var(--shadow-overlay);
-}
-
-.kepala {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-5) var(--space-6);
-  border-bottom: 1px solid var(--border-default);
-}
-
-.kepalaIsi {
-  min-width: 0;
-}
-
-.judulBaris {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-
-.judul {
-  margin: 0;
-  color: var(--text-primary);
-  font-size: var(--text-lg);
-  font-weight: 700;
-}
+/* Wizard Pendataan Pelayanan (gaya Dasbor). Cangkang modal (latar, kotak, kepala, badan) = KerangkaModal; di sini hanya isi. */
 
 .meta {
   margin: 2px 0 0;
@@ -66,12 +15,6 @@
   margin: var(--space-1) 0 0;
   color: var(--color-warning-600);
   font-size: var(--text-xs);
-}
-
-.tutup {
-  flex: none;
-  min-width: var(--target);
-  padding-inline: 0;
 }
 
 .langkah {
@@ -114,12 +57,6 @@
   background: var(--color-primary-50);
   color: var(--color-primary-700);
   font-weight: 700;
-}
-
-.badan {
-  flex: 1;
-  overflow-y: auto;
-  padding: var(--space-6);
 }
 
 .petunjuk {
@@ -189,14 +126,13 @@
   gap: var(--space-3);
 }
 
+/* Anak slot `kaki` KerangkaModal: kiri Sebelumnya/Tutup, kanan Simpan/Selanjutnya. */
 .kaki {
   display: flex;
+  flex: 1;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  padding: var(--space-4) var(--space-6);
-  border-top: 1px solid var(--border-default);
-  background: var(--bg-surface);
 }
 
 .kakiKanan {
@@ -212,18 +148,6 @@
 }
 
 @media (max-width: 640px) {
-  .kotak {
-    max-height: 100dvh;
-    border-radius: 0;
-  }
-
-  .latar {
-    padding: 0;
-  }
-
-  .kepala,
-  .badan,
-  .kaki,
   .konfirmasi {
     padding-inline: var(--space-4);
   }

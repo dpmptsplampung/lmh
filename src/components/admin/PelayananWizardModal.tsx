@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef, useCallback, useId } from 'react';
 import {
-  X,
   Save,
   CheckCircle2,
   FileText,
@@ -15,12 +14,12 @@ import {
   ChevronLeft,
 } from 'lucide-react';
 import { useToast } from '@/components/Toast';
+import KerangkaModal from '@/components/ui/KerangkaModal';
 import Tombol from '@/components/ui/Tombol';
 import Lencana from '@/components/ui/Lencana';
 import Skeleton from '@/components/ui/Skeleton';
 import { cn } from '@/lib/utils';
 import styles from './PelayananWizardModal.module.css';
-import { useDialogFokus } from '@/components/admin/useDialogFokus';
 import { useTopikLayanan } from '@/components/admin/TopikCatatanFields';
 import {
   SKALA_USAHA_OPTIONS,
@@ -90,8 +89,6 @@ export default function PelayananWizardModal({
   const { toast } = useToast();
   const uid = useId();
   const id = (nama: string) => `${uid}-${nama}`;
-  const idJudul = id('judul');
-  const dialogRef = useRef<HTMLDivElement>(null);
   const tombolLanjutRef = useRef<HTMLButtonElement>(null);
   const [loading, setLoading] = useState(true);
   const [initialData, setInitialData] = useState<PelayananInitialData | null>(null);
@@ -436,7 +433,7 @@ export default function PelayananWizardModal({
 
   // Escape: tutup langsung bila tak ada yang hilang; bila ada perubahan belum tersimpan, minta konfirmasi dulu.
   const perubahanBelumTersimpan = !bacaSaja && adaPerubahan;
-  useDialogFokus(isOpen, dialogRef, () => {
+  const tanganiEscape = () => {
     if (finalizing || menutupRef.current) return;
     if (konfirmasiTutup) {
       setKonfirmasiTutup(false);
@@ -447,7 +444,7 @@ export default function PelayananWizardModal({
       return;
     }
     tutupTanpaSimpan();
-  });
+  };
 
   // Saat konfirmasi tutup muncul, fokus ke pilihan aman ("Lanjut mengisi").
   useEffect(() => {
@@ -719,30 +716,28 @@ export default function PelayananWizardModal({
   };
 
   return (
-    <div
-      ref={dialogRef}
-      tabIndex={-1}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby={idJudul}
-      className={styles.latar}
-    >
-      <div className={styles.kotak}>
-        {/* Header */}
-        <div className={styles.kepala}>
-          <div className={styles.kepalaIsi}>
-            <div className={styles.judulBaris}>
-              <h2 id={idJudul} className={styles.judul}>
-                Pendataan Pelayanan — {initialData?.layanan_nama || 'Loket'}
-              </h2>
-              {isLocked ? (
-                <Lencana nada="sukses" ikon={Lock}>Terkunci (Selesai)</Lencana>
-              ) : bacaSaja ? (
-                <Lencana nada="netral" ikon={Lock}>Baca saja</Lencana>
-              ) : (
-                <Lencana nada="info">Sedang Dilayani</Lencana>
-              )}
-            </div>
+    <KerangkaModal
+      terbuka={isOpen}
+      varian="dialog"
+      lebarMaks={760}
+      penuhDiHp
+      judul={`Pendataan Pelayanan — ${initialData?.layanan_nama || 'Loket'}`}
+      labelTutup="Tutup"
+      onTutup={() => void tutupDenganSimpan()}
+      onEscape={tanganiEscape}
+      dikunci={menutup}
+      escapeDikunci={menutup || finalizing}
+      lencanaJudul={
+        isLocked ? (
+          <Lencana nada="sukses" ikon={Lock}>Terkunci (Selesai)</Lencana>
+        ) : bacaSaja ? (
+          <Lencana nada="netral" ikon={Lock}>Baca saja</Lencana>
+        ) : (
+          <Lencana nada="info">Sedang Dilayani</Lencana>
+        )
+      }
+      tambahanKepala={
+        <>
             <p className={styles.meta}>
               Nomor Tiket: <strong className={styles.nomorTiket}>{initialData?.nomor_display}</strong>
               {lastSavedTime && !bacaSaja && ` · Draft tersimpan ${lastSavedTime}`}
@@ -762,22 +757,9 @@ export default function PelayananWizardModal({
                   : 'Formulir hanya dapat diisi setelah layanan dimulai, oleh petugas yang memulainya.'}
               </p>
             )}
-          </div>
-
-          <Tombol
-            varian="hantu"
-            ukuran="kecil"
-            ikon={X}
-            onClick={() => void tutupDenganSimpan()}
-            disabled={menutup}
-            className={styles.tutup}
-            aria-label="Tutup"
-          >
-            {''}
-          </Tombol>
-        </div>
-
-        {/* Steps Navigation */}
+        </>
+      }
+      bawahKepala={
         <div role="group" aria-label="Langkah formulir pendataan" className={styles.langkah}>
           {[
             { s: 1, label: '1. Profil Pemohon', icon: User },
@@ -800,191 +782,9 @@ export default function PelayananWizardModal({
             );
           })}
         </div>
-
-        {/* Modal Body (Scrollable) */}
-        <div className={styles.badan}>
-          {loading ? (
-            <Skeleton bentuk="baris" jumlah={5} label="Memuat formulir pendataan…" />
-          ) : (
-            <form onSubmit={(e) => e.preventDefault()}>
-              {!bacaSaja && (
-                <p className={styles.petunjuk}>
-                  Semua isian wajib diisi sebelum layanan diselesaikan. Bila memang tidak ada, pakai tombol isian cepat
-                  di bawah kolom (&quot;Tidak berlaku&quot; / &quot;Belum ada&quot;; untuk catatan &quot;-&quot;) atau
-                  pilih opsi &quot;Tidak berlaku&quot; pada daftar pilihan.
-                </p>
-              )}
-
-              {/* STEP 1: PROFIL PEMOHON */}
-              {step === 1 && (
-                <div className={styles.kolom}>
-                  {medanTeks({
-                    kunci: 'nama_pemohon', slug: 'nama-pemohon', label: 'Nama Pemohon',
-                    nilai: namaPemohon, set: setNamaPemohon, placeholder: 'Nama lengkap pemohon',
-                  })}
-                  {medanTeks({
-                    kunci: 'alamat_pemohon', slug: 'alamat-pemohon', label: 'Asal Instansi / Alamat Domisili',
-                    nilai: alamatPemohon, set: setAlamatPemohon, cepat: CEPAT_TIDAK_BERLAKU,
-                    placeholder: 'Kabupaten/Kota atau alamat domisili pemohon',
-                  })}
-                  <div className={styles.dua}>
-                    {medanTeks({
-                      kunci: 'no_hp', slug: 'no-hp', label: 'Nomor Handphone / WhatsApp', tipe: 'tel',
-                      ikon: <Phone size={14} aria-hidden="true" className={styles.ikonInline} />,
-                      nilai: noHp, set: setNoHp, cepat: CEPAT_TIDAK_BERLAKU, placeholder: '081234567890',
-                    })}
-                    {medanTeks({
-                      kunci: 'email', slug: 'email', label: 'Alamat Email', tipe: 'email',
-                      ikon: <Mail size={14} aria-hidden="true" className={styles.ikonInline} />,
-                      nilai: email, set: setEmail, placeholder: 'nama@email.com (wajib, email yang valid)',
-                    })}
-                  </div>
-                  {medanTeks({
-                    kunci: 'keperluan_awal', slug: 'keperluan-awal', label: 'Keperluan Awal', rows: 2,
-                    nilai: keperluanAwal, set: setKeperluanAwal, cepat: CEPAT_TIDAK_BERLAKU,
-                    placeholder: 'Catatan keperluan saat pendaftaran awal',
-                  })}
-                </div>
-              )}
-
-              {/* STEP 2: DATA PELAYANAN TEKNIS */}
-              {step === 2 && formType === 'oss' && (
-                <div className={styles.kolom}>
-                  {medanTeks({
-                    kunci: 'nama_usaha', slug: 'nama-usaha', label: 'Nama Usaha / Merk Usaha',
-                    nilai: namaUsaha, set: setNamaUsaha, cepat: CEPAT_USAHA,
-                    placeholder: 'Nama PT / CV / Toko / Usaha Perorangan',
-                  })}
-                  <div className={styles.dua}>
-                    {medanPilihan({
-                      kunci: 'tipe_pelaku_usaha', slug: 'tipe-pelaku', label: 'Tipe Pelaku Usaha',
-                      nilai: tipePelakuUsaha, set: setTipePelakuUsaha,
-                      opsi: TIPE_PELAKU_USAHA_OPTIONS, labels: TIPE_PELAKU_USAHA_LABELS,
-                    })}
-                    {medanPilihan({
-                      kunci: 'status_penanaman_modal', slug: 'status-modal', label: 'Status Penanaman Modal',
-                      nilai: statusPenanamanModal, set: setStatusPenanamanModal,
-                      opsi: STATUS_PENANAMAN_MODAL_OPTIONS, labels: STATUS_PENANAMAN_MODAL_LABELS,
-                    })}
-                  </div>
-                  {medanTeks({
-                    kunci: 'lokasi_usaha', slug: 'lokasi-usaha', label: 'Lokasi Usaha',
-                    nilai: lokasiUsaha, set: setLokasiUsaha, cepat: CEPAT_USAHA,
-                    placeholder: 'Kabupaten/Kota atau wilayah lokasi kegiatan usaha (mis. Bandar Lampung)',
-                  })}
-                  <div className={styles.dua}>
-                    {medanPilihan({
-                      kunci: 'skala_usaha', slug: 'skala-usaha', label: 'Skala Usaha',
-                      nilai: skalaUsaha, set: setSkalaUsaha, opsi: SKALA_USAHA_OPTIONS,
-                    })}
-                    {medanTeks({
-                      kunci: 'sektor_usaha_kbli', slug: 'kbli', label: 'KBLI / Sektor Usaha',
-                      nilai: sektorUsahaKbli, set: setSektorUsahaKbli, cepat: CEPAT_USAHA,
-                      placeholder: 'Contoh: 47111 - Perdagangan Eceran',
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {step === 2 && formType === 'perizinan' && (
-                <div className={styles.kolom}>
-                  {medanTeks({
-                    kunci: 'nama_perusahaan', slug: 'nama-perusahaan', label: 'Nama Perusahaan / Pemohon',
-                    nilai: namaPerusahaan, set: setNamaPerusahaan, cepat: CEPAT_USAHA,
-                    placeholder: 'Nama PT / CV / Koperasi / Perorangan Pemohon',
-                  })}
-                  {medanTeks({
-                    kunci: 'opd_teknis', slug: 'opd-teknis', label: 'OPD Teknis Terkait', daftar: 'list-opd-teknis',
-                    nilai: opdTeknis, set: setOpdTeknis, cepat: CEPAT_TIDAK_BERLAKU,
-                    placeholder: 'Pilih atau ketik nama OPD Teknis (mis. Dinas ESDM, DLH, dll)',
-                  })}
-                  <datalist id="list-opd-teknis">
-                    {OPD_TEKNIS_OPTIONS.map((opt) => (
-                      <option key={opt} value={opt} />
-                    ))}
-                  </datalist>
-                  {medanTeks({
-                    kunci: 'uraian_permohonan', slug: 'uraian-permohonan', label: 'Uraian Permohonan / Izin', rows: 3,
-                    nilai: uraianPermohonan, set: setUraianPermohonan,
-                    placeholder: 'Uraian permohonan izin/non-perizinan atau dokumen yang diajukan...',
-                  })}
-                  {medanTeks({
-                    kunci: 'lokasi_usaha', slug: 'lokasi-usaha-perizinan', label: 'Lokasi Usaha',
-                    nilai: lokasiUsahaPerizinan, set: setLokasiUsahaPerizinan, cepat: CEPAT_USAHA,
-                    placeholder: 'Kabupaten/Kota atau wilayah lokasi kegiatan usaha (mis. Bandar Lampung)',
-                  })}
-                </div>
-              )}
-
-              {/* STEP 3: TINDAKAN & SOLUSI */}
-              {step === 3 && !bacaSaja && daftarTopik.length > 0 && (
-                <div className={cn('form-group', styles.topik)}>
-                  <label htmlFor={id('topik')} className="form-label form-label--required">Topik penanganan</label>
-                  <select
-                    id={id('topik')}
-                    className="form-select"
-                    value={topikId}
-                    aria-required="true"
-                    {...atributGalat('topik_id')}
-                    onChange={(e) => { setTopikId(e.target.value); setValidationErrors((v) => { const { topik_id: _t, ...sisa } = v; void _t; return sisa; }); }}
-                  >
-                    <option value="">-- Pilih topik --</option>
-                    {daftarTopik.map((t) => <option key={t.id} value={t.id}>{t.nama}</option>)}
-                  </select>
-                  {galat('topik_id')}
-                </div>
-              )}
-              {step === 3 && formType === 'oss' && (
-                <div className={styles.kolom}>
-                  {medanTeks({
-                    kunci: 'tindak_lanjut', slug: 'tindak-lanjut-oss', label: 'Tindakan / Tindak Lanjut',
-                    daftar: 'list-tindakan-oss', nilai: tindakLanjutOss, set: setTindakLanjutOss,
-                    placeholder: 'Pilih atau ketik tindakan yang diambil...',
-                  })}
-                  <datalist id="list-tindakan-oss">
-                    {TINDAK_LANJUT_OSS_OPTIONS.map((opt) => (
-                      <option key={opt} value={opt} />
-                    ))}
-                  </datalist>
-                  {medanTeks({
-                    kunci: 'uraian_solusi', slug: 'uraian-solusi', label: 'Uraian Solusi / Konsultasi', rows: 4,
-                    nilai: uraianSolusi, set: setUraianSolusi,
-                    placeholder: 'Tuliskan kendala dan langkah solusi / konsultasi yang diberikan di loket...',
-                  })}
-                  {medanTeks({
-                    kunci: 'catatan_internal', slug: 'catatan-internal', label: 'Catatan Tambahan Internal', rows: 2,
-                    nilai: catatanInternal, set: setCatatanInternal, cepat: CEPAT_CATATAN,
-                    placeholder: 'Catatan tambahan untuk internal (isi "-" bila tidak ada)',
-                  })}
-                </div>
-              )}
-
-              {step === 3 && formType === 'perizinan' && (
-                <div className={styles.kolom}>
-                  {medanTeks({
-                    kunci: 'tindak_lanjut', slug: 'tindak-lanjut-perizinan', label: 'Tindak Lanjut',
-                    daftar: 'list-tindakan-perizinan', nilai: tindakLanjutPerizinan, set: setTindakLanjutPerizinan,
-                    placeholder: 'Pilih atau ketik tindak lanjut layanan...',
-                  })}
-                  <datalist id="list-tindakan-perizinan">
-                    {TINDAK_LANJUT_PERIZINAN_OPTIONS.map((opt) => (
-                      <option key={opt} value={opt} />
-                    ))}
-                  </datalist>
-                  {medanTeks({
-                    kunci: 'catatan_petugas', slug: 'catatan-petugas', label: 'Catatan Petugas', rows: 4,
-                    nilai: catatanPetugas, set: setCatatanPetugas, cepat: CEPAT_CATATAN,
-                    placeholder: 'Catatan persyaratan atau tindak lanjut tambahan (isi "-" bila tidak ada)...',
-                  })}
-                </div>
-              )}
-
-            </form>
-          )}
-        </div>
-
-        {/* Konfirmasi tutup (Escape dengan perubahan belum tersimpan) */}
-        {konfirmasiTutup && (
+      }
+      atasKaki={
+        konfirmasiTutup && (
           <div
             role="alertdialog"
             aria-labelledby={id('konfirmasi-judul')}
@@ -1007,9 +807,9 @@ export default function PelayananWizardModal({
               </Tombol>
             </div>
           </div>
-        )}
-
-        {/* Footer Actions */}
+        )
+      }
+      kaki={
         <div className={styles.kaki}>
           <div>
             {step > 1 ? (
@@ -1058,7 +858,186 @@ export default function PelayananWizardModal({
             )}
           </div>
         </div>
-      </div>
-    </div>
+      }
+    >
+      {loading ? (
+        <Skeleton bentuk="baris" jumlah={5} label="Memuat formulir pendataan…" />
+      ) : (
+        <form onSubmit={(e) => e.preventDefault()}>
+          {!bacaSaja && (
+            <p className={styles.petunjuk}>
+              Semua isian wajib diisi sebelum layanan diselesaikan. Bila memang tidak ada, pakai tombol isian cepat
+              di bawah kolom (&quot;Tidak berlaku&quot; / &quot;Belum ada&quot;; untuk catatan &quot;-&quot;) atau
+              pilih opsi &quot;Tidak berlaku&quot; pada daftar pilihan.
+            </p>
+          )}
+
+          {/* STEP 1: PROFIL PEMOHON */}
+          {step === 1 && (
+            <div className={styles.kolom}>
+              {medanTeks({
+                kunci: 'nama_pemohon', slug: 'nama-pemohon', label: 'Nama Pemohon',
+                nilai: namaPemohon, set: setNamaPemohon, placeholder: 'Nama lengkap pemohon',
+              })}
+              {medanTeks({
+                kunci: 'alamat_pemohon', slug: 'alamat-pemohon', label: 'Asal Instansi / Alamat Domisili',
+                nilai: alamatPemohon, set: setAlamatPemohon, cepat: CEPAT_TIDAK_BERLAKU,
+                placeholder: 'Kabupaten/Kota atau alamat domisili pemohon',
+              })}
+              <div className={styles.dua}>
+                {medanTeks({
+                  kunci: 'no_hp', slug: 'no-hp', label: 'Nomor Handphone / WhatsApp', tipe: 'tel',
+                  ikon: <Phone size={14} aria-hidden="true" className={styles.ikonInline} />,
+                  nilai: noHp, set: setNoHp, cepat: CEPAT_TIDAK_BERLAKU, placeholder: '081234567890',
+                })}
+                {medanTeks({
+                  kunci: 'email', slug: 'email', label: 'Alamat Email', tipe: 'email',
+                  ikon: <Mail size={14} aria-hidden="true" className={styles.ikonInline} />,
+                  nilai: email, set: setEmail, placeholder: 'nama@email.com (wajib, email yang valid)',
+                })}
+              </div>
+              {medanTeks({
+                kunci: 'keperluan_awal', slug: 'keperluan-awal', label: 'Keperluan Awal', rows: 2,
+                nilai: keperluanAwal, set: setKeperluanAwal, cepat: CEPAT_TIDAK_BERLAKU,
+                placeholder: 'Catatan keperluan saat pendaftaran awal',
+              })}
+            </div>
+          )}
+
+          {/* STEP 2: DATA PELAYANAN TEKNIS */}
+          {step === 2 && formType === 'oss' && (
+            <div className={styles.kolom}>
+              {medanTeks({
+                kunci: 'nama_usaha', slug: 'nama-usaha', label: 'Nama Usaha / Merk Usaha',
+                nilai: namaUsaha, set: setNamaUsaha, cepat: CEPAT_USAHA,
+                placeholder: 'Nama PT / CV / Toko / Usaha Perorangan',
+              })}
+              <div className={styles.dua}>
+                {medanPilihan({
+                  kunci: 'tipe_pelaku_usaha', slug: 'tipe-pelaku', label: 'Tipe Pelaku Usaha',
+                  nilai: tipePelakuUsaha, set: setTipePelakuUsaha,
+                  opsi: TIPE_PELAKU_USAHA_OPTIONS, labels: TIPE_PELAKU_USAHA_LABELS,
+                })}
+                {medanPilihan({
+                  kunci: 'status_penanaman_modal', slug: 'status-modal', label: 'Status Penanaman Modal',
+                  nilai: statusPenanamanModal, set: setStatusPenanamanModal,
+                  opsi: STATUS_PENANAMAN_MODAL_OPTIONS, labels: STATUS_PENANAMAN_MODAL_LABELS,
+                })}
+              </div>
+              {medanTeks({
+                kunci: 'lokasi_usaha', slug: 'lokasi-usaha', label: 'Lokasi Usaha',
+                nilai: lokasiUsaha, set: setLokasiUsaha, cepat: CEPAT_USAHA,
+                placeholder: 'Kabupaten/Kota atau wilayah lokasi kegiatan usaha (mis. Bandar Lampung)',
+              })}
+              <div className={styles.dua}>
+                {medanPilihan({
+                  kunci: 'skala_usaha', slug: 'skala-usaha', label: 'Skala Usaha',
+                  nilai: skalaUsaha, set: setSkalaUsaha, opsi: SKALA_USAHA_OPTIONS,
+                })}
+                {medanTeks({
+                  kunci: 'sektor_usaha_kbli', slug: 'kbli', label: 'KBLI / Sektor Usaha',
+                  nilai: sektorUsahaKbli, set: setSektorUsahaKbli, cepat: CEPAT_USAHA,
+                  placeholder: 'Contoh: 47111 - Perdagangan Eceran',
+                })}
+              </div>
+            </div>
+          )}
+
+          {step === 2 && formType === 'perizinan' && (
+            <div className={styles.kolom}>
+              {medanTeks({
+                kunci: 'nama_perusahaan', slug: 'nama-perusahaan', label: 'Nama Perusahaan / Pemohon',
+                nilai: namaPerusahaan, set: setNamaPerusahaan, cepat: CEPAT_USAHA,
+                placeholder: 'Nama PT / CV / Koperasi / Perorangan Pemohon',
+              })}
+              {medanTeks({
+                kunci: 'opd_teknis', slug: 'opd-teknis', label: 'OPD Teknis Terkait', daftar: 'list-opd-teknis',
+                nilai: opdTeknis, set: setOpdTeknis, cepat: CEPAT_TIDAK_BERLAKU,
+                placeholder: 'Pilih atau ketik nama OPD Teknis (mis. Dinas ESDM, DLH, dll)',
+              })}
+              <datalist id="list-opd-teknis">
+                {OPD_TEKNIS_OPTIONS.map((opt) => (
+                  <option key={opt} value={opt} />
+                ))}
+              </datalist>
+              {medanTeks({
+                kunci: 'uraian_permohonan', slug: 'uraian-permohonan', label: 'Uraian Permohonan / Izin', rows: 3,
+                nilai: uraianPermohonan, set: setUraianPermohonan,
+                placeholder: 'Uraian permohonan izin/non-perizinan atau dokumen yang diajukan...',
+              })}
+              {medanTeks({
+                kunci: 'lokasi_usaha', slug: 'lokasi-usaha-perizinan', label: 'Lokasi Usaha',
+                nilai: lokasiUsahaPerizinan, set: setLokasiUsahaPerizinan, cepat: CEPAT_USAHA,
+                placeholder: 'Kabupaten/Kota atau wilayah lokasi kegiatan usaha (mis. Bandar Lampung)',
+              })}
+            </div>
+          )}
+
+          {/* STEP 3: TINDAKAN & SOLUSI */}
+          {step === 3 && !bacaSaja && daftarTopik.length > 0 && (
+            <div className={cn('form-group', styles.topik)}>
+              <label htmlFor={id('topik')} className="form-label form-label--required">Topik penanganan</label>
+              <select
+                id={id('topik')}
+                className="form-select"
+                value={topikId}
+                aria-required="true"
+                {...atributGalat('topik_id')}
+                onChange={(e) => { setTopikId(e.target.value); setValidationErrors((v) => { const { topik_id: _t, ...sisa } = v; void _t; return sisa; }); }}
+              >
+                <option value="">-- Pilih topik --</option>
+                {daftarTopik.map((t) => <option key={t.id} value={t.id}>{t.nama}</option>)}
+              </select>
+              {galat('topik_id')}
+            </div>
+          )}
+          {step === 3 && formType === 'oss' && (
+            <div className={styles.kolom}>
+              {medanTeks({
+                kunci: 'tindak_lanjut', slug: 'tindak-lanjut-oss', label: 'Tindakan / Tindak Lanjut',
+                daftar: 'list-tindakan-oss', nilai: tindakLanjutOss, set: setTindakLanjutOss,
+                placeholder: 'Pilih atau ketik tindakan yang diambil...',
+              })}
+              <datalist id="list-tindakan-oss">
+                {TINDAK_LANJUT_OSS_OPTIONS.map((opt) => (
+                  <option key={opt} value={opt} />
+                ))}
+              </datalist>
+              {medanTeks({
+                kunci: 'uraian_solusi', slug: 'uraian-solusi', label: 'Uraian Solusi / Konsultasi', rows: 4,
+                nilai: uraianSolusi, set: setUraianSolusi,
+                placeholder: 'Tuliskan kendala dan langkah solusi / konsultasi yang diberikan di loket...',
+              })}
+              {medanTeks({
+                kunci: 'catatan_internal', slug: 'catatan-internal', label: 'Catatan Tambahan Internal', rows: 2,
+                nilai: catatanInternal, set: setCatatanInternal, cepat: CEPAT_CATATAN,
+                placeholder: 'Catatan tambahan untuk internal (isi "-" bila tidak ada)',
+              })}
+            </div>
+          )}
+
+          {step === 3 && formType === 'perizinan' && (
+            <div className={styles.kolom}>
+              {medanTeks({
+                kunci: 'tindak_lanjut', slug: 'tindak-lanjut-perizinan', label: 'Tindak Lanjut',
+                daftar: 'list-tindakan-perizinan', nilai: tindakLanjutPerizinan, set: setTindakLanjutPerizinan,
+                placeholder: 'Pilih atau ketik tindak lanjut layanan...',
+              })}
+              <datalist id="list-tindakan-perizinan">
+                {TINDAK_LANJUT_PERIZINAN_OPTIONS.map((opt) => (
+                  <option key={opt} value={opt} />
+                ))}
+              </datalist>
+              {medanTeks({
+                kunci: 'catatan_petugas', slug: 'catatan-petugas', label: 'Catatan Petugas', rows: 4,
+                nilai: catatanPetugas, set: setCatatanPetugas, cepat: CEPAT_CATATAN,
+                placeholder: 'Catatan persyaratan atau tindak lanjut tambahan (isi "-" bila tidak ada)...',
+              })}
+            </div>
+          )}
+
+        </form>
+      )}
+    </KerangkaModal>
   );
 }
