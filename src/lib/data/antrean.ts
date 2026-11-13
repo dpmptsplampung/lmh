@@ -331,7 +331,13 @@ async function bacaTiketPanel(
   }
 }
 
-/** Tiket selesai tanggal itu untuk statistik dari server, bukan dari halaman aktif saja (T-5). */
+/**
+ * Tiket selesai tanggal itu untuk statistik dari server, bukan dari halaman aktif saja (T-5).
+ * PENGECUALIAN tertulis dari SPEC bagian 5 butir 3 (tanpa .range()/.limit()): `count: 'exact'` selalu tepat, jadi
+ * `totalSelesai` tidak pernah terpotong; hanya rata-rata durasi yang dihitung dari baris yang dikembalikan PostgREST
+ * (maks 1000 baris pertama), sehingga menjadi perkiraan bila satu lingkup melebihi 1000 tiket selesai dalam sehari
+ * (jauh di atas volume harian DPMPTSP). Bila volume tumbuh, pindahkan agregat ini ke RPC (avg durasi di SQL).
+ */
 async function bacaTiketSelesai(
   sb: SupabaseClient, p: ParamMuatAntrean, lingkup: string | null,
 ): Promise<HasilAntrean<{ rows: Array<{ waktu_mulai_layan: string | null; waktu_selesai: string | null }>; count: number | null }>> {
@@ -462,7 +468,9 @@ export async function selesaikanLayananTiket(sb: SupabaseClient, tiketId: string
   }
 }
 
-/** Absensi petugas satu tanggal untuk rekap di halaman antrean; `layananId` (Petugas) membatasi ke Layanannya. */
+/** Absensi petugas satu tanggal untuk rekap di halaman antrean; `layananId` (Petugas) membatasi ke Layanannya.
+ * PENGECUALIAN tertulis dari SPEC bagian 5 butir 3: satu tanggal x jumlah petugas aktif (puluhan), jauh di bawah batas
+ * baris PostgREST, jadi tanpa .limit(); mock test halaman tidak mendukung rantai tambahan. */
 export async function muatAbsensiRekap(
   sb: SupabaseClient, p: { tanggal: string; layananId: string | null },
 ): Promise<HasilAntrean<BarisAbsensi[]>> {

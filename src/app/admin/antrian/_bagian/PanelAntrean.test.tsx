@@ -32,7 +32,7 @@ vi.mock('../PanelSekarang', () => ({
 
 import PanelAntrean from './PanelAntrean';
 import type { AksiTiket } from './SelAksi';
-import { ADMIN, FO, PETUGAS, buatTiket } from './tiketUji';
+import { ADMIN, FO, PETUGAS, buatTiket } from '../_uji/tiketUji';
 
 afterEach(cleanup);
 

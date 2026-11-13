@@ -4,7 +4,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 import SelNama from './SelNama';
 import SelStatus from './SelStatus';
-import { ADMIN, PETUGAS, buatTiket } from './tiketUji';
+import { ADMIN, PETUGAS, buatTiket } from '../_uji/tiketUji';
 
 afterEach(cleanup);
 

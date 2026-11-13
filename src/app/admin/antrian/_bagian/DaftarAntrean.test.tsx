@@ -15,7 +15,7 @@ vi.mock('@/components/Pagination', () => ({
 
 import DaftarAntrean from './DaftarAntrean';
 import type { AksiTiket } from './SelAksi';
-import { ADMIN, PETUGAS, buatTiket } from './tiketUji';
+import { ADMIN, PETUGAS, buatTiket } from '../_uji/tiketUji';
 
 afterEach(cleanup);
 

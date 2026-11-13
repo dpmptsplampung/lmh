@@ -56,7 +56,7 @@ vi.mock('@/components/admin/SurveiQrDialog', () => ({
 
 import ModalAntrian from './ModalAntrian';
 import type { ModalAntrian as StateModal } from '../_hook/useModalAntrian';
-import { ADMIN, KOORDINATOR, buatTiket } from './tiketUji';
+import { ADMIN, KOORDINATOR, buatTiket } from '../_uji/tiketUji';
 
 afterEach(cleanup);
 

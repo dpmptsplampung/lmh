@@ -3,7 +3,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import SelAksi, { type AksiTiket } from './SelAksi';
-import { ADMIN, FO, KOORDINATOR, PETUGAS, buatTiket } from './tiketUji';
+import { ADMIN, FO, KOORDINATOR, PETUGAS, buatTiket } from '../_uji/tiketUji';
 
 afterEach(cleanup);
 
