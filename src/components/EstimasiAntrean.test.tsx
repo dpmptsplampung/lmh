@@ -86,6 +86,17 @@ describe('I2 EstimasiAntrean component: smoke tests', () => {
     cleanup();
   });
 
+  it('membaca view dengan kolom eksplisit yang dipakai komponen (bukan select("*"))', async () => {
+    const mock = buildMockSupabase([]);
+    render(<EstimasiAntrean />);
+    await waitFor(() => expect(mock._selectChain.select).toHaveBeenCalledTimes(1));
+    const kolom = mock._selectChain.select.mock.calls[0][0] as string;
+    expect(kolom).not.toContain('*');
+    expect(kolom.split(',').map((k) => k.trim())).toEqual([
+      'layanan_id', 'layanan_nama', 'antre_count', 'dilayani_count', 'estimasi_durasi_menit', 'estimasi_tunggu_total_menit', 'sample_count',
+    ]);
+  });
+
   it('renders the section header', async () => {
     buildMockSupabase([]);
     render(<EstimasiAntrean />);

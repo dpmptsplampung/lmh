@@ -13,6 +13,7 @@ import { Save, ExternalLink } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/components/Toast';
+import { TAG_PUBLIK_KLIEN, segarkanPublik } from '@/lib/data/klien/segarkanPublik';
 
 export default function AdminSettingsPage() {
   const { toast } = useToast();
@@ -80,6 +81,8 @@ export default function AdminSettingsPage() {
 
       if (error) throw error;
 
+      // Beranda publik (tombol WhatsApp + kontak footer) ber-cache di server: buang setelah simpan berhasil.
+      void segarkanPublik(TAG_PUBLIK_KLIEN.beranda);
       toast('Pengaturan berhasil disimpan!', 'success');
     } catch {
       toast('Gagal menyimpan pengaturan.', 'error');

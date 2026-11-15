@@ -13,6 +13,8 @@ export interface DialogProps {
   /** Sedang mengirim: Esc, tombol tutup, dan klik latar diabaikan. */
   dikunci?: boolean;
   tutupDenganLatar?: boolean;
+  /** Lebar maksimum kotak dalam px (bawaan 560); untuk isi lebar seperti penampil dokumen. */
+  lebarMaks?: number;
   children: ReactNode;
 }
 

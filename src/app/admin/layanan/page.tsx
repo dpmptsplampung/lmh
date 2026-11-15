@@ -2,7 +2,6 @@
 
 import Tombol from '@/components/ui/Tombol';
 import Kartu from '@/components/ui/Kartu';
-import { BISA_DIFOKUS } from '@/components/ui/fokus';
 import Tabel, { type KolomTabel } from '@/components/ui/Tabel';
 import Lencana from '@/components/ui/Lencana';
 import Skeleton from '@/components/ui/Skeleton';
@@ -15,6 +14,7 @@ import tampilan from './page.dasbor.module.css';
 import { useCallback, useEffect, useState } from 'react';
 import { Archive, Building2, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
+import IsiHalaman from '@/components/layout/IsiHalaman';
 import { useToast } from '@/components/Toast';
 import RoleNote from '@/components/admin/RoleNote';
 import { AkunDialog } from '@/components/admin/AkunForm';
@@ -22,6 +22,9 @@ import FormDialog from '@/components/admin/FormDialog';
 import { AdminFetchError, adminFetch } from '@/components/admin/adminFetch';
 import LayananForm, { FORM_PENDATAAN_LABEL, STATUS_LABEL, type HasilForm, type LayananRow } from '@/components/admin/layanan/LayananForm';
 import { BarisTambah, SelTeksInline } from '@/components/admin/SuntingInline';
+import { TAG_PUBLIK_KLIEN, segarkanPublik } from '@/lib/data/klien/segarkanPublik';
+import { buangCacheReferensi } from '@/lib/data/klien/useReferensi';
+import { KUNCI_REFERENSI } from '@/lib/data/referensi';
 import type { InstansiRow, LayananTautan } from '@/lib/layanan/schemas';
 import styles from '@/components/admin/layanan/KelolaLayanan.module.css';
 
@@ -41,6 +44,19 @@ const tanggalArsip = (iso: string | null | undefined) => {
 
 // Dialog yang sedang terbuka: form (baru / ubah), konfirmasi arsip, atau konfirmasi hapus permanen.
 type Aksi = { jenis: 'arsip' | 'hapus'; row: LayananRow };
+
+// Panggil SETELAH penulisan ke server selesai (rencana 4.5). Galat pembuangan cache diabaikan (lihat segarkanPublik).
+// Etalase publik (beranda + daftar layanan) ber-cache di server; kartu etalase juga memuat nama instansi dan website
+// terkait, jadi perubahan instansi/tautan memakai tag yang sama.
+const etalaseBerubah = () => {
+  void segarkanPublik([TAG_PUBLIK_KLIEN.layanan, TAG_PUBLIK_KLIEN.beranda]);
+};
+// Layanan sendiri berubah (tambah/ubah/arsip/pulihkan/hapus): selain etalase, daftar layanan ringkas yang di-cache di
+// klien (halaman topik/dokumen) ikut basi.
+const layananBerubah = () => {
+  etalaseBerubah();
+  buangCacheReferensi(KUNCI_REFERENSI.layananRingkas);
+};
 
 export default function KelolaLayananPage() {
   const { toast } = useToast();
@@ -107,12 +123,14 @@ export default function KelolaLayananPage() {
       }
       layananTersimpan = true;
       if (tautan !== undefined) await simpanTautan(id, tautan);
+      layananBerubah();
       toast(row ? 'Layanan diperbarui.' : 'Layanan ditambahkan.', 'success');
       tutup();
       await load();
     } catch (e) {
       const pesan = e instanceof Error ? e.message : 'Gagal menyimpan';
       if (layananTersimpan) {
+        layananBerubah(); // layanan sudah tersimpan walau website terkait gagal: cache tetap harus dibuang
         const daftar = await load();
         const terbaru = daftar.find((r) => r.id === id);
         if (terbaru) {
@@ -135,6 +153,7 @@ export default function KelolaLayananPage() {
   const ubahBot = async (row: LayananRow) => {
     try {
       await adminFetch(`/api/admin/layanan/${row.id}/bot`, 'PATCH', { aktif: !row.chatbot_aktif });
+      etalaseBerubah(); // /chat dan beranda membaca chatbot_aktif dari cache publik
       toast(`Bot ${row.nama} ${row.chatbot_aktif ? 'dimatikan' : 'dihidupkan'}.`, 'success');
       await load();
     } catch (e) {
@@ -156,6 +175,7 @@ export default function KelolaLayananPage() {
         await adminFetch(`/api/admin/layanan/${aksi.row.id}`, 'DELETE');
         toast(`${aksi.row.nama} dihapus permanen.`, 'success');
       }
+      layananBerubah();
       tutupAksi();
       await load();
     } catch (e) {
@@ -176,6 +196,7 @@ export default function KelolaLayananPage() {
   const ubahInstansi = async (i: InstansiRow, bidang: 'nama' | 'singkatan', baru: string): Promise<string | null> => {
     try {
       await adminFetch(`/api/admin/instansi/${i.id}`, 'PATCH', { [bidang]: bidang === 'singkatan' ? baru || null : baru });
+      etalaseBerubah();
       setPengumuman(`Instansi ${bidang === 'nama' ? baru : i.nama} diperbarui.`);
       await load();
       return null;
@@ -191,6 +212,7 @@ export default function KelolaLayananPage() {
     if (galat) return galat;
     try {
       await adminFetch('/api/admin/instansi', 'POST', { nama, singkatan: singkatan || null });
+      etalaseBerubah();
       setPengumuman(`Instansi ${nama} ditambahkan.`);
       await load();
       return null;
@@ -202,6 +224,7 @@ export default function KelolaLayananPage() {
   const aktifkanLagi = async (row: LayananRow) => {
     try {
       await adminFetch(`/api/admin/layanan/${row.id}/arsip`, 'POST', { arsip: false });
+      layananBerubah();
       toast(`${row.nama} diaktifkan lagi.`, 'success');
       await load();
     } catch (e) {
@@ -247,69 +270,82 @@ export default function KelolaLayananPage() {
     </div>
   ) });
 
+  const kolomArsip: KolomTabel<LayananRow>[] = [
+    { kunci: 'nama', judul: 'Layanan', judulBaris: true, peran: 'utama', render: (r) => <span className={tampilan.namaArsip}>{r.nama}</span> },
+    { kunci: 'instansi', judul: 'Instansi', render: (r) => namaInstansi(r.instansi_id) },
+    { kunci: 'diarsipkan', judul: 'Diarsipkan pada', render: (r) => tanggalArsip(r.diarsipkan_at) },
+  ];
+  if (bisaUbah) kolomArsip.push({ kunci: 'aksi', judul: 'Aksi', peran: 'aksi', render: (r) => (
+    <div className={styles.rowActions}>
+      <Tombol type="button" varian="sekunder" ukuran="kecil"
+        aria-label={`Aktifkan lagi ${r.nama}`} onClick={() => aktifkanLagi(r)}>
+        <RotateCcw size={14} aria-hidden="true" /> Aktifkan lagi
+      </Tombol>
+      <Tombol type="button" varian="hantu" ukuran="kecil"
+        aria-label={`Hapus permanen ${r.nama}`} onClick={() => setAksi({ jenis: 'hapus', row: r })}>
+        <Trash2 size={14} aria-hidden="true" /> Hapus permanen
+      </Tombol>
+    </div>
+  ) });
+
+  // Kolom ketiga kosong sengaja ada: baris tambah (BarisTambah, kolom={3}) menaruh tombol "Tambah" di kolom terakhir.
+  const kolomInstansi: KolomTabel<InstansiRow>[] = [
+    { kunci: 'nama', judul: 'Nama', judulBaris: true, render: (i) => (
+      <SelTeksInline nilai={i.nama} label={`nama instansi ${i.nama}`} maxLength={NAMA_INSTANSI_MAKS}
+        validasi={validasiInstansiNama} onSimpan={(baru) => ubahInstansi(i, 'nama', baru)} />
+    ) },
+    { kunci: 'singkatan', judul: 'Singkatan', render: (i) => (
+      <SelTeksInline nilai={i.singkatan ?? ''} label={`singkatan instansi ${i.nama}`} maxLength={SINGKATAN_MAKS}
+        teksKosong="Tambah singkatan" validasi={validasiSingkatan}
+        onSimpan={(baru) => ubahInstansi(i, 'singkatan', baru)} />
+    ) },
+    { kunci: 'aksi', judul: <span className="sr-only">Aksi</span>, lebar: '140px', render: () => null },
+  ];
+
   return (
     <>
       <PageHeader meta="Tanggal ditampilkan dalam WIB" title="Kelola Layanan" description="Tambah layanan, atur konten, website terkait, Instansi, loket, antrean, Formulir Pendataan, chat, dan bot" />
-      <div className={tampilan.area1}>
-        {!loading && !loadError && (
-          <RoleNote>
-            {bisaUbah
-              ? 'Admin: Anda dapat mengubah layanan. Setiap perubahan tercatat di Riwayat Perubahan.'
-              : 'Front Office: halaman ini hanya untuk dilihat. Perubahan layanan dilakukan oleh Admin.'}
-          </RoleNote>
-        )}
-        {!loading && !loadError && bisaUbah && (
-          <div className={styles.toolbar}>
-            <Tombol href="#instansi" varian="sekunder">
-              <Building2 size={16} aria-hidden="true" /> Kelola Instansi
-            </Tombol>
-            <Tombol type="button" varian="utama" onClick={bukaBaru}>
-              <Plus size={16} aria-hidden="true" /> Tambah layanan
-            </Tombol>
-          </div>
-        )}
-        <Kartu judul="Layanan aktif" padding="tanpa">
-          {loading ? (
-            <Skeleton bentuk="baris" jumlah={5} label="Memuat layanan" />
-          ) : loadError ? (
-            <Galat pesan={loadError} onRetry={() => { setLoading(true); void load(); }} />
-          ) : (
-            <Tabel caption="Daftar layanan aktif" kolom={kolomLayanan} baris={aktif} kunciBaris="id"
-              kosong={<StatusKosong ikon={Building2} judul="Belum ada layanan aktif."
-                isi={bisaUbah ? 'Pilih "Tambah layanan" untuk membuat yang pertama.' : undefined} />} />
+      <IsiHalaman>
+        {/* Satu anak blok: jarak antarbagian di halaman ini diatur margin RoleNote, toolbar, dan bagian (bukan gap grid). */}
+        <div>
+          {!loading && !loadError && (
+            <RoleNote>
+              {bisaUbah
+                ? 'Admin: Anda dapat mengubah layanan. Setiap perubahan tercatat di Riwayat Perubahan.'
+                : 'Front Office: halaman ini hanya untuk dilihat. Perubahan layanan dilakukan oleh Admin.'}
+            </RoleNote>
           )}
-        </Kartu>
+          {!loading && !loadError && bisaUbah && (
+            <div className={styles.toolbar}>
+              <Tombol href="#instansi" varian="sekunder">
+                <Building2 size={16} aria-hidden="true" /> Kelola Instansi
+              </Tombol>
+              <Tombol type="button" varian="utama" onClick={bukaBaru}>
+                <Plus size={16} aria-hidden="true" /> Tambah layanan
+              </Tombol>
+            </div>
+          )}
+          <Kartu judul="Layanan aktif" padding="tanpa">
+            {loading ? (
+              <Skeleton bentuk="baris" jumlah={5} label="Memuat layanan" />
+            ) : loadError ? (
+              <Galat pesan={loadError} onRetry={() => { setLoading(true); void load(); }} />
+            ) : (
+              <Tabel caption="Daftar layanan aktif" kolom={kolomLayanan} baris={aktif} kunciBaris="id"
+                kosong={<StatusKosong ikon={Building2} judul="Belum ada layanan aktif."
+                  isi={bisaUbah ? 'Pilih "Tambah layanan" untuk membuat yang pertama.' : undefined} />} />
+            )}
+          </Kartu>
 
-        {!loading && !loadError && bisaUbah && (
-          <Kartu id="instansi" judul="Instansi" className={styles.bagian}>
+          {!loading && !loadError && bisaUbah && (
+            <Kartu id="instansi" judul="Instansi" className={styles.bagian}>
 
-            <p className={styles.sectionHint}>
-              Instansi adalah pemilik layanan, misalnya dinas atau lembaga. Klik nama atau singkatan untuk mengubahnya;
-              layanan memilih instansinya di formulir layanan.
-            </p>
-            <div className="table-wrapper" role="region" aria-label="Daftar instansi" {...BISA_DIFOKUS}>
-              <table className="table">
-                <caption className="sr-only">Daftar instansi</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Nama</th><th scope="col">Singkatan</th>
-                    <th scope="col"><span className="sr-only">Aksi</span></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {instansi.map((i) => (
-                    <tr key={i.id}>
-                      <td className="kol-utama">
-                        <SelTeksInline nilai={i.nama} label={`nama instansi ${i.nama}`} maxLength={NAMA_INSTANSI_MAKS}
-                          validasi={validasiInstansiNama} onSimpan={(baru) => ubahInstansi(i, 'nama', baru)} />
-                      </td>
-                      <td colSpan={2}>
-                        <SelTeksInline nilai={i.singkatan ?? ''} label={`singkatan instansi ${i.nama}`} maxLength={SINGKATAN_MAKS}
-                          teksKosong="Tambah singkatan" validasi={validasiSingkatan}
-                          onSimpan={(baru) => ubahInstansi(i, 'singkatan', baru)} />
-                      </td>
-                    </tr>
-                  ))}
+              <p className={styles.sectionHint}>
+                Instansi adalah pemilik layanan, misalnya dinas atau lembaga. Klik nama atau singkatan untuk mengubahnya;
+                layanan memilih instansinya di formulir layanan.
+              </p>
+              <Tabel caption="Daftar instansi" kolom={kolomInstansi} baris={instansi} kunciBaris="id"
+                akhir={
                   <BarisTambah
                     kolom={3}
                     ariaTombol="Tambah instansi"
@@ -319,55 +355,22 @@ export default function KelolaLayananPage() {
                     ]}
                     onTambah={tambahInstansi}
                   />
-                </tbody>
-              </table>
-            </div>
-          </Kartu>
-        )}
+                } />
+            </Kartu>
+          )}
 
-        {!loading && !loadError && arsip.length > 0 && (
-          <Kartu judul="Diarsipkan" className={styles.bagian}>
+          {!loading && !loadError && arsip.length > 0 && (
+            <Kartu judul="Diarsipkan" className={styles.bagian}>
 
-            <p className={styles.sectionHint}>
-              Layanan yang diarsipkan tidak tampil di publik dan tidak menerbitkan tiket atau reservasi baru. Riwayatnya tetap tersimpan.
-            </p>
-            <div className="table-wrapper" role="region" aria-label="Daftar layanan yang diarsipkan" {...BISA_DIFOKUS}>
-              <table className="table">
-                <caption className={styles.srOnly}>Daftar layanan yang diarsipkan</caption>
-                <thead>
-                  <tr>
-                    <th>Layanan</th><th>Instansi</th><th>Diarsipkan pada</th>
-                    {bisaUbah && <th>Aksi</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {arsip.map((r) => (
-                    <tr key={r.id} className={styles.mutedRow}>
-                      <td className={tampilan.sel5} >{r.nama}</td>
-                      <td>{namaInstansi(r.instansi_id)}</td>
-                      <td>{tanggalArsip(r.diarsipkan_at)}</td>
-                      {bisaUbah && (
-                        <td>
-                          <div className={styles.rowActions}>
-                            <Tombol type="button" varian="sekunder" ukuran="kecil"
-                              aria-label={`Aktifkan lagi ${r.nama}`} onClick={() => aktifkanLagi(r)}>
-                              <RotateCcw size={14} aria-hidden="true" /> Aktifkan lagi
-                            </Tombol>
-                            <Tombol type="button" varian="hantu" ukuran="kecil"
-                              aria-label={`Hapus permanen ${r.nama}`} onClick={() => setAksi({ jenis: 'hapus', row: r })}>
-                              <Trash2 size={14} aria-hidden="true" /> Hapus permanen
-                            </Tombol>
-                          </div>
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Kartu>
-        )}
-      </div>
+              <p className={styles.sectionHint}>
+                Layanan yang diarsipkan tidak tampil di publik dan tidak menerbitkan tiket atau reservasi baru. Riwayatnya tetap tersimpan.
+              </p>
+              <Tabel caption="Daftar layanan yang diarsipkan" kolom={kolomArsip} baris={arsip} kunciBaris="id"
+                kelasBaris={() => styles.mutedRow} kartuDiHp />
+            </Kartu>
+          )}
+        </div>
+      </IsiHalaman>
 
       {(edit || buat) && (
         <AkunDialog title={edit ? `Ubah layanan: ${edit.nama}` : 'Tambah layanan'} onClose={tutup}>

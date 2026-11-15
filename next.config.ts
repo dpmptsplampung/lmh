@@ -34,11 +34,11 @@ export function buildContentSecurityPolicy(
   return [
     "default-src 'self'",
     `script-src 'self' 'unsafe-inline'${development ? " 'unsafe-eval'" : ''}`,
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "style-src 'self' 'unsafe-inline'",
     `connect-src 'self'${httpOrigin ? ` ${httpOrigin} ${webSocketOrigin}` : ''}${r2Endpoint ? ` ${r2Endpoint}` : ''}`,
     // https: = foto UMKM dari tautan web eksternal (migrasi 202611030004 membatasi URL foto ke https). Hanya gambar; script/connect tetap ketat.
     `img-src 'self' data: blob:${httpOrigin ? ` ${httpOrigin}` : ''}${r2Publik ? ` ${r2Publik}` : ''} https:`,
-    "font-src 'self' data: https://fonts.gstatic.com",
+    "font-src 'self' data:",
     "worker-src 'self' blob:",
     "object-src 'none'",
     "base-uri 'self'",

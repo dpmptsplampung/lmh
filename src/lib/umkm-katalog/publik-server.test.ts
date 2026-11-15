@@ -1,6 +1,8 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from 'vitest';
 const { rpc, cache } = vi.hoisted(() => ({ rpc: vi.fn(), cache: new Map<string, Promise<unknown>>() }));
+vi.mock('next/server', () => ({ after: () => {} }));
+vi.mock('@/lib/umkm-katalog/statistik-server', () => ({ catatTanpaHasil: vi.fn() }));
 vi.mock('@supabase/supabase-js', () => ({ createClient: () => ({ rpc }) }));
 vi.mock('next/cache', () => ({ unstable_cache: (fn: (...args: unknown[]) => Promise<unknown>) => {
   return (...args: unknown[]) => {

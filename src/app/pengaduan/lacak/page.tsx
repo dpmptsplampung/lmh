@@ -2,7 +2,8 @@
 
 import { useRef, useState } from 'react';
 import Link from 'next/link';
-import { AlertCircle, Loader2, Search, ClipboardList } from 'lucide-react';
+import { AlertCircle, Search, ClipboardList } from 'lucide-react';
+import Tombol from '@/components/ui/Tombol';
 import { formatTanggalWaktu } from '@/lib/utils';
 import { tampilWaktuLaporan } from '@/lib/waktu-anonim';
 
@@ -121,9 +122,9 @@ export default function LacakPengaduanPage() {
             <AlertCircle size={16} aria-hidden="true" /> {error}
           </p>
         )}
-        <button type="submit" className="btn btn--primary" disabled={loading}>
-          {loading ? <Loader2 size={16} className="spin" aria-hidden="true" /> : <Search size={16} aria-hidden="true" />} Lacak Status
-        </button>
+        <Tombol type="submit" ikon={Search} disabled={loading} memuat={loading}>
+          Lacak Status
+        </Tombol>
       </form>
 
       {hasil && (

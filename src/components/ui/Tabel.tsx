@@ -32,8 +32,18 @@ export interface TabelProps<T> {
   caption: string;
   /** Tampilkan caption secara visual (bawaan: tersembunyi, tetap terbaca pembaca layar). */
   captionTampil?: boolean;
-  /** Dirender bila `baris` kosong dan tidak `memuat` (mis. <StatusKosong> atau <CatatanKeadaan>). */
+  /**
+   * Dirender bila `baris` kosong dan tidak `memuat` (mis. <StatusKosong> atau <CatatanKeadaan>).
+   * Tanpa `akhir`, node ini menggantikan seluruh tabel. Dengan `akhir`, tabel (kepala + akhir) tetap tampil dan node ini
+   * menjadi satu baris selebar tabel tepat sebelum `akhir`.
+   */
   kosong?: ReactNode;
+  /**
+   * Baris tambahan di ujung <tbody>, setelah baris data (mis. baris "+ Tambah ..." `BarisTambah`). Pemanggil merender
+   * <tr> sendiri, jadi jumlah/lebar selnya harus selaras dengan `kolom`. Karena tabel tetap ada, `kosong` tidak lagi
+   * menggantikan tabel saat `baris` kosong. `memuat` tetap menang.
+   */
+  akhir?: ReactNode;
   memuat?: boolean;
   padat?: boolean;
   /**
@@ -54,6 +64,7 @@ export default function Tabel<T>({
   caption,
   captionTampil = false,
   kosong,
+  akhir,
   memuat = false,
   padat = false,
   kartuDiHp = false,
@@ -67,7 +78,9 @@ export default function Tabel<T>({
       </div>
     );
   }
-  if (baris.length === 0 && kosong) {
+  const adaAkhir = akhir !== undefined && akhir !== null && akhir !== false;
+  const barisKosong = baris.length === 0 && !!kosong;
+  if (barisKosong && !adaAkhir) {
     return <div className={className}>{kosong}</div>;
   }
 
@@ -98,6 +111,13 @@ export default function Tabel<T>({
           </tr>
         </thead>
         <tbody>
+          {barisKosong && (
+            <tr>
+              <td colSpan={kolom.length} className={styles.selKosong}>
+                {kosong}
+              </td>
+            </tr>
+          )}
           {baris.map((b, i) => (
             <tr key={ambilKunci(b, i)} className={kelasBaris?.(b, i)}>
               {kolom.map((k) => {
@@ -121,6 +141,7 @@ export default function Tabel<T>({
               })}
             </tr>
           ))}
+          {adaAkhir && akhir}
         </tbody>
       </table>
     </div>

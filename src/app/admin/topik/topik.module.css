@@ -76,10 +76,6 @@
   padding: var(--space-1);
 }
 
-.tabel :global(.table) td {
-  vertical-align: middle;
-}
-
 .saklarBaris {
   display: inline-flex;
   align-items: center;
@@ -87,7 +83,7 @@
   cursor: pointer;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 768px) {
   .tata {
     grid-template-columns: minmax(0, 1fr);
     gap: var(--space-4);
@@ -101,13 +97,9 @@
     display: block;
   }
 
-  .tabel :global(.table) th,
-  .tabel :global(.table) td {
+  /* Sel Tabel (ui/Tabel): padding samping dirapatkan di layar sempit. */
+  .tabel table :is(thead, tbody) :is(th, td) {
     padding-inline: var(--space-2);
-  }
-
-  .tabel :global(.table) .kol-utama {
-    min-width: 0;
   }
 }
 

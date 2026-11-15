@@ -3,7 +3,8 @@
 // Dialog "Tolak pengunjung" pada scan QR: alasan wajib (5-500 karakter) -> RPC fo_tolak_reservasi (kontrak §2.3).
 // Pengganti window.confirm: dialog aksesibel (Escape, focus trap, fokus kembali ke tombol pemicu) dengan label terhubung.
 import { useId, useRef, useState } from 'react';
-import { Loader2, XCircle } from 'lucide-react';
+import { XCircle } from 'lucide-react';
+import Tombol from '@/components/ui/Tombol';
 import { createClient } from '@/lib/supabase/client';
 import {
   foTolakReservasi,
@@ -67,13 +68,12 @@ export default function FoTolakReservasiDialog({ qrToken, namaPengunjung, onClos
       onSubmit={kirim}
       footer={
         <>
-          <button type="button" className="btn btn--ghost btn--sm" onClick={onClose} disabled={mengirim}>
+          <Tombol varian="hantu" ukuran="kecil" onClick={onClose} disabled={mengirim}>
             Batal
-          </button>
-          <button type="submit" className="btn btn--danger btn--sm" disabled={mengirim} aria-busy={mengirim}>
-            {mengirim ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <XCircle size={14} aria-hidden="true" />}
+          </Tombol>
+          <Tombol type="submit" varian="bahaya" ukuran="kecil" ikon={XCircle} disabled={mengirim} memuat={mengirim}>
             {mengirim ? 'Memproses…' : 'Tolak pengunjung'}
-          </button>
+          </Tombol>
         </>
       }
     >

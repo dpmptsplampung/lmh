@@ -1,7 +1,7 @@
 .latar {
   position: fixed;
   inset: 0;
-  z-index: 1000;
+  z-index: var(--z-modal);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -62,6 +62,13 @@
   min-width: 0;
 }
 
+.judulBaris {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .judul {
   margin: 0;
   font-size: var(--text-lg);
@@ -103,6 +110,14 @@
 .tutup:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Pembungkus <form> (prop onKirim): meneruskan rantai flex kotak -> badan (gulir) -> kaki (tetap di dasar). */
+.isian {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .badan {
@@ -147,6 +162,15 @@
 
 /* HP: panel samping menjadi lembar bawah. */
 @media (max-width: 640px) {
+  .latarPenuhHp {
+    padding: 0;
+  }
+
+  .kotakPenuhHp {
+    max-height: 100dvh;
+    border-radius: 0;
+  }
+
   .latarSamping {
     align-items: flex-end;
     justify-content: center;

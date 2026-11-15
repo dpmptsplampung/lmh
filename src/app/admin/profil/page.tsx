@@ -8,6 +8,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { AlertTriangle, CheckCircle, Loader2, Save, KeyRound } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
+import IsiHalaman from '@/components/layout/IsiHalaman';
 import Galat from '@/components/ui/Galat';
 import Skeleton from '@/components/ui/Skeleton';
 import Kartu from '@/components/ui/Kartu';
@@ -358,9 +359,11 @@ function ProfilContent() {
     return (
       <>
         <PageHeader title="Profil Saya" />
-        <div className={styles.container}>
-          <Galat pesan={loadError} onRetry={coba} memuat={memuatUlang} />
-        </div>
+        <IsiHalaman lebar="baca">
+          <div className={styles.container}>
+            <Galat pesan={loadError} onRetry={coba} memuat={memuatUlang} />
+          </div>
+        </IsiHalaman>
       </>
     );
   }
@@ -369,9 +372,11 @@ function ProfilContent() {
     return (
       <>
         <PageHeader title="Profil Saya" />
-        <div className={styles.container} role="status" aria-label="Memuat profil">
-          <Skeleton bentuk="kartu" jumlah={2} label="Memuat profil" />
-        </div>
+        <IsiHalaman lebar="baca">
+          <div className={styles.container} role="status" aria-label="Memuat profil">
+            <Skeleton bentuk="kartu" jumlah={2} label="Memuat profil" />
+          </div>
+        </IsiHalaman>
       </>
     );
   }
@@ -445,129 +450,131 @@ function ProfilContent() {
     <>
       <PageHeader title="Profil Saya" description="Data diri, email notifikasi, dan keamanan akun Anda" />
 
-      <div className={styles.container}>
-        {loadError && <Galat pesan={loadError} onRetry={coba} memuat={memuatUlang} />}
-        {wajibGanti && (
-          <div className={`${styles.banner} ${styles.bannerWarn}`} role="alert">
-            <AlertTriangle size={16} aria-hidden="true" />
-            <span>Anda memakai kata sandi sementara. Ganti kata sandi sekarang sebelum melanjutkan.</span>
-          </div>
-        )}
-        {emailVerif === 'ok' && (
-          <div className={`${styles.banner} ${styles.bannerOk}`} role="status">
-            <CheckCircle size={16} aria-hidden="true" />
-            <span>Email notifikasi berhasil diverifikasi.</span>
-          </div>
-        )}
-        {emailVerif === 'gagal' && (
-          <div className={`${styles.banner} ${styles.bannerWarn}`} role="alert">
-            <AlertTriangle size={16} aria-hidden="true" />
-            <span>Verifikasi email gagal atau tautan sudah kedaluwarsa. Kirim ulang tautan verifikasi.</span>
-          </div>
-        )}
-
-        <section className={styles.identitas} aria-labelledby="identitas-judul">
-          <h2 id="identitas-judul" className={styles.nama}>{profil.nama}</h2>
-          <p className={styles.username}>
-            Nama pengguna <strong>{profil.username ?? 'belum ada'}</strong>
-          </p>
-          <div className={styles.lencanaBaris}>
-            <span className={styles.lencana}>{ROLE_LABEL[profil.role]}</span>
-            {profil.layanan_nama && <span className={styles.lencana}>{profil.layanan_nama}</span>}
-          </div>
-          <p className={styles.hint}>Nama pengguna, role, dan layanan hanya dapat diubah oleh Admin.</p>
-        </section>
-
-        {sandiDiutamakan && blokKeamanan}
-
-        <Kartu className={styles.card}><form className={styles.form} onSubmit={simpanDiri} aria-labelledby="diri-judul" noValidate>
-          <div>
-            <h2 id="diri-judul" className={styles.cardTitle}>Data diri</h2>
-            <p className={styles.hint}>Nama Anda tampil pada riwayat pelayanan, absensi, dan laporan.</p>
-          </div>
-          <div className="form-group">
-            <label className="form-label" htmlFor="nama">Nama</label>
-            <input id="nama" type="text" className="form-input" value={nama} maxLength={100}
-              onChange={(e) => setNama(e.target.value)} autoComplete="name"
-              aria-invalid={galatField.nama ? true : undefined} aria-describedby={galatField.nama ? 'nama-galat' : undefined} />
-            {galatField.nama && <p id="nama-galat" className="form-error" role="alert">{galatField.nama}</p>}
-          </div>
-          <div className="form-group">
-            <label className="form-label" htmlFor="noHp">Nomor HP</label>
-            <input id="noHp" type="tel" className="form-input" placeholder="0812 3456 7890" value={noHp}
-              onChange={(e) => setNoHp(e.target.value)} autoComplete="tel"
-              aria-invalid={galatField.no_hp ? true : undefined} aria-describedby={galatField.no_hp ? 'hp-galat' : 'hp-hint'} />
-            {galatField.no_hp ? (
-              <p id="hp-galat" className="form-error" role="alert">{galatField.no_hp}</p>
-            ) : (
-              <p id="hp-hint" className={styles.hint}>
-                {hpDiketik.valid && hpDiketik.nilai && hpDiketik.nilai !== noHp.trim()
-                  ? `Akan disimpan sebagai ${hpDiketik.nilai}.`
-                  : 'Boleh dikosongkan.'}
-              </p>
-            )}
-          </div>
-          {pesanBagian('diri')}
-          <div>{tombolSimpan('diri', diriBerubah)}</div>
-        </form></Kartu>
-
-        <Kartu className={styles.card}><form className={styles.form} onSubmit={simpanEmail} aria-labelledby="email-judul" noValidate>
-          <div>
-            <div className={styles.judulBaris}>
-              <h2 id="email-judul" className={styles.cardTitle}>Email notifikasi</h2>
-              <span className={!adaEmail ? styles.lencana : profil.email_notifikasi_terverifikasi ? styles.lencanaOk : styles.lencanaPeringatan}>
-                {!adaEmail ? 'Belum diisi' : profil.email_notifikasi_terverifikasi ? 'Terverifikasi' : 'Belum terverifikasi'}
-              </span>
+      <IsiHalaman lebar="baca">
+        <div className={styles.container}>
+          {loadError && <Galat pesan={loadError} onRetry={coba} memuat={memuatUlang} />}
+          {wajibGanti && (
+            <div className={`${styles.banner} ${styles.bannerWarn}`} role="alert">
+              <AlertTriangle size={16} aria-hidden="true" />
+              <span>Anda memakai kata sandi sementara. Ganti kata sandi sekarang sebelum melanjutkan.</span>
             </div>
-            <p className={styles.hint}>
-              Dipakai untuk menerima notifikasi dan mengatur ulang kata sandi. Bukan untuk masuk. Mengubahnya
-              memerlukan verifikasi ulang, dan satu alamat boleh dipakai beberapa akun.
-            </p>
-          </div>
-          <div className="form-group">
-            <label className="form-label" htmlFor="emailNotif">Alamat email</label>
-            <input id="emailNotif" type="email" className="form-input" placeholder="nama@instansi.go.id" value={emailNotif}
-              onChange={(e) => setEmailNotif(e.target.value)} autoComplete="email"
-              aria-invalid={galatField.email_notifikasi ? true : undefined}
-              aria-describedby={galatField.email_notifikasi ? 'email-galat' : undefined} />
-            {galatField.email_notifikasi && <p id="email-galat" className="form-error" role="alert">{galatField.email_notifikasi}</p>}
-          </div>
-          {pesanBagian('email')}
-          <div className={styles.aksi}>
-            {tombolSimpan('email', emailBerubah)}
-            {adaEmail && !profil.email_notifikasi_terverifikasi && (
-              <Tombol type="button" varian="sekunder" onClick={handleKirimUlang} disabled={resending}>
-                {resending ? <Loader2 size={16} className="animate-pulse" aria-hidden="true" /> : null} Kirim ulang verifikasi
-              </Tombol>
-            )}
-          </div>
-        </form></Kartu>
+          )}
+          {emailVerif === 'ok' && (
+            <div className={`${styles.banner} ${styles.bannerOk}`} role="status">
+              <CheckCircle size={16} aria-hidden="true" />
+              <span>Email notifikasi berhasil diverifikasi.</span>
+            </div>
+          )}
+          {emailVerif === 'gagal' && (
+            <div className={`${styles.banner} ${styles.bannerWarn}`} role="alert">
+              <AlertTriangle size={16} aria-hidden="true" />
+              <span>Verifikasi email gagal atau tautan sudah kedaluwarsa. Kirim ulang tautan verifikasi.</span>
+            </div>
+          )}
 
-        {profil.operator_aktif && (
-          <Kartu className={styles.card}><form className={styles.form} onSubmit={simpanOperator} aria-labelledby="operator-judul" noValidate>
+          <section className={styles.identitas} aria-labelledby="identitas-judul">
+            <h2 id="identitas-judul" className={styles.nama}>{profil.nama}</h2>
+            <p className={styles.username}>
+              Nama pengguna <strong>{profil.username ?? 'belum ada'}</strong>
+            </p>
+            <div className={styles.lencanaBaris}>
+              <span className={styles.lencana}>{ROLE_LABEL[profil.role]}</span>
+              {profil.layanan_nama && <span className={styles.lencana}>{profil.layanan_nama}</span>}
+            </div>
+            <p className={styles.hint}>Nama pengguna, role, dan layanan hanya dapat diubah oleh Admin.</p>
+          </section>
+
+          {sandiDiutamakan && blokKeamanan}
+
+          <Kartu className={styles.card}><form className={styles.form} onSubmit={simpanDiri} aria-labelledby="diri-judul" noValidate>
             <div>
-              <h2 id="operator-judul" className={styles.cardTitle}>Operator harian</h2>
+              <h2 id="diri-judul" className={styles.cardTitle}>Data diri</h2>
+              <p className={styles.hint}>Nama Anda tampil pada riwayat pelayanan, absensi, dan laporan.</p>
+            </div>
+            <div className="form-group">
+              <label className="form-label" htmlFor="nama">Nama</label>
+              <input id="nama" type="text" className="form-input" value={nama} maxLength={100}
+                onChange={(e) => setNama(e.target.value)} autoComplete="name"
+                aria-invalid={galatField.nama ? true : undefined} aria-describedby={galatField.nama ? 'nama-galat' : undefined} />
+              {galatField.nama && <p id="nama-galat" className="form-error" role="alert">{galatField.nama}</p>}
+            </div>
+            <div className="form-group">
+              <label className="form-label" htmlFor="noHp">Nomor HP</label>
+              <input id="noHp" type="tel" className="form-input" placeholder="0812 3456 7890" value={noHp}
+                onChange={(e) => setNoHp(e.target.value)} autoComplete="tel"
+                aria-invalid={galatField.no_hp ? true : undefined} aria-describedby={galatField.no_hp ? 'hp-galat' : 'hp-hint'} />
+              {galatField.no_hp ? (
+                <p id="hp-galat" className="form-error" role="alert">{galatField.no_hp}</p>
+              ) : (
+                <p id="hp-hint" className={styles.hint}>
+                  {hpDiketik.valid && hpDiketik.nilai && hpDiketik.nilai !== noHp.trim()
+                    ? `Akan disimpan sebagai ${hpDiketik.nilai}.`
+                    : 'Boleh dikosongkan.'}
+                </p>
+              )}
+            </div>
+            {pesanBagian('diri')}
+            <div>{tombolSimpan('diri', diriBerubah)}</div>
+          </form></Kartu>
+
+          <Kartu className={styles.card}><form className={styles.form} onSubmit={simpanEmail} aria-labelledby="email-judul" noValidate>
+            <div>
+              <div className={styles.judulBaris}>
+                <h2 id="email-judul" className={styles.cardTitle}>Email notifikasi</h2>
+                <span className={!adaEmail ? styles.lencana : profil.email_notifikasi_terverifikasi ? styles.lencanaOk : styles.lencanaPeringatan}>
+                  {!adaEmail ? 'Belum diisi' : profil.email_notifikasi_terverifikasi ? 'Terverifikasi' : 'Belum terverifikasi'}
+                </span>
+              </div>
               <p className={styles.hint}>
-                Diaktifkan Admin untuk akun ini. Nama di bawah otomatis tercatat pada absensi.
+                Dipakai untuk menerima notifikasi dan mengatur ulang kata sandi. Bukan untuk masuk. Mengubahnya
+                memerlukan verifikasi ulang, dan satu alamat boleh dipakai beberapa akun.
               </p>
             </div>
             <div className="form-group">
-              <label className="form-label" htmlFor="operator">Nama petugas yang bertugas hari ini</label>
-              <input id="operator" type="text" className="form-input" value={operator} maxLength={100}
-                onChange={(e) => setOperator(e.target.value)}
-                aria-invalid={galatField.operator_default ? true : undefined}
-                aria-describedby={galatField.operator_default ? 'operator-galat' : undefined} />
-              {galatField.operator_default && (
-                <p id="operator-galat" className="form-error" role="alert">{galatField.operator_default}</p>
+              <label className="form-label" htmlFor="emailNotif">Alamat email</label>
+              <input id="emailNotif" type="email" className="form-input" placeholder="nama@instansi.go.id" value={emailNotif}
+                onChange={(e) => setEmailNotif(e.target.value)} autoComplete="email"
+                aria-invalid={galatField.email_notifikasi ? true : undefined}
+                aria-describedby={galatField.email_notifikasi ? 'email-galat' : undefined} />
+              {galatField.email_notifikasi && <p id="email-galat" className="form-error" role="alert">{galatField.email_notifikasi}</p>}
+            </div>
+            {pesanBagian('email')}
+            <div className={styles.aksi}>
+              {tombolSimpan('email', emailBerubah)}
+              {adaEmail && !profil.email_notifikasi_terverifikasi && (
+                <Tombol type="button" varian="sekunder" onClick={handleKirimUlang} disabled={resending}>
+                  {resending ? <Loader2 size={16} className="animate-pulse" aria-hidden="true" /> : null} Kirim ulang verifikasi
+                </Tombol>
               )}
             </div>
-            {pesanBagian('operator')}
-            <div>{tombolSimpan('operator', operatorBerubah)}</div>
           </form></Kartu>
-        )}
 
-        {!sandiDiutamakan && blokKeamanan}
-      </div>
+          {profil.operator_aktif && (
+            <Kartu className={styles.card}><form className={styles.form} onSubmit={simpanOperator} aria-labelledby="operator-judul" noValidate>
+              <div>
+                <h2 id="operator-judul" className={styles.cardTitle}>Operator harian</h2>
+                <p className={styles.hint}>
+                  Diaktifkan Admin untuk akun ini. Nama di bawah otomatis tercatat pada absensi.
+                </p>
+              </div>
+              <div className="form-group">
+                <label className="form-label" htmlFor="operator">Nama petugas yang bertugas hari ini</label>
+                <input id="operator" type="text" className="form-input" value={operator} maxLength={100}
+                  onChange={(e) => setOperator(e.target.value)}
+                  aria-invalid={galatField.operator_default ? true : undefined}
+                  aria-describedby={galatField.operator_default ? 'operator-galat' : undefined} />
+                {galatField.operator_default && (
+                  <p id="operator-galat" className="form-error" role="alert">{galatField.operator_default}</p>
+                )}
+              </div>
+              {pesanBagian('operator')}
+              <div>{tombolSimpan('operator', operatorBerubah)}</div>
+            </form></Kartu>
+          )}
+
+          {!sandiDiutamakan && blokKeamanan}
+        </div>
+      </IsiHalaman>
     </>
   );
 }

@@ -1,8 +1,4 @@
-.area1 {
-  padding: 0 var(--pad-page) var(--pad-page);
-  min-width: 0;
-}
-
-.sel5 {
-  font-weight: 600;
+/* Nama layanan di baris arsip: sel kepala baris Tabel (<th>) memakai warna utama, jadi warna redup dipasang pada isinya. */
+.namaArsip {
+  color: var(--text-secondary);
 }

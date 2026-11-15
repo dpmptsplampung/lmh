@@ -4,7 +4,8 @@
 // Tombol dikunci selama request; galat dipetakan ke pesan Indonesia (inline, role="alert"). Galat yang berarti
 // tampilan basi / sesi tidak sah diteruskan ke halaman lewat `onGalatSistem` (muat ulang / arahkan ke login).
 import { useRef, useState } from 'react';
-import { CheckCircle2, Loader2 } from 'lucide-react';
+import { CheckCircle2 } from 'lucide-react';
+import Tombol from '@/components/ui/Tombol';
 import { createClient } from '@/lib/supabase/client';
 import {
   foSelesai,
@@ -80,15 +81,12 @@ export default function FoSelesaiForm({ penangananId, namaPengunjung, topik, onB
       />
       {galat && <p role="alert" className={styles.galat}>{galat}</p>}
       <div className={styles.aksi}>
-        <button type="button" className="btn btn--ghost btn--sm" onClick={onBatal} disabled={mengirim}>
+        <Tombol varian="hantu" ukuran="kecil" onClick={onBatal} disabled={mengirim}>
           Batal
-        </button>
-        <button type="submit" className="btn btn--primary btn--sm" disabled={mengirim} aria-busy={mengirim}>
-          {mengirim
-            ? <Loader2 size={14} className="animate-spin" aria-hidden="true" />
-            : <CheckCircle2 size={14} aria-hidden="true" />}
+        </Tombol>
+        <Tombol type="submit" ukuran="kecil" ikon={CheckCircle2} disabled={mengirim} memuat={mengirim}>
           {mengirim ? 'Menyimpan…' : 'Selesaikan penanganan'}
-        </button>
+        </Tombol>
       </div>
     </form>
   );

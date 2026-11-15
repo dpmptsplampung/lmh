@@ -599,3 +599,74 @@ describe('Penanganan: keadaan Dasbor', () => {
     spy.mockRestore();
   });
 });
+
+describe('Penanganan: struktur tabel (Tabel bersama)', () => {
+  const teksTabel = (t: HTMLElement) => ({
+    kepala: within(t).getAllByRole('columnheader').map((h) => h.textContent?.trim()),
+    baris: within(t).getAllByRole('row').slice(1).map((tr) => within(tr).getAllByRole('cell').map((td) => td.textContent?.trim())),
+  });
+  const lain = (id: string, nama: string, o: Record<string, unknown> = {}) => berjalan({
+    id, kunjungan_id: `k-${id}`, penangan_id: 'p-lain', penangan: { nama: 'Bayu FO' },
+    kunjungan: { nama, asal_instansi: null, keperluan: null, layanan_saran_id: null }, ...o,
+  });
+  const riwayatData = [
+    {
+      id: 'r-1', kunjungan_id: 'k-2', tahap_ke: 1, saluran: 'qr', status: 'selesai', hasil: 'dieskalasi',
+      topik: 'Informasi perizinan/syarat', catatan: 'Tanya NIB', mulai_at: '2026-10-13T01:00:00.000Z',
+      selesai_at: '2026-10-13T01:10:00.000Z', penangan_id: 'p-saya', penangan: { nama: 'Saya FO' },
+      kunjungan: { nama: 'Ani', asal_instansi: null, email: 'ani@x.id' },
+    },
+    {
+      id: 'r-2', kunjungan_id: 'k-3', tahap_ke: 1, saluran: 'walk_in', status: 'batal', hasil: null,
+      topik: null, catatan: null, mulai_at: '2026-10-13T00:30:00.000Z', selesai_at: null,
+      penangan_id: 'p-lain', penangan: { nama: 'Bayu FO' }, kunjungan: { nama: 'Candra', asal_instansi: null },
+    },
+  ];
+
+  it('FO lain, FO biasa: 3 kolom, satu baris data, tanpa kolom Aksi', async () => {
+    siapkan({ berjalan: [berjalan(), lain('pn-9', 'Dewi Lestari')] });
+    render(<PenangananFoPage />);
+    const t = await screen.findByRole('table', { name: /ditangani Front Office lain/ });
+    // Tabel bersama dalam mode kartu di HP: tiap sel membawa label kolomnya.
+    expect(t.closest('[class*="kartuDiHp"]')).not.toBeNull();
+    expect(within(t).getByRole('cell', { name: /Dewi Lestari/ })).toHaveAttribute('data-label', 'Pengunjung');
+    expect(teksTabel(t)).toEqual({
+      kepala: ['Mulai', 'Pengunjung', 'Front Office'],
+      baris: [['09.30', 'Dewi LestariWalk-in', 'Bayu FO']],
+    });
+  });
+
+  it('FO lain, Koordinator: kolom Aksi berisi Ambil alih atau keterangan chat', async () => {
+    siapkan({ berjalan: [berjalan(), lain('pn-9', 'Dewi Lestari'), lain('pn-8', 'Eka Chat', { saluran: 'chat' })] });
+    m.h.tabel.petugas = (ops: Op[]) =>
+      punyaOp(ops, 'select', 'koordinator')
+        ? { data: [{ koordinator: true }], error: null }
+        : { data: [{ id: 'p-saya', role: 'front_office' }], error: null };
+    render(<PenangananFoPage />);
+    const t = await screen.findByRole('table', { name: /ditangani Front Office lain/ });
+    expect(teksTabel(t)).toEqual({
+      kepala: ['Mulai', 'Pengunjung', 'Front Office', 'Aksi'],
+      baris: [
+        ['09.30', 'Dewi LestariWalk-in', 'Bayu FO', 'Ambil alih'],
+        ['09.30', 'Eka ChatChat', 'Bayu FO', 'Live chat: tidak dapat diambil alih'],
+      ],
+    });
+  });
+
+  it('riwayat: 6 kolom, hasil/topik/catatan/email per baris', async () => {
+    siapkan({
+      berjalan: [],
+      riwayat: riwayatData,
+      tiket: [{ penanganan_asal_id: 'r-1', nomor_display: 'OS-014', layanan_id: 'l-1' }],
+    });
+    render(<PenangananFoPage />);
+    const t = await screen.findByRole('table', { name: /Riwayat penanganan/ });
+    expect(teksTabel(t)).toEqual({
+      kepala: ['Waktu', 'Pengunjung', 'Front Office', 'Hasil', 'Topik', 'Catatan'],
+      baris: [
+        ['08.00–08.10', 'AniReservasi (QR)Email: ani@x.id', 'Anda', 'Dieskalasi → OS-014 (Helpdesk OSS)', 'Informasi perizinan/syarat', 'Tanya NIB'],
+        ['07.30–-', 'CandraWalk-in', 'Bayu FO', 'Dibatalkan', '-', '-'],
+      ],
+    });
+  });
+});

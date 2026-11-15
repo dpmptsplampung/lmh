@@ -9,6 +9,7 @@ type HasilUpsert = { data: { jenis: string }[] | null; error: DbError | null };
 
 const h = vi.hoisted(() => ({
   toast: vi.fn(),
+  segarkan: vi.fn(),
   selects: vi.fn(),
   upserts: [] as { rows: Array<Record<string, unknown>>; opsi: Record<string, unknown> }[],
   state: {
@@ -22,6 +23,11 @@ const h = vi.hoisted(() => ({
 
 vi.mock('@/components/Toast', () => ({ useToast: () => ({ toast: h.toast }) }));
 vi.mock('@/components/layout/PageHeader', () => ({ default: () => null }));
+// Helper pembuang cache publik (4.5): hanya fungsinya yang ditiru; konstanta tag tetap yang asli.
+vi.mock('@/lib/data/klien/segarkanPublik', async (impor) => ({
+  ...(await impor<typeof import('@/lib/data/klien/segarkanPublik')>()),
+  segarkanPublik: h.segarkan,
+}));
 vi.mock('next/link', () => ({
   default: ({ children, href }: { children: React.ReactNode; href: string }) => <a href={href}>{children}</a>,
 }));
@@ -61,6 +67,7 @@ const kartu = (judul: RegExp) => screen.getByRole('group', { name: judul });
 describe('Admin editor blok homepage', () => {
   beforeEach(() => {
     h.toast.mockClear();
+    h.segarkan.mockReset();
     h.selects.mockClear();
     h.upserts.length = 0;
     h.state.rows = SEMUA;
@@ -174,6 +181,75 @@ describe('Admin editor blok homepage', () => {
     simpan();
     await waitFor(() => expect(h.toast).toHaveBeenCalledWith(expect.stringContaining('Gagal menyimpan'), 'error'));
     expect(h.toast).not.toHaveBeenCalledWith(expect.anything(), 'success');
+  });
+
+  describe('membuang cache beranda publik (rencana 4.5)', () => {
+    it('simpan berhasil memanggil segarkanPublik("publik-beranda") sekali', async () => {
+      render(<EditorBlokHomepagePage />);
+      await screen.findByRole('group', { name: /Hero/ });
+      simpan();
+      await waitFor(() => expect(h.toast).toHaveBeenCalledWith('Blok homepage berhasil disimpan!', 'success'));
+      expect(h.segarkan).toHaveBeenCalledTimes(1);
+      expect(h.segarkan).toHaveBeenCalledWith('publik-beranda');
+    });
+
+    it('dipanggil SESUDAH upsert selesai, bukan sebelum', async () => {
+      render(<EditorBlokHomepagePage />);
+      await screen.findByRole('group', { name: /Hero/ });
+      h.upserts.length = 0;
+      let upsertSelesaiSaatDipanggil: boolean | null = null;
+      h.segarkan.mockImplementation(() => {
+        upsertSelesaiSaatDipanggil = h.upserts.length === 1;
+      });
+      simpan();
+      await waitFor(() => expect(h.segarkan).toHaveBeenCalled());
+      expect(upsertSelesaiSaatDipanggil).toBe(true);
+    });
+
+    it('0 baris (RLS menolak) -> TIDAK dipanggil', async () => {
+      h.state.upsertResult = () => ({ data: [], error: null });
+      render(<EditorBlokHomepagePage />);
+      await screen.findByRole('group', { name: /Hero/ });
+      simpan();
+      await waitFor(() => expect(h.toast).toHaveBeenCalledWith(expect.anything(), 'error'));
+      expect(h.segarkan).not.toHaveBeenCalled();
+    });
+
+    it('sebagian baris tersimpan -> TIDAK dipanggil (pengguna diminta simpan ulang; simpan ulang yang berhasil memanggilnya)', async () => {
+      h.state.upsertResult = (rows) => ({ data: rows.slice(0, 4).map((r) => ({ jenis: r.jenis })), error: null });
+      render(<EditorBlokHomepagePage />);
+      await screen.findByRole('group', { name: /Hero/ });
+      simpan();
+      await waitFor(() => expect(h.toast).toHaveBeenCalledWith(expect.stringContaining('4 dari 7'), 'error'));
+      expect(h.segarkan).not.toHaveBeenCalled();
+    });
+
+    it('error DB -> TIDAK dipanggil', async () => {
+      h.state.upsertResult = () => ({ data: null, error: { message: 'boom', code: 'XX000' } });
+      render(<EditorBlokHomepagePage />);
+      await screen.findByRole('group', { name: /Hero/ });
+      simpan();
+      await waitFor(() => expect(h.toast).toHaveBeenCalledWith(expect.stringContaining('Gagal menyimpan'), 'error'));
+      expect(h.segarkan).not.toHaveBeenCalled();
+    });
+
+    it('validasi tautan gagal di klien (tanpa upsert) -> TIDAK dipanggil', async () => {
+      render(<EditorBlokHomepagePage />);
+      await screen.findByRole('group', { name: /Hero/ });
+      fireEvent.change(within(kartu(/Ajakan bertindak/)).getByLabelText(/Tombol: tautan/), { target: { value: 'javascript:alert(1)' } });
+      simpan();
+      await screen.findByText(/diawali \/ atau https:\/\//);
+      expect(h.segarkan).not.toHaveBeenCalled();
+    });
+
+    it('simpan berhasil: hanya toast sukses (pembuangan cache tidak menambah toast apa pun)', async () => {
+      render(<EditorBlokHomepagePage />);
+      await screen.findByRole('group', { name: /Hero/ });
+      simpan();
+      await waitFor(() => expect(h.segarkan).toHaveBeenCalled());
+      expect(h.toast).toHaveBeenCalledTimes(1);
+      expect(h.toast).toHaveBeenCalledWith('Blok homepage berhasil disimpan!', 'success');
+    });
   });
 
   it('setelah gagal, isian pengguna TIDAK hilang dan tidak dimuat ulang', async () => {

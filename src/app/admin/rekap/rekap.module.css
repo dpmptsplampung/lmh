@@ -1,16 +1,5 @@
-/* Rekap Pelayanan gaya "Dasbor": kolom berlebar maksimum, kartu putih di atas kanvas, semua warna dari token tema. */
-.wadah {
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap-grid, 20px);
-  /* Batasi kolom ke induknya; tab dan tabel lebar tetap bergulir di wadah masing-masing. */
-  width: 100%;
-  min-width: 0;
-  max-width: var(--content-max, 1440px);
-  margin: 0 auto;
-  padding: 0 var(--pad-page, 24px) var(--space-10, 40px);
-}
-
+/* Rekap Pelayanan gaya "Dasbor": kartu putih di atas kanvas, semua warna dari token tema.
+   Padding dan lebar maksimum halaman dipegang IsiHalaman; tab dan tabel lebar bergulir di wadah masing-masing. */
 .definisi {
   margin: 0;
   font-size: var(--fs-small, 12px);
@@ -137,62 +126,11 @@
   }
 }
 
-/* Tabel Data Pelayanan: gulir ke samping dalam region, kolom pertama menempel */
-.gulir {
-  /* Teks sr-only absolut pada kepala tabel ikut terkurung di area gulir. */
-  position: relative;
-  width: 100%;
-  overflow-x: auto;
-  border-radius: var(--radius-card, var(--radius-lg));
-}
-
-.gulir:focus-visible {
-  outline: none;
-  box-shadow: var(--focus-ring);
-}
-
-.tabelData {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: var(--fs-body, 14px);
-  color: var(--text-primary);
-}
-
-.tabelData th {
-  padding: 12px 16px;
-  background: var(--bg-surface);
-  border-bottom: 1px solid var(--border-subtle);
-  color: var(--text-tertiary);
-  font-size: var(--fs-table-head, 12px);
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-align: left;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.tabelData td {
-  padding: 8px 16px;
-  border-bottom: 1px solid var(--border-subtle);
-  vertical-align: middle;
-  white-space: nowrap;
-}
-
-.tabelData tbody tr:last-child > td {
-  border-bottom: 0;
-}
-
-.tabelData tbody tr:hover > td {
-  background: var(--bg-surface-hover);
-}
-
-.tabelData .barisData {
-  cursor: pointer;
-}
-
-.tabelData th.angka,
-.tabelData td.angka {
-  text-align: right;
+/* Tabel Data Pelayanan (komponen Tabel): sel dua baris, teks dipotong, kolom pertama menempel saat tabel lebar bergulir.
+   Gulir, kepala kolom, dan mode kartu di HP dipegang Tabel; di sini hanya isi sel. */
+.sel {
+  display: block;
+  min-width: 0;
 }
 
 .utama {
@@ -201,12 +139,15 @@
 
 .waktu {
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .teks {
+  display: block;
   max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sub {
@@ -216,42 +157,37 @@
   color: var(--text-tertiary);
 }
 
-.kolAksi {
-  width: 1%;
-  text-align: right;
+/* Mode Ringkas: nama tidak membungkus, kontak satu baris dipotong */
+.pengunjung {
+  max-width: 230px;
+}
+
+.pengunjung .sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .kosongSel {
+  margin: 0;
   padding: var(--space-8);
   text-align: center;
   color: var(--text-tertiary);
 }
 
-.tabelData .kolPertama {
+.tabelData tbody td:first-child,
+.tabelData thead th:first-child {
   position: sticky;
   left: 0;
   background: var(--bg-surface);
   border-right: 1px solid var(--border-subtle);
 }
 
-.tabelData th.kolPertama {
-  z-index: 3;
-}
-
-.tabelData tbody tr:hover td.kolPertama {
+.tabelData tbody tr:hover > td:first-child {
   background: var(--bg-surface-hover);
 }
 
-.tabelData .barisDetail td {
-  padding: var(--space-4) var(--space-4) var(--space-5);
-  background: var(--bg-surface-muted, var(--bg-canvas));
-  white-space: normal;
-}
-
-.tabelData tbody .barisDetail:hover td {
-  background: var(--bg-surface-muted, var(--bg-canvas));
-}
-
+/* Rincian satu pelayanan di panel samping */
 .detail {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -272,18 +208,6 @@
   overflow-wrap: anywhere;
 }
 
-/* Mode Ringkas: nama tidak membungkus, kontak satu baris, topik dipotong */
-.tabelData td.kolPengunjung {
-  min-width: 230px;
-}
-
-.tabelData td.kolPengunjung .sub {
-  max-width: 230px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .hasil {
   max-width: 130px;
   overflow: hidden;
@@ -291,9 +215,11 @@
 }
 
 @media (max-width: 640px) {
-  .wadah {
-    padding-left: var(--pad-page, 16px);
-    padding-right: var(--pad-page, 16px);
+  .tabelKartu tbody td:first-child,
+  .tabelKartu tbody tr:hover > td:first-child {
+    position: static;
+    border-right: 0;
+    background: transparent;
   }
 
   .filter > * {

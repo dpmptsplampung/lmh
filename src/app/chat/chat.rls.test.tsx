@@ -213,7 +213,7 @@ vi.mock('@/lib/supabase/client', () => ({
   createClient: vi.fn(),
 }));
 
-import PublicChatPage from './page';
+import PublicChatPage from './ChatKlien';
 import { createClient } from '@/lib/supabase/client';
 
 type InsertCapture = { table: string; payload: unknown };

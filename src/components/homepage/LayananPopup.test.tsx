@@ -17,6 +17,8 @@ const layanan = (o: Partial<LayananEtalase> = {}): LayananEtalase => ({
   punyaAntrean: true,
   punyaChat: true,
   tampilDiHomepage: true,
+  chatbotAktif: false,
+  tipe: null,
   ...o,
 });
 

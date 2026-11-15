@@ -62,6 +62,13 @@
   border-bottom: 0;
 }
 
+/* Pesan `kosong` bila Tabel punya `akhir`: satu sel selebar tabel, tanpa sorotan hover. */
+.tabel .selKosong,
+.tabel tbody tr:hover > .selKosong {
+  background: transparent;
+  text-align: left;
+}
+
 .padat td,
 .padat tbody th {
   height: 40px;
@@ -146,6 +153,11 @@
     margin-top: 8px;
     padding-top: 12px;
     border-top: 1px solid var(--border-subtle);
+  }
+
+  .kartuDiHp .tabel .selKosong {
+    display: block;
+    text-align: left;
   }
 
   .kartuDiHp .sembunyiDiHp {

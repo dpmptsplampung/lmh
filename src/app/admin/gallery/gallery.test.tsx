@@ -53,6 +53,7 @@ function buildMock() {
     },
     _storageUpload: storageUpload,
     _insert: insert,
+    _select: select,
   };
 
   (createClient as unknown as ReturnType<typeof vi.fn>).mockReturnValue(mock);
@@ -74,6 +75,17 @@ describe('Admin gallery PDF pipeline', () => {
   afterEach(() => {
     cleanup();
     globalThis.fetch = originalFetch;
+  });
+
+  it('memuat daftar dengan kolom eksplisit yang dibaca halaman (bukan select("*"))', async () => {
+    const mock = buildMock();
+    render(<AdminGalleryPage />);
+    await waitFor(() => expect(mock._select).toHaveBeenCalledTimes(1));
+    const kolom = mock._select.mock.calls[0][0] as string;
+    expect(kolom).not.toContain('*');
+    expect(kolom.split(',').map((k) => k.trim())).toEqual([
+      'id', 'judul', 'kategori', 'urutan_tampil', 'file_path', 'jumlah_halaman', 'status', 'deskripsi', 'nilai_investasi', 'image_url',
+    ]);
   });
 
   it('create path submits multipart to /api/investment-docs/upload (no client storage.upload)', async () => {
@@ -156,7 +168,6 @@ describe('Admin gallery PDF pipeline', () => {
       return {};
     });
 
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
       status: 200,
@@ -171,6 +182,8 @@ describe('Admin gallery PDF pipeline', () => {
 
     const deleteBtn = screen.getByTitle('Hapus');
     fireEvent.click(deleteBtn);
+    expect(globalThis.fetch).not.toHaveBeenCalledWith(expect.stringContaining('/api/investment-docs/doc-del-1'), expect.anything());
+    fireEvent.click(await screen.findByRole('button', { name: 'Ya, hapus' }));
 
     await waitFor(() => {
       expect(globalThis.fetch).toHaveBeenCalledWith(

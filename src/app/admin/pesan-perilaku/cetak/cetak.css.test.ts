@@ -5,9 +5,12 @@ import postcss, { type AtRule, type Node } from 'postcss';
 import { expect, it } from 'vitest';
 
 const css = postcss.parse(readFileSync(resolve(__dirname, 'cetak.module.css'), 'utf8'));
-const tema = postcss.parse(readFileSync(resolve(__dirname, '../../../../styles/tema-dasbor.css'), 'utf8'));
+// Nilai token tema dasbor ada di token.css (lingkup dasbor); lingkup publik tidak dipakai halaman ini.
+const tema = postcss.parse(readFileSync(resolve(__dirname, '../../../../styles/token.css'), 'utf8'));
 const token: Record<string, string> = {};
-tema.walkDecls(/^--/, (d) => { token[d.prop] = d.value; });
+tema.walkDecls(/^--/, (d) => {
+  if ((d.parent as { selector?: string }).selector?.includes('[data-tema="dasbor"]')) token[d.prop] = d.value;
+});
 
 function gaya(selector: string, media: 'screen' | 'print') {
   const hasil: Record<string, string> = {};

@@ -1,0 +1,85 @@
+/* Halaman statis /kebijakan-privasi (Server Component). Gaya dipindah dari inline style; tampilan sama, hanya token. */
+
+.halaman {
+  min-height: 100vh;
+  background: var(--surface-secondary);
+  padding: var(--space-8) var(--space-4);
+}
+
+.artikel {
+  max-width: 720px;
+  margin: 0 auto;
+  background: var(--surface-elevated);
+  border-radius: var(--radius-2xl);
+  border: 1px solid var(--border-default);
+  padding: clamp(16px, 5vw, 32px);
+  overflow-wrap: anywhere;
+  box-shadow: var(--shadow-sm);
+}
+
+.navAtas {
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-4);
+}
+
+.tautanBeranda {
+  color: var(--color-primary-600);
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+/* a:hover global (0,1,1) mengalahkan kelas tunggal; sebelumnya warna inline selalu menang. */
+.tautanBeranda:hover {
+  color: var(--color-primary-600);
+}
+
+.judul {
+  font-family: var(--font-display);
+  font-size: var(--text-3xl);
+  font-weight: 800;
+  margin-bottom: var(--space-2);
+  color: var(--text-primary);
+}
+
+.versi {
+  color: var(--text-secondary);
+  margin-bottom: var(--space-8);
+  font-size: var(--text-sm);
+}
+
+.bagian {
+  margin-bottom: var(--space-6);
+}
+
+/* Bagian terakhir (9. Versi Kebijakan) tidak berjarak bawah. */
+.bagian:last-child {
+  margin-bottom: 0;
+}
+
+.subjudul {
+  font-size: var(--text-xl);
+  margin-bottom: var(--space-3);
+}
+
+.paragraf {
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+.pengantarDaftar {
+  color: var(--text-secondary);
+  line-height: 1.7;
+  margin-bottom: var(--space-2);
+}
+
+.daftar {
+  color: var(--text-secondary);
+  line-height: 1.7;
+  padding-left: 1.25rem;
+}
+
+.isiTeks {
+  color: var(--text-secondary);
+  line-height: 1.7;
+}

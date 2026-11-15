@@ -12,6 +12,7 @@ import {
   ImageIcon,
 } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
+import IsiHalaman from '@/components/layout/IsiHalaman';
 import Pagination from '@/components/Pagination';
 import Kartu from '@/components/ui/Kartu';
 import KartuStatistik from '@/components/ui/KartuStatistik';
@@ -379,7 +380,7 @@ export default function AbsensiPage() {
         />
       </PageHeader>
 
-      <div className={styles.halaman}>
+      <IsiHalaman>
         {/* Tombol Catat Hadir — Front Office / Admin (via wizard) */}
         {adaAksi && adalahHariIni && (
           <Kartu judul="Catat Hadir Petugas">
@@ -507,7 +508,7 @@ export default function AbsensiPage() {
             </>
           )}
         </Kartu>
-      </div>
+      </IsiHalaman>
 
       {/* Wizard hadir FO */}
       {currentUser && (currentUser.role === 'front_office' || currentUser.role === 'admin') && (

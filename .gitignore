@@ -49,3 +49,6 @@ next-env.d.ts
 # Audit internal — tidak untuk di-commit ke repo publik
 /docs/audit/
 /docs/prompts/
+
+# Berkas sementara alat browser (Playwright MCP)
+.playwright-mcp/

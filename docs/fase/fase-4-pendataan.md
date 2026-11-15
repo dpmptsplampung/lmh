@@ -1,0 +1,12 @@
+# Fase 4: Pendataan Umum dan Pendataan Khusus
+
+Catatan Fase 4 (identitas + topik + catatan sebagai Pendataan Umum, isian dinamis per Layanan sebagai Pendataan Khusus), dipindah utuh dari `CLAUDE.md` pada 2026-11-13. Rujukan: [rencana + keputusan](../superpowers/plans/2026-10-30-fase-4-pendataan.md), [matriks pendataan](../analysis/04-RBAC-MATRIX-PENDATAAN-PELAYANAN.md), status migrasi di [docs/MIGRATIONS.md](../MIGRATIONS.md).
+
+**Pendataan Fase 4 (migrasi `202610300001`/`0002`, belum diterapkan):** Pendataan Umum = identitas (kunjungan) + topik (`topik_penanganan` per Layanan; Layanan tanpa topik diberi "Lainnya") + catatan; Pendataan Khusus = isian dinamis per Layanan non-OSS (`pendataan_khusus_field`; jawaban `pendataan_khusus_jawaban` per tahap penanganan; RLS = `boleh_data_pelayanan`). Admin: `admin/layanan/[id]/pendataan` -> `api/admin/layanan/[id]/pendataan-khusus[/[fieldId]]` (+ `components/admin/layanan/PendataanKhususEditor`). Petugas: `components/admin/{PendataanKhususFields,IdentitasPengunjungFields}` dipakai `SelesaiEskalasiModal` (RPC `layanan_selesai_khusus`) dan `ChatSelesaiDialog` (`POST /api/chat/sesi` `selesaikan` + `khusus`/`identitas` -> RPC `chat_selesai_khusus`); OSS/Non OSS: topik di langkah 3 `PelayananWizardModal`. Pustaka murni `src/lib/pendataan-khusus/{jenis,schemas,jawaban,identitas,galat}.ts`; rekap: `src/lib/rekap/{khusus,khususServer}.ts` (kolom lewat `kolomDataPelayanan(formType, tambahan)`). Rencana + keputusan: `docs/superpowers/plans/2026-10-30-fase-4-pendataan.md`.
+
+## Catatan refaktor 2026-11-13
+
+- Frasa "belum diterapkan" di atas adalah keadaan saat teks ditulis; status `202610300001`/`0002`: lihat `docs/MIGRATIONS.md` dan `CLAUDE.md` bagian "Database & migrasi".
+- `ChatSelesaiDialog` adalah ekspor bernama di `src/components/admin/ChatAksiDialog.tsx` (tidak ada berkas `ChatSelesaiDialog.tsx`; test-nya `src/components/admin/ChatSelesaiDialog.khusus.test.tsx`). Sejak G7 dialog itu dibuka dari `src/app/admin/chat/_bagian/DialogChat.tsx`.
+- `SelesaiEskalasiModal` dan `PelayananWizardModal` kini dibuka lewat satu state union di `src/app/admin/antrian/_bagian/ModalAntrian.tsx` + `_hook/useModalAntrian.ts` (G5, menggantikan tujuh boolean). `PelayananWizardModal` memakai cangkang bersama `KerangkaModal` (`src/components/ui/KerangkaModal.tsx`).
+- Topik per Layanan untuk layar staf kini dimuat lewat `src/lib/data/referensi.ts`: `muatSemuaTopik` (dipakai `admin/topik`) dan `muatTopik` (dipakai `components/admin/TopikCatatanFields.tsx` lewat `useReferensi`).

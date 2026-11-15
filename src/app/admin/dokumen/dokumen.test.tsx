@@ -26,6 +26,8 @@ const h = vi.hoisted(() => {
     ] as Array<Record<string, unknown>>,
     updateResult: ok([{ id: 'd1' }]) as { data: unknown; error: { message: string; code?: string } | null; status?: number },
     insertResult: ok(null) as { data: unknown; error: { message: string; code?: string } | null; status?: number },
+    // Migrasi Fase 1 (202610270001) belum diterapkan: layanan.slug/diarsipkan_at belum ada (42703).
+    layananFase1Belum: false,
   });
   return {
     toast: vi.fn(),
@@ -47,6 +49,7 @@ vi.mock('@/lib/supabase/client', () => {
     // Seperti supabase-js: UPDATE tanpa .select() TIDAK mengembalikan baris (data null) sehingga
     // mutasiWajibBaris melempar tidak_ada_baris. Baris hasil baru tersedia setelah .select dipanggil.
     let selected = false;
+    let kolomDipilih = '';
     const tanpaBaris = (r: Hasil): Hasil => (selected ? r : { ...r, data: null });
     const result = (): Hasil => {
       if (table === 'dokumen_peraturan') {
@@ -54,12 +57,18 @@ vi.mock('@/lib/supabase/client', () => {
         if (op === 'insert') return h.state.insertResult;
         return { data: h.state.docs, error: null };
       }
-      if (table === 'layanan') return { data: [{ id: 'l1', nama: 'Helpdesk OSS' }], error: null };
+      if (table === 'layanan') {
+        if (h.state.layananFase1Belum && /slug|diarsipkan_at/.test(kolomDipilih)) {
+          return { data: null, error: { code: '42703', message: 'column layanan.slug does not exist' } };
+        }
+        return { data: [{ id: 'l1', nama: 'Helpdesk OSS' }], error: null };
+      }
       return { data: [], error: null };
     };
     const b: Record<string, unknown> = {};
-    b.select = () => {
+    b.select = (kolom?: unknown) => {
       selected = true;
+      kolomDipilih = typeof kolom === 'string' ? kolom : '';
       return b;
     };
     b.order = () => b;
@@ -87,6 +96,7 @@ vi.mock('@/lib/supabase/client', () => {
 });
 
 import AdminDokumenPage from './page';
+import { buangCacheReferensi } from '@/lib/data/klien/useReferensi';
 
 const ERR_JARINGAN: ErrorDb = { message: 'TypeError: Failed to fetch', code: '' };
 const ERR_RLS: ErrorDb = { message: 'permission denied for table dokumen_peraturan', code: '42501' };
@@ -99,11 +109,32 @@ beforeEach(() => {
   h.toast.mockClear();
   h.calls.length = 0;
   h.state = h.defaults();
-  vi.stubGlobal('confirm', vi.fn(() => true));
+  buangCacheReferensi(); // daftar Layanan ber-cache modul: tiap test mulai dari nol
 });
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+});
+
+describe('admin dokumen: pilihan Layanan dari referensi bersama', () => {
+  const bukaFormDanBacaPilihan = async () => {
+    render(<AdminDokumenPage />);
+    await screen.findByTitle('Cabut dokumen');
+    fireEvent.click(screen.getByRole('button', { name: /Tambah Dokumen/ }));
+    const pilih = (await screen.findByLabelText('Layanan Terkait')) as HTMLSelectElement;
+    return pilih;
+  };
+
+  it('pilihan Layanan terisi dari tabel layanan', async () => {
+    const pilih = await bukaFormDanBacaPilihan();
+    await waitFor(() => expect(Array.from(pilih.options).map((o) => o.text)).toContain('Helpdesk OSS'));
+  });
+
+  it('migrasi Fase 1 belum diterapkan (kolom slug/diarsipkan_at belum ada): pilihan Layanan tetap terisi', async () => {
+    h.state.layananFase1Belum = true;
+    const pilih = await bukaFormDanBacaPilihan();
+    await waitFor(() => expect(Array.from(pilih.options).map((o) => o.text)).toContain('Helpdesk OSS'));
+  });
 });
 
 describe('admin dokumen: handleCabut mengecek hasil mutasi (T2c)', () => {
@@ -119,6 +150,7 @@ describe('admin dokumen: handleCabut mengecek hasil mutasi (T2c)', () => {
     h.state.updateResult = { data: [], error: null };
     const tombol = await siap();
     fireEvent.click(tombol);
+    fireEvent.click(await screen.findByRole('button', { name: 'Ya, cabut' }));
 
     await waitFor(() =>
       expect(h.toast).toHaveBeenCalledWith(expect.stringMatching(/tidak berwenang/i), 'error'),
@@ -132,6 +164,7 @@ describe('admin dokumen: handleCabut mengecek hasil mutasi (T2c)', () => {
     h.state.updateResult = { data: null, error: ERR_JARINGAN, status: 0 };
     const tombol = await siap();
     fireEvent.click(tombol);
+    fireEvent.click(await screen.findByRole('button', { name: 'Ya, cabut' }));
 
     await waitFor(() =>
       expect(h.toast).toHaveBeenCalledWith(expect.stringMatching(/Koneksi bermasalah/i), 'error'),
@@ -144,6 +177,7 @@ describe('admin dokumen: handleCabut mengecek hasil mutasi (T2c)', () => {
     h.state.updateResult = { data: null, error: ERR_RLS };
     const tombol = await siap();
     fireEvent.click(tombol);
+    fireEvent.click(await screen.findByRole('button', { name: 'Ya, cabut' }));
 
     await waitFor(() =>
       expect(h.toast).toHaveBeenCalledWith(expect.stringMatching(/tidak berwenang/i), 'error'),
@@ -155,6 +189,7 @@ describe('admin dokumen: handleCabut mengecek hasil mutasi (T2c)', () => {
   it('sukses: update status dicabut pada id yang benar, toast sukses setelah terbukti, daftar dimuat ulang', async () => {
     const tombol = await siap();
     fireEvent.click(tombol);
+    fireEvent.click(await screen.findByRole('button', { name: 'Ya, cabut' }));
 
     await waitFor(() => expect(h.toast).toHaveBeenCalledWith('Dokumen ditandai dicabut', 'success'));
     const [upd] = panggilan('update');
@@ -167,6 +202,7 @@ describe('admin dokumen: handleCabut mengecek hasil mutasi (T2c)', () => {
   it('query update menyertakan .select (tanpa itu mutasiWajibBaris selalu melempar); mock setia pada supabase-js', async () => {
     const tombol = await siap();
     fireEvent.click(tombol);
+    fireEvent.click(await screen.findByRole('button', { name: 'Ya, cabut' }));
     await waitFor(() => expect(h.toast).toHaveBeenCalledWith('Dokumen ditandai dicabut', 'success'));
     expect(panggilan('update').map((c) => c.selected)).toEqual([true]);
 
@@ -178,9 +214,10 @@ describe('admin dokumen: handleCabut mengecek hasil mutasi (T2c)', () => {
   });
 
   it('batal pada konfirmasi: tidak ada update, tidak ada toast', async () => {
-    vi.stubGlobal('confirm', vi.fn(() => false));
     const tombol = await siap();
     fireEvent.click(tombol);
+    fireEvent.click(await screen.findByRole('button', { name: 'Batal' }));
+    expect(screen.queryByRole('alertdialog')).toBeNull();
 
     expect(panggilan('update')).toHaveLength(0);
     expect(h.toast).not.toHaveBeenCalled();

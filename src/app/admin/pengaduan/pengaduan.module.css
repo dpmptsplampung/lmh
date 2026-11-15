@@ -1,14 +1,3 @@
-.halaman {
-  min-width: 0;
-}
-
-.isi {
-  display: grid;
-  gap: var(--gap-grid);
-  padding: 0 var(--pad-page) var(--pad-page);
-  min-width: 0;
-}
-
 /* Ringkasan = saringan. Kartu kecil: label kiri atas, angka besar, aktif bergaris biru. */
 .ringkasan {
   display: grid;

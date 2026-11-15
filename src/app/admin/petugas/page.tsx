@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { UserPlus, Copy, AlertTriangle, Check, Loader2, Users, UserCheck, UserX, LogIn, Search, SearchX, Mail } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
+import IsiHalaman from '@/components/layout/IsiHalaman';
 import Kartu from '@/components/ui/Kartu';
 import KartuStatistik from '@/components/ui/KartuStatistik';
 import Tabel, { type KolomTabel } from '@/components/ui/Tabel';
@@ -373,7 +374,7 @@ export default function AdminPetugasPage() {
         <Tombol varian="sekunder" href="/admin/petugas/invite" ikon={Mail}>Undang Petugas</Tombol>
       </PageHeader>
 
-      <div className={styles.isi}>
+      <IsiHalaman>
         {loading ? (
           <div className={styles.tengah} role="status" aria-label="Memuat">
             <Skeleton bentuk="kartu" jumlah={2} label="Memuat daftar akun" />
@@ -445,7 +446,7 @@ export default function AdminPetugasPage() {
             )}
           </>
         )}
-      </div>
+      </IsiHalaman>
 
       {dialog?.kind === 'kelola' && (() => {
         const akun = rows.find((r) => r.id === dialog.akun.id) ?? dialog.akun;

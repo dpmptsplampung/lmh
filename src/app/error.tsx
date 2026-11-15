@@ -1,5 +1,7 @@
 'use client';
 
+import Tombol from '@/components/ui/Tombol';
+
 export default function Error({
   error,
   reset,
@@ -25,9 +27,7 @@ export default function Error({
         Maaf, ada masalah saat memuat halaman ini.
         {error?.digest ? ` (kode: ${error.digest})` : ''}
       </p>
-      <button type="button" className="btn btn--primary" onClick={() => reset()}>
-        Coba Lagi
-      </button>
+      <Tombol onClick={() => reset()}>Coba Lagi</Tombol>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { AlarmClock, Inbox, ShieldAlert, UserCheck } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
+import IsiHalaman from '@/components/layout/IsiHalaman';
 import PanelPengaduan from '@/components/admin/PanelPengaduan';
 import Pagination from '@/components/Pagination';
 import CatatanKeadaan from '@/components/ui/CatatanKeadaan';
@@ -270,9 +271,9 @@ function IsiPengaduan() {
   ];
 
   return (
-    <div className={styles.halaman}>
+    <>
       <PageHeader title="Pengaduan" description="Laporan dari pengunjung. Yang perlu ditindaklanjuti tampil paling atas." />
-      <div className={styles.isi}>
+      <IsiHalaman>
         {isPetugas && (
           <CatatanKeadaan jenis="lingkup">
             Anda hanya dapat melihat pengaduan layanan Anda. Hubungi Admin/Front Office untuk tindak lanjut.
@@ -346,7 +347,7 @@ function IsiPengaduan() {
             </div>
           </Kartu>
         ) : null}
-      </div>
+      </IsiHalaman>
 
       {terpilih && (
         <PanelPengaduan
@@ -360,7 +361,7 @@ function IsiPengaduan() {
           onToast={toast}
         />
       )}
-    </div>
+    </>
   );
 }
 

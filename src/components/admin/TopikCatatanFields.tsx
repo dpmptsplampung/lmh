@@ -3,8 +3,9 @@
 // Isian "topik + catatan" penanganan layanan (kontrak FO-ESKALASI §3.2/§3.3): dropdown topik layanan dan catatan
 // 1-1000 karakter. Dipakai dialog antrean dan wizard pendataan. Setiap field punya label terhubung (htmlFor/id),
 // galat tampil role=alert dan dirujuk aria-describedby.
-import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { KUNCI_REFERENSI, muatTopik } from '@/lib/data/referensi';
+import { useReferensi } from '@/lib/data/klien/useReferensi';
 import { MAX_CATATAN_LAYANAN } from '@/lib/pelayanan';
 import styles from './FormAntrean.module.css';
 
@@ -13,44 +14,29 @@ export interface TopikOpsi {
   nama: string;
 }
 
-/** Topik aktif milik satu layanan (kontrak §6.5). Dimuat saat `aktif` dan `layananId` tersedia. */
+const TOPIK_KOSONG: TopikOpsi[] = [];
+// Tanpa cache (ttlMs 0): hanya penggabungan permintaan yang bersamaan. Daftar ini menentukan topik yang boleh
+// tersimpan pada penanganan dan Admin dapat menonaktifkan topik kapan saja, jadi tiap dialog dibuka daftar
+// dimuat ulang seperti sebelum refaktor. Naikkan TTL hanya bersama pembuangan cache (`buangCacheReferensi`)
+// dari Kelola Topik dan, di test, pada setiap `beforeEach`.
+const TTL_TOPIK_MS = 0;
+
+/**
+ * Topik aktif milik satu layanan (kontrak §6.5). Dimuat saat `aktif` dan `layananId` tersedia lewat referensi
+ * bersama (`lib/data/referensi.ts`); dialog yang memuat daftar sama pada saat yang sama berbagi satu permintaan.
+ */
 export function useTopikLayanan(layananId: string | null, aktif = true) {
-  const [topik, setTopik] = useState<TopikOpsi[]>([]);
-  const [memuat, setMemuat] = useState(aktif && !!layananId);
-  const [galat, setGalat] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!aktif || !layananId) return;
-    let batal = false;
-    /* eslint-disable react-hooks/set-state-in-effect */
-    setMemuat(true);
-    setGalat(null);
-    /* eslint-enable react-hooks/set-state-in-effect */
-    (async () => {
-      try {
-        const supabase = createClient();
-        const { data, error } = await supabase
-          .from('topik_penanganan')
-          .select('id, nama, urut')
-          .eq('aktif', true)
-          .eq('layanan_id', layananId)
-          .order('urut')
-          .order('nama');
-        if (batal) return;
-        if (error) throw error;
-        setTopik((data ?? []) as TopikOpsi[]);
-      } catch {
-        if (!batal) setGalat('Gagal memuat daftar topik. Tutup dialog lalu coba lagi.');
-      } finally {
-        if (!batal) setMemuat(false);
-      }
-    })();
-    return () => {
-      batal = true;
-    };
-  }, [layananId, aktif]);
-
-  return { topik, memuat, galat };
+  const id = aktif ? layananId : null;
+  const { data, memuat, galat } = useReferensi(
+    id ? KUNCI_REFERENSI.topik(id) : null,
+    () => muatTopik(createClient(), id ?? ''),
+    { ttlMs: TTL_TOPIK_MS },
+  );
+  return {
+    topik: data ?? TOPIK_KOSONG,
+    memuat,
+    galat: galat ? 'Gagal memuat daftar topik. Tutup dialog lalu coba lagi.' : null,
+  };
 }
 
 interface Props {

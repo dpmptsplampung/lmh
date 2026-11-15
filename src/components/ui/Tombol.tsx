@@ -9,9 +9,13 @@ import styles from './Tombol.module.css';
 type IkonTombol = ElementType<{ size?: number; strokeWidth?: number; 'aria-hidden'?: boolean | 'true' }>;
 
 interface DasarProps {
-  varian?: 'utama' | 'sekunder' | 'hantu' | 'bahaya';
-  ukuran?: 'kecil' | 'normal';
+  /** `aksen` = latar aksen (ajakan di halaman publik, mis. blok CTA). */
+  varian?: 'utama' | 'sekunder' | 'hantu' | 'bahaya' | 'aksen';
+  /** `besar` = ajakan utama halaman publik dan aksi utama alur (48px). */
+  ukuran?: 'kecil' | 'normal' | 'besar';
   ikon?: IkonTombol;
+  /** Ikon di belakang teks (panah/pesawat penunjuk arah). Seperti `ikon`, jangan dioper dari Server Component. */
+  ikonAkhir?: IkonTombol;
   /** Sedang bekerja: teks dan lebar tetap, ikon diganti spinner, klik diabaikan, aria-busy aktif. */
   memuat?: boolean;
   className?: string;
@@ -36,7 +40,7 @@ export type TombolProps = PropsTombol | PropsTautan;
 // Buang prop desain agar tidak bocor ke elemen <button>.
 function omitDasar(props: PropsTombol) {
   const salinan: Record<string, unknown> = { ...props };
-  for (const k of ['varian', 'ukuran', 'ikon', 'memuat', 'className', 'children', 'href']) delete salinan[k];
+  for (const k of ['varian', 'ukuran', 'ikon', 'ikonAkhir', 'memuat', 'className', 'children', 'href']) delete salinan[k];
   return salinan as Omit<PropsTombol, keyof DasarProps | 'href'>;
 }
 
@@ -44,27 +48,34 @@ function omitDasar(props: PropsTombol) {
 // dengan `href` = next/link. Saat `memuat`, tombol memakai aria-disabled (bukan disabled) agar fokus papan
 // ketik tidak hilang di tengah aksi.
 export default function Tombol(props: TombolProps) {
-  const { varian = 'utama', ukuran = 'normal', ikon: Ikon, memuat = false, className, children } = props;
+  const { varian = 'utama', ukuran = 'normal', ikon: Ikon, ikonAkhir: IkonAkhir, memuat = false, className, children } = props;
   const kelas = cn(
     styles.tombol,
     styles[varian],
     ukuran === 'kecil' && styles.kecil,
+    ukuran === 'besar' && styles.besar,
     memuat && styles.memuat,
     className,
   );
+  // Spinner menggantikan ikon depan; tanpa ikon depan ia menggantikan ikon akhir, dan tanpa keduanya menumpang di padding.
+  const spinnerDiAkhir = memuat && !Ikon && !!IkonAkhir;
+  const spinner = (
+    <Loader2
+      size={16}
+      strokeWidth={1.75}
+      aria-hidden="true"
+      className={cn(styles.spinner, !Ikon && !IkonAkhir && styles.spinnerTumpang)}
+    />
+  );
   const isi = (
     <>
-      {memuat ? (
-        <Loader2
-          size={16}
-          strokeWidth={1.75}
-          aria-hidden="true"
-          className={cn(styles.spinner, !Ikon && styles.spinnerTumpang)}
-        />
-      ) : Ikon ? (
-        <Ikon size={16} strokeWidth={1.75} aria-hidden="true" />
-      ) : null}
+      {memuat && !spinnerDiAkhir ? spinner : Ikon ? <Ikon size={16} strokeWidth={1.75} aria-hidden="true" /> : null}
       <span>{children}</span>
+      {spinnerDiAkhir ? (
+        spinner
+      ) : IkonAkhir ? (
+        <IkonAkhir size={16} strokeWidth={1.75} aria-hidden="true" />
+      ) : null}
     </>
   );
 

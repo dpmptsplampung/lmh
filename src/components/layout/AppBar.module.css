@@ -11,7 +11,7 @@
   gap: 12px;
   height: var(--appbar-height, 56px);
   padding: 8px var(--pad-page, 24px);
-  background: var(--bg-canvas, #eceff4);
+  background: var(--bg-canvas);
 }
 
 .menu {
@@ -20,15 +20,15 @@
   flex: none;
   width: var(--target-sentuh, 44px);
   height: var(--target-sentuh, 44px);
-  border: 1px solid var(--border-default, #dfe4ec);
+  border: 1px solid var(--border-default);
   border-radius: var(--radius-full, 9999px);
-  background: var(--bg-surface, #fff);
-  color: var(--text-secondary, #475569);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
   cursor: pointer;
 }
 
 .menu:hover {
-  background: var(--bg-surface-hover, #f1f5f9);
+  background: var(--bg-surface-hover);
 }
 
 .menu:focus-visible,
@@ -57,7 +57,7 @@
   white-space: nowrap;
   font-size: 1rem;
   font-weight: 600;
-  color: var(--text-primary, #0f172a);
+  color: var(--text-primary);
 }
 
 .total {
@@ -71,8 +71,8 @@
   height: 20px;
   padding: 0 6px;
   border-radius: var(--radius-full, 9999px);
-  background: var(--nav-badge-bg, #6a4fe0);
-  color: var(--nav-badge-fg, #fff);
+  background: var(--nav-badge-bg);
+  color: var(--nav-badge-fg);
   font-size: 0.75rem;
   font-weight: 600;
   line-height: 20px;
@@ -99,15 +99,15 @@
 }
 
 .offline {
-  background: var(--status-warning-bg, #fffbeb);
-  border-color: var(--status-warning-border, #fde68a);
-  color: var(--status-warning-fg, #b45309);
+  background: var(--status-warning-bg);
+  border-color: var(--status-warning-border);
+  color: var(--status-warning-fg);
 }
 
 .offlineOk {
-  background: var(--status-success-bg, #ecfdf5);
-  border-color: var(--status-success-border, #a7f3d0);
-  color: var(--status-success-fg, #047857);
+  background: var(--status-success-bg);
+  border-color: var(--status-success-border);
+  color: var(--status-success-fg);
 }
 
 .perintah {
@@ -116,26 +116,26 @@
   gap: 10px;
   min-height: var(--target, 40px);
   padding: 0 12px 0 14px;
-  border: 1px solid var(--border-default, #dfe4ec);
+  border: 1px solid var(--border-default);
   border-radius: var(--radius-full, 9999px);
-  background: var(--bg-surface, #fff);
-  color: var(--text-secondary, #475569);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
   font: inherit;
   font-size: 0.875rem;
   cursor: pointer;
 }
 
 .perintah:hover {
-  background: var(--bg-surface-hover, #f1f5f9);
-  color: var(--text-primary, #0f172a);
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
 }
 
 .kbd {
   padding: 1px 6px;
-  border: 1px solid var(--border-default, #dfe4ec);
+  border: 1px solid var(--border-default);
   border-radius: 6px;
-  background: var(--bg-surface-muted, #f5f7fa);
-  color: var(--text-tertiary, #64748b);
+  background: var(--bg-surface-muted);
+  color: var(--text-tertiary);
   font: 500 0.6875rem var(--font-sans, system-ui);
 }
 
@@ -156,8 +156,8 @@
     left: 0;
     gap: 10px;
     padding: 6px var(--pad-page, 16px);
-    background: var(--bg-surface, #fff);
-    border-bottom: 1px solid var(--border-subtle, #e6eaf0);
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border-subtle);
   }
 
   .menu,

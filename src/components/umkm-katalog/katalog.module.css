@@ -1,9 +1,9 @@
 .halaman {
-  --text-on-primary: var(--text-inverse);
+  /* Penimpaan ke rupa publik. Di /umkm/katalog nilainya sama dengan :root (token.css), tetapi .halaman juga
+     dipakai di dalam cangkang dasbor (/me/usaha), tempat dasbor memberi nilai lain; empat token ini harus tetap
+     publik di sana. Token yang nilainya sudah sama di kedua tempat dihapus. */
   --radius-button: var(--radius-lg);
   --fs-body: var(--text-base);
-  --bg-surface: var(--color-neutral-0);
-  --bg-surface-hover: var(--color-neutral-100);
   --radius-panel: var(--radius-2xl);
   --border-subtle: var(--border-default);
   max-width: 1160px;

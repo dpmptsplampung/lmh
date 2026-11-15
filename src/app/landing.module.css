@@ -420,10 +420,12 @@
     display: flex;
   }
 
-  .navActions > .btn,
-  .navUserActions .btn:first-child {
+  /* Tombol aksi navbar hanya ikon di layar sempit (selektor ganda mengalahkan font-size Tombol). */
+  .navActions > .navTombolIkon,
+  .navUserActions .navTombolIkon {
     font-size: 0;
     gap: 0;
+    min-width: 44px;
   }
 
   .navbar {

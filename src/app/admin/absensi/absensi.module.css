@@ -1,12 +1,4 @@
 /* Absensi (gaya Dasbor): kartu aksi, daftar kehadiran dalam kartu. Token dari tema-dasbor.css. */
-.halaman {
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap-grid);
-  padding: 0 var(--pad-page) var(--pad-page);
-  max-width: var(--content-max);
-}
-
 .penjelasan {
   margin: 0 0 var(--space-4);
   color: var(--text-secondary);

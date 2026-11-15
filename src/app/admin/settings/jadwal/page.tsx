@@ -1,6 +1,7 @@
 'use client';
 
 import Tombol from '@/components/ui/Tombol';
+import DialogKonfirmasi from '@/components/ui/DialogKonfirmasi';
 import Kartu from '@/components/ui/Kartu';
 import Tabel from '@/components/ui/Tabel';
 import Skeleton from '@/components/ui/Skeleton';
@@ -146,7 +147,6 @@ export default function AdminJadwalPage() {
   const [menghapus, setMenghapus] = useState(false);
   const menghapusRef = useRef(false);
   const pemicuHapusRef = useRef<HTMLElement | null>(null);
-  const batalHapusRef = useRef<HTMLButtonElement>(null);
   const judulLiburRef = useRef<HTMLHeadingElement>(null);
   const [liburList, setLiburList] = useState<HariLibur[]>([]);
   const [loading, setLoading] = useState(true);
@@ -394,11 +394,6 @@ export default function AdminJadwalPage() {
     pemicuHapusRef.current?.focus();
   };
 
-  // Fokus ke "Batal" saat konfirmasi muncul (pilihan aman bila Enter tertekan tak sengaja).
-  useEffect(() => {
-    if (hapusLibur) batalHapusRef.current?.focus();
-  }, [hapusLibur]);
-
   const handleDeleteLibur = async (tanggal: string) => {
     if (!canEdit || menghapusRef.current) return;
     menghapusRef.current = true;
@@ -585,32 +580,21 @@ export default function AdminJadwalPage() {
             </form>
           )}
 
-          {hapusLibur && (
-            <div
-              role="alertdialog"
-              aria-labelledby="judulHapusLibur"
-              aria-describedby="isiHapusLibur"
-              className={tampilan.area24}>
-              <p id="judulHapusLibur" className={tampilan.teks25}>
-                Hapus hari libur {formatTanggal(hapusLibur.tanggal)}?
-              </p>
-              <p id="isiHapusLibur" className={tampilan.teks26}>
+          <DialogKonfirmasi
+            terbuka={!!hapusLibur}
+            judul={hapusLibur ? `Hapus hari libur ${formatTanggal(hapusLibur.tanggal)}?` : ''}
+            deskripsi={hapusLibur ? (
+              <>
                 {hapusLibur.keterangan ? `“${hapusLibur.keterangan}”. ` : ''}
                 Berlaku untuk semua layanan: setelah dihapus, antrean dan chat layanan dibuka lagi pada tanggal itu menurut jadwal mingguan.
-              </p>
-              <div className={tampilan.baris10}>
-                <Tombol type="button" ref={batalHapusRef} varian="sekunder" ukuran="kecil" onClick={batalHapus} disabled={menghapus}>
-                  Batal
-                </Tombol>
-                <Tombol
-                  type="button" varian="utama" ukuran="kecil"
-                  onClick={() => handleDeleteLibur(hapusLibur.tanggal)} disabled={menghapus}>
-                  {menghapus ? <Loader2 size={14} className="animate-pulse" aria-hidden="true" /> : <Trash2 size={14} aria-hidden="true" />}
-                  Ya, hapus
-                </Tombol>
-              </div>
-            </div>
-          )}
+              </>
+            ) : undefined}
+            labelSetuju="Ya, hapus"
+            berbahaya
+            memuat={menghapus}
+            onSetuju={() => { if (hapusLibur) void handleDeleteLibur(hapusLibur.tanggal); }}
+            onBatal={batalHapus}
+          />
 
           {galatMuatLibur ? (
             <>{galatMuatLibur.migrasi ? <CatatanKeadaan jenis="menunggu-migrasi">{galatMuatLibur.pesan}</CatatanKeadaan> : <Galat pesan={galatMuatLibur.pesan} onRetry={() => { void loadLibur(); }} />}</>

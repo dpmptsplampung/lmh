@@ -9,6 +9,7 @@
 // mengembalikan pesan galat (string) atau null bila berhasil.
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { Pencil, Plus } from 'lucide-react';
+import Tombol from '@/components/ui/Tombol';
 import styles from './SuntingInline.module.css';
 
 const kapitalAwal = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
@@ -263,16 +264,17 @@ export function BarisTambah({ kolom, bidang, labelTombol = 'Tambah', ariaTombol,
           );
         })}
         <td className="kol-aksi">
-          <button
-            type="button"
-            className="btn btn--secondary btn--sm"
+          <Tombol
+            varian="sekunder"
+            ukuran="kecil"
+            ikon={Plus}
             aria-label={ariaTombol}
-            aria-busy={sibuk || undefined}
+            memuat={sibuk}
             disabled={sibuk}
             onClick={() => void kirim()}
           >
-            <Plus size={14} aria-hidden="true" /> {labelTombol}
-          </button>
+            {labelTombol}
+          </Tombol>
           <span className="sr-only" role="status" aria-live="polite">{pengumuman}</span>
         </td>
       </tr>

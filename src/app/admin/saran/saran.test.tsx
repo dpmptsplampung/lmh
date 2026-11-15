@@ -361,7 +361,8 @@ describe('Saran admin: waktu', () => {
       ? { data: [baris({ anonim: true })], error: null } : jawabanLengkap(e));
     render(<SaranPage />);
     await screen.findByText('Tolong tambah kursi');
-    expect(screen.getByText(/2 Nov 2026/)).toBeTruthy();
+    // (?<!\d): jangan cocok dengan "12 Nov 2026"/"22 Nov 2026" (tanggal hari ini ikut tampil di halaman).
+    expect(screen.getByText(/(?<!\d)2 Nov 2026/)).toBeTruthy();
     expect(screen.queryByText(/00[.:]00/)).toBeNull();
   });
 
@@ -370,7 +371,7 @@ describe('Saran admin: waktu', () => {
       ? { data: [baris({ anonim: false, pelapor_nama: 'Sari', created_at: '2026-11-02T05:30:00Z' })], error: null } : jawabanLengkap(e));
     render(<SaranPage />);
     await screen.findByText('Tolong tambah kursi');
-    expect(screen.getByText(/2 Nov 2026.*12[.:]30 WIB/)).toBeTruthy();
+    expect(screen.getByText(/(?<!\d)2 Nov 2026.*12[.:]30 WIB/)).toBeTruthy();
     expect(screen.getByText(/· Sari$/)).toBeTruthy();
   });
 });
@@ -404,7 +405,9 @@ describe('Saran admin: kontras lencana Belum ditinjau', () => {
     const { readFileSync } = await import('node:fs');
     const { resolve } = await import('node:path');
     const css = readFileSync(resolve(process.cwd(), 'src/components/ui/Lencana.module.css'), 'utf8');
-    const globals = readFileSync(resolve(process.cwd(), 'src/styles/tema-dasbor.css'), 'utf8');
+    // Lingkup dasbor di token.css (blok sesudah penanda TOKEN:MULAI); lingkup publik ada lebih awal.
+    const tokenCss = readFileSync(resolve(process.cwd(), 'src/styles/token.css'), 'utf8');
+    const globals = tokenCss.slice(tokenCss.indexOf('/* TOKEN:MULAI */'));
     const token = (nama: string): string => {
       const m = globals.match(new RegExp(`--${nama}:\\s*([^;]+);`));
       expect(m, nama).toBeTruthy();

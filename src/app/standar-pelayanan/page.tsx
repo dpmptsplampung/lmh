@@ -1,23 +1,12 @@
-import { createClient } from '@/lib/supabase/server';
+import { muatStandarPublik, type StandarPublik } from '@/lib/data/publik-server';
 import Link from 'next/link';
 import { FileText } from 'lucide-react';
 
-export const dynamic = 'force-dynamic';
+// ISR 60 detik (literal: Next membaca konfigurasi segmen secara statis). Data lewat lib/data/publik-server (cache
+// ber-tag `publik-standar` + `publik-layanan`, klien anon tanpa cookie).
+export const revalidate = 60;
 
 // CMP-09: halaman publik Standar Pelayanan & Maklumat Pelayanan per layanan (UU 25/2009).
-
-type Standar = {
-  layanan_id: string;
-  persyaratan: string | null;
-  prosedur: string | null;
-  jangka_waktu: string | null;
-  biaya: string | null;
-  produk_layanan: string | null;
-  penanganan_pengaduan: string | null;
-  maklumat: string | null;
-};
-
-type Layanan = { id: string; nama: string };
 
 function Seksi({ judul, isi }: { judul: string; isi: string | null }) {
   if (!isi) return null;
@@ -30,21 +19,8 @@ function Seksi({ judul, isi }: { judul: string; isi: string | null }) {
 }
 
 export default async function StandarPelayananPage() {
-  const supabase = await createClient();
-  const { data: layanan } = await supabase
-    .from('layanan')
-    .select('id, nama')
-    .eq('aktif', true)
-    .order('nama');
-  const { data: standar } = await supabase
-    .from('standar_pelayanan')
-    .select('layanan_id, persyaratan, prosedur, jangka_waktu, biaya, produk_layanan, penanganan_pengaduan, maklumat')
-    .eq('aktif', true);
-
-  const standarMap = new Map<string, Standar>(
-    ((standar ?? []) as Standar[]).map((s) => [s.layanan_id, s]),
-  );
-  const layananList = (layanan ?? []) as Layanan[];
+  const { layanan: layananList, standar, galat } = await muatStandarPublik();
+  const standarMap = new Map<string, StandarPublik>(standar.map((s) => [s.layanan_id, s]));
 
   return (
     <main style={{ maxWidth: 860, margin: '0 auto', padding: 'var(--space-6) var(--space-4)' }}>
@@ -57,6 +33,12 @@ export default async function StandarPelayananPage() {
           </p>
         </div>
       </div>
+
+      {galat && (
+        <p style={{ color: 'var(--color-neutral-500)' }}>
+          Standar pelayanan belum dapat dimuat. Muat ulang halaman beberapa saat lagi.
+        </p>
+      )}
 
       {layananList.map((l) => {
         const s = standarMap.get(l.id);

@@ -1,6 +1,7 @@
 'use client';
 
 import { AlertCircle, RefreshCw } from 'lucide-react';
+import Tombol from '@/components/ui/Tombol';
 import styles from './ErrorRetry.module.css';
 
 interface ErrorRetryProps {
@@ -37,16 +38,16 @@ export default function ErrorRetry({
         {judul && <p className={styles.judul}>{judul}</p>}
         <p className={styles.pesan}>{pesan}</p>
         {onRetry && (
-          <button
-            type="button"
-            className={`btn btn--secondary ${styles.tombol}`}
+          <Tombol
+            varian="sekunder"
+            ikon={RefreshCw}
+            className={styles.tombol}
             onClick={memuat ? undefined : onRetry}
             disabled={memuat}
-            aria-busy={memuat || undefined}
+            memuat={memuat}
           >
-            <RefreshCw size={16} aria-hidden="true" className={memuat ? styles.berputar : undefined} />
             {memuat ? 'Memuat…' : labelTombol}
-          </button>
+          </Tombol>
         )}
       </div>
     </div>

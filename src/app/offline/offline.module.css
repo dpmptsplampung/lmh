@@ -43,3 +43,10 @@
   line-height: 1.6;
   margin-bottom: var(--space-8);
 }
+
+/* Ikon di dalam isi tombol (bukan prop `ikon`): halaman ini Server Component. */
+.ikonAwal {
+  display: inline-block;
+  vertical-align: -3px;
+  margin-right: var(--space-2);
+}

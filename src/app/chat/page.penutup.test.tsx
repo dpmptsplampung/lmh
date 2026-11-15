@@ -8,7 +8,7 @@ vi.mock('@/lib/supabase/client', () => ({
   createClient: vi.fn(),
 }));
 
-import PublicChatPage from './page';
+import PublicChatPage from './ChatKlien';
 import { createClient } from '@/lib/supabase/client';
 
 const LAYANAN_ID = '11111111-1111-4111-8111-111111111111';

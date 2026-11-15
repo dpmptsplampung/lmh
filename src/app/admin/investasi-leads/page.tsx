@@ -13,6 +13,7 @@ import StatusKosong from '@/components/ui/StatusKosong';
 import Galat from '@/components/ui/Galat';
 import { formatTanggal } from '@/lib/utils';
 import PageHeader from '@/components/layout/PageHeader';
+import IsiHalaman from '@/components/layout/IsiHalaman';
 import Pagination from '@/components/Pagination';
 import { createClient } from '@/lib/supabase/client';
 import styles from './investasi-leads.module.css';
@@ -137,78 +138,81 @@ export default function InvestasiLeadsAdminPage() {
         description="CRM-lite: permintaan minat investasi dari Investment Gallery"
       />
 
-      <div className={styles.container}>
-        <div className={styles.header}>
-          <div>
-            <h2 className={styles.title}>
-              <TrendingUp size={20} className={tampilan.area1}  />
-              Daftar Lead
-            </h2>
-            <p className={styles.subtitle}>
-              {error ? '—' : totalCount} lead{statusFilter !== 'semua' ? ` (${STATUS_LABELS[statusFilter]})` : ''}
-            </p>
+      <IsiHalaman>
+        {/* Satu anak blok: jarak antarbagian di halaman ini diatur margin header dan filterBar (bukan gap grid). */}
+        <div>
+          <div className={styles.header}>
+            <div>
+              <h2 className={styles.title}>
+                <TrendingUp size={20} className={tampilan.area1}  />
+                Daftar Lead
+              </h2>
+              <p className={styles.subtitle}>
+                {error ? '—' : totalCount} lead{statusFilter !== 'semua' ? ` (${STATUS_LABELS[statusFilter]})` : ''}
+              </p>
+            </div>
+            <Link href="/admin" className={styles.backLink}>
+              <ArrowLeft size={16} />
+              Kembali ke Dasbor
+            </Link>
           </div>
-          <Link href="/admin" className={styles.backLink}>
-            <ArrowLeft size={16} />
-            Kembali ke Dasbor
-          </Link>
-        </div>
 
-        <div className={styles.filterBar}>
-          <div className={styles.filterGroup}>
-            <span className={styles.filterLabel}>Status</span>
-            <select
-              className={styles.filterSelect}
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as 'semua' | LeadStatus)}
-              aria-label="Filter status">
-              <option value="semua">Semua</option>
-              {STATUS_OPTIONS.map((s) => (
-                <option key={s} value={s}>{STATUS_LABELS[s]}</option>
-              ))}
-            </select>
-          </div>
-          <div className={styles.filterGroup}>
-            <span className={styles.filterLabel}>Cari</span>
-            <div className={styles.searchWrap}>
-              <Search size={14} className={styles.searchIcon} />
-              <input
-                type="text"
-                className={styles.searchInput}
-                placeholder="Nama atau email..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                aria-label="Cari nama atau email"
-              />
+          <div className={styles.filterBar}>
+            <div className={styles.filterGroup}>
+              <span className={styles.filterLabel}>Status</span>
+              <select
+                className={styles.filterSelect}
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as 'semua' | LeadStatus)}
+                aria-label="Filter status">
+                <option value="semua">Semua</option>
+                {STATUS_OPTIONS.map((s) => (
+                  <option key={s} value={s}>{STATUS_LABELS[s]}</option>
+                ))}
+              </select>
+            </div>
+            <div className={styles.filterGroup}>
+              <span className={styles.filterLabel}>Cari</span>
+              <div className={styles.searchWrap}>
+                <Search size={14} className={styles.searchIcon} />
+                <input
+                  type="text"
+                  className={styles.searchInput}
+                  placeholder="Nama atau email..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  aria-label="Cari nama atau email"
+                />
+              </div>
             </div>
           </div>
-        </div>
 
-        <Kartu judul="Lead investasi" padding="tanpa">
-          {loading ? <Skeleton bentuk="baris" jumlah={5} label="Memuat lead investasi" /> : error ? (
-            <Galat pesan={error} onRetry={() => { void loadData(); }} />
-          ) : (
-            <>
-              <Tabel caption="Daftar lead investasi (WIB)" baris={rows} kunciBaris="id"
-                kosong={<StatusKosong ikon={TrendingUp} judul="Belum ada lead investasi" />} kolom={[
-                  { kunci: 'tanggal', judul: 'Tanggal', render: (r) => formatDate(r.created_at) },
-                  { kunci: 'dokumen', judul: 'Dokumen', render: (r) => r.investment_documents?.[0]?.judul ?? '—' },
-                  { kunci: 'nama', judul: 'Nama', judulBaris: true },
-                  { kunci: 'email', judul: 'Email' },
-                  { kunci: 'instansi', judul: 'Instansi', render: (r) => r.instansi ?? '—' },
-                  { kunci: 'minat', judul: 'Minat', render: (r) => <span title={r.minat ?? ''}>{truncate(r.minat, 60)}</span> },
-                  { kunci: 'status', judul: 'Status', render: (r) => <Lencana nada={statusNada(r.status)}>{STATUS_LABELS[r.status]}</Lencana> },
-                  { kunci: 'aksi', judul: 'Aksi', render: (r) => <select className={styles.actionSelect} value={r.status}
-                    onChange={(e) => handleStatusChange(r.id, e.target.value as LeadStatus)} disabled={updatingId === r.id}
-                    aria-label={`Ubah status lead ${r.nama}`}>
-                    {STATUS_OPTIONS.map((status) => <option key={status} value={status}>{STATUS_LABELS[status]}</option>)}
-                  </select> },
-                ]} />
-              <Pagination page={page} pageSize={PAGE_SIZE} total={totalCount} onPageChange={setPage} />
-            </>
-          )}
-        </Kartu>
-      </div>
+          <Kartu judul="Lead investasi" padding="tanpa">
+            {loading ? <Skeleton bentuk="baris" jumlah={5} label="Memuat lead investasi" /> : error ? (
+              <Galat pesan={error} onRetry={() => { void loadData(); }} />
+            ) : (
+              <>
+                <Tabel caption="Daftar lead investasi (WIB)" baris={rows} kunciBaris="id"
+                  kosong={<StatusKosong ikon={TrendingUp} judul="Belum ada lead investasi" />} kolom={[
+                    { kunci: 'tanggal', judul: 'Tanggal', render: (r) => formatDate(r.created_at) },
+                    { kunci: 'dokumen', judul: 'Dokumen', render: (r) => r.investment_documents?.[0]?.judul ?? '—' },
+                    { kunci: 'nama', judul: 'Nama', judulBaris: true },
+                    { kunci: 'email', judul: 'Email' },
+                    { kunci: 'instansi', judul: 'Instansi', render: (r) => r.instansi ?? '—' },
+                    { kunci: 'minat', judul: 'Minat', render: (r) => <span title={r.minat ?? ''}>{truncate(r.minat, 60)}</span> },
+                    { kunci: 'status', judul: 'Status', render: (r) => <Lencana nada={statusNada(r.status)}>{STATUS_LABELS[r.status]}</Lencana> },
+                    { kunci: 'aksi', judul: 'Aksi', render: (r) => <select className={styles.actionSelect} value={r.status}
+                      onChange={(e) => handleStatusChange(r.id, e.target.value as LeadStatus)} disabled={updatingId === r.id}
+                      aria-label={`Ubah status lead ${r.nama}`}>
+                      {STATUS_OPTIONS.map((status) => <option key={status} value={status}>{STATUS_LABELS[status]}</option>)}
+                    </select> },
+                  ]} />
+                <Pagination page={page} pageSize={PAGE_SIZE} total={totalCount} onPageChange={setPage} />
+              </>
+            )}
+          </Kartu>
+        </div>
+      </IsiHalaman>
     </>
   );
 }

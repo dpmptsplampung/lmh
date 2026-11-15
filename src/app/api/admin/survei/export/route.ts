@@ -14,6 +14,7 @@ import { KODE_MIGRASI_BELUM } from '@/lib/akses-data/galat';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+export const maxDuration = 60;
 
 function contentDisposition(filename: string): string {
   const ascii = filename.replace(/[^\x20-\x7e]/g, '_').replace(/"/g, "'");

@@ -151,6 +151,7 @@ const akarProyek = process.cwd();
 const cssLayar = readFileSync(join(akarProyek, 'src/app/layar/[token]/layar-token.module.css'), 'utf8');
 const cssElemen = readFileSync(join(akarProyek, 'src/lib/layar/elemen.module.css'), 'utf8');
 const cssGlobal = readFileSync(join(akarProyek, 'src/styles/globals.css'), 'utf8').replace(/@import[^;]+;/g, '');
+const cssToken = readFileSync(join(akarProyek, 'src/styles/token.css'), 'utf8');
 const cssTema = readFileSync(join(akarProyek, 'src/styles/tema-dasbor.css'), 'utf8');
 
 // Skrip pengukur (jalan di Chromium). Mengembalikan pelanggaran + ukuran huruf terkecil per jenis teks.
@@ -270,7 +271,7 @@ type HasilUkur = {
 
 function dokumen(isi: string): string {
   return `<!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">` +
-    `<style>${cssGlobal}\n${cssTema}\n${cssElemen}\n${cssLayar}</style></head><body>${isi}</body></html>`;
+    `<style>${cssToken}\n${cssGlobal}\n${cssTema}\n${cssElemen}\n${cssLayar}</style></head><body>${isi}</body></html>`;
 }
 
 async function ukurDiChromium(skenario: Skenario[], direktori: string, nama: string): Promise<HasilUkur[]> {

@@ -18,6 +18,7 @@ import PageHeader from '@/components/layout/PageHeader';
 import { createClient } from '@/lib/supabase/client';
 import { mutasiWajibBaris, pesanMutasi } from '@/lib/supabase/mutate';
 import { useToast } from '@/components/Toast';
+import { TAG_PUBLIK_KLIEN, segarkanPublik } from '@/lib/data/klien/segarkanPublik';
 import { DEFINISI_BLOK, JENIS_BLOK, gabungkanBlok, linkAman, type BarisBlok, type JenisBlok } from '@/lib/homepage/blok';
 import styles from './landing.module.css';
 
@@ -140,6 +141,8 @@ export default function EditorBlokHomepagePage() {
         toast(`Hanya ${tersimpan.length} dari ${rows.length} blok tersimpan. Simpan ulang untuk mencoba lagi.`, 'error');
         return;
       }
+      // Beranda publik ber-cache di server: buang setelah SEMUA blok tersimpan (galat diabaikan, lihat segarkanPublik).
+      void segarkanPublik(TAG_PUBLIK_KLIEN.beranda);
       toast('Blok homepage berhasil disimpan!', 'success');
     } catch (e) {
       toast(`Gagal menyimpan blok homepage. ${pesanMutasi(e)}`, 'error');

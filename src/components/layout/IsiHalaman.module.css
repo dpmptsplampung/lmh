@@ -1,0 +1,16 @@
+/* Isi halaman admin: padding halaman, lebar maksimum, dan jarak antaranak dari token tema dasbor.
+   Kolom grid dibuat minmax(0, 1fr) agar anak lebar (tabel) tidak melebarkan halaman. */
+.isi {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--gap-grid);
+  min-width: 0;
+  max-width: var(--content-max);
+  padding: 0 var(--pad-page) var(--pad-page);
+}
+
+/* Lebar baca: kolom lebih sempit dan terpusat (halaman Profil). */
+.isi[data-lebar='baca'] {
+  max-width: 1080px;
+  margin-inline: auto;
+}

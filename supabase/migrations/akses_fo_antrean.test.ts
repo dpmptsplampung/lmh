@@ -4,7 +4,9 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const path = join(__dirname, '202611030015_akses_fo_antrean.sql');
-const sql = () => existsSync(path) ? readFileSync(path, 'utf8').replace(/--[^\n]*/g, '') : '';
+// Normalisasi CRLF -> LF: di Windows (core.autocrlf) berkas SQL berakhir baris \r\n dan pencocokan teks gagal.
+const baca = (berkas: string) => readFileSync(berkas, 'utf8').replace(/\r\n/g, '\n');
+const sql = () => existsSync(path) ? baca(path).replace(/--[^\n]*/g, '') : '';
 
 describe('0015 akses FO: kontrak migrasi maju', () => {
   it('menolak rantai sebelum Fase 3, identitas, tiket, dan rekap tanpa mengubah data nyata', () => {
@@ -58,7 +60,7 @@ describe('0015 akses FO: kontrak migrasi maju', () => {
   });
 
   it('rollback mengembalikan empat badan helper asli dan mencabut semua RPC baru', () => {
-    const rollback = readFileSync(join(__dirname, '../../docs/rollback-akses-fo-antrean-202611030015.sql'), 'utf8');
+    const rollback = baca(join(__dirname, '../../docs/rollback-akses-fo-antrean-202611030015.sql'));
     const fungsi = (text: string, nama: string) => text.match(new RegExp(`CREATE OR REPLACE FUNCTION public\\.${nama}\\([\\s\\S]*?\\$\\$;`, 'i'))?.[0];
     for (const [nama, file] of [
       ['boleh_penanganan', '202611010003_identitas_satu_kesatuan.sql'],
@@ -66,7 +68,7 @@ describe('0015 akses FO: kontrak migrasi maju', () => {
       ['boleh_baca_pendataan', '202611010003_identitas_satu_kesatuan.sql'],
       ['boleh_tiket_baca', '202611010002_tiket_antrean_lingkup.sql'],
     ]) {
-      expect(fungsi(rollback, nama)).toBe(fungsi(readFileSync(join(__dirname, file), 'utf8'), nama));
+      expect(fungsi(rollback, nama)).toBe(fungsi(baca(join(__dirname, file)), nama));
     }
     for (const nama of ['fo_antrean_daftar', 'fo_kunjungan_daftar', 'fo_pratinjau_reservasi', 'rekap_ringkasan_dilayani']) {
       expect(rollback).toContain(`DROP FUNCTION IF EXISTS public.${nama}(`);

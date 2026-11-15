@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // A1 + A3 pada halaman: panel "Sekarang" memakai penangan yang sama dengan tabel (panggil_tiket, layanan_mulai,
-// layanan_selesai) dan hanya tampil untuk hari ini pada tab Aktif/Semua. Perilaku tombol panel dirinci di PanelSekarang.test.tsx.
+// layanan_selesai) dan hanya tampil untuk hari ini pada tab Aktif/Semua. Perilaku tombol panel dirinci di _bagian/PanelSekarang.test.tsx.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, cleanup, fireEvent, within } from '@testing-library/react';
 

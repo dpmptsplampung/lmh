@@ -10,6 +10,7 @@ import { KatalogError, katalogRequest } from './api';
 import KartuKatalog from './KartuKatalog';
 import FormulirKatalog, { type KonteksFormulir } from './FormulirKatalog';
 import KeadaanKatalog from './KeadaanKatalog';
+import { URUTAN_JENIS, gantiJenis, kategoriUntuk, labelJenis } from '@/lib/umkm-katalog/filter-bertingkat';
 import styles from './publik.module.css';
 
 const EMPTY_FILTERS = { jenis: '', kategori: '', spesifik: '', kabupaten_kota: '' };
@@ -77,6 +78,9 @@ export default function Katalog() {
   const filter = (key: keyof typeof filters, value: string) => {
     request.current?.abort(); setFilters((previous) => ({ ...previous, [key]: value }));
   };
+  const pilihJenis = (jenis: string) => {
+    request.current?.abort(); setFilters((previous) => gantiJenis(previous, jenis));
+  };
   const resetAll = () => {
     request.current?.abort(); setQuery(''); setSearch(''); setFilters(EMPTY_FILTERS);
     if (!search && filters === EMPTY_FILTERS) void load();
@@ -87,6 +91,8 @@ export default function Katalog() {
   const noOptions = options !== null && !options.jenis.length && !options.kategori.length
     && !options.kabupaten_kota.length;
   const showFilter = !(noOptions && activeFilters.length === 0);
+  const jenisChip = options ? URUTAN_JENIS.filter((value) => options.jenis.includes(value)) : [];
+  const kategoriChip = options ? kategoriUntuk(filters.jenis, options.kategori) : [];
   const empty = !loading && data !== null && data.items.length === 0;
 
   return <div className={styles.halaman}>
@@ -108,13 +114,20 @@ export default function Katalog() {
             </div>}
           </Field>
         </form>
-        {options && options.kategori.length > 0 && <div className={styles.chipKategori} role="group"
-          aria-label="Pilih kategori">
-          <button type="button" className={styles.chip} aria-pressed={!filters.kategori}
-            onClick={() => filter('kategori', '')}>Semua kategori</button>
-          {options.kategori.map((value) => <button key={value} type="button" className={styles.chip}
-            aria-pressed={filters.kategori === value} onClick={() => filter('kategori', value)}>{value}</button>)}
+        {jenisChip.length > 0 && <div className={styles.chipKategori} role="group" aria-label="Pilih jenis usaha">
+          <button type="button" className={styles.chip} aria-pressed={!filters.jenis}
+            onClick={() => pilihJenis('')}>Semua jenis</button>
+          {jenisChip.map((value) => <button key={value} type="button" className={styles.chip}
+            aria-pressed={filters.jenis === value} onClick={() => pilihJenis(value)}>{labelJenis(value)}</button>)}
         </div>}
+        {options && filters.jenis && (kategoriChip.length > 0
+          ? <div className={styles.chipKategori} role="group" aria-label="Pilih kategori">
+            <button type="button" className={styles.chip} aria-pressed={!filters.kategori}
+              onClick={() => filter('kategori', '')}>Semua kategori</button>
+            {kategoriChip.map((value) => <button key={value} type="button" className={styles.chip}
+              aria-pressed={filters.kategori === value} onClick={() => filter('kategori', value)}>{value}</button>)}
+          </div>
+          : <p className={styles.sampulTeks}>Belum ada kategori untuk jenis ini.</p>)}
       </div>
     </section>
 
@@ -129,14 +142,12 @@ export default function Katalog() {
         <div id="panel-filter" className={`${styles.panelFilter} ${panelOpen ? styles.panelTerbuka : ''}`}>
           <h2 className={styles.judulSaring}>Saring hasil</h2>
           <div className={styles.filter} role="group" aria-label="Filter katalog">
-            {([
-              ['jenis', 'Jenis usaha'], ['kategori', 'Kategori'], ['kabupaten_kota', 'Kabupaten/kota'],
-            ] as const).map(([key, label]) => <Field key={key} label={label}>
-              <select value={filters[key]} onChange={(event) => filter(key, event.target.value)}>
+            <Field label="Kabupaten/kota">
+              <select value={filters.kabupaten_kota} onChange={(event) => filter('kabupaten_kota', event.target.value)}>
                 <option value="">Semua</option>
-                {options?.[key].map((value) => <option key={value} value={value}>{value}</option>)}
+                {options?.kabupaten_kota.map((value) => <option key={value} value={value}>{value}</option>)}
               </select>
-            </Field>)}
+            </Field>
             <Field label="Spesifik (opsional)" bantuan="Isi jenis produk yang lebih khusus, sesuai nama pada profil.">
               <input value={filters.spesifik} maxLength={100} onChange={(event) => filter('spesifik', event.target.value)} />
             </Field>
@@ -161,7 +172,7 @@ export default function Katalog() {
               }}>{search}<X size={14} aria-hidden="true" /></button>}
             {activeFilters.map((key) => <button key={key} type="button" className={styles.chipAktif}
               aria-label={`Hapus filter ${LABEL_FILTER[key]} ${filters[key]}`} onClick={() => filter(key, '')}>
-              {filters[key]}<X size={14} aria-hidden="true" />
+              {key === 'jenis' ? labelJenis(filters[key]) : filters[key]}<X size={14} aria-hidden="true" />
             </button>)}
             <Tombol varian="hantu" ukuran="kecil" onClick={resetAll}>Hapus pencarian dan filter</Tombol>
           </div>}

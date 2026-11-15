@@ -7,7 +7,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Map, Building2, FileText, TrendingUp, Lock } from 'lucide-react';
-import Link from 'next/link';
+import Tombol from '@/components/ui/Tombol';
 import { createClient } from '@/lib/supabase/client';
 
 const SEKTOR = [
@@ -77,7 +77,7 @@ export default function PetaPotensiPage() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg-primary)' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--bg-canvas)' }}>
       {/* Header */}
       <div style={{ background: 'var(--color-primary-700)', color: '#fff', padding: 'var(--space-16) var(--space-8)', textAlign: 'center' }}>
         <Map size={48} style={{ marginBottom: 'var(--space-4)', opacity: 0.9 }} />
@@ -100,8 +100,8 @@ export default function PetaPotensiPage() {
               key={s.id}
               onClick={() => logSektorView(s.id)}
               style={{
-                background: 'var(--bg-card)',
-                border: '1px solid var(--border-primary)',
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border-default)',
                 borderRadius: 'var(--radius-xl)',
                 padding: 'var(--space-6)',
                 textAlign: 'left',
@@ -119,10 +119,9 @@ export default function PetaPotensiPage() {
         </div>
         {/* Investment Gallery link */}
         <div style={{ marginTop: 'var(--space-12)', textAlign: 'center' }}>
-          <Link href="/gallery" className="btn btn--primary btn--lg">
-            <FileText size={18} />
+          <Tombol href="/gallery" ikon={FileText} ukuran="besar">
             Lihat Investment Gallery &amp; Dokumen IPRO
-          </Link>
+          </Tombol>
           <p style={{ marginTop: 'var(--space-3)', fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)' }}>
             Dokumen profil investasi, potensi wilayah, dan IPRO tersedia untuk investor terdaftar.
           </p>
@@ -136,9 +135,7 @@ export default function PetaPotensiPage() {
           <p style={{ color: 'var(--text-secondary)', marginBottom: 'var(--space-4)' }}>
             Hubungi tim DPMPTSP Provinsi Lampung untuk informasi lebih lanjut dan pendampingan investasi.
           </p>
-          <Link href="/chat" className="btn btn--primary">
-            Konsultasi via Live Chat
-          </Link>
+          <Tombol href="/chat">Konsultasi via Live Chat</Tombol>
         </div>
       </div>
     </div>

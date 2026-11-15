@@ -5,7 +5,8 @@
 // ke pemanggil lewat `onBerhasil`; dialog ditutup oleh pemanggil. Galat spesifik layanan (tutup/tidak buka/tidak valid)
 // ditampilkan inline dan dialog tetap terbuka agar FO bisa memilih layanan lain.
 import { useId, useRef, useState } from 'react';
-import { ArrowRight, Loader2 } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
+import Tombol from '@/components/ui/Tombol';
 import { createClient } from '@/lib/supabase/client';
 import {
   foEskalasi,
@@ -103,15 +104,18 @@ export default function FoEskalasiDialog({
       onSubmit={kirim}
       footer={
         <>
-          <button type="button" className="btn btn--ghost btn--sm" onClick={onClose} disabled={mengirim}>
+          <Tombol varian="hantu" ukuran="kecil" onClick={onClose} disabled={mengirim}>
             Batal
-          </button>
-          <button type="submit" className="btn btn--primary btn--sm" disabled={mengirim || layanan.length === 0} aria-busy={mengirim}>
-            {mengirim
-              ? <Loader2 size={14} className="animate-spin" aria-hidden="true" />
-              : <ArrowRight size={14} aria-hidden="true" />}
+          </Tombol>
+          <Tombol
+            type="submit"
+            ukuran="kecil"
+            ikon={ArrowRight}
+            disabled={mengirim || layanan.length === 0}
+            memuat={mengirim}
+          >
             {mengirim ? 'Mengeskalasi…' : 'Eskalasi & terbitkan nomor'}
-          </button>
+          </Tombol>
         </>
       }
     >

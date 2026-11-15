@@ -10,3 +10,13 @@ export function objekBelumAda(err: unknown): boolean {
   const code = (err as { code?: unknown }).code;
   return typeof code === 'string' && KODE_BELUM_ADA.has(code);
 }
+
+// Hanya KOLOM yang belum ada (Postgres 42703 pada SELECT, PostgREST PGRST204). Dipakai pembaca yang boleh mengulang
+// kueri dengan kolom lama; tabel/fungsi yang belum ada (objekBelumAda) tidak dapat diselamatkan dengan cara itu.
+const KODE_KOLOM_BELUM_ADA = new Set(['PGRST204', '42703']);
+
+export function kolomBelumAda(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const code = (err as { code?: unknown }).code;
+  return typeof code === 'string' && KODE_KOLOM_BELUM_ADA.has(code);
+}

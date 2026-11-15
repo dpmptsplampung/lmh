@@ -229,3 +229,9 @@
   .loginHeader { padding: var(--space-8) var(--space-5) var(--space-4); }
   .loginBody { padding: var(--space-2) var(--space-5) var(--space-8); }
 }
+
+/* Tombol kirim lebar penuh (ukuran besar dari Tombol). */
+.tombolMasuk {
+  width: 100%;
+  margin-top: var(--space-2);
+}

@@ -7,6 +7,7 @@ import crypto from 'node:crypto';
 import { logServerEvent } from '@/lib/observability/logger';
 import { kunciObjek } from '@/lib/storage/area';
 import { deleteObjects, putObject } from '@/lib/storage/r2';
+export const maxDuration = 60;
 
 const MAX_PDF_BYTES = 50 * 1024 * 1024;
 const MAX_PDF_PAGES = 50;

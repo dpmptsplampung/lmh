@@ -15,7 +15,7 @@ import { objekBelumAda, KODE_MIGRASI_BELUM } from '@/lib/akses-data/galat';
 import { PanelIkm as PanelIkmGlobal, PanelSpak as PanelSpakGlobal } from './PanelHasil';
 import Tab, { PanelTab } from '@/components/ui/Tab';
 import { type ResponseRateGlobal } from '@/components/admin/survei/PanelSpakGlobal';
-import IkmPanel from '@/components/IkmPanel';
+import { IkmPanelMalas as IkmPanel } from '@/components/ui/grafik/dinamis';
 import type { IkmRow } from '@/lib/ikm';
 import { labelRentang, rentangPreset } from '@/lib/survei/rentang';
 import type { RingkasanIkmGlobal, RingkasanSpakGlobal } from '@/lib/survei/ringkasan-global';

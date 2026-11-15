@@ -3,6 +3,7 @@
 import Field from '@/components/ui/Field';
 
 import Tombol from '@/components/ui/Tombol';
+import DialogKonfirmasi from '@/components/ui/DialogKonfirmasi';
 import Tabel from '@/components/ui/Tabel';
 import Kartu from '@/components/ui/Kartu';
 import KartuStatistik from '@/components/ui/KartuStatistik';
@@ -22,6 +23,8 @@ import { FileText, Plus, Trash2, RefreshCw, BookOpen, CheckCircle2, Clock, Alert
 import { formatTanggal } from '@/lib/utils';
 import PageHeader from '@/components/layout/PageHeader';
 import { createClient } from '@/lib/supabase/client';
+import { KUNCI_REFERENSI, muatLayananRingkas, type LayananRingkas } from '@/lib/data/referensi';
+import { useReferensi } from '@/lib/data/klien/useReferensi';
 import { mutasiInsert, mutasiWajibBaris, pesanMutasi } from '@/lib/supabase/mutate';
 import { useToast } from '@/components/Toast';
 
@@ -37,12 +40,13 @@ interface DokumenRow {
   _potongan_count?: number;
 }
 
-interface LayananOption { id: string; nama: string }
+const LAYANAN_KOSONG: LayananRingkas[] = [];
 
 export default function AdminDokumenPage() {
   const { toast } = useToast();
   const [docs, setDocs] = useState<DokumenRow[]>([]);
-  const [layananList, setLayananList] = useState<LayananOption[]>([]);
+  // Pilihan Layanan di formulir = referensi bersama (cache memori). Gagal memuat = pilihan kosong (seperti sebelumnya).
+  const layananList = useReferensi(KUNCI_REFERENSI.layananRingkas, () => muatLayananRingkas(createClient())).data ?? LAYANAN_KOSONG;
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [embedding, setEmbedding] = useState<string | null>(null);
@@ -58,12 +62,12 @@ export default function AdminDokumenPage() {
       const supabase = createClient();
       const { data, error } = await supabase
         .from('dokumen_peraturan')
-        .select('*, layanan:layanan_id(nama)')
+        // Kolom daftar saja (= DokumenRow): `teks_utama` besar (seluruh isi peraturan) tidak dibaca daftar.
+        .select('id, judul, nomor, jenis, status, sumber_url, created_at, layanan:layanan_id(nama)')
         .order('created_at', { ascending: false });
       if (error) throw error;
-      setDocs((data ?? []) as DokumenRow[]);
-      const { data: ld } = await supabase.from('layanan').select('id, nama').order('nama');
-      setLayananList(ld ?? []);
+      // Relasi many-to-one: layanan berupa objek di runtime; tipe hasil select menebaknya sebagai array.
+      setDocs((data ?? []) as unknown as DokumenRow[]);
       setLoadError('');
     } catch {
       setLoadError('Gagal memuat dokumen');
@@ -124,8 +128,11 @@ export default function AdminDokumenPage() {
     }
   };
 
+  const [cabutId, setCabutId] = useState<{ id: string } | null>(null);
+  const [mencabut, setMencabut] = useState(false);
+
   const handleCabut = async (docId: string) => {
-    if (!confirm('Tandai dokumen ini sebagai dicabut? Bot tidak akan mengutipnya lagi.')) return;
+    setMencabut(true);
     const supabase = createClient();
     try {
       // Audit T2c: tanpa pemeriksaan, jaringan putus / RLS menolak (0 baris) tetap berujung toast sukses
@@ -139,6 +146,8 @@ export default function AdminDokumenPage() {
     }
     // Dimuat ulang di jalur sukses DAN gagal agar tampilan selalu sama dengan keadaan server.
     await loadDocs();
+    setMencabut(false);
+    setCabutId(null);
   };
 
   const jenisLabel: Record<string, string> = {
@@ -153,6 +162,16 @@ export default function AdminDokumenPage() {
 
   return (
     <>
+      <DialogKonfirmasi
+        terbuka={!!cabutId}
+        judul="Tandai dokumen ini sebagai dicabut?"
+        deskripsi="Bot tidak akan mengutipnya lagi."
+        labelSetuju="Ya, cabut"
+        berbahaya
+        memuat={mencabut}
+        onSetuju={() => { if (cabutId) void handleCabut(cabutId.id); }}
+        onBatal={() => { if (!mencabut) setCabutId(null); }}
+      />
       <PageHeader meta="Tanggal ditampilkan dalam WIB" title='Dokumen Peraturan' description='Kelola dokumen sumber untuk bot RAG (BOT-01..10)'>
         <Tombol varian="hantu" ukuran="kecil" type="button" onClick={loadDocs}>
           <RefreshCw size={16} className={loading ? 'animate-spin' : ''} /> Refresh
@@ -271,7 +290,7 @@ export default function AdminDokumenPage() {
                             varian="hantu" ukuran="kecil" className={["", tampilan.area22].filter(Boolean).join('')}
                             title='Cabut dokumen'
 
-                            onClick={() => handleCabut(doc.id)}>
+                            onClick={() => setCabutId({ id: doc.id })}>
                             <Trash2 size={14} />
                           </Tombol>
                         )}

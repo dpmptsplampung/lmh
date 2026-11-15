@@ -11,6 +11,7 @@ import { MutasiError, mutasiBolehKosong, mutasiInsert } from '@/lib/supabase/mut
 import { catatMutasiGagal } from '@/app/api/admin/_mutasi';
 import { logServerEvent } from '@/lib/observability/logger';
 
+export const maxDuration = 60;
 const MAX_CHUNK = 1500;
 const OVERLAP   = 100;
 

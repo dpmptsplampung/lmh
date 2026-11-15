@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import {
@@ -8,7 +8,6 @@ import {
   ArrowLeft,
   ExternalLink,
   Info,
-  X,
   FileCheck,
   TrendingUp,
   ChevronLeft,
@@ -21,6 +20,8 @@ import {
 import { createClient } from '@/lib/supabase/client';
 import { getSiteSettings } from '@/lib/site-settings';
 import { CONTACT_EMAIL_FALLBACK } from '@/lib/constants';
+import Dialog from '@/components/ui/Dialog';
+import Tombol from '@/components/ui/Tombol';
 import styles from './gallery.module.css';
 
 interface GalleryDoc {
@@ -50,10 +51,6 @@ export default function GalleryPage() {
   const [leadError, setLeadError] = useState('');
   const [leadLoggedIn, setLeadLoggedIn] = useState<boolean | null>(null);
   const [contactEmail, setContactEmail] = useState(CONTACT_EMAIL_FALLBACK);
-  const viewerCloseRef = useRef<HTMLButtonElement>(null);
-  const leadCloseRef = useRef<HTMLButtonElement>(null);
-  const viewerPrevFocusRef = useRef<HTMLElement | null>(null);
-  const leadPrevFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     async function loadData() {
@@ -101,39 +98,14 @@ export default function GalleryPage() {
     e.preventDefault();
   };
 
-  const handleCloseViewer = () => {
-    setSelectedDocId(null);
-    viewerPrevFocusRef.current?.focus();
-  };
+  // Fokus awal, jebak fokus, Escape, dan pengembalian fokus ke pemicu dibawa Dialog (KerangkaModal).
+  const handleCloseViewer = () => setSelectedDocId(null);
 
   const handleCloseLeadModal = () => {
     setLeadModalDoc(null);
     setLeadSent(false);
     setLeadError('');
-    leadPrevFocusRef.current?.focus();
   };
-
-  useEffect(() => {
-    if (!selectedDocId) return;
-    viewerPrevFocusRef.current = document.activeElement as HTMLElement | null;
-    viewerCloseRef.current?.focus();
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') handleCloseViewer();
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [selectedDocId]);
-
-  useEffect(() => {
-    if (!leadModalDoc) return;
-    leadPrevFocusRef.current = document.activeElement as HTMLElement | null;
-    leadCloseRef.current?.focus();
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') handleCloseLeadModal();
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [leadModalDoc]);
 
   const handleOpenLeadModal = async (doc: GalleryDoc) => {
     setLeadModalDoc(doc);
@@ -322,15 +294,14 @@ export default function GalleryPage() {
                       )}
                     </div>
 
-                    <button
-                      type="button"
-                      className="btn btn--secondary btn--sm"
-                      style={{ fontSize: '11px', display: 'flex', gap: '4px', alignItems: 'center' }}
+                    <Tombol
+                      varian="sekunder"
+                      ukuran="kecil"
+                      ikon={FileCheck}
                       onClick={() => setSelectedDocId(project.id)}
                     >
-                      <FileCheck size={12} />
                       Lihat Dokumen
-                    </button>
+                    </Tombol>
                   </div>
 
                   <button
@@ -351,249 +322,190 @@ export default function GalleryPage() {
 
       {/* SECURE VIEW-ONLY MODAL VIEWER */}
       {selectedDocId && (
-        <div
-          className={styles.secureModal}
-          role="dialog"
-          aria-modal="true"
-          aria-label={getSelectedDocTitle()}
+        <Dialog
+          terbuka
+          onTutup={handleCloseViewer}
+          lebarMaks={860}
+          judul={getSelectedDocTitle()}
+          deskripsi={
+            <span className={styles.penampilPeringatan}>
+              <Info size={12} aria-hidden="true" />
+              View-only (Unduh dinonaktifkan)
+            </span>
+          }
         >
-          <div className={styles.secureViewerContent}>
-
-            {/* Header */}
-            <div className={styles.secureViewerHeader}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <FileText size={18} style={{ color: 'var(--color-primary-400)' }} />
-                <span className={styles.secureViewerTitle}>{getSelectedDocTitle()}</span>
-              </div>
-
-              {/* Warning label */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '10px', background: 'rgba(239, 68, 68, 0.15)', color: '#f87171', padding: '4px 10px', borderRadius: '4px' }}>
-                <Info size={12} />
-                <span>View-only (Unduh dinonaktifkan)</span>
-              </div>
-
-              {/* Close Button */}
-              <button
-                ref={viewerCloseRef}
-                type="button"
-                className={styles.secureCloseBtn}
-                onClick={handleCloseViewer}
-                aria-label="Tutup"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            {/* Body */}
-            <div className={styles.secureViewerBody} role="presentation" onContextMenu={handleContextMenu}>
-              <style>{`@media print { .no-print { display: none !important; }`}</style>
-              <div className="no-print" style={{ width: '100%', position: 'relative' }}>
-                {!hasPages ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '600px', color: 'var(--color-neutral-400)', gap: 'var(--space-4)' }}>
-                    <FileText size={48} style={{ opacity: 0.4 }} />
-                    <p>Dokumen ini sedang diproses.</p>
-                    <a href={`mailto:${contactEmail}`} style={{ color: 'var(--color-primary-400)', fontSize: 'var(--text-sm)' }}>
-                      Hubungi admin untuk informasi lebih lanjut
-                    </a>
-                  </div>
-                ) : (
-                  <>
-                    <div style={{
-                      position: 'absolute',
-                      top: '50%',
-                      left: '50%',
-                      transform: 'translate(-50%, -50%) rotate(-30deg)',
-                      fontSize: '32px',
-                      fontWeight: 900,
-                      color: 'rgba(239, 68, 68, 0.10)',
-                      pointerEvents: 'none',
-                      userSelect: 'none',
-                      whiteSpace: 'nowrap',
-                      letterSpacing: '0.1em',
-                      zIndex: 1,
-                    }}>
-                      DPMPTSP PROV LAMPUNG — DILINDUNGI
-                    </div>
-                    {/* eslint-disable-next-line @next/next/no-img-element -- dynamic watermarked PNG, next/image does not apply */}
-                    <img
-                      src={`/api/investment-docs/page-image?doc_id=${selectedDocId}&page=${currentPage}`}
-                      alt={`Halaman ${currentPage} dari ${pageCount}`}
-                      style={{ width: '100%', maxWidth: '640px', height: 'auto', border: 'none', position: 'relative', zIndex: 2, display: 'block', margin: '0 auto', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}
-                      draggable={false}
-                    />
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-4)', marginTop: 'var(--space-4)' }}>
-                      <button
-                        type="button"
-                        className="btn btn--secondary btn--sm"
-                        style={{ display: 'flex', gap: '4px', alignItems: 'center' }}
-                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                        disabled={currentPage <= 1}
-                      >
-                        <ChevronLeft size={14} />
-                        Sebelumnya
-                      </button>
-                      <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-neutral-400)' }}>
-                        Halaman {currentPage} dari {pageCount}
-                      </span>
-                      <button
-                        type="button"
-                        className="btn btn--secondary btn--sm"
-                        style={{ display: 'flex', gap: '4px', alignItems: 'center' }}
-                        onClick={() => setCurrentPage((p) => Math.min(pageCount, p + 1))}
-                        disabled={currentPage >= pageCount}
-                      >
-                        Berikutnya
-                        <ChevronRight size={14} />
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-
-          </div>
-        </div>
-      )}
-
-      {leadModalDoc && (
-        <div
-          className={styles.leadModal}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Formulir Minat Investasi"
-        >
-          <div className={styles.leadModalContent}>
-            <div className={styles.leadModalHeader}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <Mail size={18} style={{ color: 'var(--color-primary-400)' }} />
-                <span className={styles.leadModalTitle}>Ajukan Minat Investasi</span>
-              </div>
-              <button
-                ref={leadCloseRef}
-                type="button"
-                className={styles.secureCloseBtn}
-                onClick={handleCloseLeadModal}
-                aria-label="Tutup"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <div className={styles.leadModalBody}>
-              {leadLoggedIn === false ? (
-                <div className={styles.leadSuccess}>
-                  <LogIn size={48} style={{ color: 'var(--color-primary-400)', marginBottom: 'var(--space-4)' }} />
-                  <p className={styles.leadSuccessText}>
-                    Silakan masuk untuk mengajukan minat investasi.
-                  </p>
-                  <Link href="/login?next=/gallery" className="btn btn--primary">
-                    Masuk
-                  </Link>
-                </div>
-              ) : leadSent ? (
-                <div className={styles.leadSuccess}>
-                  <CheckCircle size={48} style={{ color: '#10b981', marginBottom: 'var(--space-4)' }} />
-                  <p className={styles.leadSuccessText}>
-                    Permintaan Anda tercatat. Tim kami akan menghubungi Anda.
-                  </p>
-                  <button
-                    type="button"
-                    className="btn btn--primary"
-                    onClick={handleCloseLeadModal}
-                  >
-                    Tutup
-                  </button>
+          <div className={styles.secureViewerBody} role="presentation" onContextMenu={handleContextMenu}>
+            <style>{`@media print { .no-print { display: none !important; }`}</style>
+            <div className="no-print" style={{ width: '100%', position: 'relative' }}>
+              {!hasPages ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '600px', color: 'var(--color-neutral-400)', gap: 'var(--space-4)' }}>
+                  <FileText size={48} style={{ opacity: 0.4 }} />
+                  <p>Dokumen ini sedang diproses.</p>
+                  <a href={`mailto:${contactEmail}`} style={{ color: 'var(--color-primary-400)', fontSize: 'var(--text-sm)' }}>
+                    Hubungi admin untuk informasi lebih lanjut
+                  </a>
                 </div>
               ) : (
-                <form className={styles.leadForm} onSubmit={handleSubmitLead}>
-                  <p className={styles.leadContext}>
-                    Untuk dokumen: <strong>{leadModalDoc.judul}</strong>
-                  </p>
-
-                  {leadError && (
-                    <div className={styles.leadError} role="alert">
-                      <Info size={14} />
-                      {leadError}
-                    </div>
-                  )}
-
-                  <div className={styles.leadField}>
-                    <label htmlFor="lead-nama" className={styles.leadLabel}>Nama <span style={{ color: '#f87171' }}>*</span></label>
-                    <input
-                      id="lead-nama"
-                      type="text"
-                      className={styles.leadInput}
-                      value={leadForm.nama}
-                      onChange={(e) => setLeadForm({ ...leadForm, nama: e.target.value })}
-                      required
-                      maxLength={200}
-                    />
+                <>
+                  <div style={{
+                    position: 'absolute',
+                    top: '50%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%) rotate(-30deg)',
+                    fontSize: '32px',
+                    fontWeight: 900,
+                    color: 'rgba(239, 68, 68, 0.10)',
+                    pointerEvents: 'none',
+                    userSelect: 'none',
+                    whiteSpace: 'nowrap',
+                    letterSpacing: '0.1em',
+                    zIndex: 1,
+                  }}>
+                    DPMPTSP PROV LAMPUNG — DILINDUNGI
                   </div>
-
-                  <div className={styles.leadField}>
-                    <label htmlFor="lead-email" className={styles.leadLabel}>Email <span style={{ color: '#f87171' }}>*</span></label>
-                    <input
-                      id="lead-email"
-                      type="email"
-                      className={styles.leadInput}
-                      value={leadForm.email}
-                      onChange={(e) => setLeadForm({ ...leadForm, email: e.target.value })}
-                      required
-                    />
+                  {/* eslint-disable-next-line @next/next/no-img-element -- dynamic watermarked PNG, next/image does not apply */}
+                  <img
+                    src={`/api/investment-docs/page-image?doc_id=${selectedDocId}&page=${currentPage}`}
+                    alt={`Halaman ${currentPage} dari ${pageCount}`}
+                    style={{ width: '100%', maxWidth: '640px', height: 'auto', border: 'none', position: 'relative', zIndex: 2, display: 'block', margin: '0 auto', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}
+                    draggable={false}
+                  />
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-4)', marginTop: 'var(--space-4)' }}>
+                    <Tombol
+                      varian="sekunder"
+                      ukuran="kecil"
+                      ikon={ChevronLeft}
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={currentPage <= 1}
+                    >
+                      Sebelumnya
+                    </Tombol>
+                    <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-neutral-400)' }}>
+                      Halaman {currentPage} dari {pageCount}
+                    </span>
+                    <Tombol
+                      varian="sekunder"
+                      ukuran="kecil"
+                      onClick={() => setCurrentPage((p) => Math.min(pageCount, p + 1))}
+                      disabled={currentPage >= pageCount}
+                    >
+                      Berikutnya
+                      <ChevronRight size={16} aria-hidden="true" style={{ verticalAlign: 'middle', marginLeft: 8 }} />
+                    </Tombol>
                   </div>
-
-                  <div className={styles.leadField}>
-                    <label htmlFor="lead-instansi" className={styles.leadLabel}>Instansi</label>
-                    <input
-                      id="lead-instansi"
-                      type="text"
-                      className={styles.leadInput}
-                      value={leadForm.instansi}
-                      onChange={(e) => setLeadForm({ ...leadForm, instansi: e.target.value })}
-                      maxLength={200}
-                    />
-                  </div>
-
-                  <div className={styles.leadField}>
-                    <label htmlFor="lead-minat" className={styles.leadLabel}>Minat</label>
-                    <textarea
-                      id="lead-minat"
-                      className={styles.leadTextarea}
-                      value={leadForm.minat}
-                      onChange={(e) => setLeadForm({ ...leadForm, minat: e.target.value })}
-                      rows={3}
-                      maxLength={1000}
-                    />
-                  </div>
-
-                  <div className={styles.leadField}>
-                    <label htmlFor="lead-catatan" className={styles.leadLabel}>Catatan</label>
-                    <textarea
-                      id="lead-catatan"
-                      className={styles.leadTextarea}
-                      value={leadForm.catatan}
-                      onChange={(e) => setLeadForm({ ...leadForm, catatan: e.target.value })}
-                      rows={3}
-                      maxLength={2000}
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    className={styles.leadSubmit}
-                    disabled={leadSending}
-                  >
-                    {leadSending ? (
-                      <><Loader2 size={16} className="animate-pulse" /> Mengirim...</>
-                    ) : (
-                      <><Mail size={16} /> Kirim Permintaan</>
-                    )}
-                  </button>
-                </form>
+                </>
               )}
             </div>
           </div>
-        </div>
+        </Dialog>
+      )}
+
+      {leadModalDoc && (
+        <Dialog terbuka onTutup={handleCloseLeadModal} judul="Ajukan Minat Investasi">
+          {leadLoggedIn === false ? (
+            <div className={styles.leadSuccess}>
+              <LogIn size={48} style={{ color: 'var(--color-primary-600)', marginBottom: 'var(--space-4)' }} aria-hidden="true" />
+              <p className={styles.leadSuccessText}>
+                Silakan masuk untuk mengajukan minat investasi.
+              </p>
+              <Tombol href="/login?next=/gallery">Masuk</Tombol>
+            </div>
+          ) : leadSent ? (
+            <div className={styles.leadSuccess}>
+              <CheckCircle size={48} style={{ color: 'var(--status-success-fg)', marginBottom: 'var(--space-4)' }} aria-hidden="true" />
+              <p className={styles.leadSuccessText}>
+                Permintaan Anda tercatat. Tim kami akan menghubungi Anda.
+              </p>
+              <Tombol onClick={handleCloseLeadModal}>Tutup</Tombol>
+            </div>
+          ) : (
+            <form className={styles.leadForm} onSubmit={handleSubmitLead}>
+              <p className={styles.leadContext}>
+                Untuk dokumen: <strong>{leadModalDoc.judul}</strong>
+              </p>
+
+              {leadError && (
+                <div className={styles.leadError} role="alert">
+                  <Info size={14} />
+                  {leadError}
+                </div>
+              )}
+
+              <div className="form-group">
+                <label htmlFor="lead-nama" className="form-label form-label--required">Nama</label>
+                <input
+                  id="lead-nama"
+                  type="text"
+                  className="form-input"
+                  value={leadForm.nama}
+                  onChange={(e) => setLeadForm({ ...leadForm, nama: e.target.value })}
+                  required
+                  maxLength={200}
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="lead-email" className="form-label form-label--required">Email</label>
+                <input
+                  id="lead-email"
+                  type="email"
+                  className="form-input"
+                  value={leadForm.email}
+                  onChange={(e) => setLeadForm({ ...leadForm, email: e.target.value })}
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="lead-instansi" className="form-label">Instansi</label>
+                <input
+                  id="lead-instansi"
+                  type="text"
+                  className="form-input"
+                  value={leadForm.instansi}
+                  onChange={(e) => setLeadForm({ ...leadForm, instansi: e.target.value })}
+                  maxLength={200}
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="lead-minat" className="form-label">Minat</label>
+                <textarea
+                  id="lead-minat"
+                  className="form-textarea"
+                  value={leadForm.minat}
+                  onChange={(e) => setLeadForm({ ...leadForm, minat: e.target.value })}
+                  rows={3}
+                  maxLength={1000}
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="lead-catatan" className="form-label">Catatan</label>
+                <textarea
+                  id="lead-catatan"
+                  className="form-textarea"
+                  value={leadForm.catatan}
+                  onChange={(e) => setLeadForm({ ...leadForm, catatan: e.target.value })}
+                  rows={3}
+                  maxLength={2000}
+                />
+              </div>
+
+              <button
+                type="submit"
+                className={styles.leadSubmit}
+                disabled={leadSending}
+              >
+                {leadSending ? (
+                  <><Loader2 size={16} className="animate-pulse" /> Mengirim...</>
+                ) : (
+                  <><Mail size={16} /> Kirim Permintaan</>
+                )}
+              </button>
+            </form>
+          )}
+        </Dialog>
       )}
     </div>
   );

@@ -5,6 +5,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ArrowLeft, CalendarCheck, ClipboardCheck, Users } from 'lucide-react';
 import { APP_NAME } from '@/lib/constants';
+import Tombol from '@/components/ui/Tombol';
 import styles from './checkin.module.css';
 
 export const metadata: Metadata = {
@@ -55,9 +56,9 @@ export default function CheckinPage() {
                   Tunjukkan QR reservasi Anda kepada petugas Front Office untuk dipindai. QR tersedia di
                   halaman reservasi akun Anda.
                 </p>
-                <Link href="/me/reservasi" className="btn btn--primary btn--sm">
+                <Tombol href="/me/reservasi" ukuran="kecil">
                   Lihat QR Reservasi
-                </Link>
+                </Tombol>
               </div>
             </section>
           </div>

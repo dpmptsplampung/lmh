@@ -6,15 +6,15 @@
 // dengan SALURAN_CHAT): diambil lewat chat_ambil di halaman Live Chat (/admin/chat?sesi=...), maka hanya ditautkan. FO mana pun boleh mengambil; pengambilan atomik di DB (fo_ambil_dari_kotak_masuk):
 // yang kalah balapan menerima SUDAH_DIAMBIL -> pesan ramah + daftar dimuat ulang. Berhasil -> lanjut ke Penanganan.
 import { useCallback, useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Inbox, Loader2, MessageSquare, UserCheck } from 'lucide-react';
+import { Inbox, MessageSquare, UserCheck } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
 import Galat from '@/components/ui/Galat';
 import KartuStatistik from '@/components/ui/KartuStatistik';
 import Lencana from '@/components/ui/Lencana';
 import Skeleton from '@/components/ui/Skeleton';
 import StatusKosong from '@/components/ui/StatusKosong';
+import Tombol from '@/components/ui/Tombol';
 import { useToast } from '@/components/Toast';
 import { createClient } from '@/lib/supabase/client';
 import { useRealtimeRefetch } from '@/lib/hooks/useRealtimeRefetch';
@@ -274,28 +274,25 @@ export default function KotakMasukFoPage() {
                     <div className={styles.aksiKartu}>
                       {b.saluran === 'chat' ? (
                         // Chat diambil lewat RPC chat_ambil di halaman Live Chat (bukan fo_ambil_dari_kotak_masuk).
-                        <Link
+                        <Tombol
                           href={b.chat_sesi_id ? `/admin/chat?sesi=${b.chat_sesi_id}` : '/admin/chat'}
-                          className="btn btn--primary btn--sm"
+                          ukuran="kecil"
+                          ikon={MessageSquare}
                           aria-label={`Buka di Live Chat: ${k?.nama ?? 'pengunjung'}`}
                         >
-                          <MessageSquare size={14} aria-hidden="true" />
                           Buka di Live Chat
-                        </Link>
+                        </Tombol>
                       ) : (
-                        <button
-                          type="button"
-                          className="btn btn--primary btn--sm"
+                        <Tombol
+                          ukuran="kecil"
+                          ikon={UserCheck}
                           onClick={() => void ambil(b)}
                           disabled={sibuk}
-                          aria-busy={sibuk}
+                          memuat={sibuk}
                           aria-label={`Ambil ${k?.nama ?? 'pengunjung'}`}
                         >
-                          {sibuk
-                            ? <Loader2 size={14} className="animate-spin" aria-hidden="true" />
-                            : <UserCheck size={14} aria-hidden="true" />}
                           {sibuk ? 'Mengambil…' : 'Ambil'}
-                        </button>
+                        </Tombol>
                       )}
                     </div>
                   </li>

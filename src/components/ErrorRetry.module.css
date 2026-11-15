@@ -35,19 +35,3 @@
 .tombol {
   margin-top: var(--space-3);
 }
-
-.berputar {
-  animation: putar 1s linear infinite;
-}
-
-@keyframes putar {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .berputar {
-    animation: none;
-  }
-}

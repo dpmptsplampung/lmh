@@ -14,7 +14,7 @@ import tampilan from './page.dasbor.module.css';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, List } from 'lucide-react';
 import Kartu from '@/components/ui/Kartu';
-import { BISA_DIFOKUS } from '@/components/ui/fokus';
+import Tabel, { type KolomTabel } from '@/components/ui/Tabel';
 import Skeleton from '@/components/ui/Skeleton';
 import Galat from '@/components/ui/Galat';
 import StatusKosong from '@/components/ui/StatusKosong';
@@ -23,6 +23,8 @@ import RoleNote from '@/components/admin/RoleNote';
 import { BarisTambah, SelTeksInline } from '@/components/admin/SuntingInline';
 import { useToast } from '@/components/Toast';
 import { createClient } from '@/lib/supabase/client';
+import { KUNCI_REFERENSI, muatLayananRingkas, muatSemuaTopik, type LayananRingkas, type TopikAdmin as Topik } from '@/lib/data/referensi';
+import { useReferensi } from '@/lib/data/klien/useReferensi';
 import { MutasiError, mutasiInsert, mutasiWajibBaris, pesanMutasi } from '@/lib/supabase/mutate';
 import { perluMuatUlang } from '@/components/admin/mutasi-ui';
 import { bisaGeser, hitungGeser, terkunci } from './urutan';
@@ -31,19 +33,8 @@ import styles from './topik.module.css';
 const FO = '__fo__';
 const NAMA_MIN = 2;
 const NAMA_MAX = 100;
-
-interface Topik {
-  id: string;
-  layanan_id: string | null;
-  nama: string;
-  aktif: boolean;
-  urut: number;
-}
-
-interface LayananOpsi {
-  id: string;
-  nama: string;
-}
+const PESAN_GALAT_MUAT = 'Gagal memuat topik penanganan. Muat ulang halaman atau coba lagi.';
+const LAYANAN_KOSONG: LayananRingkas[] = [];
 
 /** Pesan galat penyimpanan topik: bentrok nama (23505) dan pelanggaran CHECK panjang nama (23514) dijelaskan. */
 function pesanGalatSimpan(err: unknown): string {
@@ -59,9 +50,14 @@ export default function KelolaTopikPage() {
   const { toast } = useToast();
   const idDasar = useId();
   const [topik, setTopik] = useState<Topik[]>([]);
-  const [layanan, setLayanan] = useState<LayananOpsi[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [galatMuat, setGalatMuat] = useState<string | null>(null);
+  // Daftar Layanan = referensi bersama (cache memori 5 menit, dipakai juga halaman lain). Topik yang sedang
+  // disunting TIDAK lewat cache: tiap perubahan dimuat ulang dari server.
+  const referensiLayanan = useReferensi(KUNCI_REFERENSI.layananRingkas, () => muatLayananRingkas(createClient()));
+  const layanan = referensiLayanan.data ?? LAYANAN_KOSONG;
+  const [loadingTopik, setLoadingTopik] = useState(true);
+  const [galatTopik, setGalatTopik] = useState<string | null>(null);
+  const loading = loadingTopik || referensiLayanan.memuat;
+  const galatMuat = galatTopik ?? (referensiLayanan.galat ? PESAN_GALAT_MUAT : null);
   const [cakupan, setCakupan] = useState<string>(FO);
   const [sibuk, setSibuk] = useState<ReadonlySet<string>>(new Set());
   const [pengumuman, setPengumuman] = useState('');
@@ -70,20 +66,14 @@ export default function KelolaTopikPage() {
 
   const muat = useCallback(async () => {
     try {
-      const supabase = createClient();
-      const [t, l] = await Promise.all([
-        supabase.from('topik_penanganan').select('id, layanan_id, nama, aktif, urut').order('urut').order('nama'),
-        supabase.from('layanan').select('id, nama').order('nama'),
-      ]);
-      if (t.error) throw t.error;
-      if (l.error) throw l.error;
-      setTopik((t.data ?? []) as Topik[]);
-      setLayanan((l.data ?? []) as LayananOpsi[]);
-      setGalatMuat(null);
+      const hasil = await muatSemuaTopik(createClient());
+      if (hasil.error !== null) throw new Error(hasil.error);
+      setTopik(hasil.data);
+      setGalatTopik(null);
     } catch {
-      setGalatMuat('Gagal memuat topik penanganan. Muat ulang halaman atau coba lagi.');
+      setGalatTopik(PESAN_GALAT_MUAT);
     } finally {
-      setLoading(false);
+      setLoadingTopik(false);
     }
   }, []);
 
@@ -220,6 +210,61 @@ export default function KelolaTopikPage() {
     }
   };
 
+  const kolomTopik: KolomTabel<Topik>[] = [
+    { kunci: 'nama', judul: 'Topik', judulBaris: true, render: (t) => (
+      <SelTeksInline
+        nilai={t.nama}
+        label={`nama topik ${t.nama}`}
+        maxLength={NAMA_MAX}
+        validasi={(baru) => validasiNama(baru, t.id)}
+        onSimpan={(baru) => ubahNama(t, baru)}
+      />
+    ) },
+    { kunci: 'urutan', judul: 'Urutan', render: (t, i) => {
+      const sedang = sibuk.has(t.id);
+      return (
+        <div className={styles.geser}>
+          <Tombol
+            type="button"
+            id={`${idDasar}-${t.id}-naik`}
+            varian="hantu" ukuran="kecil"
+            aria-label={`Naikkan ${t.nama}`}
+            disabled={!bisaGeser(daftar, i, -1) || sedang}
+            onClick={() => void geser(i, -1)}>
+            <ArrowUp size={14} aria-hidden="true" />
+          </Tombol>
+          <Tombol
+            type="button"
+            id={`${idDasar}-${t.id}-turun`}
+            varian="hantu" ukuran="kecil"
+            aria-label={`Turunkan ${t.nama}`}
+            disabled={!bisaGeser(daftar, i, 1) || sedang}
+            onClick={() => void geser(i, 1)}>
+            <ArrowDown size={14} aria-hidden="true" />
+          </Tombol>
+        </div>
+      );
+    } },
+    { kunci: 'status', judul: 'Status', render: (t) => {
+      const sedang = sibuk.has(t.id);
+      return (
+        <label className={styles.saklarBaris}>
+          <input
+            type="checkbox"
+            role="switch"
+            className="saklar"
+            aria-label={`Aktif: ${t.nama}`}
+            checked={t.aktif}
+            disabled={sedang}
+            aria-busy={sedang || undefined}
+            onChange={() => void ubahAktif(t)}
+          />
+          <span>{t.aktif ? 'Aktif' : 'Nonaktif'}</span>
+        </label>
+      );
+    } },
+  ];
+
   return (
     <>
       <PageHeader
@@ -268,78 +313,21 @@ export default function KelolaTopikPage() {
             {loading ? (
               <Skeleton bentuk="baris" jumlah={5} label="Memuat topik" />
             ) : galatMuat ? (
-              <Galat pesan={galatMuat} onRetry={() => { setLoading(true); void muat(); }} />
+              <Galat
+                pesan={galatMuat}
+                onRetry={() => {
+                  setLoadingTopik(true);
+                  void muat();
+                  if (referensiLayanan.galat) referensiLayanan.segarkan();
+                }} />
             ) : (
-              <div className="table-wrapper" role="region" aria-label={`Topik penanganan ${namaCakupan}`} {...BISA_DIFOKUS}><table className="table">
-                <caption className="sr-only">Topik penanganan {namaCakupan}</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Topik</th>
-                    <th scope="col">Urutan</th>
-                    <th scope="col">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {daftar.length === 0 && (
-                    <tr>
-                      <td colSpan={3} className="kosong-sel">
-                        <StatusKosong ikon={List} judul={`Belum ada topik untuk ${namaCakupan}.`} isi="Tulis namanya di baris paling bawah untuk membuatnya." />
-                      </td>
-                    </tr>
-                  )}
-                  {daftar.map((t, i) => {
-                    const sedang = sibuk.has(t.id);
-                    return (
-                      <tr key={t.id}>
-                        <td className="kol-utama">
-                          <SelTeksInline
-                            nilai={t.nama}
-                            label={`nama topik ${t.nama}`}
-                            maxLength={NAMA_MAX}
-                            validasi={(baru) => validasiNama(baru, t.id)}
-                            onSimpan={(baru) => ubahNama(t, baru)}
-                          />
-                        </td>
-                        <td>
-                          <div className={styles.geser}>
-                            <Tombol
-                              type="button"
-                              id={`${idDasar}-${t.id}-naik`}
-                              varian="hantu" ukuran="kecil"
-                              aria-label={`Naikkan ${t.nama}`}
-                              disabled={!bisaGeser(daftar, i, -1) || sedang}
-                              onClick={() => void geser(i, -1)}>
-                              <ArrowUp size={14} aria-hidden="true" />
-                            </Tombol>
-                            <Tombol
-                              type="button"
-                              id={`${idDasar}-${t.id}-turun`}
-                              varian="hantu" ukuran="kecil"
-                              aria-label={`Turunkan ${t.nama}`}
-                              disabled={!bisaGeser(daftar, i, 1) || sedang}
-                              onClick={() => void geser(i, 1)}>
-                              <ArrowDown size={14} aria-hidden="true" />
-                            </Tombol>
-                          </div>
-                        </td>
-                        <td>
-                          <label className={styles.saklarBaris}>
-                            <input
-                              type="checkbox"
-                              role="switch"
-                              className="saklar"
-                              aria-label={`Aktif: ${t.nama}`}
-                              checked={t.aktif}
-                              disabled={sedang}
-                              aria-busy={sedang || undefined}
-                              onChange={() => void ubahAktif(t)}
-                            />
-                            <span>{t.aktif ? 'Aktif' : 'Nonaktif'}</span>
-                          </label>
-                        </td>
-                      </tr>
-                    );
-                  })}
+              <Tabel
+                caption={`Topik penanganan ${namaCakupan}`}
+                kolom={kolomTopik}
+                baris={daftar}
+                kunciBaris="id"
+                kosong={<StatusKosong ikon={List} judul={`Belum ada topik untuk ${namaCakupan}.`} isi="Tulis namanya di baris paling bawah untuk membuatnya." />}
+                akhir={
                   <BarisTambah
                     kolom={3}
                     labelTombol="Tambah"
@@ -347,8 +335,7 @@ export default function KelolaTopikPage() {
                     bidang={[{ kunci: 'nama', label: 'Topik baru', placeholder: `+ Tambah topik ${namaCakupan}`, maxLength: NAMA_MAX }]}
                     onTambah={tambah}
                   />
-                </tbody>
-              </table></div>
+                } />
             )}
           </Kartu>
         </div>

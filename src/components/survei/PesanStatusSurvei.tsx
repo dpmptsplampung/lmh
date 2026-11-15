@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import Link from 'next/link';
 import { Clock, CircleCheck, LinkIcon } from 'lucide-react';
+import Tombol from '@/components/ui/Tombol';
 import styles from './survei.module.css';
 
 export type StatusPesanSurvei = 'kedaluwarsa' | 'sudah_diisi' | 'tidak_valid';
@@ -42,9 +42,9 @@ export default function PesanStatusSurvei({ status }: { status: StatusPesanSurve
         {judul}
       </h2>
       <p className={styles.isiPesan}>{isi}</p>
-      <Link href="/" className={`btn btn--secondary ${styles.tombolNav}`}>
+      <Tombol href="/" varian="sekunder" className={styles.tombolNav}>
         Ke beranda
-      </Link>
+      </Tombol>
     </section>
   );
 }
