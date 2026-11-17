@@ -5,7 +5,7 @@ export function jalurAkun(path: string | undefined, userId: string): boolean {
   return !!path && (path.startsWith(AWALAN_AKUN) || profilDrafDariPath(path) === userId);
 }
 
-// Hak draf diperiksa ulang lewat JWT pengguna; flag hilang atau sesi gagal selalu menolak.
+// Hak draf diperiksa ulang lewat JWT pengguna; modul hilang atau sesi gagal selalu menolak.
 export async function bolehUnggahDraf(
   client: Pick<SupabaseClient, 'from' | 'rpc'>,
   user: { id: string; is_anonymous?: boolean },
@@ -14,7 +14,7 @@ export async function bolehUnggahDraf(
   if (user.is_anonymous) return false;
   try {
     const { data: staf, error } = await client.from('petugas')
-      .select('role, aktif, pemeriksa_umkm').eq('auth_user_id', user.id).maybeSingle();
+      .select('role, aktif').eq('auth_user_id', user.id).maybeSingle();
     if (error) return false;
     if (!staf) {
       if (jalurAkun(path, user.id)) return true;
@@ -23,8 +23,11 @@ export async function bolehUnggahDraf(
       const hak = await client.rpc('umkm_akses_draf_pemilik', { p_profil_id: profil });
       return !hak.error && hak.data?.diizinkan === true;
     }
-    if (staf.aktif !== true || staf.pemeriksa_umkm !== true ||
-      !['admin', 'petugas'].includes(staf.role)) return false;
+    if (staf.aktif !== true || !['admin', 'petugas'].includes(staf.role)) return false;
+    if (staf.role !== 'admin') {
+      const modul = await client.rpc('staf_modul');
+      if (modul.error || modul.data !== 'umkm') return false;
+    }
     const sesi = await client.rpc('sesi_valid');
     return !sesi.error && sesi.data === true;
   } catch { return false; }

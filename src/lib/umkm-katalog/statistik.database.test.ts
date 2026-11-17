@@ -2,6 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { bukaDbPenuh, sebagai } from '../../../scripts/lokal-rantai/harness.mjs';
+import { buatPetugasUmkm } from '../../../scripts/lokal-rantai/seed-umkm.mjs';
 
 let db: Awaited<ReturnType<typeof bukaDbPenuh>>;
 const akun = { biasa: randomUUID(), anonim: randomUUID(), admin: randomUUID(), fo: randomUUID(),
@@ -37,10 +38,7 @@ beforeAll(async () => {
     VALUES ($1,$2,'Admin statistik','admin',true)`, [staf, akun.admin]);
   await sql(`INSERT INTO petugas(auth_user_id,nama,role,aktif)
     VALUES ($1,'FO statistik','front_office',true)`, [akun.fo]);
-  const pemeriksa = randomUUID();
-  await sql(`INSERT INTO petugas(id,auth_user_id,nama,role,aktif)
-    VALUES ($1,$2,'Pemeriksa statistik','petugas',true)`, [pemeriksa, akun.pemeriksa]);
-  await rpc('admin', 'umkm_atur_pemeriksa', '$1::uuid,true,$2::uuid', [pemeriksa, randomUUID()]);
+  await buatPetugasUmkm(db, { authUserId: akun.pemeriksa, nama: 'Pemeriksa statistik' });
   profil = await buatProfil();
 }, 30000);
 afterAll(async () => { await db?.close(); });

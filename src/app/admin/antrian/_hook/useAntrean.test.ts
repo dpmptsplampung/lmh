@@ -204,15 +204,11 @@ describe('useAntrean: galat', () => {
     expect(result.current.galatSegar).toBe(false);
   });
 
-  it('tanggal di luar jendela FO: pesan jendela; batas tiket: pesannya sendiri (bukan "periksa koneksi")', async () => {
+  it('batas tiket: pesannya sendiri (bukan "periksa koneksi")', async () => {
     vi.mocked(muatProfilAntrean).mockResolvedValue(profil('front_office'));
-    vi.mocked(muatAntrean).mockResolvedValueOnce(galat('tanggal_diluar_batas'));
-    const { result } = pasang();
-    await waitFor(() => expect(result.current.galatMuat).toMatch(/^Front Office hanya dapat membuka tanggal \d/));
-
     vi.mocked(muatAntrean).mockResolvedValueOnce(galat('batas_tiket', PESAN_BATAS_TIKET));
-    await act(async () => { await realtime.fn!(); });
-    expect(result.current.galatMuat).toBe(PESAN_BATAS_TIKET);
+    const { result } = pasang();
+    await waitFor(() => expect(result.current.galatMuat).toBe(PESAN_BATAS_TIKET));
   });
 
   it('galat profil menggagalkan muat (pesan umum) tanpa membaca tiket', async () => {

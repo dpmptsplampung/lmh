@@ -37,3 +37,53 @@ export function kodeGalatKhusus(e: unknown): KodeGalatKhusus | null {
   const pesan = (sumber as { message?: unknown }).message;
   return typeof pesan === 'string' ? ((pesan.match(POLA)?.[1] as KodeGalatKhusus | undefined) ?? null) : null;
 }
+
+// ── Langkah Mulai Layanan dan draf (G5; migrasi 202611160002) ────────────────────────────────────────────────
+
+export interface GalatLangkah {
+  /** Pesan siap tampil, tanpa detail teknis. */
+  pesan: string;
+  /** true = tampilan basi (tiket berubah di tempat lain): pemanggil memuat ulang daftar/isian. */
+  muatUlang: boolean;
+  /** true = sesi tidak sah: tidak ada gunanya mencoba lagi sebelum masuk kembali. */
+  sesiHabis: boolean;
+}
+
+const POLA_LANGKAH =
+  /\b(SESI_TIDAK_SAH|FORBIDDEN|BUKAN_PEMILIK|NOT_FOUND|SUDAH_DIAMBIL|BUKAN_HARI_INI|INVALID_STATUS|PENANGANAN_AKTIF|PENANGANAN_TIDAK_SESUAI|KHUSUS_TIDAK_VALID|KHUSUS_WAJIB|KHUSUS_NONAKTIF|LAYANAN_TETAP|INVALID_PAYLOAD|TOPIK_SISTEM_TIDAK_ADA)\b/;
+
+const PESAN_LANGKAH: Record<string, { pesan: string; muatUlang?: boolean; sesiHabis?: boolean }> = {
+  SESI_TIDAK_SAH: { pesan: 'Sesi Anda sudah tidak berlaku (masuk di perangkat lain atau terlalu lama tidak aktif). Silakan masuk kembali.', sesiHabis: true },
+  FORBIDDEN: { pesan: 'Anda tidak berwenang mengubah pendataan tiket ini.', muatUlang: true },
+  BUKAN_PEMILIK: { pesan: 'Tiket ini sedang dilayani petugas lain. Hanya petugas yang memulai yang dapat mengubah pendataannya.', muatUlang: true },
+  NOT_FOUND: { pesan: 'Tiket atau Layanan tidak ditemukan.', muatUlang: true },
+  SUDAH_DIAMBIL: { pesan: 'Tiket ini sudah ditangani petugas lain.', muatUlang: true },
+  BUKAN_HARI_INI: { pesan: 'Tiket ini bukan antrean hari ini. Muat ulang daftar antrean.', muatUlang: true },
+  INVALID_STATUS: { pesan: 'Status tiket sudah berubah (mungkin sudah selesai atau dialihkan). Daftar dimuat ulang.', muatUlang: true },
+  PENANGANAN_AKTIF: { pesan: 'Tiket ini masih punya tahap layanan lain yang berjalan. Muat ulang lalu coba lagi.', muatUlang: true },
+  PENANGANAN_TIDAK_SESUAI: { pesan: 'Tahap layanan tiket ini tidak sesuai. Muat ulang lalu coba lagi.', muatUlang: true },
+  KHUSUS_TIDAK_VALID: { pesan: 'Ada isian Pendataan Khusus yang tidak valid. Isian dimuat ulang; periksa lalu coba lagi.', muatUlang: true },
+  KHUSUS_WAJIB: { pesan: 'Ada isian Pendataan Khusus yang wajib belum diisi.' },
+  KHUSUS_NONAKTIF: { pesan: 'Pendataan Khusus Layanan ini sedang dinonaktifkan Admin. Isian dimuat ulang.', muatUlang: true },
+  LAYANAN_TETAP: { pesan: 'Layanan ini memakai formulir tetap (OSS / Non OSS), bukan Pendataan Khusus.', muatUlang: true },
+  INVALID_PAYLOAD: { pesan: 'Jalur pengisian ini tidak berlaku untuk Layanan tersebut. Muat ulang halaman.', muatUlang: true },
+  TOPIK_SISTEM_TIDAK_ADA: { pesan: 'Topik bawaan sistem untuk Layanan ini tidak tersedia. Hubungi Admin.' },
+};
+
+/**
+ * Memilah galat RPC langkah/draf/selesai (objek PostgREST `{message}` atau `MutasiError.asal`) menjadi pesan Indonesia dan
+ * petunjuk tindakan. Galat tak dikenal: `cadangan` (atau pesan umum) dan tanpa muat ulang.
+ */
+export function pesanGalatLangkah(e: unknown, cadangan = 'Terjadi kesalahan. Coba lagi.'): GalatLangkah {
+  let pesan: string | null = null;
+  if (typeof e === 'object' && e !== null) {
+    const asal = (e as { asal?: unknown }).asal;
+    const sumber = typeof asal === 'object' && asal !== null ? asal : e;
+    const m = (sumber as { message?: unknown }).message;
+    pesan = typeof m === 'string' ? m : null;
+  }
+  const kode = pesan?.match(POLA_LANGKAH)?.[1];
+  const info = kode ? PESAN_LANGKAH[kode] : undefined;
+  if (info) return { pesan: info.pesan, muatUlang: info.muatUlang === true, sesiHabis: info.sesiHabis === true };
+  return { pesan: cadangan, muatUlang: false, sesiHabis: false };
+}

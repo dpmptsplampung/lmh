@@ -1,25 +1,27 @@
 'use client';
 
-// Isi halaman Registrasi Pengunjung: tab "Walk-in" dan "Scan QR" (pola tab WAI-ARIA, aktivasi otomatis).
-// - Tab aktif tersinkron ke `?tab=walkin|scan` lewat window.history.replaceState (terintegrasi dengan Next Router,
+// Isi halaman Registrasi Pengunjung: tab "Walk-in", "Scan QR", dan "Buku Tamu" (pola tab WAI-ARIA, aktivasi otomatis).
+// - Tab aktif tersinkron ke `?tab=walkin|scan|bukutamu` lewat window.history.replaceState (terintegrasi dengan Next Router,
 //   instan tanpa round-trip server dan tanpa scroll; guide linking-and-navigating) sehingga bisa di-bookmark. Tautan
 //   masuk lain (sidebar, tombol back) yang mengubah ?tab= ikut diikuti.
 // - Panel Scan QR HANYA dirender saat tabnya aktif: berpindah tab = unmount = kamera mati (useKameraPemindai).
 // - Panel Walk-in tetap terpasang (disembunyikan) setelah pernah dibuka agar isian yang setengah terisi tidak hilang
-//   saat petugas sebentar memindai QR.
+//   saat petugas sebentar memindai QR. Panel Buku Tamu diperlakukan sama (formulir catat tamu tidak hilang).
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { QrCode, UserPlus } from 'lucide-react';
+import { BookOpen, QrCode, UserPlus, type LucideIcon } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { todayWIB } from '@/lib/time';
 import { tabDariParam, urlRegistrasi, type TabRegistrasi } from '@/lib/fo/registrasi-url';
 import WalkinPanel from './WalkinPanel';
 import ScanPanel from './ScanPanel';
+import PanelBukuTamu from '@/app/admin/fo/registrasi/_bagian/PanelBukuTamu';
 import styles from './registrasi.module.css';
 
-const TAB: { id: TabRegistrasi; label: string }[] = [
-  { id: 'walkin', label: 'Walk-in' },
-  { id: 'scan', label: 'Scan QR' },
+const TAB: { id: TabRegistrasi; label: string; ikon: LucideIcon }[] = [
+  { id: 'walkin', label: 'Walk-in', ikon: UserPlus },
+  { id: 'scan', label: 'Scan QR', ikon: QrCode },
+  { id: 'bukutamu', label: 'Buku Tamu', ikon: BookOpen },
 ];
 
 const idTab = (t: TabRegistrasi) => `tab-registrasi-${t}`;
@@ -36,9 +38,10 @@ export default function RegistrasiPengunjung() {
     setTab(tabUrl);
   }
   const [walkinPernahDibuka, setWalkinPernahDibuka] = useState(tabUrl === 'walkin');
+  const [bukuTamuPernahDibuka, setBukuTamuPernahDibuka] = useState(tabUrl === 'bukutamu');
   const [sudahPilihTab, setSudahPilihTab] = useState(false);
   const [jumlahReservasi, setJumlahReservasi] = useState<number | null>(null);
-  const tombolRef = useRef<Record<TabRegistrasi, HTMLButtonElement | null>>({ walkin: null, scan: null });
+  const tombolRef = useRef<Record<TabRegistrasi, HTMLButtonElement | null>>({ walkin: null, scan: null, bukutamu: null });
   const queryRef = useRef(sp);
   useEffect(() => {
     queryRef.current = sp;
@@ -46,11 +49,13 @@ export default function RegistrasiPengunjung() {
 
   // Walk-in terpasang begitu pernah aktif (juga bila URL berubah dari luar).
   const walkinTerpasang = walkinPernahDibuka || tab === 'walkin';
+  const bukuTamuTerpasang = bukuTamuPernahDibuka || tab === 'bukutamu';
 
   const pilih = useCallback((t: TabRegistrasi, fokus = false) => {
     setSudahPilihTab(true);
     setTab(t);
     if (t === 'walkin') setWalkinPernahDibuka(true);
+    if (t === 'bukutamu') setBukuTamuPernahDibuka(true);
     // Sinkron ke URL tanpa menambah riwayat dan tanpa scroll; query lain dipertahankan.
     window.history.replaceState(null, '', urlRegistrasi(t, queryRef.current));
     if (fokus) tombolRef.current[t]?.focus();
@@ -111,7 +116,7 @@ export default function RegistrasiPengunjung() {
               onClick={() => pilih(t.id)}
               onKeyDown={(e) => saatTombol(e, t.id)}
             >
-              {t.id === 'walkin' ? <UserPlus size={18} aria-hidden="true" /> : <QrCode size={18} aria-hidden="true" />}
+              <t.ikon size={18} aria-hidden="true" />
               <span>{t.label}</span>
               {t.id === 'scan' && jumlahReservasi !== null && jumlahReservasi > 0 && (
                 <span className={styles.penanda}>
@@ -133,6 +138,18 @@ export default function RegistrasiPengunjung() {
           className={styles.panel}
         >
           <WalkinPanel fokusAwal={!sudahPilihTab} />
+        </div>
+      )}
+
+      {bukuTamuTerpasang && (
+        <div
+          role="tabpanel"
+          id={idPanel('bukutamu')}
+          aria-labelledby={idTab('bukutamu')}
+          hidden={tab !== 'bukutamu'}
+          className={styles.panel}
+        >
+          <PanelBukuTamu />
         </div>
       )}
 

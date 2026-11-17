@@ -2,10 +2,11 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { bukaDbPenuh, sebagai } from '../../../scripts/lokal-rantai/harness.mjs';
+import { buatPetugasUmkm } from '../../../scripts/lokal-rantai/seed-umkm.mjs';
 import type { Detail, Mutasi } from './types';
 
 let db: Awaited<ReturnType<typeof bukaDbPenuh>>;
-const uid = randomUUID(), staff = randomUUID();
+const uid = randomUUID(), staff = randomUUID(), adminUser = randomUUID();
 const data = { nama: 'Keripik Lampung', deskripsi: 'Olahan pangan', jenis: 'Produk', kategori: 'Makanan Olahan', kabupaten_kota: 'Kota Bandar Lampung', sumber: 'kurasi' };
 async function rpc<T>(nama: string, args: string, params: unknown[]): Promise<T> {
   const r = await sebagai(db, 'authenticated', uid, `SELECT public.${nama}(${args}) AS j`, params);
@@ -20,16 +21,12 @@ beforeAll(async () => {
   const seed = await sebagai(db, 'postgres', null, `INSERT INTO auth.users(id) VALUES ($1);
   `, [uid]);
   expect(seed.ok).toBe(true);
-  const s = await sebagai(db, 'postgres', null, `INSERT INTO petugas(id,auth_user_id,nama,role,aktif,pemeriksa_umkm) VALUES ($1,$2,'Pemeriksa','admin',true,true)`, [staff,uid]);
-  expect(s.ok).toBe(true);
-  const adminUser = randomUUID(), admin = randomUUID();
+  await buatPetugasUmkm(db, { authUserId: uid, id: staff });
+  const admin = randomUUID();
   expect((await sebagai(db, 'postgres', null, 'INSERT INTO auth.users(id) VALUES ($1)', [adminUser])).ok).toBe(true);
   expect((await sebagai(db, 'postgres', null, `
     INSERT INTO petugas(id,auth_user_id,nama,role,aktif) VALUES ($1,$2,'Admin pemberi','admin',true)`,
   [admin, adminUser])).ok).toBe(true);
-  const flag = await sebagai(db, 'authenticated', adminUser,
-    'SELECT public.umkm_atur_pemeriksa($1,true,$2)', [staff, randomUUID()]);
-  expect(flag.ok).toBe(true);
 }, 30000);
 afterAll(async () => { await db?.close(); });
 
@@ -67,47 +64,67 @@ describe('perilaku DB melalui RPC UMKM', () => {
       .resolves.toEqual({ nomor: '081234567890' });
     await putus(p);
   });
-  it('admin tidak mengaktifkan penanda sendiri tetapi boleh mematikannya', async () => {
-    await expect(rpc('umkm_atur_pemeriksa', '$1::uuid,$2::boolean,$3::uuid', [staff, true, randomUUID()]))
-      .rejects.toThrow('DILARANG');
-    await expect(rpc('umkm_atur_pemeriksa', '$1::uuid,$2::boolean,$3::uuid', [staff, false, randomUUID()]))
-      .resolves.toMatchObject({ pemeriksa_umkm: false });
-    const adminUser = randomUUID();
-    expect((await sebagai(db, 'postgres', null, 'INSERT INTO auth.users(id) VALUES ($1)', [adminUser])).ok)
-      .toBe(true);
-    expect((await sebagai(db, 'postgres', null, `
-      INSERT INTO petugas(auth_user_id,nama,role,aktif) VALUES ($1,'Admin pemulih','admin',true)`, [adminUser])).ok)
-      .toBe(true);
-    expect((await sebagai(db, 'authenticated', adminUser,
-      'SELECT public.umkm_atur_pemeriksa($1,true,$2)', [staff, randomUUID()])).ok).toBe(true);
+  it('RPC penanda lama selalu ditolak DIHENTIKAN untuk admin dan petugas', async () => {
+    for (const actor of [adminUser, uid]) {
+      for (const flag of [true, false]) {
+        const result = await sebagai(db, 'authenticated', actor,
+          'SELECT public.umkm_atur_pemeriksa($1,$2,$3)', [staff, flag, randomUUID()]);
+        expect(result).toMatchObject({ ok: false, kode: '0A000',
+          pesan: 'DIHENTIKAN: akses UMKM ditentukan modul layanan' });
+      }
+    }
   });
-  it('penanda hanya lewat RPC dan perubahan identitas diaudit, layanan tidak mencabut', async () => {
+  it('admin tanpa layanan dan penanda tetap mendapat akses UMKM', async () => {
+    const result = await sebagai(db, 'authenticated', adminUser,
+      'SELECT public.umkm_daftar_tugas() AS j, public.staf_modul() AS modul');
+    expect(result).toMatchObject({ ok: true, rows: [{ modul: null,
+      j: { items: expect.any(Array) } }] });
+    expect((await db.query('SELECT pemeriksa_umkm,layanan_id FROM petugas WHERE auth_user_id=$1',
+      [adminUser])).rows).toEqual([{ pemeriksa_umkm: false, layanan_id: null }]);
+  });
+  it('petugas tanpa layanan atau di layanan non-UMKM ditolak', async () => {
+    const user = randomUUID(), target = randomUUID();
+    await db.query('INSERT INTO auth.users(id) VALUES ($1)', [user]);
+    await db.query(`INSERT INTO petugas(id,auth_user_id,nama,role,aktif)
+      VALUES ($1,$2,'Petugas non-UMKM','petugas',true)`, [target, user]);
+    const layanan = await db.query(`INSERT INTO layanan(nama,tipe,modul)
+      VALUES ('Layanan umum','konsultatif',NULL),('Investasi','konsultatif','investasi') RETURNING id`);
+    for (const layananId of [null, ...(layanan.rows as { id: string }[]).map(row => row.id)]) {
+      await db.query('UPDATE petugas SET layanan_id=$1 WHERE id=$2', [layananId, target]);
+      for (const fn of ['umkm_daftar_tugas', 'umkm_laporan_statistik']) {
+        const result = await sebagai(db, 'authenticated', user, `SELECT public.${fn}()`);
+        expect(result).toMatchObject({ ok: false, kode: '42501', pesan: 'DILARANG' });
+      }
+    }
+  });
+  it('pindah layanan mencabut dan memberi akses UMKM serta perubahan identitas diaudit', async () => {
     const user = randomUUID(), target = randomUUID(), nextUser = randomUUID();
-    expect((await sebagai(db, 'postgres', null, 'INSERT INTO auth.users(id) VALUES ($1),($2)',
-      [user, nextUser])).ok).toBe(true);
-    const inserted = await sebagai(db, 'postgres', null, `
-      INSERT INTO public.petugas(id,auth_user_id,nama,role,aktif,pemeriksa_umkm)
-      VALUES ($1,$2,'Petugas baru','petugas',true,true) RETURNING pemeriksa_umkm`, [target, user]);
-    expect(inserted.rows).toEqual([{ pemeriksa_umkm: false }]);
-    const direct = await sebagai(db, 'authenticated', uid,
-      'UPDATE public.petugas SET pemeriksa_umkm=true WHERE id=$1', [target]);
-    expect(direct).toMatchObject({ ok: false, kode: '42501' });
-    await rpc('umkm_atur_pemeriksa', '$1::uuid,$2::boolean,$3::uuid', [target, true, randomUUID()]);
-    const layanan = await sebagai(db, 'postgres', null, `
-      INSERT INTO public.layanan(nama,tipe) VALUES ('Layanan penanda','konsultatif') RETURNING id`);
-    expect(layanan.ok).toBe(true);
-    const changed = await sebagai(db, 'authenticated', uid, `
-      UPDATE public.petugas SET layanan_id=$1 WHERE id=$2 RETURNING pemeriksa_umkm`,
-    [(layanan.rows[0] as { id: string }).id, target]);
-    expect(changed.rows).toEqual([{ pemeriksa_umkm: true }]);
-    const relink = await sebagai(db, 'authenticated', uid, `
-      UPDATE public.petugas SET auth_user_id=$1 WHERE id=$2 RETURNING pemeriksa_umkm`, [nextUser, target]);
-    expect(relink.rows).toEqual([{ pemeriksa_umkm: false }]);
-    const audit = await sebagai(db, 'postgres', null,
+    await db.query('INSERT INTO auth.users(id) VALUES ($1),($2)', [user, nextUser]);
+    const { layananId } = await buatPetugasUmkm(db, { authUserId: user, id: target });
+    const umum = await db.query(`INSERT INTO layanan(nama,tipe)
+      VALUES ('Layanan umum perpindahan','konsultatif') RETURNING id`);
+    const akses = () => sebagai(db, 'authenticated', user,
+      'SELECT public.umkm_daftar_tugas() AS j');
+    expect((await akses()).ok).toBe(true);
+    for (const [tujuan, diizinkan] of [[umum.rows[0].id, false], [layananId, true]] as const) {
+      const changed = await sebagai(db, 'authenticated', adminUser,
+        'UPDATE petugas SET layanan_id=$1 WHERE id=$2 RETURNING layanan_id,pemeriksa_umkm', [tujuan, target]);
+      expect(changed).toMatchObject({ ok: true,
+        rows: [{ layanan_id: tujuan, pemeriksa_umkm: false }] });
+      const result = await akses();
+      if (diizinkan) expect(result.ok).toBe(true);
+      else expect(result).toMatchObject({ ok: false, kode: '42501', pesan: 'DILARANG' });
+    }
+    const relink = await sebagai(db, 'authenticated', adminUser,
+      'UPDATE petugas SET auth_user_id=$1 WHERE id=$2 RETURNING pemeriksa_umkm', [nextUser, target]);
+    expect(relink).toMatchObject({ ok: true, rows: [{ pemeriksa_umkm: false }] });
+    expect(await akses()).toMatchObject({ ok: false, kode: '42501', pesan: 'DILARANG' });
+    expect((await sebagai(db, 'authenticated', nextUser, 'SELECT public.umkm_daftar_tugas()')).ok).toBe(true);
+    const audit = await db.query(
       "SELECT nilai_lama,nilai_baru FROM audit_log WHERE entitas='petugas' AND entitas_id=$1", [target]);
     expect(audit.rows).toContainEqual(expect.objectContaining({
-      nilai_lama: expect.objectContaining({ auth_user_id: user, pemeriksa_umkm: true }),
-      nilai_baru: expect.objectContaining({ auth_user_id: nextUser, pemeriksa_umkm: false }),
+      nilai_lama: expect.objectContaining({ auth_user_id: user }),
+      nilai_baru: expect.objectContaining({ auth_user_id: nextUser }),
     }));
   });
   it('alamat privat dan foto tersembunyi tidak menghalangi penerbitan', async () => {

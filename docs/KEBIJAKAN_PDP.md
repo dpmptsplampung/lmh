@@ -223,3 +223,7 @@ gelombang implementasinya, bukan dinyatakan sudah aktif oleh pembaruan naskah in
 ## Retensi lampiran live chat
 
 Foto yang dilampirkan di live chat disimpan di Cloudflare R2 (bucket privat, area `chat-lampiran`) dan dihapus otomatis **90 hari** setelah pesan dikirim (`POST /api/chat/lampiran/bersihkan`, dipanggil cron dengan `CRON_SECRET`); teks pesan tetap. Hanya pemilik sesi dan staf dalam lingkup yang dapat membaca (404 seragam bagi pihak lain). Foto absensi petugas disimpan di area `absensi-foto` (hanya admin/front office).
+
+### Pembaruan 2026-11-16 (ADR 0004, migrasi `202611160001`, belum diterapkan)
+
+Front Office kembali membaca SEMUA data antrean dan "Lihat Data" semua Layanan (baca-saja), termasuk kontak pengunjung. Pengendali: setiap "Lihat Data" lintas-pembuat dan setiap ekspor (rekap semua Layanan, Buku Tamu) wajib tercatat di `audit_log` dan gagal-tertutup bila pencatatan gagal; baca langsung tabel sensitif oleh FO tetap mengikuti aturan basis. Petugas Layanan hanya melihat dan merekap Layanannya sendiri. Pengecualian disengaja: koreksi data layanan terkunci (`koreksi_pelayanan`) tetap bisa dilakukan FO dan admin.

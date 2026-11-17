@@ -130,8 +130,10 @@ export interface ParamMuatAntrean {
   ukuranHalaman: number;
   /** 'admin' | 'front_office' | 'petugas'. Admin/FO mencoba RPC akses FO lebih dulu. */
   peran: string;
-  /** Lingkup Layanan Petugas; null untuk peran lain. */
+  /** Lingkup Layanan Petugas (seluruh tiket Layanannya hari itu); null untuk peran lain. */
   layananId: string | null;
+  /** Saringan Layanan pilihan Admin/Front Office (peran lain mengabaikannya); null = semua Layanan. */
+  layananFilter?: string | null;
   /** Panel hanya dibaca untuk hari ini dan tab selain Selesai. */
   denganPanel: boolean;
   /** Dipanggil di antara halaman bacaan berurutan; false = hasil sudah basi, berhenti (galat jenis 'basi'). */
@@ -225,10 +227,16 @@ export async function muatAntrean(sb: SupabaseClient, p: ParamMuatAntrean): Prom
   }
 }
 
+/** Saringan Layanan Admin/FO (null = semua). Petugas tidak memakainya: lingkupnya selalu Layanannya sendiri. */
+function lingkupLayananFo(p: ParamMuatAntrean): string | null {
+  return p.peran === 'admin' || p.peran === 'front_office' ? (p.layananFilter || null) : null;
+}
+
 /** null = RPC belum ada (migrasi belum diterapkan): pemanggil turun ke kueri lama. Galat lain DILEMPAR. */
 async function muatViaRpcFo(sb: SupabaseClient, p: ParamMuatAntrean): Promise<HasilAntrean<DataAntrean> | null> {
   const dari = p.halaman * p.ukuranHalaman;
-  const lewat = await muatAntreanFo(sb, { tanggal: p.tanggal, batas: p.ukuranHalaman, lewati: 0 });
+  const layananId = lingkupLayananFo(p);
+  const lewat = await muatAntreanFo(sb, { tanggal: p.tanggal, batas: p.ukuranHalaman, lewati: 0, layananId });
   if (!lewat.tersedia) return null;
   if (p.masihBerlaku && !p.masihBerlaku()) return basi();
 
@@ -237,7 +245,9 @@ async function muatViaRpcFo(sb: SupabaseClient, p: ParamMuatAntrean): Promise<Ha
   const semua = [...lewat.data.rows];
   if (lewat.data.total > BATAS_TIKET_KLIEN) return galatBatas();
   while (semua.length < lewat.data.total) {
-    const lanjutan = await muatAntreanFo(sb, { tanggal: p.tanggal, batas: UKURAN_HALAMAN_LANJUTAN, lewati: semua.length });
+    const lanjutan = await muatAntreanFo(sb, {
+      tanggal: p.tanggal, batas: UKURAN_HALAMAN_LANJUTAN, lewati: semua.length, layananId,
+    });
     if (p.masihBerlaku && !p.masihBerlaku()) return basi();
     if (!lanjutan.tersedia || !lanjutan.data.rows.length) return galatDaftarBerubah();
     semua.push(...lanjutan.data.rows);
@@ -255,7 +265,8 @@ async function muatViaRpcFo(sb: SupabaseClient, p: ParamMuatAntrean): Promise<Ha
 }
 
 async function muatViaKueri(sb: SupabaseClient, p: ParamMuatAntrean): Promise<HasilAntrean<DataAntrean>> {
-  const lingkup = p.peran === 'petugas' && p.layananId ? p.layananId : null;
+  // Petugas = seluruh Layanannya; Admin/FO = semua Layanan, dipersempit saringan Layanan bila dipilih.
+  const lingkup = p.peran === 'petugas' ? (p.layananId || null) : lingkupLayananFo(p);
   // Bacaan utama dikirim lebih dulu. Bila permintaan ini sudah digantikan yang lebih baru (mis. selama menunggu RPC FO),
   // bacaan pendukung tidak dikirim: hasilnya pasti dibuang pemanggil. Tanpa pengecekan itu, tiga kueri terbuang per muat ulang
   // yang saling tumpang tindih.

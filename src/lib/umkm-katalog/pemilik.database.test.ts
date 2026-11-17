@@ -2,6 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { bukaDbPenuh, sebagai } from '../../../scripts/lokal-rantai/harness.mjs';
+import { buatPetugasUmkm } from '../../../scripts/lokal-rantai/seed-umkm.mjs';
 
 let db: Awaited<ReturnType<typeof bukaDbPenuh>>;
 let profile: string;
@@ -20,11 +21,9 @@ beforeAll(async () => {
   for (const uid of [owner, other, officer, admin]) {
     expect((await sebagai(db, 'postgres', null, 'INSERT INTO auth.users(id) VALUES ($1)', [uid])).ok).toBe(true);
   }
-  expect((await sebagai(db, 'postgres', null, `INSERT INTO petugas(id,auth_user_id,nama,role,aktif,
-    pemeriksa_umkm) VALUES ($1,$2,'Pemeriksa','petugas',true,true)`, [staff, officer])).ok).toBe(true);
+  await buatPetugasUmkm(db, { authUserId: officer, id: staff });
   expect((await sebagai(db, 'postgres', null, `INSERT INTO petugas(auth_user_id,nama,role,aktif)
     VALUES ($1,'Admin pengatur','admin',true)`, [admin])).ok).toBe(true);
-  await call(admin, 'umkm_atur_pemeriksa', '$1::uuid,true,$2::uuid', [staff, randomUUID()]);
 }, 30000);
 afterAll(async () => { await db?.close(); });
 

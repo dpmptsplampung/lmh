@@ -2,6 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { bukaDbPenuh, sebagai } from '../../../scripts/lokal-rantai/harness.mjs';
+import { buatPetugasUmkm } from '../../../scripts/lokal-rantai/seed-umkm.mjs';
 import type { DetailPesan, MutasiPekerjaan, RingkasanPengawasan } from './types';
 let db: Awaited<ReturnType<typeof bukaDbPenuh>>;
 const reviewer = randomUUID(), admin = randomUUID(), pengirim = randomUUID(), staf = randomUUID();
@@ -15,11 +16,10 @@ beforeAll(async () => {
   for (const uid of [reviewer, admin, pengirim]) {
     expect((await sebagai(db, 'postgres', null, 'INSERT INTO auth.users(id) VALUES ($1)', [uid])).ok).toBe(true);
   }
+  await buatPetugasUmkm(db, { authUserId: reviewer, id: staf });
   expect((await sebagai(db, 'postgres', null,
-    `INSERT INTO public.petugas(id,auth_user_id,nama,role,aktif) VALUES
-      ($1,$2,'Pemeriksa','petugas',true),($3,$4,'Admin','admin',true)`,
-    [staf, reviewer, randomUUID(), admin])).ok).toBe(true);
-  await panggil(admin, 'umkm_atur_pemeriksa', '$1,true,$2', [staf, randomUUID()]);
+    `INSERT INTO public.petugas(auth_user_id,nama,role,aktif)
+      VALUES ($1,'Admin','admin',true)`, [admin])).ok).toBe(true);
 }, 30000);
 afterAll(async () => { await db?.close(); });
 describe('pekerjaan pesan melalui RPC', () => {

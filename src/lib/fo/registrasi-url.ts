@@ -1,8 +1,8 @@
 // URL halaman Registrasi Pengunjung (/admin/fo/registrasi) yang menggabungkan Walk-in dan Scan QR dalam satu halaman
-// bertab. Tab disimpan di query `?tab=walkin|scan` supaya bisa di-bookmark dan tautan lama tetap bekerja:
-// /admin/fo/daftar -> ?tab=walkin, /admin/scan -> ?tab=scan (query lain diteruskan).
+// bertab. Tab disimpan di query `?tab=walkin|scan|bukutamu` supaya bisa di-bookmark dan tautan lama tetap bekerja:
+// /admin/fo/daftar -> ?tab=walkin, /admin/scan -> ?tab=scan, /admin/buku-tamu -> ?tab=bukutamu (query lain diteruskan).
 
-export type TabRegistrasi = 'walkin' | 'scan';
+export type TabRegistrasi = 'walkin' | 'scan' | 'bukutamu';
 
 export const PATH_REGISTRASI = '/admin/fo/registrasi';
 export const TAB_REGISTRASI_DEFAULT: TabRegistrasi = 'walkin';
@@ -10,7 +10,7 @@ export const TAB_REGISTRASI_DEFAULT: TabRegistrasi = 'walkin';
 /** Nilai `?tab=` apa pun -> tab sah; tak dikenal/kosong = default (walk-in). */
 export function tabDariParam(nilai: string | string[] | null | undefined): TabRegistrasi {
   const v = Array.isArray(nilai) ? nilai[0] : nilai;
-  return v === 'scan' ? 'scan' : TAB_REGISTRASI_DEFAULT;
+  return v === 'scan' || v === 'bukutamu' ? v : TAB_REGISTRASI_DEFAULT;
 }
 
 /** Bangun URL registrasi untuk sebuah tab; `sisa` = query lain yang diteruskan (parameter `tab` lama diabaikan). */

@@ -28,7 +28,36 @@ it('folder profil tetap diperiksa dan akun lain ditolak', async () => {
   expect(await bolehUnggahDraf(c.value, user, '22222222-2222-4222-8222-222222222222/foto.jpg')).toBe(false);
   expect(c.rpc).toHaveBeenCalledWith('umkm_akses_draf_pemilik', { p_profil_id: '22222222-2222-4222-8222-222222222222' });
 });
-it('staf tetap membutuhkan flag dan sesi aktif', async () => {
-  expect(await bolehUnggahDraf(client({ role: 'petugas', aktif: true, pemeriksa_umkm: false }).value,
-    user, 'akun/foto.jpg')).toBe(false);
+it('petugas modul UMKM boleh unggah walau flag lama false', async () => {
+  const c = client({ role: 'petugas', aktif: true, pemeriksa_umkm: false });
+  c.rpc.mockImplementation(async (nama?: string) => ({ data: nama === 'staf_modul' ? 'umkm' : true, error: null }) as never);
+  expect(await bolehUnggahDraf(c.value, user, 'akun/foto.jpg')).toBe(true);
+  expect(c.rpc).toHaveBeenCalledWith('staf_modul');
+});
+it('petugas modul lain ditolak walau flag lama true', async () => {
+  const c = client({ role: 'petugas', aktif: true, pemeriksa_umkm: true });
+  c.rpc.mockImplementation(async (nama?: string) => ({ data: nama === 'staf_modul' ? 'investasi' : true, error: null }) as never);
+  expect(await bolehUnggahDraf(c.value, user, 'akun/foto.jpg')).toBe(false);
+});
+it('admin tanpa flag boleh unggah dengan sesi sah', async () => {
+  const c = client({ role: 'admin', aktif: true });
+  c.rpc.mockResolvedValue({ data: true, error: null } as never);
+  expect(await bolehUnggahDraf(c.value, user, 'akun/foto.jpg')).toBe(true);
+  expect(c.rpc).not.toHaveBeenCalledWith('staf_modul');
+});
+it('modul galat/null atau melempar dan sesi tidak sah menolak', async () => {
+  for (const hasil of [{ data: null, error: null }, { data: 'umkm', error: { message: 'gagal' } }]) {
+    const c = client({ role: 'petugas', aktif: true, pemeriksa_umkm: true });
+    c.rpc.mockImplementation(async (nama?: string) => (nama === 'staf_modul' ? hasil : { data: true, error: null }) as never);
+    expect(await bolehUnggahDraf(c.value, user, 'akun/foto.jpg')).toBe(false);
+  }
+  const c = client({ role: 'admin', aktif: true });
+  expect(await bolehUnggahDraf(c.value, user, 'akun/foto.jpg')).toBe(false);
+  c.rpc.mockRejectedValue(new Error('jaringan'));
+  expect(await bolehUnggahDraf(c.value, user, 'akun/foto.jpg')).toBe(false);
+});
+it('staf nonaktif dan FO tidak menerima hak unggah akun biasa', async () => {
+  for (const staf of [{ role: 'petugas', aktif: false }, { role: 'front_office', aktif: true }]) {
+    expect(await bolehUnggahDraf(client(staf).value, user, 'akun/foto.jpg')).toBe(false);
+  }
 });

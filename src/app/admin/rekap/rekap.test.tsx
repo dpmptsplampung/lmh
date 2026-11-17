@@ -2,7 +2,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
-vi.mock('@/components/Toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
+const toastTiruan = vi.hoisted(() => vi.fn());
+vi.mock('@/components/Toast', () => ({ useToast: () => ({ toast: toastTiruan }) }));
 vi.mock('@/components/layout/PageHeader', () => ({
   default: ({ title, children }: { title: string; children?: React.ReactNode }) => (
     <div><h1>{title}</h1>{children}</div>
@@ -211,10 +212,8 @@ describe('/admin/rekap (terpadu)', () => {
       expect(terakhir.get('layanan_id')).toBeNull();
       expect(terakhir.get('unit')).toBeNull();
       expect(terakhir.get('tanpa_form')).toBe('1');
-      const pilih = (await screen.findByLabelText('Layanan')) as HTMLSelectElement;
-      expect(pilih.value).toBe('');
-      // Layanan berformulir (OSS / Non OSS) tidak ada di pilihan tab umum; datanya hanya di tab masing-masing.
-      expect(Array.from(pilih.options).map((o) => o.text)).toEqual(['Semua Layanan', 'Balmon']);
+      // Layanan berformulir (OSS / Non OSS) tidak ada di tab umum; tersisa satu Layanan (Balmon) = tidak ada pilihan berarti.
+      await waitFor(() => expect(screen.queryByLabelText('Layanan')).toBeNull());
       expect(screen.getByText(/Tidak termasuk Helpdesk OSS dan Non OSS/)).toBeInTheDocument();
     });
 
@@ -443,7 +442,7 @@ describe('/admin/rekap (terpadu)', () => {
       expect(await opsi()).toEqual(['Semua Layanan', 'Helpdesk OSS', 'Balmon']);
       // Pindah ke Data Pelayanan: pilihan OSS tidak sah di sana, jadi dibuang agar tidak terkirim diam-diam.
       fireEvent.click(screen.getByRole('tab', { name: /Data Pelayanan/ }));
-      expect(await opsi()).toEqual(['Semua Layanan', 'Balmon']);
+      await waitFor(() => expect(screen.queryByLabelText('Layanan')).toBeNull()); // tersisa satu Layanan: tanpa pilihan
       await waitFor(() => expect(mockFetch.mock.calls.some((c) => String(c[0]).includes('bagian=data'))).toBe(true));
       const u = mockFetch.mock.calls.map((c) => String(c[0])).filter((x) => x.includes('bagian=data')).at(-1)!;
       expect(new URL(u, 'http://x').searchParams.get('layanan_id')).toBeNull();
@@ -561,5 +560,85 @@ describe('/admin/rekap: ringkasan "dilayani saya / total" (akses FO, migrasi 202
     gantiRentang('30 hari terakhir');
     await waitFor(() => expect(urlData().length).toBeGreaterThan(2));
     expect(urlData().at(-1)!.get('hemat')).toBeNull();
+  });
+
+  describe('lingkup G3: Petugas seluruh Layanannya, FO semua Layanan, rekap lengkap', () => {
+    const LAYANAN_REF = [
+      { id: 'L-OSS', nama: 'Helpdesk OSS', slug: null, form_pendataan: 'oss', diarsipkan_at: null },
+      { id: 'L-BAL', nama: 'Balmon', slug: null, form_pendataan: null, diarsipkan_at: null },
+    ];
+    const LINGKUP_ADMIN_BARU = {
+      lingkup: { role: 'admin' }, label: 'Semua data.', unit_opsi: ['fo', 'layanan'],
+      opsi_layanan: [{ id: 'L-OSS', nama: 'Helpdesk OSS', form_pendataan: 'oss' }, { id: 'L-BAL', nama: 'Balmon', form_pendataan: null }],
+    };
+    const HARIAN_KOSONG = { rows: [], ringkasan: { jumlah: 0, tatap_muka: 0, live_chat: 0, per_unit: [] } };
+
+    it('Petugas: label seluruh Layanannya, tanpa pilihan Unit/Layanan lain dan tanpa tombol rekap lengkap', async () => {
+      rute({
+        lingkup: { lingkup: { role: 'petugas', layanan_nama: 'Balmon', koordinator: false }, label: 'Hanya data yang Anda tangani sendiri.',
+          unit_opsi: ['layanan'], opsi_layanan: [{ id: 'L-BAL', nama: 'Balmon', form_pendataan: null }] },
+        harian: HARIAN_KOSONG,
+        data: { total: 0, form_type: null, rows: [] },
+      });
+      render(<AdminRekapPage />);
+      expect(await screen.findByText(/seluruh data Layanan Balmon \(semua petugas di Layanan ini\)/)).toBeInTheDocument();
+      expect(screen.queryByText(/yang Anda tangani sendiri/)).toBeNull();
+      expect(screen.queryByLabelText('Layanan')).toBeNull();
+      expect(screen.queryByLabelText('Unit')).toBeNull();
+      fireEvent.click(screen.getByRole('tab', { name: /Data Pelayanan/ }));
+      await screen.findByRole('button', { name: /Unduh Excel/ });
+      expect(screen.queryByRole('button', { name: /Rekap lengkap semua layanan/ })).toBeNull();
+    });
+
+    it('Front Office (bukan Koordinator): semua Layanan dari referensi, unit FO dan Layanan, tanpa menyebut "data sendiri"', async () => {
+      const supabase = await import('@/lib/supabase/client');
+      const spy = vi.spyOn(supabase, 'createClient').mockReturnValue({
+        from: () => ({ select: () => ({ order: () => Promise.resolve({ data: LAYANAN_REF, error: null }) }) }),
+      } as never);
+      const { buangCacheReferensi } = await import('@/lib/data/klien/useReferensi');
+      buangCacheReferensi();
+      rute({
+        lingkup: { lingkup: { role: 'front_office', layanan_nama: null, koordinator: false }, label: 'Hanya data yang Anda tangani sendiri.',
+          unit_opsi: ['fo'], opsi_layanan: [] },
+        harian: HARIAN_KOSONG,
+      });
+      render(<AdminRekapPage />);
+      expect(await screen.findByText(/semua Layanan \(Front Office, hanya baca\)/)).toBeInTheDocument();
+      const layanan = (await screen.findByLabelText('Layanan')) as HTMLSelectElement;
+      expect(Array.from(layanan.options).map((o) => o.text)).toEqual(['Semua Layanan', 'Helpdesk OSS', 'Balmon']);
+      expect(screen.getByLabelText('Unit')).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: /Helpdesk OSS/ })).toBeInTheDocument();
+      spy.mockRestore();
+    });
+
+    it('Admin/FO: "Rekap lengkap semua layanan" mengunduh hanya dengan rentang tanggal (tanpa tanpa_form, unit, layanan_id)', async () => {
+      URL.createObjectURL = vi.fn(() => 'blob:x');
+      URL.revokeObjectURL = vi.fn();
+      rute({ lingkup: LINGKUP_ADMIN_BARU, data: { total: 0, form_type: null, rows: [] } });
+      params.nilai = new URLSearchParams('bagian=data');
+      render(<AdminRekapPage />);
+      const tombolLengkap = await screen.findByRole('button', { name: /Rekap lengkap semua layanan/ });
+      await waitFor(() => expect(tombolLengkap).not.toBeDisabled());
+      mockFetch.mockImplementation((url: string) =>
+        String(url).includes('/export')
+          ? Promise.resolve(new Response('xlsx', { status: 200, headers: { 'X-Rekap-Truncated': 'false' } }))
+          : json({ total: 0, form_type: null, rows: [] }));
+      fireEvent.click(tombolLengkap);
+      await waitFor(() => expect(mockFetch.mock.calls.some((c) => String(c[0]).includes('/export'))).toBe(true));
+      const q = new URL(String(mockFetch.mock.calls.find((c) => String(c[0]).includes('/export'))![0]), 'http://x').searchParams;
+      expect([...q.keys()].sort()).toEqual(['dari', 'sampai']);
+    });
+
+    it('ekspor gagal 500 (audit/berkas): galat jelas, tidak ada unduhan', async () => {
+      rute({ lingkup: LINGKUP_ADMIN_BARU, data: { total: 0, form_type: null, rows: [] } });
+      params.nilai = new URLSearchParams('bagian=data');
+      render(<AdminRekapPage />);
+      const tombolLengkap = await screen.findByRole('button', { name: /Rekap lengkap semua layanan/ });
+      await waitFor(() => expect(tombolLengkap).not.toBeDisabled());
+      mockFetch.mockImplementation((url: string) =>
+        String(url).includes('/export') ? json({}, 500) : json({ total: 0, form_type: null, rows: [] }));
+      fireEvent.click(tombolLengkap);
+      await waitFor(() => expect(toastTiruan).toHaveBeenCalledWith(expect.stringMatching(/audit ekspor gagal/), 'error'));
+    });
   });
 });

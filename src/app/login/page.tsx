@@ -17,6 +17,7 @@ import {
   PESAN_SESI_GAGAL_DAFTAR,
   PESAN_SESI_TANPA_KLAIM,
 } from '@/lib/sesi-staf';
+import { berandaPeran, halamanProfilPeran } from '@/lib/rute-peran';
 import styles from './login.module.css';
 
 function LoginContent() {
@@ -112,10 +113,12 @@ function LoginContent() {
         }
       }
 
+      // Per peran: petugas ke area /petugas, admin dan Front Office ke /admin (rute-peran.ts).
+      const beranda = berandaPeran(petugas?.role);
       if (petugas?.wajib_ganti_sandi) {
-        router.push('/admin/profil?ganti=1');
-      } else if (petugas && (petugas.role === 'admin' || petugas.role === 'petugas' || petugas.role === 'front_office')) {
-        router.push('/admin');
+        router.push(`${halamanProfilPeran(petugas.role)}?ganti=1`);
+      } else if (beranda) {
+        router.push(beranda);
       } else {
         router.push(nextPath ?? '/me');
       }

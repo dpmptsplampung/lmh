@@ -43,26 +43,21 @@ describe('useFilterAntrian', () => {
   it('ubahTanggal: tulis URL tanpa riwayat, halaman kembali 0; kosong diabaikan', () => {
     nav.query = 'status=semua&halaman=2';
     const { result } = renderHook(() => useFilterAntrian());
-    act(() => result.current.ubahTanggal('2026-11-04', null));
+    act(() => result.current.ubahTanggal('2026-11-04'));
     expect(result.current.tanggal).toBe('2026-11-04');
     expect(result.current.halaman).toBe(0);
     expect(nav.replace).toHaveBeenLastCalledWith('/admin/antrian?tanggal=2026-11-04&status=semua', { scroll: false });
     nav.replace.mockClear();
-    act(() => result.current.ubahTanggal('', null));
+    act(() => result.current.ubahTanggal(''));
     expect(result.current.tanggal).toBe('2026-11-04');
     expect(nav.replace).not.toHaveBeenCalled();
   });
 
-  it('ubahTanggal di luar jendela FO: pesan batas, tanggal dan URL tetap; tanggal sah menghapus pesan', () => {
+  it.each([-60, 60])('ubahTanggal menerima tanggal %i hari dari hari ini dan menulis URL', (hari) => {
     const { result } = renderHook(() => useFilterAntrian());
-    const jendela = { min: geser(-7), max: geser(1) };
-    act(() => result.current.ubahTanggal(geser(-30), jendela));
-    expect(result.current.tanggal).toBe(hariIni);
-    expect(result.current.pesanTanggal).toMatch(/\S/);
-    expect(nav.replace).not.toHaveBeenCalled();
-    act(() => result.current.ubahTanggal(geser(-1), jendela));
-    expect(result.current.pesanTanggal).toBeNull();
-    expect(result.current.tanggal).toBe(geser(-1));
+    act(() => result.current.ubahTanggal(geser(hari)));
+    expect(result.current.tanggal).toBe(geser(hari));
+    expect(nav.replace).toHaveBeenLastCalledWith('/admin/antrian?tanggal=' + geser(hari), { scroll: false });
   });
 
   it('gantiStatus: halaman 0 dan URL; status yang sama tidak berbuat apa-apa', () => {
@@ -84,5 +79,31 @@ describe('useFilterAntrian', () => {
     expect(nav.replace).toHaveBeenLastCalledWith('/admin/antrian?halaman=3', { scroll: false });
     act(() => result.current.gantiHalaman(0));
     expect(nav.replace).toHaveBeenLastCalledWith('/admin/antrian', { scroll: false });
+  });
+
+  it('layanan: dibaca dari URL, null bila tak ada; gantiLayanan menulis URL, halaman kembali 0; pilihan sama tidak berbuat apa-apa', () => {
+    const UUID = '3f2b8c1e-5a6d-4e7f-9a0b-1c2d3e4f5a6b';
+    const { result } = renderHook(() => useFilterAntrian());
+    expect(result.current.layanan).toBeNull();
+    act(() => result.current.gantiLayanan(null));
+    expect(nav.replace).not.toHaveBeenCalled();
+    act(() => result.current.gantiHalaman(2));
+    nav.replace.mockClear();
+    act(() => result.current.gantiLayanan(UUID));
+    expect(result.current.layanan).toBe(UUID);
+    expect(result.current.halaman).toBe(0);
+    expect(nav.replace).toHaveBeenLastCalledWith(`/admin/antrian?layanan=${UUID}`, { scroll: false });
+    act(() => result.current.gantiStatus('semua'));
+    expect(nav.replace).toHaveBeenLastCalledWith(`/admin/antrian?status=semua&layanan=${UUID}`, { scroll: false });
+    act(() => result.current.gantiLayanan(null));
+    expect(nav.replace).toHaveBeenLastCalledWith('/admin/antrian?status=semua', { scroll: false });
+  });
+
+  it('layanan dari URL dibaca saat awal; nilai bukan UUID diabaikan', () => {
+    const UUID = '3f2b8c1e-5a6d-4e7f-9a0b-1c2d3e4f5a6b';
+    nav.query = `layanan=${UUID}`;
+    expect(renderHook(() => useFilterAntrian()).result.current.layanan).toBe(UUID);
+    nav.query = 'layanan=bukan-uuid';
+    expect(renderHook(() => useFilterAntrian()).result.current.layanan).toBeNull();
   });
 });

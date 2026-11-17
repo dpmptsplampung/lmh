@@ -3,11 +3,13 @@
 // Sel Aksi / Durasi pada tabel antrean: tombol yang tampil menurut status tiket, peran, dan kepemilikan. Hanya tampilan
 // dari props; semua tindakan lewat penangan di `aksi` (hook useAksiAntrean dan useModalAntrian).
 // Keputusan CEO 7.5: tidak ada "Lengkapi Data" sebelum Mulai Layanan; draf pendataan hanya ditulis pemilik tiket yang
-// sedang dilayani (wizard terbuka otomatis setelah Mulai).
+// sedang dilayani (wizard terbuka otomatis setelah Mulai; "Isi Pendataan" membukanya lagi di langkah 2). Tombol ubah
+// hanya untuk pemilik: FO dan Admin non-pemilik tidak pernah melihat "Isi Pendataan" atau "Selesai".
 import {
   ArrowRightLeft,
   BellRing,
   CheckCircle2,
+  ClipboardList,
   FileEdit,
   FileText,
   Pencil,
@@ -30,7 +32,7 @@ import {
 } from '@/lib/pelayanan';
 import type { StatusSurvei } from '@/lib/survei/staf';
 import type { JenisModalAntrian } from '../_hook/useModalAntrian';
-import { bolehLihatSemuaLayanan, durasiTeks, namaPelayanDari, punyaPendataan } from '../_logika/turunan';
+import { bolehLihatData, bolehLihatSemuaLayanan, durasiTeks, namaPelayanDari, punyaPendataan } from '../_logika/turunan';
 import styles from '../antrian.module.css';
 
 /** Penangan dan keadaan aksi tiket yang dibutuhkan sel aksi (dirakit halaman dari useAksiAntrean + useModalAntrian). */
@@ -42,6 +44,8 @@ export interface AksiTiket {
   mulai: (tiket: TiketBaris) => Promise<void>;
   selesaikan: (tiket: TiketBaris) => Promise<void>;
   buka: (jenis: JenisModalAntrian, tiket: TiketBaris) => void;
+  /** Id Layanan yang punya isian Pendataan Khusus aktif (tombol "Isi Pendataan"); kosong/tanpa nilai = tidak ada. */
+  layananBerisian?: ReadonlySet<string>;
 }
 
 export interface SelAksiProps {
@@ -58,6 +62,17 @@ export default function SelAksi({ tiket: a, pengguna, aksi, statusSurvei }: SelA
   const milikSaya = bolehSelesaikanTiket(pengguna, a);
   const sibuk = aksi.sedangProses.has(a.id);
   const memanggil = aksi.sedangPanggil.has(a.id);
+  const lihatData = bolehLihatData(pengguna, a) && (
+    <Tombol
+      varian="hantu"
+      ukuran="kecil"
+      ikon={FileText}
+      onClick={() => aksi.buka(punyaPendataan(a) ? 'wizard' : 'lihatKhusus', a)}
+      title="Buka data pendataan (baca-saja)"
+    >
+      Lihat Data
+    </Tombol>
+  );
   const tombolAlihkan = bolehAlihkanTiket(pengguna, a) && (
     <Tombol
       varian="sekunder"
@@ -91,6 +106,7 @@ export default function SelAksi({ tiket: a, pengguna, aksi, statusSurvei }: SelA
             {sibuk ? 'Memproses…' : 'Mulai Layanan'}
           </Tombol>
         )}
+        {lihatData}
         {tombolAlihkan}
       </div>
     );
@@ -103,6 +119,19 @@ export default function SelAksi({ tiket: a, pengguna, aksi, statusSurvei }: SelA
           {punyaPendataan(a) && (
             <Tombol varian="utama" ukuran="kecil" ikon={FileEdit} onClick={() => aksi.buka('wizard', a)} disabled={sibuk}>
               Form Pendataan
+            </Tombol>
+          )}
+          {!punyaPendataan(a) && aksi.layananBerisian?.has(a.layanan_id) && (
+            <Tombol
+              varian="utama"
+              ukuran="kecil"
+              ikon={ClipboardList}
+              onClick={() => aksi.buka('isiPendataan', a)}
+              disabled={sibuk}
+              aria-label={`Isi Pendataan tiket ${a.nomor_display}`}
+              title="Buka isian Pendataan Khusus (tersimpan otomatis sebagai draf)"
+            >
+              Isi Pendataan
             </Tombol>
           )}
           <Tombol varian="sekunder" ukuran="kecil" ikon={CheckCircle2} onClick={() => aksi.selesaikan(a)} disabled={sibuk} memuat={sibuk}>
@@ -128,14 +157,12 @@ export default function SelAksi({ tiket: a, pengguna, aksi, statusSurvei }: SelA
     return (
       <div className={styles.aksiKolom}>
         <small className={styles.catatanAksi}>
-          Hanya {pelayanNama ?? 'petugas yang memulai'} yang dapat menyelesaikan tiket ini.
+          {pengguna?.role === 'front_office'
+            ? `Sedang dilayani ${pelayanNama ?? 'petugas'}. Front Office hanya dapat melihat.`
+            : `Hanya ${pelayanNama ?? 'petugas yang memulai'} yang dapat menyelesaikan tiket ini.`}
         </small>
         <div className={styles.aksi}>
-          {punyaPendataan(a) && (
-            <Tombol varian="hantu" ukuran="kecil" ikon={FileText} onClick={() => aksi.buka('wizard', a)}>
-              Lihat Data
-            </Tombol>
-          )}
+          {lihatData}
           {(bolehAmbilAlihTiket(pengguna, a) || bolehKoordinatorAmbilAlihTiket(pengguna, a)) && (
             <Tombol
               varian="sekunder"
@@ -159,11 +186,7 @@ export default function SelAksi({ tiket: a, pengguna, aksi, statusSurvei }: SelA
   return (
     <div className={styles.aksiKolom}>
       <span className={styles.durasi}>{durasi}</span>
-      {punyaPendataan(a) && (
-        <Tombol varian="hantu" ukuran="kecil" ikon={FileText} onClick={() => aksi.buka('wizard', a)}>
-          Lihat Data
-        </Tombol>
-      )}
+      {lihatData}
       {a.status === 'selesai' && statusSurvei && (
         <div className={styles.surveiBaris}>
           <small className={styles.surveiLabel}>Pesan Perilaku</small>

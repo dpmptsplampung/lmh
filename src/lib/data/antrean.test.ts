@@ -282,6 +282,24 @@ describe('muatAntrean: kueri lama (Petugas, atau Admin/FO bila RPC belum ada)', 
     expect(hasil.data!.totalHarian).toBe(1);
   });
 
+  it('Petugas: saringan Layanan pilihan diabaikan; lingkupnya tetap Layanan sendiri (seluruh tiket Layanannya hari itu)', async () => {
+    const klien = buatKlien({ rows: [tiket(1), tiket(2, { dilayani_oleh: 'p-rekan' }), tiket(3, { layanan_id: 'l-2' })] });
+    const hasil = await muatAntrean(klien.sb, param({ peran: 'petugas', layananId: 'l-1', layananFilter: 'l-2', status: null }));
+    for (const k of klien.log) expect(k.eq).toContainEqual(['layanan_id', 'l-1']);
+    expect(hasil.data!.baris.map((b) => b.id)).toEqual(['t-1', 't-2']);
+  });
+
+  it('Admin tanpa RPC FO: saringan Layanan menyempitkan semua kueri; tanpa saringan = semua Layanan', async () => {
+    const klien = buatKlien({ rows: [tiket(1), tiket(2, { layanan_id: 'l-2' })] });
+    const hasil = await muatAntrean(klien.sb, param({ status: null, layananFilter: 'l-2' }));
+    for (const k of klien.log) expect(k.eq).toContainEqual(['layanan_id', 'l-2']);
+    expect(hasil.data!.baris.map((b) => b.id)).toEqual(['t-2']);
+    const semua = buatKlien({ rows: [tiket(1), tiket(2, { layanan_id: 'l-2' })] });
+    const h2 = await muatAntrean(semua.sb, param({ status: null, layananFilter: null }));
+    for (const k of semua.log) expect(k.eq.some(([kolom]) => kolom === 'layanan_id')).toBe(false);
+    expect(h2.data!.baris).toHaveLength(2);
+  });
+
   it('Petugas tanpa Layanan di parameter: tidak ada saringan Layanan (pemanggil yang menolak lebih dulu)', async () => {
     const klien = buatKlien({ rows: [tiket(1)] });
     await muatAntrean(klien.sb, param({ peran: 'petugas', layananId: null }));
@@ -426,6 +444,13 @@ describe('muatAntrean: RPC fo_antrean_daftar (Admin dan Front Office)', () => {
     return dasar;
   };
 
+  it('saringan Layanan Admin/FO diteruskan ke RPC sebagai p_layanan_id di setiap halaman; Petugas tidak memakai RPC', async () => {
+    const semua = Array.from({ length: 30 }, (_, i) => baruFo(i + 1, { layanan_id: 'l-2' }));
+    const klien = buatKlien({ rpc: rpcFo(semua) });
+    await muatAntrean(klien.sb, param({ peran: 'front_office', status: null, layananFilter: 'l-2' }));
+    expect(klien.rpc.mock.calls.map(([, a]) => (a as { p_layanan_id: unknown }).p_layanan_id)).toEqual(['l-2', 'l-2']);
+  });
+
   it.each(['admin', 'front_office'])('%s: membaca lewat RPC (halaman 25, sisanya per 200), tanpa kueri tiket_antrean', async (peran) => {
     const semua = Array.from({ length: 60 }, (_, i) => baruFo(i + 1));
     const klien = buatKlien({ rpc: rpcFo(semua) });
@@ -487,7 +512,16 @@ describe('muatAntrean: RPC fo_antrean_daftar (Admin dan Front Office)', () => {
     expect(klien.from).not.toHaveBeenCalled();
   });
 
-  it('TANGGAL_DILUAR_BATAS dari server: jenis tanggal_diluar_batas dengan objek asli', async () => {
+  it.each(['2026-09-18', '2027-01-16'])('FO non-Koordinator memuat tanggal %s tanpa batas klien', async (tanggal) => {
+    const klien = buatKlien({ rpc: rpcFo([baruFo(1)]) });
+    const hasil = await muatAntrean(klien.sb, param({ peran: 'front_office', tanggal }));
+    expect(hasil.error).toBeNull();
+    expect(hasil.data?.baris[0].id).toBe('t-1');
+    expect(klien.rpc).toHaveBeenCalledWith('fo_antrean_daftar', expect.objectContaining({ p_tanggal: tanggal }));
+    expect(klien.from).not.toHaveBeenCalled();
+  });
+
+  it('galat tanggal server lama tetap diteruskan dengan objek asli tanpa fallback', async () => {
     const asli = { code: '22023', message: 'TANGGAL_DILUAR_BATAS: x' };
     const klien = buatKlien({ rpc: () => ({ data: null, error: asli }) });
     const hasil = await muatAntrean(klien.sb, param({ peran: 'front_office' }));

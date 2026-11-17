@@ -132,6 +132,10 @@ export const FORWARD_MIGRATION_FILES = [
   '202611100003_umkm_produk_baca.sql',
   '202611110002_nav_lencana.sql',
   '202611110003_umkm_cari_indeks.sql',
+  '202611160001_lingkup_layanan_staf.sql',
+  '202611160002_pendataan_khusus_langkah.sql',
+  '202611160003_buku_tamu_ekspor.sql',
+  '202611160004_fo_semua_tanggal.sql',
 ] as const;
 
 export function listMigrationFiles(): string[] {

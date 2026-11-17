@@ -1,5 +1,6 @@
-// A13: tanggal, saringan status, dan halaman Antrean disimpan di URL (?tanggal=&status=&halaman=) agar bertahan saat
-// muat ulang dan bisa dibagikan antarstaf. Nilai bawaan tidak ditulis supaya URL polos tetap rapi.
+// A13: tanggal, saringan status, saringan Layanan (Admin/FO), dan halaman Antrean disimpan di URL
+// (?tanggal=&status=&layanan=&halaman=) agar bertahan saat muat ulang dan bisa dibagikan antarstaf. Nilai bawaan tidak
+// ditulis supaya URL polos tetap rapi.
 
 export type FilterStatus = 'aktif' | 'selesai' | 'semua';
 
@@ -15,6 +16,8 @@ export const STATUS_PER_FILTER: Record<FilterStatus, readonly string[] | null> =
 export interface ParamAntrean {
   tanggal: string;
   status: FilterStatus;
+  /** Id Layanan pilihan Admin/FO; null = semua Layanan. Petugas mengabaikannya (lingkupnya Layanannya sendiri). */
+  layanan: string | null;
   /** Indeks halaman berbasis 0 (URL memakai berbasis 1). */
   halaman: number;
 }
@@ -23,6 +26,7 @@ interface PembacaParam {
   get(nama: string): string | null;
 }
 
+const POLA_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const POLA_TANGGAL = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 /** Tanggal kalender yang benar (bukan sekadar berpola), mis. 2026-02-30 ditolak. */
@@ -37,10 +41,12 @@ export function tanggalValid(nilai: string | null | undefined): nilai is string 
 export function bacaParamAntrean(sp: PembacaParam, hariIni: string): ParamAntrean {
   const tanggal = sp.get('tanggal');
   const status = sp.get('status');
+  const layanan = sp.get('layanan');
   const halaman = Number.parseInt(sp.get('halaman') ?? '', 10);
   return {
     tanggal: tanggalValid(tanggal) ? tanggal : hariIni,
     status: status === 'aktif' || status === 'selesai' || status === 'semua' ? status : FILTER_BAWAAN,
+    layanan: layanan && POLA_UUID.test(layanan) ? layanan : null,
     halaman: Number.isFinite(halaman) && halaman >= 1 ? Math.min(halaman, 100_000) - 1 : 0,
   };
 }
@@ -50,6 +56,7 @@ export function susunQueryAntrean(p: ParamAntrean, hariIni: string): string {
   const q = new URLSearchParams();
   if (p.tanggal !== hariIni) q.set('tanggal', p.tanggal);
   if (p.status !== FILTER_BAWAAN) q.set('status', p.status);
+  if (p.layanan) q.set('layanan', p.layanan);
   if (p.halaman > 0) q.set('halaman', String(p.halaman + 1));
   return q.toString();
 }

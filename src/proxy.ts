@@ -3,10 +3,13 @@ import type { NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { logServerEvent } from '@/lib/observability/logger';
 import { parseAlasanSesi, urlLoginAlasan } from '@/lib/sesi-staf';
+import { bolehAksesRute, butuhModulUntukRute, type AdminRole, type ModulLayanan } from '@/lib/admin-nav';
+import { alihkanAreaPeran, berandaTolak, halamanProfilPeran } from '@/lib/rute-peran';
 
-// Rute yang WAJIB login
-const protectedPrefixes = ['/admin', '/me'];
-const HALAMAN_PROFIL = '/admin/profil';
+// Rute yang WAJIB login. /admin = admin dan Front Office; /petugas = Petugas Layanan.
+const protectedPrefixes = ['/admin', '/petugas', '/me'];
+const AREA_STAF = ['/admin', '/petugas'];
+const MODUL_VALID: readonly string[] = ['umkm', 'investasi'];
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 
 function getRequestId(request: NextRequest): string {
@@ -58,6 +61,18 @@ async function cekSesiStaf(
     return { jenis: 'lanjut' };
   } finally {
     if (timer) clearTimeout(timer);
+  }
+}
+
+// Modul layanan petugas (staf_modul()), hanya dipanggil untuk rute modul. Galat/RPC belum ada/nilai asing = null,
+// sehingga rute modul DITOLAK (fail-closed) dan halaman lain tidak terpengaruh.
+async function bacaModul(supabase: ReturnType<typeof createServerClient>): Promise<ModulLayanan | null> {
+  try {
+    const { data, error } = await supabase.rpc('staf_modul');
+    if (error || typeof data !== 'string' || !MODUL_VALID.includes(data)) return null;
+    return data as ModulLayanan;
+  } catch {
+    return null;
   }
 }
 
@@ -135,8 +150,8 @@ export async function proxy(request: NextRequest) {
       return attachRequestId(NextResponse.redirect(loginUrl), requestId);
     }
 
-  // JIKA USER LOGIN: Cek otorisasi untuk rute admin (/admin/*)
-    if (pathname.startsWith('/admin')) {
+  // JIKA USER LOGIN: Cek otorisasi untuk area staf (/admin/* dan /petugas/*)
+    if (AREA_STAF.some((prefix) => pathname.startsWith(prefix))) {
     // A1: Baca role dari JWT app_metadata (lebih cepat, no DB query)
     // Fallback ke DB query jika claim belum dikonfigurasi (pre-hook)
       const jwtRole = (user.app_metadata?.role as string | undefined) ?? null;
@@ -158,22 +173,40 @@ export async function proxy(request: NextRequest) {
         return attachRequestId(NextResponse.redirect(new URL('/me', request.url)), requestId);
       }
 
+      // Area peran: petugas di /admin/* dialihkan ke padanannya di /petugas (menjaga tautan notifikasi dan bookmark
+      // lama), admin dan Front Office di /petugas/* dialihkan ke /admin. Query string ikut.
+      const areaLain = alihkanAreaPeran(role, pathname);
+      if (areaLain) {
+        const tujuan = new URL(areaLain, request.url);
+        tujuan.search = request.nextUrl.search;
+        return attachRequestId(NextResponse.redirect(tujuan), requestId);
+      }
+
       // Sesi tunggal staf (A2): sesi yang digantikan login lain / idle dialihkan ke login dengan alasan.
       const sesi = await cekSesiStaf(supabase, request, requestId);
       if (sesi.jenis === 'tolak') {
         return attachRequestId(NextResponse.redirect(new URL(sesi.url, request.url)), requestId);
       }
 
+      // Otorisasi halaman di server (fail-closed): rute yang tidak terdaftar atau tidak diizinkan untuk peran ini
+      // dialihkan. AdminGuard di klien tinggal lapisan UX. Modul layanan hanya dibaca untuk rute modul.
+      const peran = role as AdminRole;
+      const modul = butuhModulUntukRute(peran, pathname) ? await bacaModul(supabase) : null;
+      if (!bolehAksesRute(peran, pathname, { modul })) {
+        return attachRequestId(NextResponse.redirect(new URL(berandaTolak(peran), request.url)), requestId);
+      }
+
       // Akun dengan sandi sementara (reset Admin) wajib ganti sandi dulu. Hanya mengarahkan ke
-      // /admin/profil; tidak melonggarkan cek role di atas (galat/kolom hilang = tidak memaksa).
-      if (pathname !== HALAMAN_PROFIL && !pathname.startsWith(`${HALAMAN_PROFIL}/`)) {
+      // halaman profil peran itu; tidak melonggarkan cek role di atas (galat/kolom hilang = tidak memaksa).
+      const halamanProfil = halamanProfilPeran(peran);
+      if (pathname !== halamanProfil && !pathname.startsWith(`${halamanProfil}/`)) {
         const { data: flag } = await supabase
           .from('petugas')
           .select('wajib_ganti_sandi')
           .eq('auth_user_id', user.id)
           .maybeSingle();
         if (flag?.wajib_ganti_sandi === true) {
-          return attachRequestId(NextResponse.redirect(new URL(`${HALAMAN_PROFIL}?ganti=1`, request.url)), requestId);
+          return attachRequestId(NextResponse.redirect(new URL(`${halamanProfil}?ganti=1`, request.url)), requestId);
         }
       }
     }

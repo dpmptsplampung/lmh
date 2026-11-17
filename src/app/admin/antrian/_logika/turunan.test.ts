@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ProfilPetugasAntrean, TiketBaris } from '@/lib/data/antrean';
 import {
   NADA_STATUS,
+  bolehLihatData,
   bolehLihatSemuaLayanan,
   durasiTeks,
   idKunjunganSelesai,
@@ -98,6 +99,46 @@ describe('profil dan kepala halaman', () => {
     expect(bolehLihatSemuaLayanan(profil({ role: 'front_office' }))).toBe(true);
     expect(bolehLihatSemuaLayanan(profil({ role: 'petugas' }))).toBe(false);
     expect(bolehLihatSemuaLayanan(null)).toBe(false);
+  });
+});
+
+describe('bolehLihatData (G3: baca-saja)', () => {
+  const formOss = tiket();
+  const tanpaForm = tiket({ layanan: { nama: 'Konsultasi', form_pendataan: null } });
+
+  it('Admin dan Front Office membuka SEMUA tiket berformulir, termasuk menunggu dan milik layanan/petugas lain', () => {
+    for (const role of ['admin', 'front_office'] as const) {
+      const u = profil({ role, layanan_id: '' });
+      for (const status of ['menunggu', 'dilayani', 'selesai', 'batal', 'no_show'] as const) {
+        expect(bolehLihatData(u, tiket({ status, layanan_id: 'l-lain', dilayani_oleh: 'p-lain' }))).toBe(true);
+      }
+    }
+  });
+
+  it('Layanan tanpa formulir (Pendataan Khusus): Admin dan FO semua tiket; Petugas layanannya yang sudah berjalan', () => {
+    for (const role of ['admin', 'front_office'] as const) {
+      const u = profil({ role, layanan_id: '' });
+      for (const status of ['menunggu', 'dilayani', 'selesai'] as const) {
+        expect(bolehLihatData(u, { ...tanpaForm, status, layanan_id: 'l-lain', dilayani_oleh: 'p-lain' })).toBe(true);
+      }
+    }
+    const petugas = profil({ role: 'petugas', layanan_id: 'l-1' });
+    expect(bolehLihatData(petugas, { ...tanpaForm, status: 'dilayani', dilayani_oleh: 'p-rekan' })).toBe(true);
+    expect(bolehLihatData(petugas, { ...tanpaForm, status: 'selesai' })).toBe(true);
+    expect(bolehLihatData(petugas, { ...tanpaForm, status: 'menunggu' })).toBe(false);
+    expect(bolehLihatData(petugas, { ...tanpaForm, status: 'selesai', layanan_id: 'l-2' })).toBe(false);
+    expect(bolehLihatData(profil({ role: 'petugas', layanan_id: '' }), { ...tanpaForm, status: 'selesai' })).toBe(false);
+    expect(bolehLihatData(null, { ...tanpaForm, status: 'selesai' })).toBe(false);
+  });
+
+  it('Petugas: tiket Layanannya yang sudah berjalan (bukan milik sendiri pun boleh); menunggu dan layanan lain tidak', () => {
+    const petugas = profil({ role: 'petugas', layanan_id: 'l-1' });
+    expect(bolehLihatData(petugas, tiket({ status: 'dilayani', dilayani_oleh: 'p-rekan' }))).toBe(true);
+    expect(bolehLihatData(petugas, tiket({ status: 'selesai' }))).toBe(true);
+    expect(bolehLihatData(petugas, tiket({ status: 'menunggu' }))).toBe(false);
+    expect(bolehLihatData(petugas, tiket({ status: 'selesai', layanan_id: 'l-2' }))).toBe(false);
+    expect(bolehLihatData(profil({ role: 'petugas', layanan_id: '' }), formOss)).toBe(false);
+    expect(bolehLihatData(null, formOss)).toBe(false);
   });
 });
 

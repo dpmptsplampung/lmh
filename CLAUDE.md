@@ -48,7 +48,7 @@ Test ada di samping source (`*.test.ts(x)`) dan di `supabase/migrations/*.test.t
 
 **Request flow & auth**
 - `src/proxy.ts` (pengganti `middleware.ts` di Next 16) hanya menjaga `/admin*` dan `/me*`: refresh sesi Supabase, redirect ke `/login`, lalu cek role admin. Role dibaca dari JWT `app_metadata.role` (Auth Hook), fallback query tabel `petugas` (harus `aktif`). Menambah `x-request-id` ke semua respons.
-- Tiga role: `admin`, `petugas`, `front_office`. **`src/lib/admin-nav.ts` adalah sumber tunggal** akses halaman admin per role (dipakai `Sidebar` + `AdminGuard`); halaman admin yang tak terdaftar = admin-only. Menambah halaman admin → tambah entri di sini.
+- Tiga role: `admin`, `petugas` (Petugas Layanan: satu layanan, rute `/petugas/*`, ADR 0004), `front_office`. **`src/lib/admin-nav.ts` adalah sumber tunggal** akses halaman admin per role (dipakai `Sidebar` + `AdminGuard`); halaman admin yang tak terdaftar = admin-only. Menambah halaman admin → tambah entri di sini.
 - Pengunjung memakai anon sign-in Supabase (RLS `pengunjung_id = auth.uid()`); mitra/UMKM memakai magic-link. Akun mitra = individual (`docs/KEBIJAKAN_AKUN_MITRA.md`).
 - Supabase client: `src/lib/supabase/{client,server,service}.ts`. `service.ts` = service-role (server-only; jangan dipakai di client). Env divalidasi zod di `src/lib/env/{server,client}.ts`, dipanggil dari `src/instrumentation.ts` saat start (placeholder value ditolak).
 

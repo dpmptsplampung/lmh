@@ -67,6 +67,19 @@ vi.mock('@/components/admin/PelayananWizardModal', () => ({
   ),
 }));
 
+// Wizard Mulai Layanan dua langkah (G5) diuji sendiri (components/admin/mulai-layanan); di halaman cukup tiruan yang
+// memperlihatkan propsnya dan menirukan "Lanjut" untuk layanan berformulir tetap.
+vi.mock('@/components/admin/mulai-layanan/MulaiLayananWizard', () => ({
+  default: ({ tiket, langkahAwal, bolehUbah, onClose, onLanjutForm }: {
+    tiket: { id: string; berFormulir: boolean }; langkahAwal: number; bolehUbah: boolean; onClose: () => void; onLanjutForm: () => void;
+  }) => (
+    <div data-testid="mulai-wizard" data-langkah={langkahAwal} data-form={String(tiket.berFormulir)} data-boleh-ubah={String(bolehUbah)}>
+      <button type="button" onClick={onLanjutForm}>Lanjut ke formulir (tiruan)</button>
+      <button type="button" onClick={onClose}>Tutup wizard (tiruan)</button>
+    </div>
+  ),
+}));
+
 // Kanvas QR tidak berjalan di jsdom: tiruan mengekspos nilai yang dikodekan lewat atribut (bukan teks).
 vi.mock('@/components/QRCode', () => ({
   default: ({ value }: { value: string }) => <div data-testid="qr" data-value={value} />,
@@ -108,7 +121,7 @@ function buildMock(opts: {
   // Hasil RPC per nama; nilai bisa Promise (untuk menguji tombol terkunci selama request).
   rpc?: Partial<Record<
     'fo_antrean_daftar' | 'panggil_tiket' | 'layanan_mulai' | 'layanan_selesai' | 'admin_ambil_alih' | 'layanan_kembalikan' | 'admin_alihkan'
-    | 'ambil_qr_survei',
+    | 'ambil_qr_survei' | 'pendataan_khusus_definisi' | 'layanan_selesai_khusus',
     HasilRpc | Promise<HasilRpc>
   >>;
   // Baris penanganan tahap FO (kontrak §6.3), topik layanan tiket, dan layanan tujuan alih.
@@ -153,6 +166,9 @@ function buildMock(opts: {
     panggil_tiket: { data: 'A-001', error: null },
     layanan_mulai: { data: { ok: true, sudah_milik_anda: false }, error: null },
     layanan_selesai: { data: { ok: true, is_locked: false }, error: null },
+    // G5: satu jalur Selesai untuk tiket tanpa formulir tetap; Layanan tanpa isian Khusus aktif (definisi kosong).
+    layanan_selesai_khusus: { data: { ok: true, khusus_tersimpan: 0 }, error: null },
+    pendataan_khusus_definisi: { data: [], error: null },
     admin_ambil_alih: { data: { ok: true, sudah_milik_anda: false }, error: null },
     koordinator_ambil_alih_tiket: { data: { ok: true, sudah_milik_anda: false }, error: null },
     layanan_kembalikan: { data: { ok: true }, error: null },
@@ -313,20 +329,32 @@ describe('Admin antrian: Mulai Layanan lewat RPC layanan_mulai', () => {
     await waitFor(() => expect(toastMock).toHaveBeenCalledWith('Layanan dimulai', 'success'));
   });
 
-  it('membuka wizard pendataan otomatis untuk Helpdesk OSS', async () => {
+  it('layanan berformulir: wizard Mulai Layanan terbuka di langkah 1; Lanjut membuka wizard pendataan formulir', async () => {
     buildMock({ rows: [baseRow()] });
     render(<AntrianPage />);
     expect(screen.getByTestId('pelayanan-wizard')).toHaveTextContent('PendataanClosed');
+    expect(screen.queryByTestId('mulai-wizard')).toBeNull();
     fireEvent.click(await screen.findByRole('button', { name: /mulai layanan/i }));
+    const wizard = await screen.findByTestId('mulai-wizard');
+    expect(wizard).toHaveAttribute('data-langkah', '1');
+    expect(wizard).toHaveAttribute('data-form', 'true');
+    expect(wizard).toHaveAttribute('data-boleh-ubah', 'true');
+    expect(screen.getByTestId('pelayanan-wizard')).toHaveTextContent('PendataanClosed');
+    fireEvent.click(screen.getByRole('button', { name: 'Lanjut ke formulir (tiruan)' }));
     await waitFor(() => expect(screen.getByTestId('pelayanan-wizard')).toHaveTextContent('Pendataan Pelayanan'));
+    expect(screen.queryByTestId('mulai-wizard')).toBeNull();
   });
 
-  it('tidak membuka wizard untuk layanan tanpa pendataan', async () => {
+  it('layanan tanpa formulir: wizard Mulai Layanan tetap terbuka (langkah 1), tanpa toast "tidak memiliki form"', async () => {
     buildMock({ rows: [baseRow({ layanan: { nama: 'BPJS Kesehatan' } })] });
     render(<AntrianPage />);
     fireEvent.click(await screen.findByRole('button', { name: /mulai layanan/i }));
-    await waitFor(() => expect(toastMock).toHaveBeenCalledWith('Layanan ini tidak memiliki form pendataan', 'info'));
+    const wizard = await screen.findByTestId('mulai-wizard');
+    expect(wizard).toHaveAttribute('data-form', 'false');
     expect(screen.getByTestId('pelayanan-wizard')).toHaveTextContent('PendataanClosed');
+    expect(toastMock).not.toHaveBeenCalledWith('Layanan ini tidak memiliki form pendataan', 'info');
+    fireEvent.click(screen.getByRole('button', { name: 'Tutup wizard (tiruan)' }));
+    expect(screen.queryByTestId('mulai-wizard')).toBeNull();
   });
 
   it('tombol terkunci selama request (klik ganda tidak memanggil RPC dua kali) dan status diumumkan aria-live', async () => {
@@ -431,15 +459,35 @@ describe('Admin antrian: Mulai Layanan lewat RPC layanan_mulai', () => {
   });
 });
 
-describe('Admin antrian: Selesai hanya oleh pemilik (rpc layanan_selesai)', () => {
-  it('pemilik, layanan tanpa pendataan: rpc layanan_selesai (bukan UPDATE visit) -> toast sukses', async () => {
+
+/** Tiket tanpa formulir: tombol Selesai membuka SelesaiLayananModal; konfirmasi memanggil layanan_selesai_khusus. */
+async function selesaikanLewatModal() {
+  fireEvent.click(await screen.findByRole('button', { name: /^selesai$/i }));
+  const dialog = await screen.findByRole('dialog', { name: /Selesaikan tiket/i });
+  await waitFor(() => expect(within(dialog).getByRole('button', { name: /^Selesaikan$/ })).toBeEnabled());
+  fireEvent.click(within(dialog).getByRole('button', { name: /^Selesaikan$/ }));
+  return dialog;
+}
+
+describe('Admin antrian: Selesai hanya oleh pemilik (satu jalur layanan_selesai_khusus, G5)', () => {
+  it('pemilik, layanan tanpa pendataan: modal konfirmasi lalu layanan_selesai_khusus (bukan UPDATE visit) -> toast sukses', async () => {
     const mock = buildMock({ rows: [dilayaniSaya({ layanan: { nama: 'BPJS Kesehatan' } })] });
     render(<AntrianPage />);
     expect(screen.queryByRole('button', { name: /mulai layanan/i })).not.toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: /^selesai$/i }));
-    await waitFor(() => expect(mock.rpc).toHaveBeenCalledWith('layanan_selesai', { p_tiket_id: 't-1' }));
+    // Tiket lama tanpa isian Khusus: tidak ada RPC sebelum konfirmasi, dan tidak diminta topik/catatan.
+    const dialog = await screen.findByRole('dialog', { name: /Selesaikan tiket A-001/i });
+    expect(mock.rpc.mock.calls.filter(([n]) => n === 'layanan_selesai_khusus')).toHaveLength(0);
+    expect(within(dialog).queryByLabelText(/Topik penanganan/)).toBeNull();
+    await waitFor(() => expect(mock.rpc).toHaveBeenCalledWith('pendataan_khusus_definisi', { p_layanan: 'l-1' }));
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: /^Selesaikan$/ })).toBeEnabled());
+    fireEvent.click(within(dialog).getByRole('button', { name: /^Selesaikan$/ }));
+    await waitFor(() => expect(mock.rpc).toHaveBeenCalledWith('layanan_selesai_khusus', {
+      p_tiket_id: 't-1', p_topik_id: null, p_catatan: null, p_khusus: null,
+    }));
     expect(mock._visitUpdate).not.toHaveBeenCalled();
-    await waitFor(() => expect(toastMock).toHaveBeenCalledWith('Kunjungan berhasil diselesaikan', 'success'));
+    await waitFor(() => expect(toastMock).toHaveBeenCalledWith('Tiket A-001 selesai dilayani', 'success'));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
   it('pemilik, layanan pendataan: Selesai dan Form Pendataan membuka wizard (tanpa RPC langsung)', async () => {
@@ -475,11 +523,11 @@ describe('Admin antrian: Selesai hanya oleh pemilik (rpc layanan_selesai)', () =
     expect(screen.queryByRole('button', { name: /tanpa (form|pendataan)/i })).not.toBeInTheDocument();
   });
 
-  it('form_pendataan DB kosong pada "Helpdesk OSS" -> tanpa Form Pendataan, Selesai memanggil RPC langsung', async () => {
+  it('form_pendataan DB kosong pada "Helpdesk OSS" -> tanpa Form Pendataan, Selesai lewat modal layanan_selesai_khusus', async () => {
     const mock = buildMock({ rows: [dilayaniSaya({ layanan: { nama: 'Helpdesk OSS', form_pendataan: null } })] });
     render(<AntrianPage />);
-    fireEvent.click(await screen.findByRole('button', { name: /^selesai$/i }));
-    await waitFor(() => expect(mock.rpc).toHaveBeenCalledWith('layanan_selesai', { p_tiket_id: 't-1' }));
+    await selesaikanLewatModal();
+    await waitFor(() => expect(mock.rpc).toHaveBeenCalledWith('layanan_selesai_khusus', expect.objectContaining({ p_tiket_id: 't-1' })));
     expect(screen.queryByRole('button', { name: /form pendataan/i })).not.toBeInTheDocument();
   });
 
@@ -512,25 +560,23 @@ describe('Admin antrian: Selesai hanya oleh pemilik (rpc layanan_selesai)', () =
   it('BUKAN_PEMILIK dari DB (mis. baru diambil alih) -> pesan jelas dan daftar dimuat ulang', async () => {
     const mock = buildMock({
       rows: [dilayaniSaya({ layanan: { nama: 'BPJS Kesehatan' } })],
-      rpc: { layanan_selesai: { data: null, error: { message: 'BUKAN_PEMILIK: tiket ini sedang dilayani petugas lain', code: '42501' } } },
+      rpc: { layanan_selesai_khusus: { data: null, error: { message: 'BUKAN_PEMILIK: tiket ini sedang dilayani petugas lain', code: '42501' } } },
     });
     render(<AntrianPage />);
     await screen.findByRole('button', { name: /^selesai$/i });
     const sebelum = jumlahMuat(mock);
-    fireEvent.click(screen.getByRole('button', { name: /^selesai$/i }));
-    await waitFor(() =>
-      expect(toastMock).toHaveBeenCalledWith(expect.stringContaining('Hanya petugas yang memulai'), 'error'),
-    );
+    const dialog = await selesaikanLewatModal();
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(/Hanya petugas yang memulai/);
     await waitFor(() => expect(jumlahMuat(mock)).toBeGreaterThan(sebelum));
-    expect(toastMock).not.toHaveBeenCalledWith('Kunjungan berhasil diselesaikan', 'success');
+    expect(toastMock).not.toHaveBeenCalledWith(expect.stringContaining('selesai dilayani'), 'success');
   });
 
   it('Selesai: balasan kosong -> toast gagal, tanpa toast sukses', async () => {
-    buildMock({ rows: [dilayaniSaya({ layanan: { nama: 'BPJS Kesehatan' } })], rpc: { layanan_selesai: { data: null, error: null } } });
+    buildMock({ rows: [dilayaniSaya({ layanan: { nama: 'BPJS Kesehatan' } })], rpc: { layanan_selesai_khusus: { data: null, error: null } } });
     render(<AntrianPage />);
-    fireEvent.click(await screen.findByRole('button', { name: /^selesai$/i }));
-    await waitFor(() => expect(toastMock).toHaveBeenCalledWith(expect.stringContaining('Gagal menyelesaikan antrean'), 'error'));
-    expect(toastMock).not.toHaveBeenCalledWith('Kunjungan berhasil diselesaikan', 'success');
+    const dialog = await selesaikanLewatModal();
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(/Gagal menyelesaikan tiket/);
+    expect(toastMock).not.toHaveBeenCalledWith(expect.stringContaining('selesai dilayani'), 'success');
   });
 });
 
@@ -752,7 +798,7 @@ describe('Admin antrian B4: catatan eskalasi dari Front Office', () => {
   });
 });
 
-describe('Admin antrian B4: Selesai tiket eskalasi tanpa pendataan (layanan_selesai + topik + catatan)', () => {
+describe('Admin antrian B4: Selesai tiket eskalasi tanpa pendataan (layanan_selesai_khusus + topik + catatan)', () => {
   const buka = async (mock: ReturnType<typeof buildMock>) => {
     render(<AntrianPage />);
     const tombol = await screen.findByRole('button', { name: /^selesai$/i });
@@ -762,13 +808,13 @@ describe('Admin antrian B4: Selesai tiket eskalasi tanpa pendataan (layanan_sele
     return { dialog, tombol, mock };
   };
 
-  it('membuka dialog (bukan RPC langsung); wajib topik dan catatan; lalu RPC 5 parameter', async () => {
+  it('membuka dialog (bukan RPC langsung); wajib topik dan catatan; lalu layanan_selesai_khusus', async () => {
     const mock = buildMock({
       rows: [eskalasiSaya({ layanan: noBpjs })],
       topik: [{ id: 'tp-1', nama: 'Klaim' }, { id: 'tp-2', nama: 'Lainnya' }],
     });
     const { dialog } = await buka(mock);
-    expect(mock.rpc.mock.calls.filter(([n]) => n === 'layanan_selesai')).toHaveLength(0);
+    expect(mock.rpc.mock.calls.filter(([n]) => n === 'layanan_selesai_khusus')).toHaveLength(0);
     expect(mock._topikEq).toHaveBeenCalledWith('layanan_id', 'l-1');
     expect(mock._topikEq).toHaveBeenCalledWith('aktif', true);
 
@@ -778,14 +824,16 @@ describe('Admin antrian B4: Selesai tiket eskalasi tanpa pendataan (layanan_sele
     expect(galat.map((g) => g.textContent).join(' ')).toMatch(/Topik penanganan wajib dipilih/);
     expect(galat.map((g) => g.textContent).join(' ')).toMatch(/Catatan wajib diisi/);
     expect(within(dialog).getByLabelText(/Topik penanganan/)).toHaveAttribute('aria-invalid', 'true');
-    expect(mock.rpc.mock.calls.filter(([n]) => n === 'layanan_selesai')).toHaveLength(0);
+    expect(mock.rpc.mock.calls.filter(([n]) => n === 'layanan_selesai_khusus')).toHaveLength(0);
 
     const sebelum = jumlahMuat(mock);
     fireEvent.change(within(dialog).getByLabelText(/Topik penanganan/), { target: { value: 'tp-1' } });
     fireEvent.change(within(dialog).getByLabelText(/Catatan penanganan/), { target: { value: '  Klaim dijelaskan  ' } });
     fireEvent.click(within(dialog).getByRole('button', { name: /^Selesaikan$/ }));
     await waitFor(() =>
-      expect(mock.rpc).toHaveBeenCalledWith('layanan_selesai', { p_tiket_id: 't-1', p_topik_id: 'tp-1', p_catatan: 'Klaim dijelaskan' }),
+      expect(mock.rpc).toHaveBeenCalledWith('layanan_selesai_khusus', {
+        p_tiket_id: 't-1', p_topik_id: 'tp-1', p_catatan: 'Klaim dijelaskan', p_khusus: null,
+      }),
     );
     await waitFor(() => expect(toastMock).toHaveBeenCalledWith(expect.stringContaining('selesai dilayani'), 'success'));
     await waitFor(() => expect(jumlahMuat(mock)).toBeGreaterThan(sebelum));
@@ -796,7 +844,7 @@ describe('Admin antrian B4: Selesai tiket eskalasi tanpa pendataan (layanan_sele
   it('tombol dikunci selama request (klik ganda tidak memanggil RPC dua kali)', async () => {
     let selesaikan: (v: HasilRpc) => void = () => {};
     const tertunda = new Promise<HasilRpc>((r) => { selesaikan = r; });
-    const mock = buildMock({ rows: [eskalasiSaya({ layanan: noBpjs })], topik: [{ id: 'tp-1', nama: 'Klaim' }], rpc: { layanan_selesai: tertunda } });
+    const mock = buildMock({ rows: [eskalasiSaya({ layanan: noBpjs })], topik: [{ id: 'tp-1', nama: 'Klaim' }], rpc: { layanan_selesai_khusus: tertunda } });
     const { dialog } = await buka(mock);
     fireEvent.change(within(dialog).getByLabelText(/Topik penanganan/), { target: { value: 'tp-1' } });
     fireEvent.change(within(dialog).getByLabelText(/Catatan penanganan/), { target: { value: 'ok' } });
@@ -805,7 +853,7 @@ describe('Admin antrian B4: Selesai tiket eskalasi tanpa pendataan (layanan_sele
     expect(sibuk).toBeDisabled();
     expect(sibuk).toHaveAttribute('aria-busy', 'true');
     fireEvent.submit(sibuk.closest('form')!);
-    expect(mock.rpc.mock.calls.filter(([n]) => n === 'layanan_selesai')).toHaveLength(1);
+    expect(mock.rpc.mock.calls.filter(([n]) => n === 'layanan_selesai_khusus')).toHaveLength(1);
     selesaikan({ data: { ok: true }, error: null });
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
@@ -819,7 +867,7 @@ describe('Admin antrian B4: Selesai tiket eskalasi tanpa pendataan (layanan_sele
     const mock = buildMock({
       rows: [eskalasiSaya({ layanan: noBpjs })],
       topik: [{ id: 'tp-1', nama: 'Klaim' }],
-      rpc: { layanan_selesai: { data: null, error: { message: pesanDb, code: 'P0001' } } },
+      rpc: { layanan_selesai_khusus: { data: null, error: { message: pesanDb, code: 'P0001' } } },
     });
     const { dialog } = await buka(mock);
     fireEvent.change(within(dialog).getByLabelText(/Topik penanganan/), { target: { value: 'tp-1' } });
@@ -850,12 +898,14 @@ describe('Admin antrian B4: Selesai tiket eskalasi tanpa pendataan (layanan_sele
     expect(tombol).toHaveFocus();
   });
 
-  it('tiket lama (bukan eskalasi) tanpa pendataan tetap langsung RPC tanpa topik/catatan', async () => {
+  it('tiket lama (bukan eskalasi) tanpa pendataan: tetap tanpa topik/catatan, tetapi lewat modal yang sama', async () => {
     const mock = buildMock({ rows: [dilayaniSaya({ layanan: noBpjs })] });
     render(<AntrianPage />);
-    fireEvent.click(await screen.findByRole('button', { name: /^selesai$/i }));
-    await waitFor(() => expect(mock.rpc).toHaveBeenCalledWith('layanan_selesai', { p_tiket_id: 't-1' }));
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    const dialog = await selesaikanLewatModal();
+    await waitFor(() => expect(mock.rpc).toHaveBeenCalledWith('layanan_selesai_khusus', {
+      p_tiket_id: 't-1', p_topik_id: null, p_catatan: null, p_khusus: null,
+    }));
+    expect(within(dialog).queryByLabelText(/Topik penanganan/)).toBeNull();
   });
 
   it('tiket eskalasi dengan pendataan (Helpdesk OSS): Selesai membuka wizard, bukan dialog topik', async () => {
@@ -1137,13 +1187,13 @@ describe('Admin antrian: QR Pesan Perilaku setelah tiket selesai', () => {
     return dialog;
   };
 
-  it('jalur 1, layanan_selesai langsung: dialog dibuka untuk kunjungan_id tiket itu', async () => {
+  it('jalur 1, SelesaiLayananModal tanpa isian: dialog dibuka untuk kunjungan_id tiket itu', async () => {
     const mock = buildMock({
       rows: [dilayaniSaya({ layanan: { nama: 'BPJS Kesehatan' }, kunjungan_id: 'k-9' })],
       rpc: { ambil_qr_survei: qrBelumDiisi },
     });
     render(<AntrianPage />);
-    fireEvent.click(await screen.findByRole('button', { name: /^selesai$/i }));
+    await selesaikanLewatModal();
 
     const dialog = await tampilQr();
     expect(mock.rpc).toHaveBeenCalledWith('ambil_qr_survei', { p_kunjungan_id: 'k-9' });
@@ -1167,7 +1217,7 @@ describe('Admin antrian: QR Pesan Perilaku setelah tiket selesai', () => {
     expect(screen.getByTestId('pelayanan-wizard')).toHaveTextContent('PendataanClosed');
   });
 
-  it('jalur 3, SelesaiEskalasiModal: dialog dibuka untuk kunjungan_id tiket eskalasi', async () => {
+  it('jalur 3, SelesaiLayananModal (tiket eskalasi): dialog dibuka untuk kunjungan_id tiket eskalasi', async () => {
     const mock = buildMock({
       rows: [eskalasiSaya({ layanan: noBpjs, kunjungan_id: 'k-7' })],
       topik: [{ id: 'tp-1', nama: 'Klaim' }],
@@ -1189,10 +1239,10 @@ describe('Admin antrian: QR Pesan Perilaku setelah tiket selesai', () => {
   it('tanpa token (kunjungan belum selesai / tanpa undangan): RPC dipanggil tetapi tidak ada dialog', async () => {
     const mock = buildMock({ rows: [dilayaniSaya({ layanan: { nama: 'BPJS Kesehatan' }, kunjungan_id: 'k-9' })] });
     render(<AntrianPage />);
-    fireEvent.click(await screen.findByRole('button', { name: /^selesai$/i }));
+    await selesaikanLewatModal();
 
     await waitFor(() => expect(panggilanQr(mock)).toHaveLength(1));
-    await waitFor(() => expect(toastMock).toHaveBeenCalledWith('Kunjungan berhasil diselesaikan', 'success'));
+    await waitFor(() => expect(toastMock).toHaveBeenCalledWith('Tiket A-001 selesai dilayani', 'success'));
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(screen.queryByTestId('qr')).toBeNull();
   });
@@ -1204,11 +1254,11 @@ describe('Admin antrian: QR Pesan Perilaku setelah tiket selesai', () => {
       rpc: { ambil_qr_survei: { data: null, error: { message: 'boom', code: '42501' } } },
     });
     render(<AntrianPage />);
-    fireEvent.click(await screen.findByRole('button', { name: /^selesai$/i }));
+    await selesaikanLewatModal();
 
     const dialog = await screen.findByRole('dialog', { name: 'QR Pesan Perilaku' });
     expect(within(dialog).getByRole('alert')).toHaveTextContent(/belum dapat dimuat/i);
-    expect(toastMock).toHaveBeenCalledWith('Kunjungan berhasil diselesaikan', 'success');
+    expect(toastMock).toHaveBeenCalledWith('Tiket A-001 selesai dilayani', 'success');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Tutup' }));
     expect(screen.queryByRole('dialog')).toBeNull();
     spy.mockRestore();
@@ -1544,29 +1594,20 @@ describe('Admin antrian: RPC fo_antrean_daftar (akses FO, migrasi 202611030015)'
   });
 });
 
-describe('Admin antrian: jendela tanggal Front Office non-Koordinator', () => {
+describe('Admin antrian: FO membuka semua tanggal', () => {
   const kosong = { data: { rows: [], total: 0, statistik: { totalSelesai: 0, rataWaktuMenit: 0 } }, error: null };
   const panggilanFo = (mock: ReturnType<typeof buildMock>) =>
     (mock.rpc.mock.calls as unknown as Array<[string, Record<string, unknown>]>).filter(([n]) => n === 'fo_antrean_daftar');
 
-  it('FO biasa: hari di luar hari ini-7 s.d. hari ini+1 tidak tersedia di pemilih; hari di dalam jendela memanggil server', async () => {
+  it.each([-60, 60])('FO biasa membuka tanggal %i hari dari hari ini melalui pemilih dan RPC', async (hari) => {
     const mock = buildMock({ role: 'front_office', koordinator: false, rpc: { fo_antrean_daftar: kosong } });
     render(<AntrianPage />);
     await waitFor(() => expect(panggilanFo(mock).length).toBeGreaterThan(0));
-    // profil dibaca sebelum pemilih mendapat batas: tunggu sampai hari di luar jendela benar-benar nonaktif
-    // Kalender menolak pindah ke bulan yang seluruhnya di luar batas, jadi hari uji harus ada di kisi bulan berjalan.
-    // Salah satu dari dua calon di luar jendela ini selalu sebulan dengan hari ini.
-    fireEvent.click(chipTanggal());
-    const bulanIni = todayWIB().slice(0, 7);
-    const hariLuar = [addDaysWIB(-8), addDaysWIB(2)].find((iso) => iso.startsWith(bulanIni)) as string;
-    const luar = await bukaHari(hariLuar);
-    await waitFor(() => expect(luar).toHaveAttribute('aria-disabled', 'true'));
-    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     const awal = panggilanFo(mock).length;
-    await pilihHari(addDaysWIB(1));
+    await pilihHari(addDaysWIB(hari));
     await waitFor(() => expect(panggilanFo(mock).length).toBe(awal + 1));
-    expect(panggilanFo(mock)[awal][1]).toMatchObject({ p_tanggal: addDaysWIB(1) });
-    expect(screen.queryByRole('alert')).toBeNull();
+    expect(panggilanFo(mock)[awal][1]).toMatchObject({ p_tanggal: addDaysWIB(hari) });
+    expect(screen.queryByText(/7 hari ke belakang|minta Koordinator/)).toBeNull();
   });
 
   it('Admin, FO Koordinator, dan Petugas: tanggal bebas (hari lampau tersedia di pemilih)', async () => {
@@ -1584,15 +1625,5 @@ describe('Admin antrian: jendela tanggal Front Office non-Koordinator', () => {
     }
   });
 
-  it('galat TANGGAL_DILUAR_BATAS dari server tampil sebagai pesan jelas, bukan "periksa koneksi"', async () => {
-    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    buildMock({
-      role: 'front_office',
-      rpc: { fo_antrean_daftar: { data: null, error: { code: '22023', message: 'TANGGAL_DILUAR_BATAS: x' } } },
-    });
-    render(<AntrianPage />);
-    expect(await screen.findByText(/7 hari ke belakang sampai besok/)).toBeInTheDocument();
-    expect(screen.queryByText(/Periksa koneksi/)).toBeNull();
-    spy.mockRestore();
-  });
+
 });

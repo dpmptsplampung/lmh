@@ -15,7 +15,7 @@ import type { StatusSurvei } from '@/lib/survei/staf';
 import { formatWaktu } from '@/lib/utils';
 import type { FilterStatus } from '../antrianUrl';
 import { bolehLihatSemuaLayanan, kunjunganDari, labelAsal, namaLayananDari, tanggalPanjang } from '../_logika/turunan';
-import FilterAntrian, { ID_TAB_STATUS, LABEL_FILTER } from './FilterAntrian';
+import FilterAntrian, { ID_TAB_STATUS, LABEL_FILTER, type SaringanLayanan } from './FilterAntrian';
 import SelAksi, { type AksiTiket } from './SelAksi';
 import SelNama from './SelNama';
 import SelStatus from './SelStatus';
@@ -34,6 +34,8 @@ export interface DaftarAntreanProps {
   tanggal: string;
   filterStatus: FilterStatus;
   onGantiStatus: (kunci: string) => void;
+  /** Pilihan Layanan Admin/Front Office; null/kosong (Petugas) = tanpa pilihan. */
+  saringanLayanan?: SaringanLayanan | null;
   /** Indeks halaman berbasis 0. */
   halaman: number;
   ukuranHalaman: number;
@@ -48,9 +50,15 @@ export interface DaftarAntreanProps {
 }
 
 // Keadaan kosong: beda antara "memang kosong" dan "kosong karena saringan status".
-function KosongAntrean({ filterStatus }: { filterStatus: FilterStatus }) {
+function KosongAntrean({ filterStatus, perLayanan }: { filterStatus: FilterStatus; perLayanan: boolean }) {
   if (filterStatus === 'semua') {
-    return <StatusKosong ikon={Users} judul="Belum Ada Antrean" isi="Belum ada tiket untuk tanggal ini." />;
+    return (
+      <StatusKosong
+        ikon={Users}
+        judul="Belum Ada Antrean"
+        isi={perLayanan ? 'Belum ada tiket untuk layanan ini pada tanggal ini.' : 'Belum ada tiket untuk tanggal ini.'}
+      />
+    );
   }
   return (
     <StatusKosong
@@ -65,7 +73,7 @@ function KosongAntrean({ filterStatus }: { filterStatus: FilterStatus }) {
 
 export default function DaftarAntrean({
   baris, pengguna, aksesFo, catatanEskalasi, statusSurvei, aksi, tanggal, filterStatus, onGantiStatus,
-  halaman, ukuranHalaman, total, onGantiHalaman, memuat, menyegarkan, galatMuat, onMuatUlang,
+  saringanLayanan, halaman, ukuranHalaman, total, onGantiHalaman, memuat, menyegarkan, galatMuat, onMuatUlang,
 }: DaftarAntreanProps) {
   const kolom: KolomTabel<TiketBaris>[] = [
     { kunci: 'nomor', judul: 'No. Tiket', peran: 'utama', render: (a) => <span className={styles.nomor}>{a.nomor_display}</span> },
@@ -107,7 +115,7 @@ export default function DaftarAntrean({
 
   return (
     <Kartu padding="tanpa" as="section">
-      <FilterAntrian aktif={filterStatus} onGanti={onGantiStatus} />
+      <FilterAntrian aktif={filterStatus} onGanti={onGantiStatus} layanan={saringanLayanan} />
       <PanelTab idTab={ID_TAB_STATUS} kunci={filterStatus} aktif={filterStatus}>
         {galatMuat ? (
           <div className={styles.tidakAda}>
@@ -122,7 +130,7 @@ export default function DaftarAntrean({
               caption={`Daftar antrean ${tanggalPanjang(tanggal)}, tab ${LABEL_FILTER[filterStatus]}`}
               memuat={memuat}
               kartuDiHp
-              kosong={<KosongAntrean filterStatus={filterStatus} />}
+              kosong={<KosongAntrean filterStatus={filterStatus} perLayanan={!!saringanLayanan?.nilai} />}
             />
             {!memuat && <Pagination page={halaman} pageSize={ukuranHalaman} total={total} onPageChange={onGantiHalaman} />}
           </div>

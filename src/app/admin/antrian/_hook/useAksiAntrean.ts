@@ -4,8 +4,10 @@
 // lib/data/antrean.ts (hasil HasilAntrean, tanpa toast); hook ini memutuskan toast, muat ulang, dan modal berikutnya.
 //   - Panggil -> panggil_tiket. Tiap panggilan sukses = satu kejadian baru di layar TV (pita + bunyi); panggil ulang sengaja
 //     diizinkan berkali-kali, kunci hanya selama request berjalan dan JEDA_PANGGIL_MS (penjaga klik ganda tak sengaja).
-//   - Mulai Layanan -> layanan_mulai: pemenang menjadi pemilik tiket; layanan berformulir lalu membuka wizard pendataan.
-//   - Selesai -> wizard (layanan berformulir), dialog topik + catatan (tiket eskalasi tanpa formulir), atau layanan_selesai.
+//   - Mulai Layanan -> layanan_mulai: pemenang menjadi pemilik tiket; lalu wizard Mulai Layanan dua langkah (G5) terbuka di
+//     langkah 1 "Data dari Front Office"; langkah 2 = wizard formulir (OSS/Non OSS) atau isian Pendataan Khusus + draf.
+//   - Selesai -> wizard formulir (layanan berformulir tetap) atau SelesaiLayananModal (SATU jalur untuk semua tiket lain:
+//     layanan_selesai_khusus; topik + catatan hanya bila Layanan tanpa isian Khusus aktif dan tiket hasil eskalasi).
 //
 // Riwayat aturan kepemilikan (dari header halaman lama; WP-22, A3, B4):
 // - WP-22: bacaan antrean dipindah dari `visit` ke `tiket_antrean` + `kunjungan`.
@@ -19,17 +21,18 @@
 //   (migrasi 202610140015: topik NULL, catatan diturunkan DB); layanan tanpa Pendataan wajib topik + catatan
 //   (`layanan_selesai` 5 parameter). Pemilik dapat "Kembalikan ke FO" (`layanan_kembalikan`), Admin dapat "Alihkan"
 //   (`admin_alihkan`). Tiket lama (`penanganan_asal_id` null) tetap tanpa topik/catatan.
+// - G5 (migrasi 202611160002): semua tiket tanpa formulir tetap selesai lewat SATU jalur `layanan_selesai_khusus`
+//   (SelesaiLayananModal), dengan draf Pendataan Khusus yang disimpan sejak wizard Mulai Layanan.
 // - RPC bekerja langsung pada kunjungan/tiket/penanganan (`visit` = arsip sejak WP-24; SKM/notifikasi/estimasi lewat trigger kunjungan).
 import { useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { pesanMutasi } from '@/lib/supabase/mutate';
 import { perluMuatUlang } from '@/components/admin/mutasi-ui';
-import { kodeGalatDariError, PESAN_GALAT_ANTREAN, tiketHasilEskalasi, type KodeGalatAntrean } from '@/lib/pelayanan';
+import { kodeGalatDariError, PESAN_GALAT_ANTREAN, type KodeGalatAntrean } from '@/lib/pelayanan';
 import {
   galatAntreanDari,
   mulaiLayananTiket,
   panggilTiket,
-  selesaikanLayananTiket,
   type HasilAntrean,
   type TiketBaris,
 } from '@/lib/data/antrean';
@@ -50,7 +53,6 @@ export interface OpsiAksiAntrean {
   toast: (pesan: string, jenis?: JenisToast) => void;
   muatSenyap: () => Promise<void>;
   buka: (jenis: JenisModalAntrian, tiket: TiketBaris) => void;
-  bukaQrTiket: (tiketId: string | null) => void;
 }
 
 /** Klien dibuat di dalam penjaga: kegagalan apa pun menjadi galat bertipe, bukan penolakan yang lolos. */
@@ -62,7 +64,7 @@ async function jalankanRpc<T>(aksi: (sb: ReturnType<typeof createClient>) => Pro
   }
 }
 
-export function useAksiAntrean({ toast, muatSenyap, buka, bukaQrTiket }: OpsiAksiAntrean) {
+export function useAksiAntrean({ toast, muatSenyap, buka }: OpsiAksiAntrean) {
   // Tiket yang sedang diproses: tombolnya dikunci sampai RPC selesai (ref = penjaga klik ganda sebelum render ulang).
   const [sedangProses, setSedangProses] = useState<ReadonlySet<string>>(new Set());
   const prosesRef = useRef<Set<string>>(new Set());
@@ -139,33 +141,14 @@ export function useAksiAntrean({ toast, muatSenyap, buka, bukaQrTiket }: OpsiAks
       }
       toast(hasil.data.sudahMilikAnda ? 'Layanan tiket ini sudah Anda mulai sebelumnya' : 'Layanan dimulai', 'success');
       await muatSenyap();
-      // Wizard pendataan untuk layanan berformulir (Helpdesk OSS / Non OSS); layanan lain tidak punya form pendataan.
-      if (punyaPendataan(a)) buka('wizard', a);
-      else toast('Layanan ini tidak memiliki form pendataan', 'info');
+      // Wizard dua langkah: langkah 1 data dari Front Office (baca-saja), langkah 2 formulir / Pendataan Khusus bila ada.
+      buka('mulaiLayanan', a);
     });
 
+  /** Satu jalur Selesai: wizard formulir (OSS/Non OSS) atau SelesaiLayananModal; modal yang memvalidasi dan menyimpan final. */
   const selesaikan = (a: TiketBaris): Promise<void> => {
-    if (punyaPendataan(a)) {
-      // Wizard pendataan. Tiket hasil eskalasi: cukup Pendataan (tanpa topik/catatan; 202610140015).
-      buka('wizard', a);
-      return Promise.resolve();
-    }
-    if (tiketHasilEskalasi(a)) {
-      // Tiket hasil eskalasi tanpa pendataan: dialog topik + catatan wajib (layanan_selesai 5 parameter).
-      buka('selesaiEskalasi', a);
-      return Promise.resolve();
-    }
-    return jalankanAksi(a.id, `Menyelesaikan ${a.nomor_display}…`, async () => {
-      const hasil = await jalankanRpc((sb) => selesaikanLayananTiket(sb, a.id));
-      if (hasil.error) {
-        console.error('Gagal menyelesaikan antrean:', hasil.error.asli);
-        await tanganiGalatAksi(hasil.error.asli, 'Gagal menyelesaikan antrean.');
-        return;
-      }
-      toast('Kunjungan berhasil diselesaikan', 'success');
-      bukaQrTiket(a.id);
-      await muatSenyap();
-    });
+    buka(punyaPendataan(a) ? 'wizard' : 'selesaiLayanan', a);
+    return Promise.resolve();
   };
 
   return { sedangProses, sedangPanggil, pengumuman, panggil, mulai, selesaikan };

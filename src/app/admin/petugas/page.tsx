@@ -14,13 +14,13 @@ import Skeleton from '@/components/ui/Skeleton';
 import Galat from '@/components/ui/Galat';
 import StatusKosong from '@/components/ui/StatusKosong';
 import { formatTanggal, formatWaktu } from '@/lib/utils';
-import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/components/Toast';
 import AkunForm, { AkunDialog, type AkunRow as AkunBase, type LayananOption } from '@/components/admin/AkunForm';
 import AkunBaruForm, { type AkunBaruInput } from '@/components/admin/AkunBaruForm';
+import { muatLayananDenganModul } from './layananModul';
 import styles from './petugas.module.css';
 
-type AkunRow = AkunBase & { pemeriksa_umkm?: boolean };
+type AkunRow = AkunBase;
 
 type Dialog =
   | { kind: 'kelola'; akun: AkunRow }
@@ -97,10 +97,23 @@ function peringatanServer(json: unknown): string | null {
   return typeof p === 'string' && p.trim() ? p : null;
 }
 
+const LABEL_MODUL: Record<string, string> = { umkm: 'UMKM', investasi: 'Investasi' };
+
+/** Modul turunan dari Layanan, baca-saja: tidak ada saklar per akun (penunjukan lewat pilihan Layanan petugas). */
+function ModulAkun({ akun, modulLayanan }: { akun: AkunRow; modulLayanan: Record<string, string | null> }) {
+  if (akun.role === 'admin') return <span className={styles.akunSub}>Semua modul</span>;
+  if (akun.role !== 'petugas') return <span className={styles.akunSub}>—</span>;
+  const modul = akun.layanan_id ? modulLayanan[akun.layanan_id] : null;
+  if (!modul) return <span className={styles.akunSub}>—</span>;
+  return <Lencana nada="info">{LABEL_MODUL[modul] ?? modul}</Lencana>;
+}
+
 export default function AdminPetugasPage() {
   const { toast } = useToast();
   const [rows, setRows] = useState<AkunRow[]>([]);
   const [layananList, setLayananList] = useState<LayananOption[]>([]);
+  // layanan.modul (migrasi 202611160001): modul turunan dari Layanan petugas, baca-saja. Kosong bila kolom belum ada.
+  const [modulLayanan, setModulLayanan] = useState<Record<string, string | null>>({});
   const [selfId, setSelfId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -112,8 +125,6 @@ export default function AdminPetugasPage() {
   const [alasan, setAlasan] = useState('');
   // Fase 3: penanda Koordinator tersedia setelah migrasi 202610290001 (server mengirim koordinator_tersedia).
   const [koordinatorTersedia, setKoordinatorTersedia] = useState(false);
-  const [pemeriksaTersedia, setPemeriksaTersedia] = useState(false);
-  const [mengubahPemeriksa, setMengubahPemeriksa] = useState<string | null>(null);
   const [mengubahKoordinator, setMengubahKoordinator] = useState<string | null>(null);
   // Saklar Operator harian tersedia setelah migrasi 202611030014 (server mengirim operator_aktif_tersedia).
   const [operatorTersedia, setOperatorTersedia] = useState(false);
@@ -126,14 +137,14 @@ export default function AdminPetugasPage() {
     try {
       const [daftar, layanan, me] = await Promise.all([
         api('/api/admin/petugas', 'GET'),
-        createClient().from('layanan').select('id, nama').order('nama'),
+        muatLayananDenganModul(),
         api('/api/me/profil', 'GET').catch(() => null),
       ]);
       setRows((daftar.akun ?? []) as AkunRow[]);
       setKoordinatorTersedia(daftar.koordinator_tersedia === true);
-      setPemeriksaTersedia(daftar.pemeriksa_umkm_tersedia === true);
       setOperatorTersedia(daftar.operator_aktif_tersedia === true);
-      setLayananList((layanan?.data ?? []) as LayananOption[]);
+      setLayananList(layanan.daftar.map(({ id, nama }) => ({ id, nama })));
+      setModulLayanan(Object.fromEntries(layanan.daftar.map((l) => [l.id, l.modul])));
       setSelfId(me?.profil?.id ?? null);
       setLoadError('');
     } catch (e) {
@@ -207,7 +218,7 @@ export default function AdminPetugasPage() {
       await load();
     });
 
-  // Penanda Koordinator (spec §6.1): memperluas lingkup DATA akun FO/Petugas Layanan; role dan operasional tetap.
+  // Penanda Koordinator: sejak G2 (202611160001) hanya untuk "ambil alih" pekerjaan rekan; hak baca data tidak bergantung padanya.
   const ubahKoordinator = async (akun: AkunRow) => {
     const baru = !akun.koordinator;
     setMengubahKoordinator(akun.id);
@@ -223,23 +234,6 @@ export default function AdminPetugasPage() {
       const d = dialogRef.current;
       if (d?.kind === 'cabutKoordinator' && d.akun.id === akun.id) tutup();
     }
-  };
-
-  const ubahPemeriksa = async (akun: AkunRow) => {
-    if (mengubahPemeriksa) return;
-    setMengubahPemeriksa(akun.id);
-    try {
-      await api(`/api/admin/petugas/${akun.id}/pemeriksa-umkm`, 'PATCH', {
-        pemeriksa_umkm: !akun.pemeriksa_umkm, operasi_id: crypto.randomUUID(),
-      });
-      toast(akun.pemeriksa_umkm ? `Akses pemeriksa UMKM ${akun.nama} dicabut.` : `${akun.nama} kini pemeriksa UMKM.`, 'success');
-      await load();
-    } catch (e) {
-      const selfDenied = e instanceof AkunApiError && e.code === 'DILARANG' && akun.id === selfId;
-      toast(selfDenied ? 'Penanda untuk akun sendiri diberikan oleh admin lain.'
-        : e instanceof Error ? e.message : 'Gagal mengubah pemeriksa UMKM', 'error');
-    }
-    finally { setMengubahPemeriksa(null); }
   };
 
   const buatAkun = (data: AkunBaruInput) =>
@@ -307,16 +301,11 @@ export default function AdminPetugasPage() {
           ? <Lencana nada="peringatan">Belum pernah login</Lencana>
           : <span className={styles.kolLogin}>{fmtLogin(row.last_sign_in_at)}</span>,
     },
-    ...(pemeriksaTersedia ? [{
-      kunci: 'pemeriksa_umkm', judul: 'Pemeriksa UMKM',
-      render: (row: AkunRow) => row.role === 'front_office' ? null : (
-        <button type="button" className={`${styles.koordinator} ${row.pemeriksa_umkm ? styles.koordinatorNyala : ''}`}
-          aria-pressed={row.pemeriksa_umkm === true} aria-label={`Pemeriksa UMKM ${row.nama}`}
-          disabled={mengubahPemeriksa !== null || !row.aktif} onClick={() => void ubahPemeriksa(row)}>
-          {row.pemeriksa_umkm && <Check size={14} aria-hidden="true" />}Pemeriksa UMKM
-        </button>
-      ),
-    } as KolomTabel<AkunRow>] : []),
+    {
+      kunci: 'modul',
+      judul: 'Modul',
+      render: (row: AkunRow) => <ModulAkun akun={row} modulLayanan={modulLayanan} />,
+    },
     ...(koordinatorTersedia
       ? [{
           kunci: 'koordinator',
@@ -387,6 +376,11 @@ export default function AdminPetugasPage() {
             aksi={<Tombol ikon={UserPlus} onClick={() => setDialog({ kind: 'baru' })}>Buat Akun Layanan</Tombol>} />
         ) : (
           <>
+            <p className={styles.catatanModul}>
+              Akses modul (mis. UMKM) mengikuti layanan petugas: kolom Modul hanya menampilkan, tidak ada saklar per akun.
+              Untuk menunjuk petugas ke modul, atur Layanannya lewat Ubah akun.
+            </p>
+
             <div className={styles.statistik}>
               <KartuStatistik label="Total akun" nilai={rows.length} ikon={Users} />
               <KartuStatistik label="Aktif" nilai={jumlahAktif} ikon={UserCheck} />
@@ -525,8 +519,8 @@ export default function AdminPetugasPage() {
             </>
           }>
           <p>
-            <strong>{dialog.akun.nama}</strong> hanya akan melihat data yang ditanganinya sendiri.
-            Peran dan akses halamannya tidak berubah.
+            <strong>{dialog.akun.nama}</strong> tidak lagi dapat mengambil alih pekerjaan rekan.
+            Hak baca data mengikuti peran dan layanan, jadi tidak berubah. Peran dan akses halamannya juga tetap.
           </p>
         </AkunDialog>
       )}

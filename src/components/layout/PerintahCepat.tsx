@@ -77,7 +77,8 @@ export interface PerintahCepatProps {
 }
 
 export default function PerintahCepat({ role, pembukaRef, buka: bukaLuar, onUbah, onTutup }: PerintahCepatProps) {
-  const pemeriksaUmkm = usePemeriksaUmkm();
+  // Konteks lama bernilai true bila layanan petugas bermodul UMKM (diisi Sidebar).
+  const modulUmkm = usePemeriksaUmkm();
   const [bukaDalam, setBukaDalam] = useState(false);
   const buka = bukaLuar ?? bukaDalam;
   const atur = (v: boolean) => {
@@ -92,7 +93,7 @@ export default function PerintahCepat({ role, pembukaRef, buka: bukaLuar, onUbah
   const idDaftar = useId();
   const idJudul = useId();
 
-  const semua = useMemo(() => susunPerintah(role, { pemeriksa_umkm: pemeriksaUmkm }), [role, pemeriksaUmkm]);
+  const semua = useMemo(() => susunPerintah(role, { modul: modulUmkm ? 'umkm' : null }), [role, modulUmkm]);
   const hasil = useMemo(() => saring(semua, kueri), [semua, kueri]);
   const aktifAman = hasil.length === 0 ? -1 : Math.min(aktif, hasil.length - 1);
 

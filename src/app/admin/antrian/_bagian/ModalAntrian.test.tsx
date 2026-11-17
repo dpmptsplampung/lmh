@@ -24,8 +24,20 @@ vi.mock('@/components/admin/AlihkanTiketModal', () => ({
 vi.mock('@/components/admin/KembalikanKeFoModal', () => ({
   default: (p: PropsDialog) => <TiruanDialog testId="kembalikan" {...p} />,
 }));
-vi.mock('@/components/admin/SelesaiEskalasiModal', () => ({
-  default: (p: PropsDialog) => <TiruanDialog testId="selesai-eskalasi" {...p} />,
+vi.mock('@/components/admin/SelesaiLayananModal', () => ({
+  default: (p: PropsDialog) => <TiruanDialog testId="selesai-layanan" {...p} />,
+}));
+vi.mock('@/components/admin/mulai-layanan/MulaiLayananWizard', () => ({
+  default: ({ tiket, langkahAwal, bolehUbah, onClose, onLanjutForm, onDataBasi }: {
+    tiket: Record<string, unknown>; langkahAwal: number; bolehUbah: boolean; onClose: () => void;
+    onLanjutForm: () => void; onDataBasi?: () => void | Promise<void>;
+  }) => (
+    <div data-testid="mulai-layanan" data-langkah={langkahAwal} data-boleh-ubah={String(bolehUbah)} data-tiket={JSON.stringify(tiket)}>
+      <button type="button" onClick={onClose}>mulai: tutup</button>
+      <button type="button" onClick={onLanjutForm}>mulai: lanjut form</button>
+      <button type="button" onClick={() => { void onDataBasi?.(); }}>mulai: data basi</button>
+    </div>
+  ),
 }));
 vi.mock('@/components/admin/KoreksiPelayananModal', () => ({
   default: ({ isOpen, tiketId, onClose, onSuccess }: {
@@ -43,6 +55,13 @@ vi.mock('@/components/admin/PelayananWizardModal', () => ({
     <div data-testid="wizard" data-open={String(isOpen)} data-tiket-id={tiketId ?? ''}>
       <button type="button" onClick={() => { onSuccess?.(); onClose(); }}>wizard: kunci</button>
       <button type="button" onClick={() => { void onDataBasi?.(); }}>wizard: data basi</button>
+    </div>
+  ),
+}));
+vi.mock('@/components/admin/lihat-data/LihatDataKhususModal', () => ({
+  default: ({ tiket, onClose }: { tiket: Record<string, unknown>; onClose: () => void }) => (
+    <div data-testid="lihat-khusus" data-tiket={JSON.stringify(tiket)}>
+      <button type="button" onClick={onClose}>lihat-khusus: tutup</button>
     </div>
   ),
 }));
@@ -66,6 +85,7 @@ function pasang(utama: StateModal, qr: StateModal = null, pengguna = ADMIN) {
     qr,
     pengguna,
     tutup: vi.fn(),
+    buka: vi.fn(),
     bukaQrTiket: vi.fn(),
     muatSenyap: vi.fn().mockResolvedValue(undefined),
   };
@@ -78,7 +98,7 @@ const tiket = buatTiket({ id: 't-9', kunjungan_id: 'k-9', status: 'dilayani', di
 describe('ModalAntrian', () => {
   it('tanpa modal terbuka: empat dialog tiket dan QR tidak dipasang; koreksi dan wizard terpasang tertutup', () => {
     pasang(null);
-    for (const id of ['ambil-alih', 'alihkan', 'kembalikan', 'selesai-eskalasi', 'qr']) expect(screen.queryByTestId(id)).toBeNull();
+    for (const id of ['ambil-alih', 'alihkan', 'kembalikan', 'selesai-layanan', 'mulai-layanan', 'qr']) expect(screen.queryByTestId(id)).toBeNull();
     expect(screen.getByTestId('koreksi')).toHaveAttribute('data-open', 'false');
     expect(screen.getByTestId('koreksi')).toHaveAttribute('data-tiket-id', '');
     expect(screen.getByTestId('wizard')).toHaveAttribute('data-open', 'false');
@@ -101,23 +121,26 @@ describe('ModalAntrian', () => {
     });
   });
 
-  it('kembalikanKeFo dan selesaiEskalasi: id, nomor, layanan_id', () => {
+  it('kembalikanKeFo dan selesaiLayanan: id, nomor, layanan_id (selesaiLayanan membawa hasilEskalasi)', () => {
     pasang({ jenis: 'kembalikanKeFo', tiket });
     expect(JSON.parse(screen.getByTestId('kembalikan').dataset.tiket as string)).toEqual({
       id: 't-9', nomor_display: 'OS-001', layanan_id: 'l-oss',
     });
     cleanup();
-    pasang({ jenis: 'selesaiEskalasi', tiket });
-    expect(JSON.parse(screen.getByTestId('selesai-eskalasi').dataset.tiket as string)).toEqual({
-      id: 't-9', nomor_display: 'OS-001', layanan_id: 'l-oss',
+    pasang({ jenis: 'selesaiLayanan', tiket });
+    expect(JSON.parse(screen.getByTestId('selesai-layanan').dataset.tiket as string)).toEqual({
+      id: 't-9', nomor_display: 'OS-001', layanan_id: 'l-oss', hasilEskalasi: false,
     });
+    cleanup();
+    pasang({ jenis: 'selesaiLayanan', tiket: { ...tiket, penanganan_asal_id: 'ph-1' } });
+    expect(JSON.parse(screen.getByTestId('selesai-layanan').dataset.tiket as string).hasilEskalasi).toBe(true);
   });
 
   it('hanya modal berjenis itu yang dipasang', () => {
     pasang({ jenis: 'alihkan', tiket });
     expect(screen.queryByTestId('ambil-alih')).toBeNull();
     expect(screen.queryByTestId('kembalikan')).toBeNull();
-    expect(screen.queryByTestId('selesai-eskalasi')).toBeNull();
+    expect(screen.queryByTestId('selesai-layanan')).toBeNull();
   });
 
   it('koreksi dan wizard: terbuka dengan id tiket', () => {
@@ -129,6 +152,16 @@ describe('ModalAntrian', () => {
     pasang({ jenis: 'wizard', tiket });
     expect(screen.getByTestId('wizard')).toHaveAttribute('data-open', 'true');
     expect(screen.getByTestId('wizard')).toHaveAttribute('data-tiket-id', 't-9');
+  });
+
+  it('lihatKhusus: panel baca-saja terpasang dengan id dan nomor tiket; tutup memanggil tutup(lihatKhusus)', () => {
+    const p = pasang({ jenis: 'lihatKhusus', tiket });
+    expect(JSON.parse(screen.getByTestId('lihat-khusus').getAttribute('data-tiket') ?? '{}')).toEqual({ id: 't-9', nomor_display: tiket.nomor_display });
+    fireEvent.click(screen.getByText('lihat-khusus: tutup'));
+    expect(p.tutup).toHaveBeenCalledWith('lihatKhusus');
+    cleanup();
+    pasang({ jenis: 'alihkan', tiket });
+    expect(screen.queryByTestId('lihat-khusus')).toBeNull();
   });
 
   it('penutup memanggil tutup(jenis) milik modal itu', () => {
@@ -146,13 +179,13 @@ describe('ModalAntrian', () => {
     await vi.waitFor(() => expect(urutan).toEqual(['muat', 'tutup']));
   });
 
-  it('selesaiEskalasi berhasil: membuka QR tiketnya lalu memuat ulang', async () => {
-    const p = pasang({ jenis: 'selesaiEskalasi', tiket });
-    fireEvent.click(screen.getByText('selesai-eskalasi: berhasil'));
+  it('selesaiLayanan berhasil: membuka QR tiketnya lalu memuat ulang', async () => {
+    const p = pasang({ jenis: 'selesaiLayanan', tiket });
+    fireEvent.click(screen.getByText('selesai-layanan: berhasil'));
     await vi.waitFor(() => expect(p.muatSenyap).toHaveBeenCalledTimes(1));
     expect(p.bukaQrTiket).toHaveBeenCalledWith('t-9');
     expect(p.bukaQrTiket.mock.invocationCallOrder[0]).toBeLessThan(p.muatSenyap.mock.invocationCallOrder[0]);
-    await vi.waitFor(() => expect(p.tutup).toHaveBeenCalledWith('selesaiEskalasi'));
+    await vi.waitFor(() => expect(p.tutup).toHaveBeenCalledWith('selesaiLayanan'));
   });
 
   it('koreksi berhasil memuat ulang; wizard terkunci membuka QR lalu memuat ulang; data basi memuat ulang', async () => {
@@ -168,6 +201,33 @@ describe('ModalAntrian', () => {
     expect(w.tutup).toHaveBeenCalledWith('wizard');
     fireEvent.click(screen.getByText('wizard: data basi'));
     expect(w.muatSenyap).toHaveBeenCalledTimes(2);
+  });
+
+  it('mulaiLayanan: langkah 1, boleh ubah (pemilik baru), tanpa formulir; lanjut form membuka wizard formulir', () => {
+    const baru = buatTiket({ id: 't-5', status: 'menunggu', dilayani_oleh: null });
+    const p = pasang({ jenis: 'mulaiLayanan', tiket: baru });
+    const el = screen.getByTestId('mulai-layanan');
+    expect(el).toHaveAttribute('data-langkah', '1');
+    expect(el).toHaveAttribute('data-boleh-ubah', 'true');
+    expect(JSON.parse(el.dataset.tiket as string)).toMatchObject({ id: 't-5', berFormulir: true });
+    fireEvent.click(screen.getByText('mulai: lanjut form'));
+    expect(p.buka).toHaveBeenCalledWith('wizard', baru);
+    fireEvent.click(screen.getByText('mulai: tutup'));
+    expect(p.tutup).toHaveBeenCalledWith('mulaiLayanan');
+    fireEvent.click(screen.getByText('mulai: data basi'));
+    expect(p.muatSenyap).toHaveBeenCalledTimes(1);
+  });
+
+  it('isiPendataan: langkah 2; boleh ubah hanya bila pemilik tiket', () => {
+    const milik = buatTiket({ id: 't-6', status: 'dilayani', dilayani_oleh: ADMIN.id });
+    const p = pasang({ jenis: 'isiPendataan', tiket: milik });
+    expect(screen.getByTestId('mulai-layanan')).toHaveAttribute('data-langkah', '2');
+    expect(screen.getByTestId('mulai-layanan')).toHaveAttribute('data-boleh-ubah', 'true');
+    fireEvent.click(screen.getByText('mulai: tutup'));
+    expect(p.tutup).toHaveBeenCalledWith('isiPendataan');
+    cleanup();
+    pasang({ jenis: 'isiPendataan', tiket });
+    expect(screen.getByTestId('mulai-layanan')).toHaveAttribute('data-boleh-ubah', 'false');
   });
 
   it('wizard tanpa tiket meneruskan null ke bukaQrTiket (hook mengabaikannya)', async () => {

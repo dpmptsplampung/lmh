@@ -2,12 +2,23 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { logServerEvent } from '@/lib/observability/logger';
 import { apakahPeranStaf, daftarkanSesiStaf, keluarDariSesi } from '@/lib/sesi-staf';
+import { alihkanAreaPeran, berandaPeran } from '@/lib/rute-peran';
 
 function safeNextPath(next: string | null): string {
   if (next && next.startsWith('/') && !next.startsWith('//')) {
     return next;
   }
   return '/';
+}
+
+// Tujuan per peran: staf tanpa `next` ke berandanya (petugas /petugas/antrean, admin dan FO /admin); `next` ke area
+// peran lain dialihkan ke padanannya (tautan undangan lama /admin/... untuk petugas). Non-staf: `next` apa adanya.
+function tujuanSetelahMasuk(stafRole: string | null, nextParam: string | null, next: string): string {
+  if (!stafRole) return next;
+  if (nextParam === null) return berandaPeran(stafRole) ?? next;
+  const [path, ...sisa] = next.split('?');
+  const alih = alihkanAreaPeran(stafRole, path);
+  return alih ? `${alih}${sisa.length ? `?${sisa.join('?')}` : ''}` : next;
 }
 
 function requestOrigin(request: Request): string {
@@ -21,7 +32,8 @@ function requestOrigin(request: Request): string {
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const code = searchParams.get('code');
-  const next = safeNextPath(searchParams.get('next') ?? '/me');
+  const nextParam = searchParams.get('next');
+  const next = safeNextPath(nextParam ?? '/me');
   const origin = requestOrigin(request);
 
   if (code) {
@@ -36,7 +48,8 @@ export async function GET(request: Request) {
         .select('role')
         .eq('auth_user_id', data.user.id)
         .maybeSingle();
-      if (peran && apakahPeranStaf(peran.role)) {
+      const stafRole = peran && apakahPeranStaf(peran.role) ? peran.role : null;
+      if (stafRole) {
         const daftar = await daftarkanSesiStaf(supabase);
         if (daftar.status === 'gagal') {
           logServerEvent('error', {
@@ -75,7 +88,7 @@ export async function GET(request: Request) {
         }
       }
 
-      return NextResponse.redirect(`${origin}${next}`);
+      return NextResponse.redirect(`${origin}${tujuanSetelahMasuk(stafRole, nextParam, next)}`);
     }
   }
 

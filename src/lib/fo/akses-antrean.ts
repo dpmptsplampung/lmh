@@ -6,7 +6,6 @@
 // Galat lain DILEMPAR agar tampil sebagai gagal memuat, bukan daftar kosong.
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { objekBelumAda } from '@/lib/akses-data/galat';
-import { addDaysWIB, todayWIB } from '@/lib/time';
 import type { RingkasanDilayani } from '@/lib/rekap/ringkasan';
 
 type KlienRpc = Pick<SupabaseClient, 'rpc'>;
@@ -152,52 +151,7 @@ export async function muatKunjunganFo(
   return { tersedia: true, data: { rows: d.rows as BarisKunjunganFo[], total: d.total, disaringServer } };
 }
 
-// ---------------------------------------------------------------------------
-// Jendela tanggal FO non-Koordinator (migrasi 202611040001): [hari ini-7, hari ini+1] WIB
-// ---------------------------------------------------------------------------
-
-export interface JendelaTanggal {
-  min: string;
-  max: string;
-}
-
-export const JENDELA_FO_MUNDUR_HARI = 7;
-export const JENDELA_FO_MAJU_HARI = 1;
-
-/** Jendela hanya untuk FO yang bukan Koordinator; Admin, Koordinator, petugas, dan peran belum diketahui = null (bebas). */
-export function jendelaTanggalFo(
-  peran: { role: string; koordinator?: boolean } | null | undefined,
-  hariIni: string = todayWIB(),
-): JendelaTanggal | null {
-  if (!peran || peran.role !== 'front_office' || peran.koordinator === true) return null;
-  const [y, m, d] = hariIni.split('-').map((v) => parseInt(v, 10));
-  const dasar = new Date(Date.UTC(y, m - 1, d, 12));
-  return {
-    min: addDaysWIB(-JENDELA_FO_MUNDUR_HARI, dasar),
-    max: addDaysWIB(JENDELA_FO_MAJU_HARI, dasar),
-  };
-}
-
-export function tanggalDalamJendela(tanggal: string, jendela: JendelaTanggal | null): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(tanggal)) return false;
-  if (!jendela) return true;
-  return tanggal >= jendela.min && tanggal <= jendela.max;
-}
-
-const BULAN = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-const tanggalPendek = (iso: string) => {
-  const [y, m, d] = iso.split('-').map((v) => parseInt(v, 10));
-  return `${d} ${BULAN[m - 1]} ${y}`;
-};
-
-/** Pesan untuk tanggal di luar jendela; tanpa jendela (galat dari server saat peran belum diketahui) = versi umum. */
-export function pesanJendelaTanggal(j?: JendelaTanggal | null): string {
-  const rentang = j ? `tanggal ${tanggalPendek(j.min)} sampai ${tanggalPendek(j.max)} ` : 'tanggal dalam rentang ';
-  return `Front Office hanya dapat membuka ${rentang}(7 hari ke belakang sampai besok). `
-    + 'Untuk tanggal lain, minta Koordinator atau Admin.';
-}
-
-/** Galat server karena tanggal di luar jendela FO (pesan diawali `TANGGAL_DILUAR_BATAS`). */
+/** Kompatibilitas galat RPC sebelum migrasi 202611160004; daftar baru menerima semua tanggal. */
 export function galatTanggalDiluarBatas(err: unknown): boolean {
   const msg = err && typeof err === 'object' ? (err as { message?: unknown }).message : null;
   return typeof msg === 'string' && msg.startsWith('TANGGAL_DILUAR_BATAS');

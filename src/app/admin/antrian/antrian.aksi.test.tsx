@@ -5,7 +5,7 @@
 //      TIDAK bergantung pada urutan, karena tugas 5.2 memparalelkannya.
 //   2. galat per bagian muat (bagian mana yang menggagalkan seluruh muat, bagian mana yang diam-diam kosong).
 //   3. aksi panggil / mulai / selesaikan beserta efek sampingnya (muat ulang, QR, wizard).
-//   4. tujuh modal (ambil alih, alihkan, kembalikan ke FO, selesai eskalasi, koreksi, wizard pelayanan, QR survei):
+//   4. tujuh modal (ambil alih, alihkan, kembalikan ke FO, selesai layanan, koreksi, wizard pelayanan, QR survei):
 //      terbuka dari tombol yang benar dengan props yang benar, menutup, dan memicu muat ulang sesuai kontraknya.
 //   5. turunan tampilan (panel Sekarang, label, kepala halaman) dan rekap absen.
 // Klien Supabase di sini adalah tiruan generik yang mencatat tiap kueri yang DIKIRIM (saat di-await) dan menjawab dari
@@ -117,8 +117,19 @@ vi.mock('@/components/admin/AlihkanTiketModal', () => ({
 vi.mock('@/components/admin/KembalikanKeFoModal', () => ({
   default: (p: PropsDialog) => <TiruanDialog testId="modal-kembalikan" nama="kembalikan" {...p} />,
 }));
-vi.mock('@/components/admin/SelesaiEskalasiModal', () => ({
-  default: (p: PropsDialog) => <TiruanDialog testId="modal-selesai-eskalasi" nama="selesai eskalasi" {...p} />,
+vi.mock('@/components/admin/SelesaiLayananModal', () => ({
+  default: (p: PropsDialog) => <TiruanDialog testId="modal-selesai-layanan" nama="selesai layanan" {...p} />,
+}));
+// Wizard Mulai Layanan dua langkah (G5) diuji sendiri; di sini tiruan yang mengekspos propsnya.
+vi.mock('@/components/admin/mulai-layanan/MulaiLayananWizard', () => ({
+  default: ({ tiket, langkahAwal, bolehUbah, onClose, onLanjutForm }: {
+    tiket: Record<string, unknown>; langkahAwal?: number; bolehUbah: boolean; onClose: () => void; onLanjutForm: () => void;
+  }) => (
+    <div data-testid="modal-mulai" data-langkah={langkahAwal ?? 1} data-boleh-ubah={String(bolehUbah)} data-tiket={JSON.stringify(tiket)}>
+      <button type="button" onClick={onLanjutForm}>mulai: lanjut ke formulir</button>
+      <button type="button" onClick={onClose}>mulai: tutup</button>
+    </div>
+  ),
 }));
 vi.mock('@/components/admin/KoreksiPelayananModal', () => ({
   default: ({ isOpen, tiketId, onClose, onSuccess }: {
@@ -160,6 +171,7 @@ vi.mock('@/components/admin/SurveiQrDialog', () => ({
 import AntrianPage from './page';
 import { createClient } from '@/lib/supabase/client';
 import { todayWIB } from '@/lib/time';
+import { buangCacheReferensi } from '@/lib/data/klien/useReferensi';
 
 // ── Klien Supabase tiruan generik ───────────────────────────────────────────────────────────────────────────
 
@@ -181,7 +193,7 @@ interface Kueri {
   satu: boolean;
 }
 
-type Jenis = 'utama' | 'panel' | 'stats' | 'total' | 'profil' | 'koordinator' | 'catatan' | 'survei' | 'absensi' | 'lain';
+type Jenis = 'utama' | 'panel' | 'stats' | 'total' | 'profil' | 'koordinator' | 'catatan' | 'survei' | 'absensi' | 'referensi' | 'lain';
 
 /** Untuk apa sebuah kueri dikirim, ditentukan dari isinya (bukan dari urutan atau cara menyusunnya). */
 function jenisKueri(k: Kueri): Jenis {
@@ -189,6 +201,7 @@ function jenisKueri(k: Kueri): Jenis {
   if (k.tabel === 'penanganan') return 'catatan';
   if (k.tabel === 'v_survei_status') return 'survei';
   if (k.tabel === 'absensi_petugas') return 'absensi';
+  if (k.tabel === 'layanan') return 'referensi'; // daftar Layanan ber-cache untuk pilihan Layanan Admin/FO
   if (k.tabel === 'tiket_antrean') {
     if (k.opsi?.head) return 'total';
     if (k.eq.some(([kolom, nilai]) => kolom === 'status' && nilai === 'selesai')) return 'stats';
@@ -206,6 +219,8 @@ interface Skenario {
   penanganan?: Array<{ id: string; topik: string | null; catatan: string | null; penangan: { nama: string } | null }>;
   survei?: Array<{ kunjungan_id: string; status: string }>;
   absensi?: Baris[];
+  /** Daftar Layanan untuk pilihan Layanan Admin/FO (kueri referensi, terpisah dari muat antrean). */
+  layananRef?: Array<{ id: string; nama: string; diarsipkan_at?: string | null }>;
   rpc?: Record<string, HasilRpc | Promise<HasilRpc> | ((args: Record<string, unknown>) => HasilRpc | Promise<HasilRpc>)>;
   /** Jenis kueri yang dijawab galat; boleh diubah di tengah tes (mis. dikosongkan sebelum "Coba lagi"). */
   galat?: Set<Jenis>;
@@ -263,6 +278,8 @@ function buatKlien(skn: Skenario = {}) {
       }
       case 'absensi':
         return { data: skn.absensi ?? [], error: null };
+      case 'referensi':
+        return { data: skn.layananRef ?? [], error: null };
       default:
         return { data: [], error: null };
     }
@@ -316,12 +333,14 @@ function buatKlien(skn: Skenario = {}) {
 type Klien = ReturnType<typeof buatKlien>;
 
 /** Jenis kueri yang dikirim sejak indeks `dari`, tanpa duplikat, terurut (himpunan). */
+// Kueri referensi (daftar Layanan ber-cache) bukan bagian dari muat antrean: tidak ikut himpunan/hitungan.
+const kueriAntrean = (klien: Klien, dari: number): Kueri[] => klien.log.slice(dari).filter((k) => jenisKueri(k) !== 'referensi');
 const himpunan = (klien: Klien, dari = 0): Jenis[] =>
-  Array.from(new Set(klien.log.slice(dari).map(jenisKueri))).sort();
+  Array.from(new Set(kueriAntrean(klien, dari).map(jenisKueri))).sort();
 /** Jumlah kueri per jenis sejak indeks `dari`. */
 const hitung = (klien: Klien, dari = 0): Partial<Record<Jenis, number>> => {
   const hasil: Partial<Record<Jenis, number>> = {};
-  for (const k of klien.log.slice(dari)) hasil[jenisKueri(k)] = (hasil[jenisKueri(k)] ?? 0) + 1;
+  for (const k of kueriAntrean(klien, dari)) hasil[jenisKueri(k)] = (hasil[jenisKueri(k)] ?? 0) + 1;
   return hasil;
 };
 const kueriJenis = (klien: Klien, jenis: Jenis, dari = 0) => klien.log.slice(dari).filter((k) => jenisKueri(k) === jenis);
@@ -337,10 +356,14 @@ async function segarkan() {
 /** Menunggu sampai himpunan kueri sejak `dari` sama dengan `harapan` (satu putaran muat ulang). */
 const tungguHimpunan = (klien: Klien, dari: number, harapan: Jenis[]) =>
   waitFor(() => expect(himpunan(klien, dari)).toEqual(harapan));
-/** Memastikan tidak ada kueri baru (muat ulang) dalam jeda singkat. */
+/**
+ * Memastikan tidak ada kueri muat antrean baru (muat ulang) dalam jeda singkat. Kueri referensi (daftar Layanan
+ * ber-cache Admin/FO) dikecualikan: ia satu kali per halaman dan bisa tiba terlambat, setelah `dari` diambil
+ * (terutama saat CPU sibuk), tetapi bukan muat ulang.
+ */
 async function pastikanTanpaKueri(klien: Klien, dari: number) {
   await act(async () => { await new Promise((r) => setTimeout(r, 40)); });
-  expect(klien.log.length).toBe(dari);
+  expect(kueriAntrean(klien, dari)).toHaveLength(0);
 }
 
 // Himpunan kueri satu putaran muat (tab Aktif/Semua, hari ini) dan varian lainnya.
@@ -401,11 +424,54 @@ beforeEach(() => {
   realtime.refetch = null;
   realtime.opsi = null;
   nav.query = 'status=semua';
+  buangCacheReferensi(); // daftar Layanan ber-cache modul: tiap tes mulai dari nol
   spyError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 });
 afterEach(() => {
   cleanup();
   spyError.mockRestore();
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// 0. Lingkup Layanan (G3): Petugas = seluruh Layanannya; Admin/FO = semua Layanan dengan saringan Layanan
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════
+describe('Antrean: lingkup Layanan dan saringan Layanan', () => {
+  const LAYANAN_REF = [
+    { id: 'l-1', nama: 'Helpdesk OSS' },
+    { id: 'l-2', nama: 'BPJS Kesehatan' },
+    { id: 'l-3', nama: 'Layanan Lama', diarsipkan_at: '2026-01-01T00:00:00Z' },
+  ];
+  const duaLayanan = () => [
+    baris(),
+    baris({ id: 't-2', layanan_id: 'l-2', nomor: 2, nomor_display: 'B-001', layanan: BPJS, kunjungan: { nama: 'Siti', asal: 'walk_in', waktu_masuk: sekarangIso() } }),
+  ];
+  const pilihanLayanan = () => screen.queryByRole('combobox', { name: 'Layanan' }) as HTMLSelectElement | null;
+
+  it.each(['admin', 'front_office'] as const)('%s: pilihan Layanan tampil (tanpa Layanan arsip); memilih menyempitkan kueri ke Layanan itu dan menulis URL', async (role) => {
+    const klien = buatKlien({ role, rows: duaLayanan(), layananRef: LAYANAN_REF });
+    await muatHalaman();
+    await screen.findByText('Siti');
+    await waitFor(() => expect(pilihanLayanan()).not.toBeNull());
+    expect(Array.from(pilihanLayanan()!.options).map((o) => o.text)).toEqual(['Semua layanan', 'Helpdesk OSS', 'BPJS Kesehatan']);
+
+    const tanda = klien.log.length;
+    fireEvent.change(pilihanLayanan()!, { target: { value: 'l-2' } });
+    expect(nav.replace).toHaveBeenLastCalledWith('/admin/antrian?status=semua&layanan=l-2', { scroll: false });
+    await waitFor(() => expect(screen.queryByText('Budi')).toBeNull());
+    expect(screen.getByText('Siti')).toBeInTheDocument();
+    const baru = klien.log.slice(tanda).filter((k) => k.tabel === 'tiket_antrean');
+    expect(baru.length).toBeGreaterThanOrEqual(3);
+    for (const k of baru) expect(k.eq).toContainEqual(['layanan_id', 'l-2']);
+  });
+
+  it('Petugas: tanpa pilihan Layanan dan tanpa kueri daftar Layanan; semua kueri tiket dibatasi Layanannya', async () => {
+    const klien = buatKlien({ role: 'petugas', layananId: 'l-1', rows: duaLayanan(), layananRef: LAYANAN_REF });
+    await muatHalaman();
+    expect(screen.queryByText('Siti')).toBeNull();
+    expect(pilihanLayanan()).toBeNull();
+    expect(klien.log.some((k) => k.tabel === 'layanan')).toBe(false);
+    for (const k of klien.log.filter((x) => x.tabel === 'tiket_antrean')) expect(k.eq).toContainEqual(['layanan_id', 'l-1']);
+  });
 });
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -760,26 +826,44 @@ describe('Antrean: aksi panggil, mulai, selesaikan', () => {
     await waitFor(() => expect(panggilanRpc(klien, 'panggil_tiket')).toEqual([['panggil_tiket', { p_tiket_id: 't-9' }]]));
   });
 
-  it('Mulai Layanan (layanan berformulir): layanan_mulai, toast, muat ulang, lalu wizard terbuka untuk tiket itu', async () => {
+  it('Mulai Layanan (layanan berformulir): layanan_mulai, toast, muat ulang, lalu wizard dua langkah terbuka di langkah 1', async () => {
     const klien = buatKlien({ role: 'admin', rows: [baris()] });
     await muatHalaman();
-    expect(terbuka('modal-wizard')).toBe(false);
+    expect(terbuka('modal-mulai')).toBe(false);
     const tanda = klien.log.length;
     klik('Mulai Layanan');
-    await waitFor(() => expect(terbuka('modal-wizard')).toBe(true));
-    expect(screen.getByTestId('modal-wizard').getAttribute('data-tiket-id')).toBe('t-1');
+    await waitFor(() => expect(terbuka('modal-mulai')).toBe(true));
+    expect(dataTiket('modal-mulai')).toEqual({ id: 't-1', nomor_display: 'A-001', layanan_id: 'l-1', berFormulir: true });
+    expect(screen.getByTestId('modal-mulai').getAttribute('data-langkah')).toBe('1');
+    expect(screen.getByTestId('modal-mulai').getAttribute('data-boleh-ubah')).toBe('true');
     expect(panggilanRpc(klien, 'layanan_mulai')).toEqual([['layanan_mulai', { p_tiket_id: 't-1' }]]);
     expect(toastMock).toHaveBeenCalledWith('Layanan dimulai', 'success');
+    expect(terbuka('modal-wizard')).toBe(false);
     await tungguHimpunan(klien, tanda, MUAT);
   });
 
-  it('Mulai Layanan tanpa formulir: toast info, muat ulang, wizard tetap tertutup', async () => {
+  it('wizard Mulai (layanan berformulir): Lanjut menukar wizard dua langkah dengan wizard formulir yang sama', async () => {
+    buatKlien({ role: 'admin', rows: [baris()] });
+    await muatHalaman();
+    klik('Mulai Layanan');
+    await waitFor(() => expect(terbuka('modal-mulai')).toBe(true));
+    klik('mulai: lanjut ke formulir');
+    await waitFor(() => expect(terbuka('modal-wizard')).toBe(true));
+    expect(screen.getByTestId('modal-wizard').getAttribute('data-tiket-id')).toBe('t-1');
+    expect(terbuka('modal-mulai')).toBe(false);
+  });
+
+  it('Mulai Layanan tanpa formulir: wizard dua langkah tetap terbuka (langkah 1), wizard formulir tertutup', async () => {
     const klien = buatKlien({ role: 'admin', rows: [baris({ layanan: BPJS })] });
     await muatHalaman();
     const tanda = klien.log.length;
     klik('Mulai Layanan');
-    await waitFor(() => expect(toastMock).toHaveBeenCalledWith('Layanan ini tidak memiliki form pendataan', 'info'));
+    await waitFor(() => expect(terbuka('modal-mulai')).toBe(true));
+    expect(dataTiket('modal-mulai')).toMatchObject({ id: 't-1', berFormulir: false });
+    expect(toastMock).not.toHaveBeenCalledWith('Layanan ini tidak memiliki form pendataan', 'info');
     expect(terbuka('modal-wizard')).toBe(false);
+    klik('mulai: tutup');
+    await waitFor(() => expect(terbuka('modal-mulai')).toBe(false));
     await tungguHimpunan(klien, tanda, MUAT);
   });
 
@@ -788,7 +872,7 @@ describe('Antrean: aksi panggil, mulai, selesaikan', () => {
     await muatHalaman();
     klik('panel: mulai');
     await waitFor(() => expect(panggilanRpc(klien, 'layanan_mulai')).toEqual([['layanan_mulai', { p_tiket_id: 't-9' }]]));
-    await waitFor(() => expect(terbuka('modal-wizard')).toBe(true));
+    await waitFor(() => expect(terbuka('modal-mulai')).toBe(true));
   });
 
   it('galat Mulai yang membuat tampilan basi (SUDAH_DIAMBIL) memuat ulang; galat biasa hanya toast tanpa muat ulang', async () => {
@@ -801,7 +885,7 @@ describe('Antrean: aksi panggil, mulai, selesaikan', () => {
     klik('Mulai Layanan');
     await waitFor(() => expect(toastMock).toHaveBeenCalledWith('Tiket ini sudah ditangani petugas lain.', 'error'));
     await tungguHimpunan(klien, tanda, MUAT);
-    expect(terbuka('modal-wizard')).toBe(false);
+    expect(terbuka('modal-mulai')).toBe(false);
 
     cleanup();
     toastMock.mockClear();
@@ -816,22 +900,27 @@ describe('Antrean: aksi panggil, mulai, selesaikan', () => {
     await pastikanTanpaKueri(klien2, tanda);
   });
 
-  it('Selesai (pemilik, tanpa pendataan, bukan eskalasi): layanan_selesai, toast, QR untuk kunjungan tiket itu, lalu muat ulang', async () => {
+  it('Selesai (pemilik, tanpa pendataan, bukan eskalasi): satu jalur SelesaiLayananModal, TANPA RPC langsung; berhasil -> QR + muat ulang', async () => {
     const klien = buatKlien({ role: 'admin', rows: [dilayaniSaya({ layanan: BPJS, kunjungan_id: 'k-9' })] });
     await muatHalaman();
     const tanda = klien.log.length;
     klik(/^selesai$/i);
-    await waitFor(() => expect(toastMock).toHaveBeenCalledWith('Kunjungan berhasil diselesaikan', 'success'));
-    expect(panggilanRpc(klien, 'layanan_selesai')).toEqual([['layanan_selesai', { p_tiket_id: 't-1' }]]);
+    expect(terbuka('modal-selesai-layanan')).toBe(true);
+    expect(dataTiket('modal-selesai-layanan')).toEqual({ id: 't-1', nomor_display: 'A-001', layanan_id: 'l-1', hasilEskalasi: false });
+    expect(panggilanRpc(klien, 'layanan_selesai')).toHaveLength(0);
+    klik('selesai layanan: berhasil');
+    await waitFor(() => expect(terbuka('modal-selesai-layanan')).toBe(false));
     expect(screen.getByTestId('modal-qr').getAttribute('data-kunjungan')).toBe('k-9');
     await tungguHimpunan(klien, tanda, MUAT);
   });
 
-  it('Selesai dari panel menyelesaikan tiket saya lewat penangan yang sama', async () => {
+  it('Selesai dari panel membuka SelesaiLayananModal untuk tiket saya lewat penangan yang sama', async () => {
     const klien = buatKlien({ role: 'admin', rows: [dilayaniSaya({ id: 't-0', layanan: BPJS })] });
     await muatHalaman();
     klik('panel: selesai');
-    await waitFor(() => expect(panggilanRpc(klien, 'layanan_selesai')).toEqual([['layanan_selesai', { p_tiket_id: 't-0' }]]));
+    await waitFor(() => expect(terbuka('modal-selesai-layanan')).toBe(true));
+    expect(dataTiket('modal-selesai-layanan')).toMatchObject({ id: 't-0' });
+    expect(panggilanRpc(klien, 'layanan_selesai')).toHaveLength(0);
   });
 
   it('Selesai (layanan berformulir): membuka wizard, TANPA RPC; menguncinya membuka QR, menutup wizard, dan memuat ulang', async () => {
@@ -856,28 +945,32 @@ describe('Antrean: aksi panggil, mulai, selesaikan', () => {
     await muatHalaman();
     const tanda = klien.log.length;
     klik(/^selesai$/i);
-    expect(terbuka('modal-selesai-eskalasi')).toBe(true);
-    expect(dataTiket('modal-selesai-eskalasi')).toEqual({ id: 't-1', nomor_display: 'A-001', layanan_id: 'l-1' });
+    expect(terbuka('modal-selesai-layanan')).toBe(true);
+    expect(dataTiket('modal-selesai-layanan')).toEqual({ id: 't-1', nomor_display: 'A-001', layanan_id: 'l-1', hasilEskalasi: true });
     expect(panggilanRpc(klien, 'layanan_selesai')).toHaveLength(0);
 
-    klik('selesai eskalasi: berhasil');
-    await waitFor(() => expect(terbuka('modal-selesai-eskalasi')).toBe(false));
+    klik('selesai layanan: berhasil');
+    await waitFor(() => expect(terbuka('modal-selesai-layanan')).toBe(false));
     expect(screen.getByTestId('modal-qr').getAttribute('data-kunjungan')).toBe('k-7');
     await tungguHimpunan(klien, tanda, ['catatan', ...MUAT].sort() as Jenis[]);
   });
 
-  it('Walk-in baru berhasil memuat ulang daftar; Petugas mengunci walk-in ke Layanannya, Admin tidak', async () => {
+  it('Walk-in baru berhasil memuat ulang daftar; tombol Walk-in hanya untuk Admin dan Front Office, tidak untuk Petugas', async () => {
     const klien = buatKlien({ role: 'admin', rows: [baris()] });
     await muatHalaman();
-    expect(screen.getByTestId('walkin').getAttribute('data-layanan')).toBe('');
     const tanda = klien.log.length;
     fireEvent.click(screen.getByTestId('walkin'));
     await tungguHimpunan(klien, tanda, MUAT);
 
     cleanup();
+    buatKlien({ role: 'front_office', rows: [baris()] });
+    await muatHalaman();
+    expect(screen.getByTestId('walkin')).toBeInTheDocument();
+
+    cleanup();
     buatKlien({ role: 'petugas', layananId: 'l-1', rows: [baris()] });
     await muatHalaman();
-    expect(screen.getByTestId('walkin').getAttribute('data-layanan')).toBe('l-1');
+    expect(screen.queryByTestId('walkin')).toBeNull();
   });
 });
 
@@ -960,12 +1053,12 @@ describe('Antrean: tujuh modal (terbuka dari aksi yang benar, menutup, memicu mu
     await siklus.berhasil();
   });
 
-  it('4. selesai eskalasi: dibuka tombol Selesai pemilik tiket eskalasi tanpa pendataan; dialog tutup/basi/berhasil', async () => {
+  it('4. selesai layanan: dibuka tombol Selesai pemilik tiket tanpa formulir tetap; dialog tutup/basi/berhasil', async () => {
     const klien = buatKlien({ role: 'admin', rows: [dilayaniSaya({ penanganan_asal_id: 'pn-fo', layanan: BPJS })] });
     await muatHalaman();
-    expect(terbuka('modal-selesai-eskalasi')).toBe(false);
+    expect(terbuka('modal-selesai-layanan')).toBe(false);
     klik(/^selesai$/i);
-    const siklus = await ujiSiklus(klien, 'modal-selesai-eskalasi', 'selesai eskalasi', ['catatan', ...MUAT].sort() as Jenis[]);
+    const siklus = await ujiSiklus(klien, 'modal-selesai-layanan', 'selesai layanan', ['catatan', ...MUAT].sort() as Jenis[]);
     await siklus.buka(/^selesai$/i);
     await siklus.basi();
     await siklus.berhasil();
@@ -1062,7 +1155,7 @@ describe('Antrean: tujuh modal (terbuka dari aksi yang benar, menutup, memicu mu
     buatKlien({ role: 'admin', rows: [dilayaniLain({ penanganan_asal_id: 'pn-fo' })] });
     await muatHalaman();
     klik('Ambil alih');
-    for (const id of ['modal-alihkan', 'modal-kembalikan', 'modal-selesai-eskalasi', 'modal-koreksi', 'modal-wizard', 'modal-qr']) {
+    for (const id of ['modal-alihkan', 'modal-kembalikan', 'modal-selesai-layanan', 'modal-mulai', 'modal-koreksi', 'modal-wizard', 'modal-qr']) {
       expect(terbuka(id)).toBe(false);
     }
     expect(terbuka('modal-ambil-alih')).toBe(true);

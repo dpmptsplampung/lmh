@@ -71,7 +71,7 @@ describe('useModalAntrian: buka dan tutup', () => {
 
 describe('useModalAntrian: QR Pesan Perilaku', () => {
   it('KONTRAK: `await onSuccess(); onClose()` dengan onSuccess membuka QR -> QR tetap terbuka setelah dialog sumber menutup', async () => {
-    for (const jenis of ['ambilAlih', 'alihkan', 'kembalikanKeFo', 'selesaiEskalasi', 'koreksi', 'wizard'] as const) {
+    for (const jenis of ['ambilAlih', 'alihkan', 'kembalikanKeFo', 'selesaiLayanan', 'koreksi', 'wizard'] as const) {
       const { result, unmount } = pasang([[tiket({ kunjungan_id: 'k-7' })]]);
       act(() => result.current.buka(jenis, tiket()));
       // Seperti komponen dialog: kedua callback adalah props dari render saat dialog terbuka (closure lama).
@@ -89,21 +89,21 @@ describe('useModalAntrian: QR Pesan Perilaku', () => {
 
   it('"basi" (onSuccess tanpa onClose): QR terbuka DI ATAS dialog sumber yang tetap terbuka', () => {
     const { result } = pasang();
-    act(() => result.current.buka('selesaiEskalasi', tiket()));
+    act(() => result.current.buka('selesaiLayanan', tiket()));
     act(() => result.current.bukaQrTiket('t-1'));
-    expect(result.current.utama?.jenis).toBe('selesaiEskalasi');
+    expect(result.current.utama?.jenis).toBe('selesaiLayanan');
     expect(result.current.qr?.tiket.id).toBe('t-1');
   });
 
   it('menutup QR tidak menutup dialog tiket; menutup dialog tiket tidak menutup QR', () => {
     const { result } = pasang();
-    act(() => result.current.buka('selesaiEskalasi', tiket()));
+    act(() => result.current.buka('selesaiLayanan', tiket()));
     act(() => result.current.bukaQrTiket('t-1'));
     act(() => result.current.tutup('surveiQr'));
     expect(result.current.qr).toBeNull();
-    expect(result.current.utama?.jenis).toBe('selesaiEskalasi');
+    expect(result.current.utama?.jenis).toBe('selesaiLayanan');
     act(() => result.current.bukaQrTiket('t-1'));
-    act(() => result.current.tutup('selesaiEskalasi'));
+    act(() => result.current.tutup('selesaiLayanan'));
     expect(result.current.utama).toBeNull();
     expect(result.current.qr).not.toBeNull();
   });

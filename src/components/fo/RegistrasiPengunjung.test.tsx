@@ -11,6 +11,7 @@ const m = vi.hoisted(() => ({
   gum: null as unknown as Mock<(...a: unknown[]) => Promise<unknown>>,
   tracks: [] as { stopped: boolean }[],
   walkinMount: 0,
+  bukuTamuMount: 0,
 }));
 
 vi.mock('next/navigation', () => ({
@@ -39,6 +40,18 @@ vi.mock('./WalkinPanel', async () => {
   };
 });
 
+vi.mock('@/app/admin/fo/registrasi/_bagian/PanelBukuTamu', async () => {
+  const React = await import('react');
+  return {
+    default: function BukuTamuPalsu() {
+      React.useEffect(() => {
+        m.bukuTamuMount += 1;
+      }, []);
+      return <label>Nama tamu<input /></label>;
+    },
+  };
+});
+
 import RegistrasiPengunjung from './RegistrasiPengunjung';
 
 function setVisibilitas(nilai: 'visible' | 'hidden') {
@@ -47,6 +60,7 @@ function setVisibilitas(nilai: 'visible' | 'hidden') {
 
 const tabWalkin = () => screen.getByRole('tab', { name: /Walk-in/ });
 const tabScan = () => screen.getByRole('tab', { name: /Scan QR/ });
+const tabBukuTamu = () => screen.getByRole('tab', { name: /Buku Tamu/ });
 const hidup = () => m.tracks.filter((t) => !t.stopped).length;
 
 beforeEach(() => {
@@ -55,6 +69,7 @@ beforeEach(() => {
   m.h.tabel.kunjungan = { data: [], error: null, count: 0 };
   m.tracks.length = 0;
   m.walkinMount = 0;
+  m.bukuTamuMount = 0;
   m.gum = vi.fn(() => {
     const track = {
       stopped: false,
@@ -93,10 +108,10 @@ afterEach(async () => {
 });
 
 describe('Registrasi Pengunjung: struktur tab (WAI-ARIA)', () => {
-  it('tablist berlabel dengan dua tab; default Walk-in terpilih, tabpanel terhubung (aria-controls/labelledby)', () => {
+  it('tablist berlabel dengan tiga tab; default Walk-in terpilih, tabpanel terhubung (aria-controls/labelledby)', () => {
     render(<RegistrasiPengunjung />);
     expect(screen.getByRole('tablist', { name: /registrasi pengunjung/i })).toBeInTheDocument();
-    expect(screen.getAllByRole('tab')).toHaveLength(2);
+    expect(screen.getAllByRole('tab')).toHaveLength(3);
 
     expect(tabWalkin()).toHaveAttribute('aria-selected', 'true');
     expect(tabScan()).toHaveAttribute('aria-selected', 'false');
@@ -146,16 +161,41 @@ describe('Registrasi Pengunjung: struktur tab (WAI-ARIA)', () => {
     expect(tabScan()).toHaveFocus();
 
     fireEvent.keyDown(tabScan(), { key: 'ArrowRight' });
+    expect(tabBukuTamu()).toHaveAttribute('aria-selected', 'true');
+    expect(tabBukuTamu()).toHaveFocus();
+
+    fireEvent.keyDown(tabBukuTamu(), { key: 'ArrowRight' });
     expect(tabWalkin()).toHaveAttribute('aria-selected', 'true');
     expect(tabWalkin()).toHaveFocus();
 
     fireEvent.keyDown(tabWalkin(), { key: 'ArrowLeft' });
-    expect(tabScan()).toHaveAttribute('aria-selected', 'true');
+    expect(tabBukuTamu()).toHaveAttribute('aria-selected', 'true');
 
-    fireEvent.keyDown(tabScan(), { key: 'Home' });
+    fireEvent.keyDown(tabBukuTamu(), { key: 'Home' });
     expect(tabWalkin()).toHaveFocus();
     fireEvent.keyDown(tabWalkin(), { key: 'End' });
-    expect(tabScan()).toHaveFocus();
+    expect(tabBukuTamu()).toHaveFocus();
+  });
+
+  it('?tab=bukutamu membuka tab Buku Tamu; panelnya tetap terpasang (isian tak hilang) saat sebentar ke tab lain', () => {
+    m.query = 'tab=bukutamu';
+    render(<RegistrasiPengunjung />);
+    expect(tabBukuTamu()).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tabpanel', { name: /Buku Tamu/ })).toHaveAttribute('id', tabBukuTamu().getAttribute('aria-controls'));
+    fireEvent.change(screen.getByLabelText('Nama tamu'), { target: { value: 'Siti' } });
+
+    fireEvent.click(tabWalkin());
+    expect(document.getElementById('panel-registrasi-bukutamu')).toHaveAttribute('hidden');
+    fireEvent.click(tabBukuTamu());
+    expect(screen.getByLabelText('Nama tamu')).toHaveValue('Siti');
+    expect(m.bukuTamuMount).toBe(1);
+    expect(window.location.search).toBe('?tab=bukutamu');
+  });
+
+  it('panel Buku Tamu tidak dipasang sebelum tabnya dibuka', () => {
+    render(<RegistrasiPengunjung />);
+    expect(screen.queryByLabelText('Nama tamu')).toBeNull();
+    expect(m.bukuTamuMount).toBe(0);
   });
 
   it('formulir walk-in tidak kehilangan isian saat sebentar ke Scan QR; fokus tidak direbut saat berpindah tab', async () => {

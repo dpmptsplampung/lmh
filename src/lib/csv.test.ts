@@ -38,3 +38,15 @@ describe('escapeCsvCell', () => {
     expect(escapeCsvCell(null)).toBe('');
   });
 });
+
+
+describe('CSV aman untuk spreadsheet', () => {
+  it.each(['=SUM(1,2)', '+6281234567890', '-cmd', '@SUM(A1)', '\tformula', '\rformula', '\nformula', '  =1+1'])('menetralkan awalan berbahaya %j', (v) => {
+    const cell = escapeCsvCell(v);
+    expect(cell.startsWith("'") || cell.startsWith('"\'')).toBe(true);
+  });
+  it('angka negatif tetap angka; header dan data teks sama-sama dinetralkan', () => {
+    expect(escapeCsvCell(-12)).toBe('-12');
+    expect(toCsv([{ key: 'v', label: '=Judul' }], [{ v: '@cmd' }])).toBe("'=Judul\r\n'@cmd");
+  });
+});

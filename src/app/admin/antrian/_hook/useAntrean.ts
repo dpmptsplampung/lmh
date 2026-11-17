@@ -10,7 +10,6 @@ import { useCallback, useEffect, useLayoutEffect, useReducer, useRef } from 'rea
 import { createClient } from '@/lib/supabase/client';
 import { todayWIB } from '@/lib/time';
 import { useRealtimeRefetch } from '@/lib/hooks/useRealtimeRefetch';
-import { jendelaTanggalFo, pesanJendelaTanggal } from '@/lib/fo/akses-antrean';
 import { ambilStatusSurvei } from '@/lib/survei/staf';
 import {
   galatAntreanDari,
@@ -31,11 +30,13 @@ type Klien = ReturnType<typeof createClient>;
 export interface ParamAntreanHalaman {
   tanggal: string;
   filterStatus: FilterStatus;
+  /** Saringan Layanan pilihan Admin/FO (null = semua); diabaikan untuk Petugas (lingkupnya Layanannya sendiri). */
+  layananId?: string | null;
   /** Indeks halaman tabel berbasis 0. */
   halaman: number;
 }
 
-export function useAntrean({ tanggal, filterStatus, halaman }: ParamAntreanHalaman) {
+export function useAntrean({ tanggal, filterStatus, layananId: layananFilter = null, halaman }: ParamAntreanHalaman) {
   const [keadaan, kirim] = useReducer(kurangiAntrean, KEADAAN_AWAL_ANTREAN);
   const muatanRef = useRef(0); // nomor permintaan terakhir
   const adaDataRef = useRef(false); // sudah ada data valid untuk tanggal/halaman yang tampil
@@ -46,11 +47,7 @@ export function useAntrean({ tanggal, filterStatus, halaman }: ParamAntreanHalam
     if (galat.jenis === 'basi') return;
     console.error(galat.asli);
     if (muatan !== muatanRef.current) return;
-    if (galat.jenis === 'tanggal_diluar_batas') {
-      // Batas tanggal FO non-Koordinator ditolak server: pesan jelas, bukan "periksa koneksi".
-      adaDataRef.current = false;
-      kirim({ jenis: 'galatMuat', pesan: pesanJendelaTanggal(jendelaTanggalFo(profilRef.current)) });
-    } else if (galat.jenis === 'batas_tiket') {
+    if (galat.jenis === 'batas_tiket') {
       adaDataRef.current = false;
       kirim({ jenis: 'galatMuat', pesan: galat.pesan });
     } else if (adaDataRef.current) {
@@ -131,6 +128,7 @@ export function useAntrean({ tanggal, filterStatus, halaman }: ParamAntreanHalam
         ukuranHalaman: UKURAN_HALAMAN_ANTREAN,
         peran: myRole,
         layananId: myLayananId,
+        layananFilter,
         denganPanel: panelBerlaku(tanggal, filterStatus, todayWIB()),
         masihBerlaku: () => muatan === muatanRef.current,
       });
@@ -150,7 +148,7 @@ export function useAntrean({ tanggal, filterStatus, halaman }: ParamAntreanHalam
     } finally {
       if (muatan === muatanRef.current) kirim({ jenis: 'selesai' });
     }
-  }, [tanggal, filterStatus, halaman, tanganiGalatMuat, segarkanCatatanEskalasi, segarkanStatusSurvei]);
+  }, [tanggal, filterStatus, layananFilter, halaman, tanganiGalatMuat, segarkanCatatanEskalasi, segarkanStatusSurvei]);
 
   /** Muat dengan skeleton: muat awal, ganti parameter, tombol "Coba lagi". */
   const muat = useCallback(() => jalankanMuat(false), [jalankanMuat]);

@@ -2,6 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { bukaDbPenuh, sebagai } from '../../../scripts/lokal-rantai/harness.mjs';
+import { buatPetugasUmkm } from '../../../scripts/lokal-rantai/seed-umkm.mjs';
 
 let db: Awaited<ReturnType<typeof bukaDbPenuh>>;
 const staffUser = randomUUID(), staff = randomUUID(), admin = randomUUID();
@@ -26,10 +27,9 @@ async function ajukan(uid: string, need: unknown) {
 beforeAll(async () => {
   db = await bukaDbPenuh();
   await db.query('INSERT INTO auth.users(id) VALUES ($1),($2)', [staffUser, admin]);
-  await db.query(`INSERT INTO petugas(id,auth_user_id,nama,role,aktif)
-    VALUES ($1,$2,'Petugas','petugas',true),(gen_random_uuid(),$3,'Admin','admin',true)`,
-  [staff, staffUser, admin]);
-  await rpc('umkm_atur_pemeriksa', '$1::uuid,true,$2::uuid', [staff, randomUUID()], admin);
+  await db.query(`INSERT INTO petugas(auth_user_id,nama,role,aktif)
+    VALUES ($1,'Admin','admin',true)`, [admin]);
+  await buatPetugasUmkm(db, { authUserId: staffUser, id: staff });
   await db.query("INSERT INTO umkm_profil(id,sumber,status) VALUES ($1,'kurasi','terbit')", [profil]);
   await db.query(`INSERT INTO umkm_revisi(id,profil_id,versi,nama,deskripsi,jenis,kategori,
     kabupaten_kota,keputusan,dibuat_oleh) VALUES ($1,$2,1,'Kopi','Olahan','Produk','Pangan',
