@@ -45,6 +45,10 @@ import {
 } from '@/lib/rekap/terpadu';
 import TabelDataPelayanan, { type TampilanKolom } from './TabelDataPelayanan';
 import RingkasanDilayani from '@/components/admin/RingkasanDilayani';
+import { createClient } from '@/lib/supabase/client';
+import { KUNCI_REFERENSI, muatLayananRingkas } from '@/lib/data/referensi';
+import { useReferensi } from '@/lib/data/klien/useReferensi';
+import { labelLingkupRekap, lingkupEfektif, lingkupSemuaLayanan, perluPilihanLayanan, type InfoRekap } from '@/lib/rekap/lingkupUi';
 import { ambilDilayani, type Dilayani } from '@/lib/fo/akses-antrean';
 import styles from './rekap.module.css';
 
@@ -81,12 +85,6 @@ const adalahBagianForm = (b: Bagian): b is BagianForm => b === 'oss' || b === 'p
 
 const UKURAN_HALAMAN = 50;
 
-interface InfoLingkup {
-  label: string;
-  opsi_layanan: { id: string; nama: string; form_pendataan: string | null }[];
-  unit_opsi: UnitRekap[];
-}
-
 type Status = { jenis: 'siap' } | { jenis: 'migrasi'; pesan: string } | { jenis: 'galat'; pesan: string };
 
 async function ambilJson(url: string): Promise<{ ok: boolean; status: number; body: Record<string, unknown> }> {
@@ -111,7 +109,17 @@ function RekapTerpadu() {
   const [layananId, setLayananId] = useState('');
   // Layanan terpilih di tab Helpdesk OSS / Non OSS (hanya bermakna bila ada lebih dari satu Layanan berformulir itu).
   const [layananForm, setLayananForm] = useState<Partial<Record<BagianForm, string>>>({});
-  const [info, setInfo] = useState<InfoLingkup | null>(null);
+  const [infoServer, setInfoServer] = useState<InfoRekap | null>(null);
+  // Front Office = semua Layanan (G2): daftar Layanan dilengkapi dari referensi bersama bila server hanya mengirim unit FO.
+  const peranStaf = infoServer?.lingkup?.role;
+  const referensiLayanan = useReferensi(
+    peranStaf === 'front_office' ? KUNCI_REFERENSI.layananRingkas : null,
+    () => muatLayananRingkas(createClient()),
+  );
+  const info = useMemo(
+    () => (infoServer ? lingkupEfektif(infoServer, referensiLayanan.data) : null),
+    [infoServer, referensiLayanan.data],
+  );
   const [status, setStatus] = useState<Status>({ jenis: 'siap' });
   const [memuat, setMemuat] = useState(true);
   const [mengekspor, setMengekspor] = useState(false);
@@ -127,7 +135,7 @@ function RekapTerpadu() {
   // Total + ringkasan per kunci filter (semua parameter kecuali page): pindah halaman cukup mengirim hemat=1.
   const hitungTersimpan = useRef<{ kunci: string; total: number; dilayani: Dilayani | null } | null>(null);
 
-  // Tab Helpdesk OSS / Non OSS ada bila lingkup pengguna memuat Layanan berformulir itu (admin dan Koordinator FO:
+  // Tab Helpdesk OSS / Non OSS ada bila lingkup pengguna memuat Layanan berformulir itu (admin dan Front Office:
   // semua; Petugas: Layanannya). Alamat ?bagian=oss tanpa Layanan seperti itu jatuh ke Data Pelayanan.
   const opsiForm = useMemo<Record<BagianForm, { id: string; nama: string }[]>>(() => {
     const berformulir = (f: BagianForm) => (info?.opsi_layanan ?? []).filter((o) => o.form_pendataan === f);
@@ -185,7 +193,7 @@ function RekapTerpadu() {
         const r = await ambilJson('/api/admin/rekap/terpadu?bagian=lingkup');
         if (batal) return;
         if (!r.ok) return tanganiGagal(r);
-        setInfo(r.body as unknown as InfoLingkup);
+        setInfoServer(r.body as unknown as InfoRekap);
       } catch {
         if (!batal) setStatus({ jenis: 'galat', pesan: 'Gagal memuat lingkup data' });
       }
@@ -245,13 +253,22 @@ function RekapTerpadu() {
     muat();
   }, [muat]);
 
-  const unduh = async () => {
+  // Rekap lengkap semua Layanan (Admin/FO): hanya rentang tanggal, TANPA tanpa_form/unit/layanan_id -> XLSX multi-sheet
+  // (satu sheet per Layanan, kontrak G6). Unduhan biasa memakai filter tampilan.
+  const unduh = async (lengkap = false) => {
     setMengekspor(true);
     try {
-      const res = await fetch(`/api/admin/rekap/terpadu/export?${params}`);
+      const paramUnduh = lengkap ? new URLSearchParams({ dari, sampai }) : params;
+      const res = await fetch(`/api/admin/rekap/terpadu/export?${paramUnduh}`);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        toast(body.error ?? 'Gagal mengunduh Excel', 'error');
+        // 500 = berkas gagal dibuat atau pencatatan audit ekspor gagal: tidak ada berkas yang terkirim.
+        toast(
+          body.error ?? (res.status >= 500
+            ? 'Unduhan dibatalkan karena berkas atau pencatatan audit ekspor gagal. Coba lagi.'
+            : 'Gagal mengunduh Excel'),
+          'error',
+        );
         return;
       }
       const blob = await res.blob();
@@ -285,7 +302,8 @@ function RekapTerpadu() {
   const kolom = kolomDataPelayanan(data?.form_type ?? null, kolomKhusus(data?.kolom_khusus ?? []));
   const galatMuat = status.jenis !== 'siap';
   const pesanKosong = (kosong: string) => (memuat ? 'Memuat…' : galatMuat ? 'Data tidak dapat ditampilkan; lihat pesan di atas.' : kosong);
-  const pilihLayanan = !tabForm && daftarFilterLayanan.length > 0 && unit !== 'fo';
+  // Petugas hanya punya satu Layanan: tidak ada pilihan Layanan lain (cukup label lingkup di atas).
+  const pilihLayanan = !tabForm && perluPilihanLayanan(daftarFilterLayanan) && unit !== 'fo';
   const pindahBagian = (kunci: Bagian) => {
     if (kunci === bagian) return;
     setHalaman(0);
@@ -314,7 +332,7 @@ function RekapTerpadu() {
       </PageHeader>
 
       <IsiHalaman>
-        {info && <RoleNote>{info.label} Setiap unduhan tercatat.</RoleNote>}
+        {info && <RoleNote>{labelLingkupRekap(info)} Setiap unduhan tercatat.</RoleNote>}
         <p className={styles.definisi}>{DEFINISI_DILAYANI}</p>
 
         {status.jenis === 'migrasi' && <CatatanKeadaan jenis="menunggu-migrasi">{status.pesan}</CatatanKeadaan>}
@@ -354,7 +372,7 @@ function RekapTerpadu() {
                 </select>
               </Field>
             )}
-            {tabForm && daftarForm.length > 1 && (
+            {tabForm && perluPilihanLayanan(daftarForm) && (
               <Field label="Layanan" className={styles.filterSelect}>
                 <select value={layananTab}
                   onChange={(e) => ubahFilter((v: string) => setLayananForm((s) => ({ ...s, [tabForm]: v })))(e.target.value)}>
@@ -411,10 +429,17 @@ function RekapTerpadu() {
                     <button type="button" aria-pressed={tampilan === 'ringkas'} onClick={() => setTampilan('ringkas')}>Ringkas</button>
                     <button type="button" aria-pressed={tampilan === 'semua'} onClick={() => setTampilan('semua')}>Semua kolom</button>
                   </div>
-                  <Tombol varian="utama" ukuran="kecil" ikon={Download} onClick={unduh} memuat={mengekspor}
+                  <Tombol varian="utama" ukuran="kecil" ikon={Download} onClick={() => void unduh()} memuat={mengekspor}
                     disabled={memuat || mengekspor || status.jenis !== 'siap'}>
                     Unduh Excel
                   </Tombol>
+                  {lingkupSemuaLayanan(infoServer?.lingkup?.role) && (
+                    <Tombol varian="sekunder" ukuran="kecil" ikon={Download} onClick={() => void unduh(true)}
+                      disabled={memuat || mengekspor || status.jenis !== 'siap'}
+                      title="Satu berkas Excel: sheet Semua, satu sheet per Layanan (termasuk Helpdesk OSS dan Non OSS), dan Keterangan">
+                      Rekap lengkap semua layanan
+                    </Tombol>
+                  )}
                 </div>
               </div>
               <Kartu padding="tanpa">

@@ -4,7 +4,7 @@
 // visit remains the write source; dual-write trigger keeps kunjungan in sync.
 // Gaya Dasbor: filter di URL (A13), kartu di HP (A14), keadaan memuat/kosong/galat dibedakan (A7, A15), waktu WIB (A9).
 
-import { Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { Suspense, useState, useEffect, useCallback, useRef } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { todayWIB } from '@/lib/time';
 import { Search, RefreshCw, QrCode, Users } from 'lucide-react';
@@ -27,12 +27,7 @@ import SurveiStatusBadge from '@/components/admin/SurveiStatusBadge';
 import {
   muatKunjunganFo,
   BATAS_CARI,
-  jendelaTanggalFo,
-  tanggalDalamJendela,
-  pesanJendelaTanggal,
-  galatTanggalDiluarBatas,
 } from '@/lib/fo/akses-antrean';
-import { muatKoordinator } from '@/lib/akses-data/lingkup';
 import { ambilStatusSurvei, type StatusSurvei } from '@/lib/survei/staf';
 import styles from './kunjungan.module.css';
 
@@ -143,10 +138,6 @@ function KunjunganIsi() {
   // true = server menyaring sebelum paginasi (total = terfilter); false = RPC lama/kueri lama, saring halaman di klien.
   const [disaringServer, setDisaringServer] = useState(false);
   const bataRef = useRef<AbortController | null>(null);
-  const [peran, setPeran] = useState<{ role: string; koordinator: boolean } | null>(null);
-  const [pesanTanggal, setPesanTanggal] = useState<string | null>(null);
-  const peranRef = useRef<typeof peran>(null);
-  const jendela = useMemo(() => jendelaTanggalFo(peran), [peran]);
   const [page, setPage] = useState(awal.page);
   const [totalCount, setTotalCount] = useState(0);
   const [filterTanggal, setFilterTanggal] = useState(awal.tanggal);
@@ -298,11 +289,7 @@ function KunjunganIsi() {
     } catch (e) {
       console.error('Error loading kunjungan:', e);
       if (muatan !== muatanRef.current) return;
-      if (galatTanggalDiluarBatas(e)) {
-        // Batas tanggal FO non-Koordinator: pesan jelas, bukan "periksa koneksi".
-        adaDataRef.current = false;
-        setGalatMuat(pesanJendelaTanggal(jendelaTanggalFo(peranRef.current)));
-      } else if (adaDataRef.current) {
+      if (adaDataRef.current) {
         // Muat ulang senyap gagal: daftar lama tetap tampil, diberi catatan (tanpa toast tiap 30 dtk).
         setGalatSegar(true);
       } else {
@@ -317,29 +304,6 @@ function KunjunganIsi() {
   }, [filterTanggal, page, cariAktif, filterStatus, muatNamaFo, muatStatusSurvei]);
 
   const muatSenyap = useCallback(() => loadData(true), [loadData]);
-
-  // Peran dibaca sekali: FO non-Koordinator dibatasi jendela tanggal (server menegakkan; klien mencegah galat dan
-  // memberi pesan jelas). Pelengkap: gagal membaca = tanpa batas di klien, server tetap menolak dengan pesan jelas.
-  useEffect(() => {
-    let batal = false;
-    (async () => {
-      try {
-        const supabase = createClient();
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-        const { data: p } = await supabase.from('petugas').select('id, role').eq('auth_user_id', user.id).maybeSingle();
-        if (!p || batal) return;
-        const koordinator = p.role === 'front_office' ? await muatKoordinator(supabase, p.id) : false;
-        if (batal) return;
-        const hasil = { role: p.role as string, koordinator };
-        peranRef.current = hasil;
-        setPeran(hasil);
-      } catch (e) {
-        console.error('Gagal memuat peran pengguna:', e);
-      }
-    })();
-    return () => { batal = true; };
-  }, []);
 
   // Batalkan permintaan yang masih berjalan saat halaman ditutup.
   useEffect(() => () => {
@@ -377,13 +341,8 @@ function KunjunganIsi() {
 
   const ubahTanggal = (nilai: string) => {
     if (!nilai) return; // kolom dikosongkan: pertahankan tanggal yang tampil
-    if (!tanggalDalamJendela(nilai, jendela)) {
-      setPesanTanggal(pesanJendelaTanggal(jendela));
-      return;
-    }
     const kata = search.trim();
     setCariAktif(kata);
-    setPesanTanggal(null);
     setFilterTanggal(nilai);
     setPage(0);
     tulisUrl({ tanggal: nilai, status: filterStatus, page: 0 });
@@ -529,9 +488,6 @@ function KunjunganIsi() {
               nilai={filterTanggal}
               onUbah={ubahTanggal}
               label="Tanggal kunjungan"
-              min={jendela?.min}
-              max={jendela?.max}
-              aria-describedby={pesanTanggal ? 'pesan-tanggal-kunjungan' : undefined}
             />
 
             <div className={styles.status} role="group" aria-label="Filter status">
@@ -548,12 +504,6 @@ function KunjunganIsi() {
               ))}
             </div>
           </div>
-
-          {pesanTanggal && (
-            <p id="pesan-tanggal-kunjungan" role="alert" className={styles.pesanTanggal}>
-              {pesanTanggal}
-            </p>
-          )}
 
           {disaringServer && (cariAktif !== '' || filterStatus !== 'semua') && !loading && !galatMuat && (
             <p role="status" className={styles.ringkas}>

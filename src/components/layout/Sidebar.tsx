@@ -53,6 +53,7 @@ import {
   type AdminNavEntry,
   type AdminNavGroupKey,
   type AdminNavTreeItem,
+  type ModulLayanan,
 } from '@/lib/admin-nav';
 import { totalBadge, useJudulTabBadge, useNavBadges, type NavBadge } from '@/lib/hooks/useNavBadges';
 import AppBar from './AppBar';
@@ -139,7 +140,8 @@ function NavBadgeView({ count, label }: { count: number; label: string }) {
 const LABEL_PERAN: Record<string, string> = { admin: 'Admin', front_office: 'Front Office', petugas: 'Petugas' };
 
 export default function Sidebar() {
-  const [pemeriksaUmkm, setPemeriksaUmkm] = useState(false);
+  // Modul layanan petugas (staf_modul()); menentukan menu UMKM. null = tanpa modul atau belum diketahui.
+  const [modul, setModul] = useState<ModulLayanan | null>(null);
   const pathname = usePathname();
   // Laci HP/tablet. Pindah halaman (link, Back/Forward) menutupnya: reset saat
   // render (pola resmi React "adjust state on prop change", tanpa effect).
@@ -234,12 +236,14 @@ export default function Sidebar() {
         setUserRole(petugas.role);
         setUserName(petugas.nama ?? '');
         setStaf({ id: petugas.id ?? null, layananId: petugas.layanan_id ?? null });
-        // Kolom tambahan tidak boleh menghalangi menu staf sebelum migrasi tersedia.
-        try {
-          const { data: flag, error: flagError } = await supabase.from('petugas')
-            .select('pemeriksa_umkm').eq('auth_user_id', user.id).maybeSingle();
-          setPemeriksaUmkm(!flagError && flag?.pemeriksa_umkm === true && petugas.role !== 'front_office');
-        } catch { setPemeriksaUmkm(false); }
+        // Modul layanan hanya relevan bagi petugas. Kegagalan fungsi baru tidak boleh menghalangi menu staf
+        // sebelum migrasi tersedia: menu modul sekadar tidak tampil.
+        if (petugas.role === 'petugas') {
+          try {
+            const { data: m, error: modulError } = await supabase.rpc('staf_modul');
+            setModul(!modulError && (m === 'umkm' || m === 'investasi') ? m : null);
+          } catch { setModul(null); }
+        }
         // Nama Layanan untuk kartu identitas: kueri terpisah dan tidak fatal (menu tidak boleh hilang karenanya).
         if (petugas.layanan_id) {
           try {
@@ -301,7 +305,7 @@ export default function Sidebar() {
   const activeHref = aktif?.href;
   const isActive = (href: string) => href === activeHref;
 
-  const tree = buildNavTree(userRole, { pemeriksa_umkm: pemeriksaUmkm });
+  const tree = buildNavTree(userRole, { modul });
   const bawah = tree.filter((t): t is Extract<AdminNavTreeItem, { type: 'link' }> => t.type === 'link' && t.entry.slot === 'bawah');
   const utama = tree.filter((t) => !(t.type === 'link' && t.entry.slot === 'bawah'));
 
@@ -334,11 +338,12 @@ export default function Sidebar() {
     window.location.href = '/login';
   };
 
+  // PemeriksaContext dipertahankan untuk PerintahCepat: nilainya kini "layanan petugas bermodul UMKM".
   return (
-    <PemeriksaContext.Provider value={pemeriksaUmkm}>
+    <PemeriksaContext.Provider value={modul === 'umkm'}>
       <AppBar
         role={userRole}
-        judul={aktif?.label ?? 'Admin'}
+        judul={aktif?.label ?? (userRole === 'petugas' ? 'Petugas' : 'Admin')}
         total={total}
         laciTerbuka={mobileOpen}
         onToggleLaci={() => setMobileOpen((o) => !o)}
@@ -386,7 +391,7 @@ export default function Sidebar() {
 
         {/* <=1024px: seluruh isi di bawah ini satu area gulir, sehingga widget ikut menggulir setelah menu terakhir. */}
         <div className={styles.isi}>
-          <nav className={styles.nav} aria-label="Menu admin">
+          <nav className={styles.nav} aria-label={userRole === 'petugas' ? 'Menu petugas' : 'Menu admin'}>
             {utama.map((item) => {
               if (item.type === 'link') return renderLink(item.entry);
               const { group, children } = item;

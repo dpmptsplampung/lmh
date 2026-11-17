@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { canAccessAdminPath, type AdminRole } from '@/lib/admin-nav';
+import { bolehAksesRute, butuhModulUntukRute, type AdminRole, type ModulLayanan } from '@/lib/admin-nav';
+import { berandaTolak } from '@/lib/rute-peran';
 
 export default function AdminGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -25,24 +26,25 @@ export default function AdminGuard({ children }: { children: React.ReactNode }) 
         .eq('auth_user_id', user.id)
         .maybeSingle();
 
-      // Petugas nonaktif tidak boleh mengakses area admin (I-22 / RBA-06).
+      // Petugas nonaktif tidak boleh mengakses area staf (I-22 / RBA-06).
       if (!petugas || petugas.aktif === false) {
         router.replace('/me');
         return;
       }
 
-      // Kegagalan kolom modul baru tidak mengunci halaman staf yang sudah berjalan.
-      let pemeriksaUmkm = false;
-      try {
-        const { data: flag, error } = await supabase.from('petugas')
-          .select('pemeriksa_umkm').eq('auth_user_id', user.id).maybeSingle();
-        pemeriksaUmkm = !error && flag?.pemeriksa_umkm === true;
-      } catch { /* modul belum tersedia */ }
-      // Halaman tugas menjelaskan penolakan API kepada staf; FO tetap ditolak di pintu ini.
-      const halamanTugas = pathname === '/admin/umkm-tugas' || pathname.startsWith('/admin/umkm-tugas/');
-      const stafTugas = halamanTugas && (petugas.role === 'admin' || petugas.role === 'petugas');
-      if (!stafTugas && !canAccessAdminPath(petugas.role as AdminRole, pathname, { pemeriksa_umkm: pemeriksaUmkm })) {
-        router.replace('/admin/antrian');
+      // Lapisan UX di atas proxy.ts (yang menegakkan rute di server, fail-closed): halaman yang tidak boleh
+      // dibuka peran ini langsung dialihkan. Modul layanan (staf_modul()) hanya dibaca untuk rute modul;
+      // galatnya dianggap tanpa modul (rute modul ditolak, halaman lain tidak terganggu).
+      const peran = petugas.role as AdminRole;
+      let modul: ModulLayanan | null = null;
+      if (butuhModulUntukRute(peran, pathname)) {
+        try {
+          const { data, error } = await supabase.rpc('staf_modul');
+          modul = !error && (data === 'umkm' || data === 'investasi') ? data : null;
+        } catch { /* modul belum tersedia */ }
+      }
+      if (!bolehAksesRute(peran, pathname, { modul })) {
+        router.replace(berandaTolak(peran));
         return;
       }
 

@@ -1,33 +1,11 @@
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { json, requireStaf } from '@/lib/akun/server';
+import { json } from '@/lib/akun/server';
 import { normalizeNoHp } from '@/lib/akun/login';
-import { todayWIB } from '@/lib/time';
+import { guardTamu, KOLOM_TAMU, petaTamu, queryTamu, kueriTamu, type BarisTamu } from '@/lib/buku-tamu/server';
 import { normalisasiAsal, normalisasiHp, normalisasiNama, periksaAsal, periksaHp, periksaNama } from '@/lib/fo/walkin';
 
 export const dynamic = 'force-dynamic';
-
-// `pencatat` = nama staf yang mencatat (tanda saja; daftar sengaja tidak dibatasi per pencatat, keputusan pemilik).
-const KOLOM = 'id, nama, asal, no_hp, menemui_siapa, keperluan, waktu_masuk, dicatat_oleh, pencatat:petugas!dicatat_oleh(nama)';
-type Baris = {
-  id: string; nama: string; asal: string | null; no_hp: string | null; menemui_siapa: string;
-  keperluan: string | null; waktu_masuk: string; dicatat_oleh: string | null;
-  pencatat?: { nama: string | null } | null;
-};
-const peta = (r: Baris) => ({
-  id: r.id, nama: r.nama, instansi: r.asal, no_hp: r.no_hp, bertemu: r.menemui_siapa,
-  tujuan: r.keperluan, waktu_masuk: r.waktu_masuk, dicatat_oleh: r.dicatat_oleh,
-  dicatat_nama: r.pencatat?.nama ?? null,
-});
-
-const tgl = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
-const query = z.object({
-  dari: tgl.optional(),
-  sampai: tgl.optional(),
-  q: z.string().trim().max(100).optional(),
-  page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(50),
-});
 
 // Bentuk dasar saja; aturan isian (nama, instansi, nomor HP) memakai pemeriksa yang SAMA dengan formulir klien dan
 // walk-in Front Office (`lib/fo/walkin`), agar pesan galatnya identik di semua tempat.
@@ -37,50 +15,45 @@ const body = z
     instansi: z.string().max(200).optional(),
     no_hp: z.string().max(30).optional(),
     bertemu: z.string().trim().min(2).max(200),
+    menemui_petugas_id: z.uuid().nullable().optional(),
     tujuan: z.string().trim().max(500).optional(),
     waktu_masuk: z.iso.datetime({ offset: true }).optional(),
   })
   .strict();
 
 // Buku tamu kantor: Admin + Front Office (RLS menegakkan; Petugas ditolak di sini dan di DB).
-async function guard() {
-  const g = await requireStaf();
-  if ('res' in g) return g;
-  if (g.me.role !== 'admin' && g.me.role !== 'front_office') return { res: json({ error: 'Forbidden' }, 403) };
-  return g;
+export async function GET(request: NextRequest) {
+  const g = await guardTamu();
+  if ('res' in g) return g.res;
+  const parsed = queryTamu.safeParse(Object.fromEntries(request.nextUrl.searchParams));
+  if (!parsed.success) return json({ error: 'Invalid input', details: parsed.error.flatten().fieldErrors }, 400);
+  const { page, limit } = parsed.data;
+  const { data, count, error } = await kueriTamu(g.supabase, parsed.data, true).range((page - 1) * limit, page * limit - 1);
+  if (error) return json({ error: 'Gagal memuat buku tamu' }, 500);
+  return json({ items: ((data ?? []) as unknown as BarisTamu[]).map(petaTamu), total: count ?? 0, page, limit });
 }
 
-export async function GET(request: NextRequest) {
-  const g = await guard();
+const keluar = z.object({ id: z.uuid(), waktu_keluar: z.iso.datetime({ offset: true }).optional() }).strict();
+export async function PATCH(request: NextRequest) {
+  const g = await guardTamu();
   if ('res' in g) return g.res;
-  const sp = Object.fromEntries(request.nextUrl.searchParams);
-  const parsed = query.safeParse(sp);
+  let raw: unknown;
+  try { raw = await request.json(); } catch { return json({ error: 'Invalid JSON' }, 400); }
+  const parsed = keluar.safeParse(raw);
   if (!parsed.success) return json({ error: 'Invalid input', details: parsed.error.flatten().fieldErrors }, 400);
-  const { q, page, limit } = parsed.data;
-  const dari = parsed.data.dari ?? todayWIB();
-  const sampai = parsed.data.sampai ?? dari;
-
-  let qb = g.supabase
-    .from('buku_tamu')
-    .select(KOLOM, { count: 'exact' })
-    .gte('waktu_masuk', `${dari}T00:00:00+07:00`)
-    .lte('waktu_masuk', `${sampai}T23:59:59.999+07:00`)
-    .order('waktu_masuk', { ascending: false })
-    .range((page - 1) * limit, page * limit - 1);
-  if (q) {
-    const s = q.replace(/[%_,()\\]/g, ' ');
-    qb = qb.or(`nama.ilike.%${s}%,asal.ilike.%${s}%,menemui_siapa.ilike.%${s}%`);
-  }
-  const { data, count, error } = await qb;
+  const { data, error } = await g.supabase.rpc('buku_tamu_catat_keluar', {
+    p_id: parsed.data.id, p_waktu_keluar: parsed.data.waktu_keluar ?? null,
+  });
   if (error) {
-    console.error('[admin/buku-tamu GET] gagal', error.message);
-    return json({ error: 'Gagal memuat buku tamu' }, 500);
+    const kode = /^(TAMU_TIDAK_ADA|WAKTU_TIDAK_VALID|FORBIDDEN|SESI_TIDAK_SAH):/.exec(error.message)?.[1];
+    const status = kode === 'TAMU_TIDAK_ADA' ? 404 : kode === 'WAKTU_TIDAK_VALID' ? 400 : kode === 'FORBIDDEN' ? 403 : kode === 'SESI_TIDAK_SAH' ? 401 : 500;
+    return json({ error: kode ? error.message.replace(/^[A-Z_]+: */g, '') : 'Gagal mencatat waktu keluar', ...(kode ? { kode } : {}) }, status);
   }
-  return json({ items: ((data ?? []) as unknown as Baris[]).map(peta), total: count ?? 0, page, limit });
+  return json({ tamu: data });
 }
 
 export async function POST(request: NextRequest) {
-  const g = await guard();
+  const g = await guardTamu();
   if ('res' in g) return g.res;
   let raw: unknown;
   try { raw = await request.json(); } catch { return json({ error: 'Invalid JSON' }, 400); }
@@ -119,15 +92,17 @@ export async function POST(request: NextRequest) {
       asal: normalisasiAsal(b.instansi ?? ''),
       no_hp: noHp,
       menemui_siapa: b.bertemu,
+      menemui_petugas_id: b.menemui_petugas_id ?? null,
       keperluan: b.tujuan || null,
       waktu_masuk: waktu.toISOString(),
       dicatat_oleh: g.me.id,
     })
-    .select(KOLOM)
+    .select(KOLOM_TAMU)
     .single();
+  if (error?.code === '23503') return json({ error: 'Petugas yang ditemui tidak ditemukan' }, 400);
   if (error || !data) {
     console.error('[admin/buku-tamu POST] gagal', error?.message);
     return json({ error: 'Gagal menyimpan tamu' }, 500);
   }
-  return json({ tamu: peta(data as unknown as Baris) }, 201);
+  return json({ tamu: petaTamu(data as unknown as BarisTamu) }, 201);
 }

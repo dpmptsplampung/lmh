@@ -1,6 +1,5 @@
 // @vitest-environment node
-// Fase 4: kolom Pendataan Khusus di Rekap Data Pelayanan (halaman + Excel). Jawaban dibaca lewat klien pengguna (RLS =
-// lingkup ketat Fase 3), hanya untuk pelayanan yang sudah lolos rekap_data_pelayanan, dan hanya bila satu Layanan dipilih.
+// Kolom Khusus rekap: klien pengguna memanggil batch berotorisasi lingkup dan audit lintas pembuat.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import ExcelJS from 'exceljs';
@@ -8,7 +7,9 @@ import { GET } from './route';
 import { GET as GET_EXPORT } from './export/route';
 
 vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn() }));
-vi.mock('@/lib/akun/server', () => ({ getServiceClient: vi.fn(() => null) }));
+vi.mock('@/lib/akun/server', () => ({ getServiceClient: vi.fn(() => ({
+  from: () => ({ insert: vi.fn().mockResolvedValue({ error: null }) }),
+})) }));
 import { createClient } from '@/lib/supabase/server';
 
 const LID = '660e8400-e29b-41d4-a716-446655440001';
@@ -33,7 +34,7 @@ function pasang(o: { fields?: Hasil; peta?: Hasil; baris?: unknown[] } = {}) {
     const r: Hasil =
       nama === 'lingkup_data_saya' ? { data: LINGKUP, error: null }
       : nama === 'rekap_data_pelayanan' ? { data: { total: (o.baris ?? []).length, rows: o.baris ?? [], berikut: null }, error: null }
-      : nama === 'pendataan_khusus_peta' ? (o.peta ?? { data: {}, error: null })
+      : nama === 'rekap_khusus_peta' ? (o.peta ?? { data: {}, error: null })
       : nama === 'rekap_ringkasan_dilayani' ? { data: null, error: { code: 'PGRST202' } }
       : { data: null, error: null };
     return Object.assign(Promise.resolve(r), {});
@@ -47,9 +48,11 @@ function pasang(o: { fields?: Hasil; peta?: Hasil; baris?: unknown[] } = {}) {
         tabel === 'pendataan_khusus_field' ? (o.fields ?? { data: FIELDS, error: null })
         : { data: { form_pendataan: null }, error: null };
       const b: Record<string, unknown> = {};
-      for (const m of ['select', 'eq', 'order', 'range']) b[m] = () => b;
+      let offset = 0;
+      for (const m of ['select', 'eq', 'order']) b[m] = () => b;
+      b.range = (from: number) => { offset = from; return b; };
       b.maybeSingle = () => Promise.resolve(hasil);
-      b.then = (res: (v: Hasil) => unknown, rej?: (e: unknown) => unknown) => Promise.resolve(hasil).then(res, rej);
+      b.then = (res: (v: Hasil) => unknown, rej?: (e: unknown) => unknown) => Promise.resolve(offset > 0 ? { data: [], error: null } : hasil).then(res, rej);
       return b;
     }),
   };
@@ -68,7 +71,7 @@ describe('rekap terpadu: Pendataan Khusus', () => {
     const body = await (await get('bagian=data')).json();
     expect(body.kolom_khusus).toEqual([]);
     expect(tabelDipanggil).not.toContain('pendataan_khusus_field');
-    expect(rpc).not.toHaveBeenCalledWith('pendataan_khusus_peta', expect.anything());
+    expect(rpc).not.toHaveBeenCalledWith('rekap_khusus_peta', expect.anything());
   });
 
   it('dengan layanan_id: kolom_khusus (tersembunyi hanya bila pernah diisi) dan jawaban ditempel hanya ke pelayanan penanganan', async () => {
@@ -82,7 +85,7 @@ describe('rekap terpadu: Pendataan Khusus', () => {
     expect(body.rows[1].khusus).toBeUndefined();
     // Jawaban hanya diminta untuk id pelayanan sumber 'penanganan' yang sudah lolos rekap (lingkup ketat), lewat RPC
     // SECURITY INVOKER (RLS tetap berlaku) dengan klien pengguna.
-    expect(rpc.mock.calls.filter((c) => c[0] === 'pendataan_khusus_peta')).toEqual([['pendataan_khusus_peta', { p_penanganan: ['p1'] }]]);
+    expect(rpc.mock.calls.filter((c) => c[0] === 'rekap_khusus_peta')).toEqual([['rekap_khusus_peta', { p_penanganan: ['p1'] }]]);
   });
 
   it('tabel belum ada (migrasi belum diterapkan): rekap tetap 200 tanpa kolom Khusus', async () => {
@@ -96,6 +99,12 @@ describe('rekap terpadu: Pendataan Khusus', () => {
     pasang({ baris: [baris('p1')], peta: { data: null, error: { code: '57014', message: 'timeout' } } });
     const res = await get(`bagian=data&layanan_id=${LID}`);
     expect(res.status).toBe(500);
+  });
+
+  it('RPC batch belum diterapkan menolak rekap dan ekspor dengan 409', async () => {
+    pasang({ baris: [baris('p1')], peta: { data: null, error: { code: 'PGRST202', message: 'rekap_khusus_peta belum ada' } } });
+    expect((await get(`bagian=data&layanan_id=${LID}`)).status).toBe(409);
+    expect((await getExport(`layanan_id=${LID}`)).status).toBe(409);
   });
 
   it('galat membaca definisi isian (bukan "belum ada") -> 500, kolom Khusus tidak hilang diam-diam; juga untuk Excel', async () => {
@@ -115,7 +124,7 @@ describe('rekap terpadu: Pendataan Khusus', () => {
     await wb.xlsx.load(Buffer.from(await res.arrayBuffer()) as unknown as ArrayBuffer);
     const ws = wb.getWorksheet('Data Pelayanan')!;
     const header = (ws.getRow(1).values as unknown[]).slice(1);
-    expect(header.slice(-2)).toEqual(['[Khusus] Jenis kartu', '[Khusus] Lama']);
+    expect(header.slice(-2)).toEqual(['[Khusus] Jenis kartu', '[Khusus] Lama (nonaktif)']);
     const isi = (ws.getRow(2).values as unknown[]).slice(1);
     expect(isi.slice(-2)).toEqual(['B', 'catatan lama']);
   });

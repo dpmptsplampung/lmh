@@ -68,6 +68,8 @@ function buatMock(rows: Baris[], role: 'petugas' | 'admin' | 'front_office') {
     if (nama === 'panggil_tiket') return Promise.resolve({ data: 'A-001', error: null });
     if (nama === 'layanan_mulai') return Promise.resolve({ data: { ok: true, sudah_milik_anda: false }, error: null });
     if (nama === 'layanan_selesai') return Promise.resolve({ data: { ok: true }, error: null });
+    if (nama === 'pendataan_khusus_definisi') return Promise.resolve({ data: [], error: null });
+    if (nama === 'layanan_selesai_khusus') return Promise.resolve({ data: { ok: true, khusus_tersimpan: 0 }, error: null });
     return Promise.resolve({ data: null, error: { message: 'tak dikenal' } });
   });
   const rantaiKosong = () => {
@@ -132,7 +134,7 @@ describe('Antrean: panel Sekarang pada halaman', () => {
     expect(panggilan(mock, 'layanan_mulai')[0][1]).toEqual({ p_tiket_id: 't-9' });
   });
 
-  it('pintasan N di panel memanggil tiket berikutnya; Selesai di panel menyelesaikan tiket saya (tanpa pendataan)', async () => {
+  it('pintasan N di panel memanggil tiket berikutnya; Selesai di panel membuka dialog lalu layanan_selesai_khusus (tanpa pendataan)', async () => {
     const mock = buatMock([
       baris({ id: 't-1' }),
       baris({
@@ -145,8 +147,13 @@ describe('Antrean: panel Sekarang pada halaman', () => {
     fireEvent.keyDown(within(blokBerikutnya()).getByRole('button', { name: /Panggil berikutnya/ }), { key: 'n' });
     await waitFor(() => expect(panggilan(mock, 'panggil_tiket')).toHaveLength(1));
     fireEvent.click(within(blokSaya()).getByRole('button', { name: 'Selesai' }));
-    await waitFor(() => expect(panggilan(mock, 'layanan_selesai')).toHaveLength(1));
-    expect(panggilan(mock, 'layanan_selesai')[0][1]).toEqual({ p_tiket_id: 't-0' });
+    // Satu jalur Selesai: dialog konfirmasi dulu (tanpa RPC langsung), lalu layanan_selesai_khusus.
+    const dialog = await screen.findByRole('dialog', { name: /Selesaikan tiket A-000/ });
+    expect(panggilan(mock, 'layanan_selesai')).toHaveLength(0);
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Selesaikan' })).toBeEnabled());
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Selesaikan' }));
+    await waitFor(() => expect(panggilan(mock, 'layanan_selesai_khusus')).toHaveLength(1));
+    expect(panggilan(mock, 'layanan_selesai_khusus')[0][1]).toMatchObject({ p_tiket_id: 't-0', p_topik_id: null, p_catatan: null });
   });
 
   it('Admin dengan banyak Layanan memilih Layanan dulu; "Berikutnya" mengikuti pilihan', async () => {

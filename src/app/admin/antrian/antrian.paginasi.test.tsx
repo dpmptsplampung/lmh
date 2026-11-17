@@ -70,7 +70,7 @@ it.each(['petugas', 'admin', 'front_office'])('F1: %s pada halaman kedua tetap m
   await waitFor(() => expect(mock.rpc).toHaveBeenCalledWith('panggil_tiket', { p_tiket_id: 't-1' }));
 });
 
-it('F1: tiket saya di halaman pertama tetap bisa diselesaikan dari panel halaman kedua', async () => {
+it('F1: tiket saya di halaman pertama tetap bisa diselesaikan (dialog Selesai) dari panel halaman kedua', async () => {
   const mock = dataMock([tiket(0, 'dilayani', 'p-saya'), ...Array.from({ length: 50 }, (_, i) => tiket(i + 1))]);
   render(<AntrianPage />);
   await screen.findByText(/Halaman 1 dari 3/);
@@ -78,8 +78,9 @@ it('F1: tiket saya di halaman pertama tetap bisa diselesaikan dari panel halaman
   await screen.findByText(/Halaman 2 dari 3/);
   expect(panel('Sedang saya layani').getByText('A-000')).toBeInTheDocument();
   fireEvent.click(panel('Sedang saya layani').getByRole('button', { name: 'Selesai' }));
-  await waitFor(() => expect(mock.rpc).toHaveBeenCalledWith('layanan_selesai', { p_tiket_id: 't-0' }));
-  await waitFor(() => expect(mock.rpc).toHaveBeenCalledWith('ambil_qr_survei', { p_kunjungan_id: 'k-0' }));
+  // Satu jalur Selesai: dialog SelesaiLayananModal terbuka untuk tiket di halaman pertama; tanpa RPC selesai langsung.
+  await screen.findByRole('dialog', { name: /Selesaikan tiket A-000/ });
+  expect(mock.rpc).not.toHaveBeenCalledWith('layanan_selesai', expect.anything());
 });
 
 it.each(['admin', 'front_office'])('F2: %s menyaring sebelum paginasi, bukan mengosongkan 25 tiket pertama', async role => {

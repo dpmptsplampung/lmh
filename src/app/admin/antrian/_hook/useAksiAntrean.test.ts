@@ -31,9 +31,8 @@ const urutan: string[] = [];
 const toast = vi.fn((pesan: string, jenis?: string) => { urutan.push(`toast:${jenis}:${pesan}`); });
 const muatSenyap = vi.fn(async () => { urutan.push('muat'); });
 const buka = vi.fn((jenis: string, t: TiketBaris) => { urutan.push(`buka:${jenis}:${t.id}`); });
-const bukaQrTiket = vi.fn((id: string | null) => { urutan.push(`qr:${id}`); });
 
-const pasang = () => renderHook(() => useAksiAntrean({ toast, muatSenyap, buka, bukaQrTiket }));
+const pasang = () => renderHook(() => useAksiAntrean({ toast, muatSenyap, buka }));
 
 let spyError: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
@@ -119,22 +118,21 @@ describe('useAksiAntrean: panggil', () => {
 });
 
 describe('useAksiAntrean: mulai', () => {
-  it('layanan berformulir: toast, muat ulang, LALU wizard tiket itu', async () => {
+  it('layanan berformulir: toast, muat ulang, LALU wizard Mulai Layanan (langkah 1) tiket itu', async () => {
     const { result } = pasang();
     const t = tiket();
     await act(async () => { await result.current.mulai(t); });
     expect(db.rpc).toHaveBeenCalledWith('layanan_mulai', { p_tiket_id: 't-1' });
-    expect(urutan).toEqual(['toast:success:Layanan dimulai', 'muat', 'buka:wizard:t-1']);
+    expect(urutan).toEqual(['toast:success:Layanan dimulai', 'muat', 'buka:mulaiLayanan:t-1']);
   });
 
-  it('sudah dimulai sebelumnya; layanan tanpa formulir: toast info, tanpa wizard', async () => {
+  it('sudah dimulai sebelumnya; layanan tanpa formulir: wizard Mulai Layanan tetap terbuka (tanpa toast info)', async () => {
     jawab({ layanan_mulai: { data: { ok: true, sudah_milik_anda: true }, error: null } });
     const { result } = pasang();
     await act(async () => { await result.current.mulai(tiket({ layanan: BPJS })); });
     expect(urutan).toEqual([
-      'toast:success:Layanan tiket ini sudah Anda mulai sebelumnya', 'muat', 'toast:info:Layanan ini tidak memiliki form pendataan',
+      'toast:success:Layanan tiket ini sudah Anda mulai sebelumnya', 'muat', 'buka:mulaiLayanan:t-1',
     ]);
-    expect(buka).not.toHaveBeenCalled();
   });
 
   it('galat yang membuat tampilan basi (SUDAH_DIAMBIL): pesan khusus + muat ulang; galat biasa: awalan + tanpa muat ulang', async () => {
@@ -175,27 +173,17 @@ describe('useAksiAntrean: selesaikan', () => {
     expect(db.rpc).not.toHaveBeenCalled();
   });
 
-  it('tiket eskalasi tanpa formulir: membuka dialog selesai eskalasi, TANPA RPC', async () => {
+  it('tiket eskalasi tanpa formulir: membuka SelesaiLayananModal, TANPA RPC', async () => {
     const { result } = pasang();
     await act(async () => { await result.current.selesaikan(tiket({ layanan: BPJS, penanganan_asal_id: 'pn-1' })); });
-    expect(urutan).toEqual(['buka:selesaiEskalasi:t-1']);
+    expect(urutan).toEqual(['buka:selesaiLayanan:t-1']);
     expect(db.rpc).not.toHaveBeenCalled();
   });
 
-  it('tanpa formulir, bukan eskalasi: layanan_selesai, toast, QR, LALU muat ulang', async () => {
+  it('tanpa formulir, bukan eskalasi: SATU jalur yang sama (SelesaiLayananModal), tidak lagi layanan_selesai langsung', async () => {
     const { result } = pasang();
     await act(async () => { await result.current.selesaikan(tiket({ layanan: BPJS })); });
-    expect(db.rpc).toHaveBeenCalledWith('layanan_selesai', { p_tiket_id: 't-1' });
-    expect(urutan).toEqual(['toast:success:Kunjungan berhasil diselesaikan', 'qr:t-1', 'muat']);
-  });
-
-  it('galat BUKAN_PEMILIK: pesan + muat ulang, tanpa QR', async () => {
-    jawab({ layanan_selesai: { data: null, error: { message: 'BUKAN_PEMILIK: x', code: 'P0001' } } });
-    const { result } = pasang();
-    await act(async () => { await result.current.selesaikan(tiket({ layanan: BPJS })); });
-    expect(bukaQrTiket).not.toHaveBeenCalled();
-    expect(urutan[0]).toMatch(/^toast:error:Gagal menyelesaikan antrean\. /);
-    expect(urutan[1]).toBe('muat');
-    expect(spyError).toHaveBeenCalledWith('Gagal menyelesaikan antrean:', expect.anything());
+    expect(urutan).toEqual(['buka:selesaiLayanan:t-1']);
+    expect(db.rpc).not.toHaveBeenCalled();
   });
 });

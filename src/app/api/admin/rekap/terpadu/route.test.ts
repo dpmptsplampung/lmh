@@ -42,7 +42,7 @@ function pasang(opsi: {
     if (nama === 'lingkup_data_saya') return opsi.lingkup ?? Promise.resolve({ data: LINGKUP, error: null });
     if (nama === 'rekap_data_pelayanan') return opsi.data ?? Promise.resolve(DATA);
     if (nama === 'rekap_ringkasan_dilayani') return opsi.ringkasan ?? Promise.resolve(RINGKASAN);
-    if (nama === 'pendataan_khusus_peta') return opsi.jawaban ?? Promise.resolve({ data: { p1: { [FID]: 'B' } }, error: null });
+    if (nama === 'rekap_khusus_peta') return opsi.jawaban ?? Promise.resolve({ data: { p1: { [FID]: 'B' } }, error: null });
     throw new Error(`RPC tidak terduga: ${nama}`);
   });
   const from = vi.fn((tabel: string) => {
@@ -77,7 +77,7 @@ describe('rekap data: pemuatan paralel', () => {
         expect(field).toHaveBeenCalledOnce();
         expect(form).toHaveBeenCalledOnce();
       });
-      expect(rpc.mock.calls.map(([nama]) => nama)).not.toContain('pendataan_khusus_peta');
+      expect(rpc.mock.calls.map(([nama]) => nama)).not.toContain('rekap_khusus_peta');
     } finally {
       data.lepas(DATA);
     }
@@ -100,7 +100,7 @@ describe('rekap data: pemuatan paralel', () => {
         },
       ],
     });
-    expect(rpc).toHaveBeenCalledWith('pendataan_khusus_peta', { p_penanganan: ['p1'] });
+    expect(rpc).toHaveBeenCalledWith('rekap_khusus_peta', { p_penanganan: ['p1'] });
     const langkah = res.headers.get('Server-Timing')!.split(', ').map((v) => v.split(';dur=')[0]);
     expect(langkah.sort()).toEqual(['lingkup', 'ringkasan', 'rpc_data', 'field_khusus', 'jawaban_khusus', 'form_layanan'].sort());
     expect(res.headers.get('Server-Timing')).toMatch(/(?:^|, )[a-z_]+;dur=\d+(?:\.\d+)?/);
@@ -137,7 +137,7 @@ describe('rekap data: pemuatan paralel', () => {
     expect(res.status).toBe(status);
     expect(await res.json()).toEqual(body);
     expect(res.headers.get('Server-Timing')).toBeNull();
-    expect(rpc.mock.calls.some(([nama]) => nama === 'pendataan_khusus_peta')).toBe(tahap === 'jawaban');
+    expect(rpc.mock.calls.some(([nama]) => nama === 'rekap_khusus_peta')).toBe(tahap === 'jawaban');
   });
 
   it('tetap melempar galat transport formulir setelah definisi dan jawaban berhasil', async () => {
@@ -149,7 +149,7 @@ describe('rekap data: pemuatan paralel', () => {
     await vi.waitFor(() => expect(mulaiForm).toHaveBeenCalledOnce());
     form.tolak(galat);
     await pemeriksaan;
-    expect(rpc).toHaveBeenCalledWith('pendataan_khusus_peta', { p_penanganan: ['p1'] });
+    expect(rpc).toHaveBeenCalledWith('rekap_khusus_peta', { p_penanganan: ['p1'] });
   });
 
   it('galat kueri formulir tetap menjadi form_type null', async () => {

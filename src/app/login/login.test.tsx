@@ -53,7 +53,7 @@ describe('login staf: username', () => {
     fireEvent.change(user, { target: { value: ' Helpdesk-OSS ' } });
     fireEvent.change(pw!, { target: { value: 'rahasia-panjang' } });
     fireEvent.click(screen.getByRole('button', { name: 'Masuk Operator' }));
-    await waitFor(() => expect(h.push).toHaveBeenCalledWith('/admin'));
+    await waitFor(() => expect(h.push).toHaveBeenCalledWith('/petugas/antrean'));
     expect(h.signIn).toHaveBeenCalledWith({ email: 'helpdesk-oss@staf.lmh.internal', password: 'rahasia-panjang' });
   });
 
@@ -85,7 +85,24 @@ describe('login staf: username', () => {
     fireEvent.change(user, { target: { value: 'helpdesk-oss' } });
     fireEvent.change(pw!, { target: { value: 'sementara' } });
     fireEvent.click(screen.getByRole('button', { name: 'Masuk Operator' }));
-    await waitFor(() => expect(h.push).toHaveBeenCalledWith('/admin/profil?ganti=1'));
+    await waitFor(() => expect(h.push).toHaveBeenCalledWith('/petugas/profil?ganti=1'));
+  });
+
+  it.each([
+    ['admin', false, '/admin'],
+    ['front_office', false, '/admin'],
+    ['petugas', false, '/petugas/antrean'],
+    ['admin', true, '/admin/profil?ganti=1'],
+    ['front_office', true, '/admin/profil?ganti=1'],
+    ['petugas', true, '/petugas/profil?ganti=1'],
+  ])('role %s (wajib ganti sandi: %s) diarahkan ke %s', async (role, wajib, tujuan) => {
+    h.signIn.mockResolvedValue({ data: { user: { id: 'u1' } }, error: null });
+    h.petugas = { role, wajib_ganti_sandi: wajib };
+    const { user, pw } = bukaFormStaf();
+    fireEvent.change(user, { target: { value: 'staf-uji' } });
+    fireEvent.change(pw!, { target: { value: 'rahasia-panjang' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Masuk Operator' }));
+    await waitFor(() => expect(h.push).toHaveBeenCalledWith(tujuan));
   });
 
   it('lupa sandi: POST username dan jawaban seragam', async () => {

@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { getServiceClient } from '@/lib/akun/server';
 import { paramsDariRequest } from '@/lib/rekap/akses';
-import { labelLingkup } from '@/lib/akses-data/lingkup';
 import { buildDataPelayananWorkbook } from '@/lib/rekap/excelTerpadu';
 import { kolomDataPelayanan, NAMA_UNIT_FO, petaBarisPelayanan, rekapTerpaduExportSchema } from '@/lib/rekap/terpadu';
 import { ambilSemuaDataPelayanan, argData, formLayanan, muatLingkup, responsGalatRekap } from '@/lib/rekap/terpaduServer';
-import { kolomKhusus, lampirkanKhusus } from '@/lib/rekap/khusus';
+import { lampirkanKhusus } from '@/lib/rekap/khusus';
 import type { FieldKhusus } from '@/lib/pendataan-khusus/jenis';
 import { muatFieldKhusus, muatJawabanKhusus } from '@/lib/rekap/khususServer';
+import { catatAuditEkspor } from '@/lib/rekap/exportAudit';
+import { buatWorkbookTerpadu, kolomEksporAman, kolomEksporKhusus } from '@/lib/rekap/exportTerpadu';
+import { muatLayananEkspor } from '@/lib/rekap/exportServer';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -36,21 +37,20 @@ export async function GET(request: NextRequest) {
   const staf = await muatLingkup(supabase, LABEL);
   if (!staf.ok) return staf.res;
 
-  const arg = argData(q);
+  const multi = !q.layanan_id && q.unit !== 'fo';
   let hasil;
-  try {
-    hasil = await ambilSemuaDataPelayanan(supabase, arg);
-  } catch (error) {
-    return responsGalatRekap(error, LABEL);
-  }
-  let rows = hasil.rows.map(petaBarisPelayanan);
-  const formType = await formLayanan(supabase, q.layanan_id);
-  // Fase 4: kolom Pendataan Khusus Layanan terpilih (jawaban lewat klien pengguna; RLS = lingkup ketat).
+  let rows;
+  let layanan;
+  let formType;
   let fieldKhusus: FieldKhusus[] = [];
   try {
-    fieldKhusus = await muatFieldKhusus(supabase, q.layanan_id);
-    if (fieldKhusus.length > 0) {
-      const jawaban = await muatJawabanKhusus(supabase, rows.filter((r) => r.sumber === 'penanganan').map((r) => r.pelayanan_id));
+    hasil = await ambilSemuaDataPelayanan(supabase, argData(q));
+    rows = hasil.rows.map(petaBarisPelayanan);
+    layanan = multi ? await muatLayananEkspor(supabase, q.tanpa_form === '1') : [];
+    formType = await formLayanan(supabase, q.layanan_id);
+    fieldKhusus = await muatFieldKhusus(supabase, q.layanan_id, { semuaHalaman: true });
+    if (fieldKhusus.length || layanan.some(l => l.fields.length)) {
+      const jawaban = await muatJawabanKhusus(supabase, rows.filter(r => r.sumber === 'penanganan').map(r => r.pelayanan_id));
       rows = lampirkanKhusus(rows, jawaban);
     }
   } catch (error) {
@@ -63,22 +63,26 @@ export async function GET(request: NextRequest) {
   const tanpaForm = q.tanpa_form === '1' ? 'Layanan lain (tanpa Helpdesk OSS dan Non OSS)' : null;
   const filter = [unit, namaLayanan, tanpaForm].filter(Boolean).join(' · ') || 'Semua unit';
 
-  const buf = await buildDataPelayananWorkbook(rows, kolomDataPelayanan(formType, kolomKhusus(fieldKhusus)), {
-    dari: q.dari, sampai: q.sampai, lingkup: labelLingkup(staf.lingkup), filter, truncated: hasil.truncated,
-  });
-
-  // audit_log hanya boleh ditulis server (service role); pengguna tidak punya INSERT langsung (S14).
-  const { error: auditError } = (await getServiceClient()?.from('audit_log').insert({
-    actor_id: staf.userId,
-    actor_role: staf.lingkup.role,
-    aksi: 'export_xlsx',
-    entitas: 'rekap_data_pelayanan',
-    detail: {
-      dari: q.dari, sampai: q.sampai, unit: q.unit ?? null, layanan_id: q.layanan_id ?? null, tanpa_form: q.tanpa_form === '1',
-      koordinator: staf.lingkup.koordinator, total_rows: rows.length, truncated: hasil.truncated,
-    },
-  })) ?? { error: { message: 'service client tidak tersedia' } };
-  if (auditError) console.error(`[${LABEL}] audit_log insert gagal:`, auditError);
+  let buf;
+  try {
+    const meta = {
+      dari: q.dari, sampai: q.sampai,
+      lingkup: staf.lingkup.role === 'petugas' ? 'Seluruh data layanan Anda.' : 'Semua data semua layanan.',
+      filter, truncated: hasil.truncated,
+    };
+    buf = multi
+      ? await buatWorkbookTerpadu(rows, layanan, meta, staf.lingkup.role)
+      : await buildDataPelayananWorkbook(rows,
+        kolomEksporAman(kolomDataPelayanan(formType, kolomEksporKhusus(fieldKhusus)), staf.lingkup.role), meta);
+    await catatAuditEkspor(staf.userId, staf.lingkup.role, 'export_xlsx', 'rekap_data_pelayanan', {
+      dari: q.dari, sampai: q.sampai, unit: q.unit ?? null, layanan_id: q.layanan_id ?? null,
+      koordinator: staf.lingkup.koordinator, tanpa_form: q.tanpa_form === '1', multi_sheet: multi,
+      total_rows: rows.length, truncated: hasil.truncated,
+    });
+  } catch {
+    console.error(`[${LABEL}] pembuatan berkas atau audit ekspor gagal`);
+    return NextResponse.json({ error: 'Gagal menyiapkan atau mencatat ekspor' }, { status: 500 });
+  }
 
   return new Response(new Uint8Array(buf), {
     status: 200,

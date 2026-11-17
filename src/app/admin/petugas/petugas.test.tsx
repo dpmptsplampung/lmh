@@ -375,62 +375,93 @@ describe('saklar Operator harian (Admin)', () => {
 });
 
 
-describe('penanda pemeriksa UMKM', () => {
-  it('admin yang menandai diri sendiri mendapat arahan meminta admin lain', async () => {
-    const original = fetchMock.getMockImplementation() as (url: string, init?: RequestInit) => Promise<unknown>;
-    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
-      if (url === '/api/admin/petugas' && init?.method === 'GET') {
-        return ok({ pemeriksa_umkm_tersedia: true, akun: DAFTAR });
-      }
-      if (url === '/api/admin/petugas/me/pemeriksa-umkm') {
-        return Promise.resolve({ ok: false, json: async () => ({
-          error: { code: 'DILARANG', message: 'Akses ditolak' },
-        }) });
-      }
-      return original(url, init);
-    });
+describe('modul turunan dari layanan (G3): tanpa saklar pemeriksa UMKM', () => {
+  const pasangLayanan = async (layanan: unknown[], galatPertama = false) => {
+    const supabase = await import('@/lib/supabase/client');
+    const kueri = vi.fn();
+    vi.spyOn(supabase, 'createClient').mockReturnValue({
+      from: () => ({
+        select: (kolom: string) => {
+          kueri(kolom);
+          const hasil = galatPertama && kolom.includes('modul')
+            ? { data: null, error: { code: '42703', message: 'kolom modul tidak ada' } }
+            : { data: layanan.map((l) => (kolom.includes('modul') ? l : { id: (l as { id: string }).id, nama: (l as { nama: string }).nama })), error: null };
+          return { order: () => Promise.resolve(hasil) };
+        },
+      }),
+    } as never);
+    return kueri;
+  };
+  const daftarModul = [
+    akun({ id: 'me', nama: 'Admin Satu', username: 'admin-satu', role: 'admin', layanan_id: null, layanan_nama: null }),
+    akun({ id: 'u2', nama: 'Petugas UMKM', username: 'petugas-umkm', layanan_id: 'lu', layanan_nama: 'Matchmaking UMKM' }),
+    akun({ id: 'u3', nama: 'Petugas OSS', username: 'petugas-oss', layanan_id: 'l1', layanan_nama: 'Helpdesk OSS' }),
+    akun({ id: 'u4', nama: 'Petugas Gallery', username: 'petugas-gallery', layanan_id: 'lg', layanan_nama: 'Investment Gallery' }),
+    akun({ id: 'u5', nama: 'Budi FO', username: 'budi-fo', role: 'front_office', layanan_id: null, layanan_nama: null }),
+  ];
+  const sel = (nama: string) => screen.getByRole('button', { name: `Ubah ${nama}` }).closest('tr') as HTMLElement;
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it('tidak ada saklar pemeriksa UMKM walau server lama masih mengirim pemeriksa_umkm_tersedia', async () => {
+    fetchMock.mockImplementation((url: string, init?: RequestInit) =>
+      url === '/api/admin/petugas' && init?.method === 'GET'
+        ? ok({ pemeriksa_umkm_tersedia: true, akun: daftarModul.map((a) => ({ ...a, pemeriksa_umkm: true })) })
+        : ok({ ok: true, profil: { id: 'me' } }));
+    await pasangLayanan([{ id: 'lu', nama: 'Matchmaking UMKM', modul: 'umkm' }]);
     render(<AdminPetugasPage />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Pemeriksa UMKM Admin Satu' }));
-    await waitFor(() => expect(toastMock).toHaveBeenCalledWith(
-      'Penanda untuk akun sendiri diberikan oleh admin lain.', 'error',
-    ));
-    expect(screen.getByRole('button', { name: 'Pemeriksa UMKM Admin Satu' }).getAttribute('aria-pressed'))
-      .toBe('false');
+    await screen.findByText('petugas-umkm');
+    expect(screen.queryByRole('button', { name: /^Pemeriksa UMKM/ })).toBeNull();
+    expect(screen.queryByText('Pemeriksa UMKM')).toBeNull();
+    expect(fetchMock.mock.calls.some(([u]) => String(u).includes('pemeriksa-umkm'))).toBe(false);
   });
-  it('tanpa migrasi sakelar pemeriksa tidak tampil', async () => {
+
+  it('kolom Modul baca-saja: petugas layanan bermodul = UMKM/Investasi, lainnya tanda hubung, Admin = semua modul', async () => {
+    fetchMock.mockImplementation((url: string, init?: RequestInit) =>
+      url === '/api/admin/petugas' && init?.method === 'GET' ? ok({ akun: daftarModul }) : ok({ ok: true, profil: { id: 'me' } }));
+    await pasangLayanan([
+      { id: 'lu', nama: 'Matchmaking UMKM', modul: 'umkm' },
+      { id: 'l1', nama: 'Helpdesk OSS', modul: null },
+      { id: 'lg', nama: 'Investment Gallery', modul: 'investasi' },
+    ]);
+    render(<AdminPetugasPage />);
+    await screen.findByText('petugas-umkm');
+    expect(screen.getAllByRole('columnheader', { name: 'Modul' }).length).toBeGreaterThan(0);
+    await waitFor(() => expect(within(sel('Petugas UMKM')).getByText('UMKM')).toBeTruthy());
+    expect(within(sel('Petugas Gallery')).getByText('Investasi')).toBeTruthy();
+    expect(within(sel('Petugas OSS')).queryByText('UMKM')).toBeNull();
+    expect(within(sel('Petugas OSS')).getByText('—')).toBeTruthy();
+    expect(within(sel('Budi FO')).getByText('—')).toBeTruthy();
+    expect(within(screen.getByRole('button', { name: 'Reset sandi Admin Satu' }).closest('tr') as HTMLElement).getByText('Semua modul')).toBeTruthy();
+    // baca-saja: tidak ada kontrol pada sel modul
+    expect(within(sel('Petugas UMKM')).getByText('UMKM').closest('button')).toBeNull();
+  });
+
+  it('menyebut bahwa penunjukan modul lewat pilihan layanan', async () => {
+    await pasangLayanan([]);
     render(<AdminPetugasPage />);
     await screen.findByText('petugas-oss');
-    expect(screen.queryByRole('button', { name: /^Pemeriksa UMKM/ })).toBeNull();
+    expect(screen.getByText(/mengikuti layanan petugas/)).toBeTruthy();
+    expect(screen.getByText(/atur Layanannya lewat Ubah akun/)).toBeTruthy();
   });
-  it('sakelar admin dan petugas satu klik, FO tidak dapat mengaktifkannya', async () => {
-    let flag = false;
-    const original = fetchMock.getMockImplementation() as (url: string, init?: RequestInit) => Promise<unknown>;
-    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
-      if (url === '/api/admin/petugas' && init?.method === 'GET') return ok({ pemeriksa_umkm_tersedia: true, akun: DAFTAR_RAMAI.map((a) => ({ ...a, pemeriksa_umkm: a.id === 'u2' && flag })) });
-      if (url === '/api/admin/petugas/u2/pemeriksa-umkm') { flag = true; return ok({ data: { id: 'u2', pemeriksa_umkm: true } }); }
-      return original(url, init);
-    });
+
+  it('sebelum migrasi (kolom modul belum ada): kueri diulang tanpa modul; nama Layanan tetap tampil, modul kosong', async () => {
+    fetchMock.mockImplementation((url: string, init?: RequestInit) =>
+      url === '/api/admin/petugas' && init?.method === 'GET' ? ok({ akun: daftarModul }) : ok({ ok: true, profil: { id: 'me' } }));
+    const kueri = await pasangLayanan([{ id: 'lu', nama: 'Matchmaking UMKM' }], true);
     render(<AdminPetugasPage />);
-    const button = await screen.findByRole('button', { name: 'Pemeriksa UMKM Petugas OSS' });
-    expect(screen.getByRole('button', { name: 'Pemeriksa UMKM Admin Satu' })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Pemeriksa UMKM Koord FO' })).toBeNull();
-    expect(button.getAttribute('aria-pressed')).toBe('false');
-    fireEvent.click(button);
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Pemeriksa UMKM Petugas OSS' }).getAttribute('aria-pressed')).toBe('true'));
-    const mutation = fetchMock.mock.calls.find(([url]) => url === '/api/admin/petugas/u2/pemeriksa-umkm')!;
-    expect(mutation[1].method).toBe('PATCH');
-    expect(JSON.parse(mutation[1].body as string)).toEqual({ pemeriksa_umkm: true, operasi_id: expect.any(String) });
+    await screen.findByText('petugas-umkm');
+    expect(kueri.mock.calls.map(([k]) => k)).toEqual(['id, nama, modul', 'id, nama']);
+    expect(screen.queryByText('Investasi')).toBeNull();
+    expect(within(sel('Petugas UMKM')).getByText('—')).toBeTruthy();
   });
-  it('kegagalan API tidak menyalakan sakelar', async () => {
-    const original = fetchMock.getMockImplementation() as (url: string, init?: RequestInit) => Promise<unknown>;
-    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
-      if (url === '/api/admin/petugas' && init?.method === 'GET') return ok({ pemeriksa_umkm_tersedia: true, akun: DAFTAR });
-      if (url.endsWith('/pemeriksa-umkm')) return Promise.resolve({ ok: false, json: async () => ({ error: { code: 'DILARANG', message: 'Akses ditolak' } }) });
-      return original(url, init);
-    });
+
+  it('cabut Koordinator: teks tidak lagi menyebut hak baca terbatas', async () => {
+    pasangDaftar(DAFTAR_RAMAI, true);
     render(<AdminPetugasPage />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Pemeriksa UMKM Petugas OSS' }));
-    await waitFor(() => expect(toastMock).toHaveBeenCalledWith('Akses ditolak', 'error'));
-    expect(screen.getByRole('button', { name: 'Pemeriksa UMKM Petugas OSS' }).getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(await screen.findByRole('button', { name: 'Koordinator Koord FO' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText(/tidak lagi dapat mengambil alih/)).toBeTruthy();
+    expect(within(dialog).queryByText(/hanya akan melihat data/)).toBeNull();
   });
 });

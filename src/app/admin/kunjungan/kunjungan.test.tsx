@@ -438,27 +438,21 @@ describe('Kelola Kunjungan: pencarian dan status disaring server sebelum paginas
   });
 });
 
-describe('Kelola Kunjungan: jendela tanggal Front Office non-Koordinator', () => {
+describe('Kelola Kunjungan: FO membuka semua tanggal', () => {
   const rpcOk = (nama: string) => (nama === 'fo_kunjungan_daftar'
     ? { data: { rows: [kunjungan('k-1', 'Budi')], total: 1 }, error: null }
     : { data: null, error: null });
   const panggilanDaftar = () => m.h.rpcLog.filter((l) => l.nama === 'fo_kunjungan_daftar');
-  it('FO biasa: kalender membatasi tanggal; hari di luar rentang tidak memanggil server', async () => {
+  it.each([-60, 60])('FO biasa membuka tanggal %i hari dari hari ini melalui kalender dan RPC', async (hari) => {
     m.h.tabel.petugas = { data: [{ id: 'p-1', role: 'front_office', koordinator: false }], error: null };
     m.h.rpc = rpcOk;
     render(<KunjunganPage />);
     await screen.findByText('Budi');
     const awal = panggilanDaftar().length;
-    fireEvent.click(screen.getByRole('button', { name: /^Tanggal kunjungan:/ }));
-    const dialog = screen.getByRole('dialog', { name: 'Tanggal kunjungan' });
-    const dilarang = dialog.querySelector<HTMLButtonElement>('button[data-tanggal][aria-disabled="true"]');
-    expect(dilarang).not.toBeNull();
-    fireEvent.click(dilarang!);
-    expect(panggilanDaftar()).toHaveLength(awal);
-    fireEvent.keyDown(dialog, { key: 'Escape' });
-    pilihTanggal(addDaysWIB(-3));
+    pilihTanggal(addDaysWIB(hari));
     await waitFor(() => expect(panggilanDaftar().length).toBe(awal + 1));
-    expect(panggilanDaftar()[awal].args).toMatchObject({ p_tanggal: addDaysWIB(-3) });
+    expect(panggilanDaftar()[awal].args).toMatchObject({ p_tanggal: addDaysWIB(hari) });
+    expect(screen.queryByText(/7 hari ke belakang|minta Koordinator/)).toBeNull();
   });
 
   it('Admin dan FO Koordinator: kalender tidak membatasi tanggal', async () => {
@@ -473,14 +467,7 @@ describe('Kelola Kunjungan: jendela tanggal Front Office non-Koordinator', () =>
     }
   });
 
-  it('galat TANGGAL_DILUAR_BATAS dari server tampil sebagai pesan jelas, bukan "periksa koneksi"', async () => {
-    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    m.h.rpc = () => ({ data: null, error: { code: '22023', message: 'TANGGAL_DILUAR_BATAS: di luar jendela' } });
-    render(<KunjunganPage />);
-    expect(await screen.findByText(/7 hari ke belakang sampai besok/)).toBeInTheDocument();
-    expect(screen.queryByText(/Periksa koneksi/)).toBeNull();
-    spy.mockRestore();
-  });
+
 });
 
 describe('Kunjungan: filter di URL', () => {

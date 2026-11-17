@@ -115,6 +115,35 @@ async function tolakDrafBukanPemilik(
   return responsGalatAntrean('BUKAN_PEMILIK');
 }
 
+const dataLihatSchema = z.object({
+  oss: z.object({ is_locked: z.boolean().optional(), status_draft: z.enum(['draft', 'selesai']).optional() }).passthrough().nullable(),
+  perizinan: z.object({ is_locked: z.boolean().optional(), status_draft: z.enum(['draft', 'selesai']).optional() }).passthrough().nullable(),
+  khusus: z.array(z.record(z.string(), z.unknown())).max(1000),
+  definisi_khusus: z.array(z.record(z.string(), z.unknown())).max(40),
+  draf: z.record(z.string(), z.unknown()).nullable(),
+});
+
+// Audit dan baca data atomik lewat sesi pengguna. Galat apa pun menghentikan respons tanpa fallback tabel.
+// Kontrak frontend: .tim/audit-petugas-fo/BACKEND-LIHATDATA.md.
+async function bacaLihatData(supabase: KlienRpc, tiketId: string) {
+  try {
+    const { data, error } = await supabase.rpc('lihat_data_pelayanan', { p_tiket: tiketId });
+    if (!error) {
+      const valid = dataLihatSchema.safeParse(data);
+      if (valid.success) return valid.data;
+    } else {
+      const pesan = error.message ?? '';
+      if (pesan.startsWith('SESI_TIDAK_SAH')) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      if (pesan.startsWith('FORBIDDEN')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      if (pesan.startsWith('NOT_FOUND')) return NextResponse.json({ error: 'Tiket tidak ditemukan' }, { status: 404 });
+      if (pesan.startsWith('DATA_TERLALU_BESAR')) return NextResponse.json({ error: 'Data terlalu besar untuk ditampilkan' }, { status: 413 });
+    }
+  } catch {
+    // Koneksi/RPC gagal: fail-closed, tanpa data sensitif dalam log.
+  }
+  return NextResponse.json({ error: 'Data tidak dapat ditampilkan. Coba lagi.' }, { status: 500 });
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ tiketId: string }> }
@@ -167,12 +196,8 @@ export async function GET(
     // Jenis form = layanan.form_pendataan (sumber kebenaran DB, migrasi 202610140012).
     const formType = formPendataanLayanan(layananData);
 
-    if (!formType) {
-      return NextResponse.json(
-        { error: 'Layanan ini tidak mendukung form pendataan teknis' },
-        { status: 400 }
-      );
-    }
+    const dataLihat = await bacaLihatData(supabase, tiketId);
+    if (dataLihat instanceof NextResponse) return dataLihat;
 
     // 3. Data registrasi tambahan: kolom kunjungan (walk-in FO / reservasi), lalu profil pengunjung bila ada.
     let asalInstansi: string | null = kunjunganData?.asal_instansi ?? null;
@@ -192,41 +217,22 @@ export async function GET(
       }
     }
 
-    // 4. Ambil eksisting data pendataan jika sudah ada
-    let isLocked = false;
-    let statusDraft: 'draft' | 'selesai' | 'belum_diisi' = 'belum_diisi';
-    let dataOss = null;
-    let dataPerizinan = null;
-
-    if (formType === 'oss') {
-      const { data: oss } = await supabase
-        .from('pelayanan_oss')
-        .select('*')
-        .eq('tiket_id', tiketId)
-        .maybeSingle();
-      if (oss) {
-        isLocked = oss.is_locked;
-        statusDraft = oss.status_draft as 'draft' | 'selesai';
-        dataOss = oss;
-      }
-    } else {
-      const { data: pz } = await supabase
-        .from('pelayanan_perizinan')
-        .select('*')
-        .eq('tiket_id', tiketId)
-        .maybeSingle();
-      if (pz) {
-        isLocked = pz.is_locked;
-        statusDraft = pz.status_draft as 'draft' | 'selesai';
-        dataPerizinan = pz;
-      }
-    }
+    const dataOss = dataLihat.oss;
+    const dataPerizinan = dataLihat.perizinan;
+    const dataTetap = formType === 'oss' ? dataOss : formType === 'perizinan' ? dataPerizinan : null;
+    const isLocked = dataTetap?.is_locked === true;
+    const statusDraft = dataTetap?.status_draft ?? 'belum_diisi';
 
     // Tiket hasil eskalasi FO (informasi saja): sejak 202610140015 petugas tidak lagi memilih topik / menulis catatan
     // penanganan; DB menurunkan catatan tahap layanan dari Pendataan (topik NULL).
     const dariEskalasi = !!tiket.penanganan_asal_id;
 
-    const responsePayload: PelayananInitialData = {
+    const responsePayload: Omit<PelayananInitialData, 'form_type'> & {
+      form_type: PelayananInitialData['form_type'] | null;
+      khusus: typeof dataLihat.khusus;
+      definisi_khusus: typeof dataLihat.definisi_khusus;
+      draf: typeof dataLihat.draf;
+    } = {
       tiket_id: tiket.id,
       legacy_visit_id: tiket.legacy_visit_id,
       nomor_display: tiket.nomor_display,
@@ -247,11 +253,14 @@ export async function GET(
       dari_eskalasi: dariEskalasi,
       is_locked: isLocked,
       status_draft: statusDraft,
-      data_oss: dataOss,
-      data_perizinan: dataPerizinan,
+      data_oss: dataOss as PelayananInitialData['data_oss'],
+      data_perizinan: dataPerizinan as PelayananInitialData['data_perizinan'],
+      khusus: dataLihat.khusus,
+      definisi_khusus: dataLihat.definisi_khusus,
+      draf: dataLihat.draf,
     };
 
-    return NextResponse.json(responsePayload);
+    return NextResponse.json(responsePayload, { headers: { 'Cache-Control': 'no-store' } });
   } catch (err) {
     console.error('[GET /api/admin/pelayanan]', err);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

@@ -1,7 +1,5 @@
-// Bagian server Pendataan Khusus untuk rekap terpadu (Fase 4): definisi isian Layanan terpilih + jawaban baris halaman.
-// SELALU klien pengguna (bukan service-role): fungsi `pendataan_khusus_peta` berjalan SECURITY INVOKER sehingga RLS
-// pendataan_khusus_jawaban (boleh_baca_khusus = boleh_data_pelayanan, lingkup data KETAT Fase 3) tetap berlaku: jawaban
-// hanya kembali untuk pelayanan dalam lingkup pemanggil.
+// Jawaban rekap memakai klien pengguna: RPC memeriksa lingkup setiap id dan mengaudit FO lintas pembuat.
+// Hak SELECT tabel sensitif tetap mengikuti RLS tabel, terpisah dari izin batch rekap.
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { objekBelumAda } from '@/lib/akses-data/galat';
 import { petaFieldKhusus, type FieldKhusus, type NilaiKhusus } from '@/lib/pendataan-khusus/jenis';
@@ -15,24 +13,32 @@ export const PARALEL = 4;
  * Isian Layanan untuk kolom rekap: yang tampil, atau tersembunyi tetapi pernah diisi. Tabel belum ada (migrasi belum
  * diterapkan) = kosong sehingga rekap tetap berjalan; galat lain DILEMPAR agar kolom Khusus tidak hilang diam-diam.
  */
-export async function muatFieldKhusus(supabase: SupabaseClient, layananId: string | undefined): Promise<FieldKhusus[]> {
+export async function muatFieldKhusus(
+  supabase: SupabaseClient, layananId: string | undefined, opsi: { semuaHalaman?: boolean } = {},
+): Promise<FieldKhusus[]> {
   if (!layananId) return [];
-  const { data, error } = await supabase
-    .from('pendataan_khusus_field')
-    .select(KOLOM)
-    .eq('layanan_id', layananId)
-    .order('urut')
-    .order('created_at');
-  if (error) {
-    if (objekBelumAda(error)) return [];
-    throw error;
+  const rows: Record<string, unknown>[] = [];
+  for (let offset = 0; ;) {
+    let qb = supabase.from('pendataan_khusus_field').select(KOLOM).eq('layanan_id', layananId)
+      .order('urut').order('created_at').order('id');
+    // Ekspor membaca seluruh definisi, termasuk riwayat isian nonaktif di atas cap PostgREST.
+    if (opsi.semuaHalaman) qb = qb.range(offset, offset + UKURAN_POTONGAN - 1);
+    const { data, error } = await qb;
+    if (error) {
+      if (objekBelumAda(error)) return [];
+      throw error;
+    }
+    const halaman = (data ?? []) as Record<string, unknown>[];
+    rows.push(...halaman);
+    if (!opsi.semuaHalaman || !halaman.length) break;
+    offset += halaman.length;
   }
-  return ((data ?? []) as Record<string, unknown>[]).map(petaFieldKhusus).filter((f) => !f.tersembunyi || f.pernah_diisi);
+  return rows.map(petaFieldKhusus).filter((f) => !f.tersembunyi || f.pernah_diisi);
 }
 
 /**
- * Jawaban per pelayanan_id (= penanganan.id). Hanya pelayanan dalam lingkup pemanggil yang kembali (RLS). Fungsi belum
- * ada = kosong; galat lain dilempar agar ekspor tidak diam-diam kehilangan data.
+ * Jawaban per pelayanan_id (= penanganan.id). RPC menolak batch yang berisi id di luar lingkup.
+ * Semua galat, termasuk migrasi belum tersedia, dilempar agar ekspor tidak kehilangan data diam-diam.
  */
 export async function muatJawabanKhusus(
   supabase: SupabaseClient,
@@ -44,16 +50,12 @@ export async function muatJawabanKhusus(
   for (let i = 0; i < potongan.length; i += PARALEL) {
     const kelompok = await Promise.all(
       potongan.slice(i, i + PARALEL).map(async (ids) => {
-        const { data, error } = await supabase.rpc('pendataan_khusus_peta', { p_penanganan: ids });
-        if (error) {
-          if (objekBelumAda(error)) return null;
-          throw error;
-        }
+        const { data, error } = await supabase.rpc('rekap_khusus_peta', { p_penanganan: ids });
+        if (error) throw error;
         return (data ?? {}) as Record<string, Record<string, NilaiKhusus>>;
       }),
     );
     for (const peta of kelompok) {
-      if (!peta) continue;
       for (const [id, isian] of Object.entries(peta)) hasil.set(id, isian);
     }
   }

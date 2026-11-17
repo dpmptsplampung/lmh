@@ -22,6 +22,8 @@ function pasang(opsi: { user?: unknown; rpc?: Record<string, Hasil>; layanan?: H
   const eqLayanan = vi.fn();
   const pembangunLayanan = {
     order: vi.fn(() => pembangunLayanan),
+    range: vi.fn(() => pembangunLayanan),
+    is: vi.fn(() => pembangunLayanan),
     eq: vi.fn((...a: unknown[]) => { eqLayanan(...a); return pembangunLayanan; }),
     maybeSingle: vi.fn(() => Promise.resolve({ data: { form_pendataan: 'oss' }, error: null })),
     then: (res: (v: Hasil) => unknown) => Promise.resolve(opsi.layanan ?? { data: [], error: null }).then(res),
@@ -208,6 +210,7 @@ describe('GET /api/admin/rekap/terpadu/export', () => {
     const kunci = { tanggal: '2026-10-20', urut: '2026-10-20T02:00:00+00:00', id: 'x1' };
     rpc.mockImplementation((nama: string, args?: Record<string, unknown>) => {
       if (nama === 'lingkup_data_saya') return thenable({ data: LINGKUP_BIASA, error: null });
+      if (nama === 'lingkup_layanan_saya') return thenable({ data: [{ semua: true, layanan_id: null }], error: null });
       return thenable(args?.p_setelah
         ? { data: { total: null, rows: [{ ...baris, pelayanan_id: 'x2' }], berikut: null }, error: null }
         : { data: { total: null, rows: [baris], berikut: kunci }, error: null });
@@ -244,6 +247,7 @@ describe('GET /api/admin/rekap/terpadu/export (tanpa_form)', () => {
     const { rpc } = pasang({ rpc: { lingkup_data_saya: { data: LINGKUP_BIASA, error: null } } });
     rpc.mockImplementation((nama: string) => {
       if (nama === 'lingkup_data_saya') return thenable({ data: LINGKUP_BIASA, error: null });
+      if (nama === 'lingkup_layanan_saya') return thenable({ data: [{ semua: true, layanan_id: null }], error: null });
       return thenable({ data: { total: null, rows: [baris], berikut: null }, error: null });
     });
     const res = await getExport('dari=2026-10-01&sampai=2026-10-31&tanpa_form=1');
@@ -253,6 +257,7 @@ describe('GET /api/admin/rekap/terpadu/export (tanpa_form)', () => {
     expect(panggilan[0][1]).toMatchObject({ p_tanpa_form: true, p_hitung: false });
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(Buffer.from(await res.arrayBuffer()) as unknown as ArrayBuffer);
+    expect(wb.getWorksheet('Semua')).toBeDefined();
     const teks: string[] = [];
     wb.getWorksheet('Keterangan')!.eachRow((r) => r.eachCell((c) => teks.push(String(c.value ?? ''))));
     expect(teks.join(' ')).toContain('Layanan lain (tanpa Helpdesk OSS dan Non OSS)');
@@ -265,6 +270,7 @@ describe('GET /api/admin/rekap/terpadu/export (tanpa_form)', () => {
     const { rpc } = pasang({ rpc: { lingkup_data_saya: { data: LINGKUP_BIASA, error: null } } });
     rpc.mockImplementation((nama: string) => {
       if (nama === 'lingkup_data_saya') return thenable({ data: LINGKUP_BIASA, error: null });
+      if (nama === 'lingkup_layanan_saya') return thenable({ data: [{ semua: true, layanan_id: null }], error: null });
       return thenable({ data: { total: null, rows: [baris], berikut: null }, error: null });
     });
     await getExport('dari=2026-10-01&sampai=2026-10-31');

@@ -1,4 +1,4 @@
-// Registrasi Pengunjung: walk-in dan scan QR reservasi dalam satu halaman bertab (?tab=walkin|scan).
+// Registrasi Pengunjung: walk-in, scan QR reservasi, dan Buku Tamu dalam satu halaman bertab (?tab=walkin|scan|bukutamu).
 // Komponen bertab memakai useSearchParams, jadi dibungkus Suspense (guide Next.js: useSearchParams).
 import { Suspense } from 'react';
 import PageHeader from '@/components/layout/PageHeader';
@@ -11,7 +11,7 @@ export default function RegistrasiPage() {
     <>
       <PageHeader
         title="Registrasi Pengunjung"
-        description="Daftarkan pengunjung walk-in atau pindai QR reservasi. Tiket antrean baru terbit saat Anda mengeskalasi ke petugas layanan."
+        description="Daftarkan pengunjung walk-in, pindai QR reservasi, atau catat tamu kantor di Buku Tamu. Tiket antrean baru terbit saat Anda mengeskalasi ke petugas layanan."
       />
       <Suspense fallback={<div className={styles.halaman}><Skeleton bentuk="kartu" jumlah={2} label="Memuat registrasi…" /></div>}>
         <RegistrasiPengunjung />

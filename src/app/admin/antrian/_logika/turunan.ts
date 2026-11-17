@@ -58,6 +58,19 @@ export function bolehLihatSemuaLayanan(user: ProfilPetugasAntrean | null): boole
   return user?.role === 'admin' || user?.role === 'front_office';
 }
 
+/**
+ * "Lihat Data" (baca-saja): Admin dan Front Office membuka data pendataan SEMUA tiket (termasuk yang masih menunggu);
+ * Petugas membuka tiket Layanannya sendiri yang sudah berjalan, juga yang dilayani rekan (baca-saja bagi non-pemilik).
+ * Layanan berformulir tetap membuka wizard formulir; Layanan tanpa formulir (Pendataan Khusus) membuka panel baca-saja
+ * jawaban final + draf (GET /api/admin/pelayanan mengembalikan `form_type: null`, `khusus`, `draf`). Bacaan FO lintas
+ * pembuat dicatat server (RPC lihat_data_pelayanan); aksi ubah tidak pernah mengikuti tombol ini (boleh_ubah dihitung
+ * server dari kepemilikan tiket).
+ */
+export function bolehLihatData(user: ProfilPetugasAntrean | null, a: TiketBaris): boolean {
+  if (bolehLihatSemuaLayanan(user)) return true;
+  return user?.role === 'petugas' && !!user.layanan_id && user.layanan_id === a.layanan_id && a.status !== 'menunggu';
+}
+
 // ── Label ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
 export const NADA_STATUS: Record<string, NadaLencana> = {

@@ -2,6 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { bukaDbPenuh, sebagai } from '../../../scripts/lokal-rantai/harness.mjs';
+import { buatPetugasUmkm } from '../../../scripts/lokal-rantai/seed-umkm.mjs';
 let db: Awaited<ReturnType<typeof bukaDbPenuh>>;
 const owner = randomUUID(), other = randomUUID(), officer = randomUUID(), admin = randomUUID();
 const input = { nama: 'Kopi Produk', deskripsi: 'Kopi daerah', jenis: 'Produk', kategori: 'Makanan Olahan',
@@ -16,9 +17,7 @@ beforeAll(async () => {
   await sql('INSERT INTO auth.users(id) VALUES ($1),($2),($3)', [owner, other, officer]);
   await sql('INSERT INTO auth.users(id) VALUES ($1)', [admin]);
   await sql("INSERT INTO public.petugas(auth_user_id,nama,role,aktif) VALUES ($1,'Admin pemberi','admin',true)", [admin]);
-  await sql("INSERT INTO public.petugas(auth_user_id,nama,role,aktif,pemeriksa_umkm) VALUES ($1,'Pemeriksa produk','admin',true,true)", [officer]);
-  const [{ id }] = await sql<{ id: string }>('SELECT id FROM public.petugas WHERE auth_user_id=$1', [officer]);
-  await rpc(admin, 'umkm_atur_pemeriksa', '$1::uuid,true,$2::uuid', [id, randomUUID()]);
+  await buatPetugasUmkm(db, { authUserId: officer, nama: 'Pemeriksa produk' });
 }, 30000);
 afterAll(async () => { await db?.close(); });
 async function validate(data: unknown) {

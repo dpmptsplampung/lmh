@@ -13,7 +13,7 @@ describe('muatJawabanKhusus', () => {
     let aktif = 0;
     let puncak = 0;
     const klien = klienRpc(async (nama, arg) => {
-      expect(nama).toBe('pendataan_khusus_peta');
+      expect(nama).toBe('rekap_khusus_peta');
       aktif++;
       puncak = Math.max(puncak, aktif);
       await new Promise((r) => setTimeout(r, 5));
@@ -37,9 +37,9 @@ describe('muatJawabanKhusus', () => {
     expect(klien.rpc).not.toHaveBeenCalled();
   });
 
-  it('fungsi belum ada (migrasi belum diterapkan): peta kosong; galat lain dilempar', async () => {
+  it('fungsi belum ada dan galat lain dilempar agar rekap tidak mengosongkan jawaban diam-diam', async () => {
     const hilang = klienRpc(async () => ({ data: null, error: { code: 'PGRST202', message: 'x' } }));
-    expect((await muatJawabanKhusus(hilang, ['a'])).size).toBe(0);
+    await expect(muatJawabanKhusus(hilang, ['a'])).rejects.toMatchObject({ code: 'PGRST202' });
     const rusak = klienRpc(async () => ({ data: null, error: { code: '57014', message: 'timeout' } }));
     await expect(muatJawabanKhusus(rusak, ['a'])).rejects.toMatchObject({ code: '57014' });
   });
@@ -62,5 +62,26 @@ describe('muatFieldKhusus', () => {
   it('tabel belum ada: kosong; galat lain DILEMPAR (kolom tidak boleh hilang diam-diam)', async () => {
     expect(await muatFieldKhusus(klienTabel({ data: null, error: { code: 'PGRST205', message: 'x' } }), 'l')).toEqual([]);
     await expect(muatFieldKhusus(klienTabel({ data: null, error: { code: '57014', message: 'timeout' } }), 'l')).rejects.toMatchObject({ code: '57014' });
+  });
+});
+
+
+describe('definisi Khusus ekspor berhalaman', () => {
+  it('mengambil semua definisi meski cap server lebih kecil; urutan stabil dan kolom aktif kosong tetap ada', async () => {
+    const sumber = Array.from({ length: 1203 }, (_, i) => ({ id: String(i), layanan_id: 'l', label: `Field ${i}`, urut: i,
+      jenis: 'teks_singkat', tersembunyi: i === 1, pernah_diisi: false }));
+    const ranges: number[][] = [];
+    const supabase = { from: () => {
+      let offset = 0;
+      const b: Record<string, unknown> = {};
+      for (const m of ['select', 'eq', 'order']) b[m] = () => b;
+      b.range = (from: number, to: number) => { offset = from; ranges.push([from, to]); return b; };
+      b.then = (res: (v: unknown) => unknown) => res({ data: sumber.slice(offset, offset + 300), error: null });
+      return b;
+    } } as unknown as SupabaseClient;
+    const fields = await muatFieldKhusus(supabase, 'l', { semuaHalaman: true });
+    expect(fields).toHaveLength(1202);
+    expect(fields.at(-1)?.label).toBe('Field 1202');
+    expect(ranges.map(r => r[0])).toEqual([0, 300, 600, 900, 1200, 1203]);
   });
 });

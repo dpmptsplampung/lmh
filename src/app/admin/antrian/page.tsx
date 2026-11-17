@@ -1,9 +1,8 @@
 'use client';
 
 // Halaman antrean admin (WP-22, A3, B4; dipecah di refaktor G5): hanya merakit. Muat + Realtime = _hook/useAntrean,
-// tanggal/status/halaman di URL = useFilterAntrian, aksi tiket (RPC atomik) = useAksiAntrean, modal = useModalAntrian
-// (satu union), rekap absen = useRekapAbsensi; tampilan di _bagian/, turunan murni di _logika/, query di lib/data/antrean.ts.
-// Aturan kepemilikan tiket (Mulai/Selesai, Ambil alih, Alihkan, Kembalikan ke FO) dijelaskan di header useAksiAntrean.
+// tanggal/status/Layanan/halaman di URL = useFilterAntrian (+ pilihan Layanan Admin/FO = useSaringanLayanan), aksi tiket =
+// useAksiAntrean (aturan kepemilikan tiket di headernya), modal = useModalAntrian, rekap absen = useRekapAbsensi.
 import { Suspense, useState } from 'react';
 import { AlertCircle, Clock, TrendingUp, Users } from 'lucide-react';
 import PageHeader from '@/components/layout/PageHeader';
@@ -12,21 +11,21 @@ import Kartu from '@/components/ui/Kartu';
 import KartuStatistik from '@/components/ui/KartuStatistik';
 import Skeleton from '@/components/ui/Skeleton';
 import StatusKosong from '@/components/ui/StatusKosong';
-import CatatanKeadaan from '@/components/ui/CatatanKeadaan';
 import PemilihTanggal from '@/components/ui/PemilihTanggal';
 import CalendarBanner from '@/components/admin/CalendarBanner';
 import RoleNote from '@/components/admin/RoleNote';
 import PemberitahuanAmbilAlih from '@/components/admin/PemberitahuanAmbilAlih';
 import WalkinWizard from '@/components/WalkinWizard';
 import { useToast } from '@/components/Toast';
-import { jendelaTanggalFo } from '@/lib/fo/akses-antrean';
 import { todayWIB } from '@/lib/time';
 import { formatWaktu } from '@/lib/utils';
-import { judulHalaman, namaLayananProfil, panelBerlaku, tanggalPanjang } from './_logika/turunan';
+import { bolehLihatSemuaLayanan, judulHalaman, namaLayananProfil, panelBerlaku, tanggalPanjang } from './_logika/turunan';
 import { useFilterAntrian } from './_hook/useFilterAntrian';
 import { UKURAN_HALAMAN_ANTREAN, useAntrean } from './_hook/useAntrean';
 import { useModalAntrian } from './_hook/useModalAntrian';
 import { useAksiAntrean } from './_hook/useAksiAntrean';
+import { useSaringanLayanan } from './_hook/useSaringanLayanan';
+import { useIsianKhususLayanan } from './_hook/useIsianKhususLayanan';
 import { useRekapAbsensi } from './_hook/useRekapAbsensi';
 import CatatanPembaruan from './_bagian/CatatanPembaruan';
 import DaftarAntrean from './_bagian/DaftarAntrean';
@@ -58,24 +57,22 @@ function AntrianMemuat() {
 
 function AntrianIsi() {
   const { toast } = useToast();
-  const { tanggal, filterStatus, halaman, pesanTanggal, ubahTanggal, gantiStatus, gantiHalaman } = useFilterAntrian();
+  const { tanggal, filterStatus, layanan, halaman, ubahTanggal, gantiStatus, gantiLayanan, gantiHalaman } =
+    useFilterAntrian();
   const {
     antrian, antrianPanel, currentUser, unassigned, loading, menyegarkan, galatMuat, galatSegar, terakhir,
     totalCount, totalHarian, aksesFo, serverStats, catatanEskalasi, statusSurvei, muat, muatSenyap,
-  } = useAntrean({ tanggal, filterStatus, halaman });
+  } = useAntrean({ tanggal, filterStatus, layananId: layanan, halaman });
+  const saringanLayanan = useSaringanLayanan(currentUser, layanan, gantiLayanan);
   const modal = useModalAntrian([antrian, antrianPanel]);
-  const { sedangProses, sedangPanggil, pengumuman, panggil, mulai, selesaikan } = useAksiAntrean({
-    toast, muatSenyap, buka: modal.buka, bukaQrTiket: modal.bukaQrTiket,
-  });
+  const { sedangProses, sedangPanggil, pengumuman, panggil, mulai, selesaikan } = useAksiAntrean({ toast, muatSenyap, buka: modal.buka });
+  const layananBerisian = useIsianKhususLayanan([antrian, antrianPanel], currentUser);
   const rekap = useRekapAbsensi({ tanggal, currentUser });
-  const aksi: AksiTiket = { sedangProses, sedangPanggil, panggil, mulai, selesaikan, buka: modal.buka };
-  // Panel Sekarang: Layanan yang dipilih Admin/FO (null = Layanan pertama yang punya tiket menunggu).
+  const aksi: AksiTiket = { sedangProses, sedangPanggil, panggil, mulai, selesaikan, buka: modal.buka, layananBerisian };
   const [panelLayananId, setPanelLayananId] = useState<string | null>(null);
 
   const layananNamaHeader = namaLayananProfil(currentUser);
-  // FO non-Koordinator hanya boleh membuka [hari ini-7, hari ini+1] (server menegakkan; di sini mencegah galat).
-  const jendelaFo = jendelaTanggalFo(currentUser);
-  // Panel Sekarang (A1): hanya untuk hari ini dan saat tab bukan "Selesai" (data panel terpisah dari halaman tabel).
+  // Panel Sekarang (A1): hanya hari ini dan bukan tab "Selesai".
   const tampilPanel = !unassigned && !galatMuat && !loading && panelBerlaku(tanggal, filterStatus, todayWIB());
 
   return (
@@ -91,29 +88,17 @@ function AntrianIsi() {
         }
       >
         <div className={styles.aksiKepala}>
-          <WalkinWizard
-            fixedLayananId={currentUser?.role === 'petugas' ? currentUser.layanan_id : null}
-            onSuccess={muatSenyap}
-            triggerLabel="+ Walk-in"
-          />
+          {bolehLihatSemuaLayanan(currentUser) && <WalkinWizard onSuccess={muatSenyap} triggerLabel="+ Walk-in" />}
           <PemilihTanggal
             nilai={tanggal}
-            onUbah={(nilai) => ubahTanggal(nilai, jendelaFo)}
+            onUbah={ubahTanggal}
             label="Tanggal antrean"
-            min={jendelaFo?.min}
-            max={jendelaFo?.max}
-            aria-describedby={pesanTanggal ? 'pesan-tanggal-antrian' : undefined}
           />
         </div>
       </PageHeader>
 
       <IsiHalaman>
         <CalendarBanner />
-        {pesanTanggal && (
-          <CatatanKeadaan jenis="galat" judul="Tanggal di luar batas">
-            <span id="pesan-tanggal-antrian">{pesanTanggal}</span>
-          </CatatanKeadaan>
-        )}
         <PemberitahuanAmbilAlih petugasId={currentUser?.id} />
         {currentUser?.role === 'petugas' && layananNamaHeader && (
           <RoleNote>Anda melayani antrean {layananNamaHeader}. Pengunjung layanan lain diatur Front Office.</RoleNote>
@@ -166,6 +151,7 @@ function AntrianIsi() {
               tanggal={tanggal}
               filterStatus={filterStatus}
               onGantiStatus={gantiStatus}
+              saringanLayanan={saringanLayanan}
               halaman={halaman}
               ukuranHalaman={UKURAN_HALAMAN_ANTREAN}
               total={totalCount}
@@ -186,6 +172,7 @@ function AntrianIsi() {
         qr={modal.qr}
         pengguna={currentUser}
         tutup={modal.tutup}
+        buka={modal.buka}
         bukaQrTiket={modal.bukaQrTiket}
         muatSenyap={muatSenyap}
       />

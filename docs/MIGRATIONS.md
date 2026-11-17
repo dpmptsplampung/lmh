@@ -1630,3 +1630,15 @@ Pemeriksaan baca-saja terhadap produksi (pooler Supabase `aws-1-ap-southeast-1`,
   JANGAN diterapkan ulang: migrasi itu membuat ulang policy `hari_libur_staff_write` yang sengaja di-DROP oleh `202610080002`.
 - **Tidak ada migrasi yang menunggu untuk diterapkan** pada kode refaktor G0-G10.
 - Jangan menjalankan `supabase db push --include-all` di produksi: ledger belum diisi, jadi 57 migrasi itu dianggap pending.
+
+## Peran Petugas Layanan / FO / Admin (2026-11-16, DITULIS, BELUM DITERAPKAN ke produksi)
+
+Keputusan: [ADR 0004](adr/0004-lingkup-peran-petugas-layanan-fo-admin.md). Bukti lokal: skenario PGlite `scripts/lokal-rantai/skenario-baru-*.mjs`. Terapkan berurutan, satu jendela dengan rilis UI `/petugas/*` (UI baru memanggil RPC `staf_modul`, `lihat_data_pelayanan`, `pendataan_khusus_*`).
+
+| Versi | Isi |
+|---|---|
+| `202611160001_lingkup_layanan_staf.sql` | `layanan.modul` (umkm/investasi), helper `lingkup_layanan_saya()` / `staf_modul()`; petugas membaca seluruh layanannya, FO membaca semua (baca-saja), rekap berlingkup; RPC UMKM memakai modul; `umkm_atur_pemeriksa` dihentikan; `lihat_data_pelayanan` + audit. |
+| `202611160002_pendataan_khusus_langkah.sql` | `layanan_mulai` membuat tahap penanganan; draf `pendataan_khusus_draf` + RPC simpan/baca; definisi aktif terbaru; satu jalur Selesai dengan validasi wajib; saklar `layanan.pendataan_khusus_aktif`. |
+| `202611160003_buku_tamu_ekspor.sql` | `buku_tamu.waktu_keluar`, `menemui_petugas_id`, RPC checkout idempoten. |
+
+Sebelum menerapkan: tampilkan host, daftar tiga migrasi, dan minta persetujuan pemilik (Batas keras CLAUDE.md). Isi `layanan.modul` untuk layanan produksi (Matchmaking UMKM = `umkm`, Investment Gallery = `investasi`) dicek dulu.

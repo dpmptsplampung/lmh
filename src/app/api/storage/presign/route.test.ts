@@ -7,13 +7,15 @@ vi.mock('@/lib/storage/r2',()=>({r2Tersedia:vi.fn(()=>true),bucketTerpisah:vi.fn
 import {createClient} from '@/lib/supabase/server';
 import {presignPut,headObject,bucketTerpisah} from '@/lib/storage/r2';
 import {POST} from './route';
-let role:string,flag:boolean,aktif:boolean|null,flagError:boolean,session:boolean,sessionError:boolean;
+let role:string,flag:boolean,aktif:boolean|null,modul:string|null,modulError:boolean,session:boolean,sessionError:boolean;
 let rpc:ReturnType<typeof vi.fn>;
 const req=(area='umkm-draf')=>new Request('http://localhost/api/storage/presign',{method:'POST',body:JSON.stringify({area,path:'foto.jpg',mime:'image/jpeg',ukuran:100})}) as NextRequest;
-beforeEach(()=>{vi.clearAllMocks();vi.mocked(bucketTerpisah).mockReturnValue(true);role='petugas';flag=true;aktif=true;flagError=false;session=true;sessionError=false;
- rpc=vi.fn(async()=>({data:session,error:sessionError?{code:'42501'}:null}));
+beforeEach(()=>{vi.clearAllMocks();vi.mocked(bucketTerpisah).mockReturnValue(true);role='petugas';flag=false;aktif=true;modul='umkm';modulError=false;session=true;sessionError=false;
+ rpc=vi.fn(async(nama:string)=>nama==='staf_modul'
+   ? {data:modul,error:modulError?{code:'42883'}:null}
+   : {data:session,error:sessionError?{code:'42501'}:null});
  vi.mocked(createClient).mockResolvedValue({auth:{getUser:async()=>({data:{user:{id:'u1'}}})},rpc,
- from:()=>({select:(columns:string)=>({eq:()=>({maybeSingle:async()=>columns.includes('pemeriksa_umkm')?{data:flagError?null:{role,aktif,pemeriksa_umkm:flag},error:flagError?{code:'42703'}:null}:{data:{role,aktif},error:null}})})})} as unknown as Awaited<ReturnType<typeof createClient>>);
+ from:()=>({select:()=>({eq:()=>({maybeSingle:async()=>({data:{role,aktif,pemeriksa_umkm:flag},error:null})})})})} as unknown as Awaited<ReturnType<typeof createClient>>);
 });
 describe('presign area draf UMKM dengan JWT pengguna',()=>{
  it.each([['image/jpeg','jpg'],['image/png','png'],['image/webp','webp']])(
@@ -30,10 +32,12 @@ describe('presign area draf UMKM dengan JWT pengguna',()=>{
      });
    },
  );
- it.each(['petugas','admin'])('pemeriksa %s aktif boleh mengunggah privat',async r=>{role=r;const res=await POST(req());expect(res.status).toBe(200);expect(rpc).toHaveBeenCalledWith('sesi_valid');expect(await res.json()).not.toHaveProperty('url');});
- it.each(['petugas','admin'])('%s tanpa flag ditolak sebelum R2',async r=>{role=r;flag=false;expect((await POST(req())).status).toBe(403);expect(presignPut).not.toHaveBeenCalled();expect(headObject).not.toHaveBeenCalled();});
- it('FO tetap ditolak meski flag true',async()=>{role='front_office';expect((await POST(req())).status).toBe(403);expect(presignPut).not.toHaveBeenCalled();expect(headObject).not.toHaveBeenCalled();});
- it('flag tidak terbaca/migrasi belum diterapkan ditolak',async()=>{flagError=true;expect((await POST(req())).status).toBe(403);expect(presignPut).not.toHaveBeenCalled();expect(headObject).not.toHaveBeenCalled();});
+ it.each(['petugas','admin'])('%s aktif boleh mengunggah privat tanpa flag lama',async r=>{role=r;const res=await POST(req());expect(res.status).toBe(200);expect(rpc).toHaveBeenCalledWith('sesi_valid');expect(await res.json()).not.toHaveProperty('url');});
+ it.each(['investasi',null])('petugas modul %s ditolak walau flag lama true',async m=>{modul=m;flag=true;expect((await POST(req())).status).toBe(403);expect(presignPut).not.toHaveBeenCalled();expect(headObject).not.toHaveBeenCalled();});
+ it('admin tetap boleh saat modul tidak tersedia dan tidak memanggil staf_modul',async()=>{role='admin';modul=null;modulError=true;expect((await POST(req())).status).toBe(200);expect(rpc).not.toHaveBeenCalledWith('staf_modul');});
+ it('FO tetap ditolak meski flag true',async()=>{role='front_office';flag=true;expect((await POST(req())).status).toBe(403);expect(presignPut).not.toHaveBeenCalled();expect(headObject).not.toHaveBeenCalled();});
+ it('RPC modul gagal/migrasi belum diterapkan ditolak sebelum R2',async()=>{modulError=true;expect((await POST(req())).status).toBe(403);expect(presignPut).not.toHaveBeenCalled();expect(headObject).not.toHaveBeenCalled();});
+ it('RPC modul melempar ditolak sebelum R2',async()=>{rpc.mockRejectedValueOnce(new Error('jaringan'));expect((await POST(req())).status).toBe(403);expect(presignPut).not.toHaveBeenCalled();expect(headObject).not.toHaveBeenCalled();});
  it.each([false,null])('aktif %s tidak diterima sebagai pemeriksa aktif',async a=>{aktif=a;expect((await POST(req())).status).toBe(403);});
  it('sesi digantikan atau tidak terbaca ditolak',async()=>{session=false;expect((await POST(req())).status).toBe(403);session=true;sessionError=true;expect((await POST(req())).status).toBe(403);});
  it('bucket yang sama menolak draf sebelum memberi URL atau membaca objek', async () => {

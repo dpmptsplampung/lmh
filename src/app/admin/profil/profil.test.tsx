@@ -368,10 +368,11 @@ describe('profil staf: Keamanan', () => {
 
 describe('tautan menu Profil Saya', () => {
   it.each(['admin', 'petugas', 'front_office'] as const)('%s melihat tautan Profil Saya dan boleh membuka halamannya', async (role) => {
-    const { buildNavTree, canAccessAdminPath } = await import('@/lib/admin-nav');
+    const { buildNavTree, bolehAksesRute } = await import('@/lib/admin-nav');
+    const href = role === 'petugas' ? '/petugas/profil' : '/admin/profil';
     const hrefs = JSON.stringify(buildNavTree(role));
-    expect(hrefs).toContain('/admin/profil');
+    expect(hrefs).toContain(href);
     expect(hrefs).toContain('Profil Saya');
-    expect(canAccessAdminPath(role, '/admin/profil')).toBe(true);
+    expect(bolehAksesRute(role, href)).toBe(true);
   });
 });

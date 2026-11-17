@@ -1,20 +1,25 @@
 'use client';
 
 // Modal halaman antrean (rencana refaktor 2026-11-11 tugas 5.3, SPEC bagian 7): satu state union menggantikan tujuh
-// state modal terpisah (ambil alih + mode, alihkan, kembalikan ke FO, selesai eskalasi, koreksi, wizard, QR survei).
+// state modal terpisah (ambil alih + mode, alihkan, kembalikan ke FO, selesai layanan, koreksi, wizard, QR survei).
 //
 // Dua lapis dalam SATU state:
-// - `utama`: dialog tiket (enam jenis selain surveiQr), saling meniadakan.
+// - `utama`: dialog tiket (jenis selain surveiQr), saling meniadakan.
 // - `qr`: dialog QR Pesan Perilaku, yang dibuka DI ATAS dialog sumber oleh onSuccess-nya. Lapis terpisah karena
 //   (a) dialog tiket memanggil `await onSuccess(); onClose()`: onSuccess membuka QR, onClose menutup sumber, dan QR harus
-//   tetap terbuka; (b) jalur "tampilan basi" SelesaiEskalasiModal memanggil onSuccess TANPA onClose: dialog sumber tetap
+//   tetap terbuka; (b) jalur "tampilan basi" SelesaiLayananModal memanggil onSuccess TANPA onClose: dialog sumber tetap
 //   terbuka dan QR (spekulatif, menutup sendiri bila tanpa token) tampil di atasnya, sama seperti sebelum refaktor.
 // Semua penulisan memakai updater fungsional: penutup yang merupakan closure render lama tetap benar.
 import { useCallback, useState } from 'react';
 import type { TiketBaris } from '@/lib/data/antrean';
 
 export type JenisModalAntrian =
-  | 'ambilAlih' | 'alihkan' | 'kembalikanKeFo' | 'selesaiEskalasi' | 'koreksi' | 'wizard' | 'surveiQr';
+  | 'ambilAlih' | 'alihkan' | 'kembalikanKeFo' | 'selesaiLayanan' | 'koreksi' | 'wizard' | 'surveiQr'
+  // G5: wizard Mulai Layanan dua langkah. `mulaiLayanan` dibuka di langkah 1 setelah Mulai; `isiPendataan` dibuka dari
+  // baris antrean langsung di langkah 2 (isian Pendataan Khusus + draf).
+  | 'mulaiLayanan' | 'isiPendataan'
+  // G5b: Lihat Data baca-saja untuk Layanan tanpa formulir tetap (jawaban final + draf Pendataan Khusus).
+  | 'lihatKhusus';
 
 export type ModalAntrian = null | { jenis: JenisModalAntrian; tiket: TiketBaris };
 

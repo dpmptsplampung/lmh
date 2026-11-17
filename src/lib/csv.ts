@@ -8,7 +8,9 @@ export interface CsvColumn {
 }
 
 export function escapeCsvCell(value: unknown): string {
-  const s = value == null ? '' : String(value);
+  const raw = value == null ? '' : String(value);
+  // Angka tetap numerik; teks dari luar tidak boleh berubah menjadi formula spreadsheet.
+  const s = typeof value === 'string' && /^(?:\s*[=+\-@]|[\t\r\n])/.test(raw) ? `'${raw}` : raw;
   if (/[",\r\n]/.test(s)) {
     return `"${s.replace(/"/g, '""')}"`;
   }

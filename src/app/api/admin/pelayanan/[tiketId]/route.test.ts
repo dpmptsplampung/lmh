@@ -533,7 +533,7 @@ describe('API Route /api/admin/pelayanan/[tiketId]', () => {
     const pasangGet = async (tiket: Record<string, unknown>, oss: unknown = null, bolehSunting = false) => {
       const serverMod = await import('@/lib/supabase/server');
       (serverMod.createClient as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-        rpc: vi.fn(async () => ({ data: bolehSunting, error: null })),
+        rpc: vi.fn(async (nama: string) => ({ data: nama === 'lihat_data_pelayanan' ? { oss, perizinan: null, khusus: [], definisi_khusus: [], draf: null } : bolehSunting, error: null })),
         auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'u' } }, error: null }) },
         from: vi.fn((table: string) => {
           if (table === 'petugas') return mockPetugas();
@@ -792,6 +792,7 @@ describe('API Route /api/admin/pelayanan/[tiketId]', () => {
         then: (res: (v: unknown) => unknown) => res({ data: topik, error: null }),
       };
       (serverMod.createClient as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+        rpc: vi.fn().mockResolvedValue({ data: { oss: null, perizinan: null, khusus: [], definisi_khusus: [], draf: null }, error: null }),
         auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'u' } }, error: null }) },
         from: vi.fn((table: string) => {
           if (table === 'petugas') return mockPetugas();
@@ -822,6 +823,128 @@ describe('API Route /api/admin/pelayanan/[tiketId]', () => {
       const json = await (await GET(buildRequest('GET'), ctx)).json();
       expect(json).toMatchObject({ dari_eskalasi: false });
       expect(topikChain.select).not.toHaveBeenCalled();
+    });
+  });
+
+  // G3 (migrasi 202611160001): "Lihat Data" memanggil lihat_data_pelayanan(p_tiket) lewat klien pengguna SEBELUM data dikirim.
+  describe('Audit Lihat Data (G2/G3)', () => {
+    const ctx = { params: Promise.resolve({ tiketId: 't1' }) };
+    const chainOss = (data: unknown) => ({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({ data }),
+    });
+
+    const pasangGet = async (
+      peran: Record<string, unknown>,
+      hasilAudit: { data?: unknown; error: { message: string; code?: string } | null } | 'lempar',
+      tiket: Record<string, unknown> = {},
+    ) => {
+      const ossChain = chainOss(null);
+      const rpc = vi.fn(async (nama: string) => {
+        if (nama === 'lihat_data_pelayanan') {
+          if (hasilAudit === 'lempar') throw new Error('jaringan putus');
+          return { data: { oss: null, perizinan: null, khusus: [], definisi_khusus: [], draf: null }, ...hasilAudit };
+        }
+        return { data: false, error: null };
+      });
+      const serverMod = await import('@/lib/supabase/server');
+      (serverMod.createClient as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+        rpc,
+        auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'u' } }, error: null }) },
+        from: vi.fn((table: string) => {
+          if (table === 'petugas') return mockPetugas(peran);
+          if (table === 'tiket_antrean') {
+            return mockTiket({
+              nomor_display: 'A-001',
+              layanan: { nama: 'Helpdesk OSS', form_pendataan: 'oss' },
+              kunjungan: { id: 'k1', nama: 'Budi', kontak_hp: '0812', pengunjung_id: null },
+              ...tiket,
+            });
+          }
+          if (table === 'pelayanan_oss') return ossChain;
+          return {};
+        }),
+      });
+      return { GET: (await import('./route')).GET, rpc, ossChain };
+    };
+
+    const FO = { id: 'fo1', role: 'front_office', layanan_id: null };
+
+    it('FO membuka tiket layanan lain: lihat_data_pelayanan dipanggil satu kali (argumen hanya id tiket), lalu data terkirim', async () => {
+      const { GET, rpc } = await pasangGet(FO, { error: null }, { layanan_id: 'l-lain', dilayani_oleh: 'p-lain' });
+      const res = await GET(buildRequest('GET'), ctx);
+      expect(res.status).toBe(200);
+      expect((await res.json()).nama_pemohon).toBe('Budi');
+      const panggilanAudit = rpc.mock.calls.filter(([nama]) => nama === 'lihat_data_pelayanan');
+      expect(panggilanAudit).toEqual([['lihat_data_pelayanan', { p_tiket: 't1' }]]);
+    });
+
+    it('FO baca-saja: boleh_ubah dan boleh_selesaikan false walau tiket sedang dilayani', async () => {
+      const { GET } = await pasangGet(FO, { error: null }, { dilayani_oleh: 'p-lain' });
+      const json = await (await GET(buildRequest('GET'), ctx)).json();
+      expect(json).toMatchObject({ boleh_ubah: false, boleh_selesaikan: false });
+    });
+
+    it('audit gagal (galat database): 500, tidak ada data pelayanan terkirim, tabel form tidak dibaca', async () => {
+      const { GET, ossChain } = await pasangGet(FO, { error: { message: 'insert gagal', code: 'XX000' } });
+      const res = await GET(buildRequest('GET'), ctx);
+      expect(res.status).toBe(500);
+      const teks = JSON.stringify(await res.json());
+      expect(teks).not.toContain('Budi');
+      expect(teks).not.toContain('insert gagal');
+      expect(ossChain.select).not.toHaveBeenCalled();
+    });
+
+    it('RPC mencakup Pendataan Khusus tanpa form tetap dan tidak membaca tabel form langsung', async () => {
+      const khusus = [{ field_id: 'f1', label: 'Label terbaru', jenis: 'teks_singkat', nilai: 'Jawaban', label_snapshot: 'Label lama' }];
+      const draf = { tiket_id: 't1', jawaban: { f1: 'Draf' }, diubah_oleh: 'p1', updated_at: '2026-11-16T00:00:00Z' };
+      const { GET, ossChain } = await pasangGet(FO, {
+        data: { oss: null, perizinan: null, khusus, definisi_khusus: [], draf }, error: null,
+      }, { layanan: { nama: 'Layanan Khusus', form_pendataan: null } });
+      const res = await GET(buildRequest('GET'), ctx);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ form_type: null, khusus, draf });
+      expect(ossChain.select).not.toHaveBeenCalled();
+      expect(res.headers.get('Cache-Control')).toBe('no-store');
+    });
+
+    it('RPC tanpa payload atau payload rusak ditolak, tanpa fallback baca tabel', async () => {
+      for (const data of [null, false, {}]) {
+        const { GET, ossChain } = await pasangGet(FO, { data, error: null });
+        const res = await GET(buildRequest('GET'), ctx);
+        expect(res.status).toBe(500);
+        expect(ossChain.select).not.toHaveBeenCalled();
+      }
+    });
+
+    it('audit melempar (jaringan): tetap fail-closed 500', async () => {
+      const { GET } = await pasangGet(FO, 'lempar');
+      expect((await GET(buildRequest('GET'), ctx)).status).toBe(500);
+    });
+
+    it.each([
+      ['SESI_TIDAK_SAH: sesi digantikan', 401],
+      ['FORBIDDEN: di luar lingkup', 403],
+      ['NOT_FOUND: tiket tidak ada', 404],
+      ['DATA_TERLALU_BESAR: data melebihi batas', 413],
+    ])('audit menolak "%s" -> HTTP %i, tanpa data', async (message, status) => {
+      const { GET } = await pasangGet(FO, { error: { message, code: '42501' } });
+      const res = await GET(buildRequest('GET'), ctx);
+      expect(res.status).toBe(status);
+      expect(JSON.stringify(await res.json())).not.toContain('Budi');
+    });
+
+    it('petugas dalam lingkup juga melewati RPC (DB yang memutuskan perlu-tidaknya baris audit)', async () => {
+      const { GET, rpc } = await pasangGet({ role: 'petugas', layanan_id: 'l1' }, { error: null });
+      expect((await GET(buildRequest('GET'), ctx)).status).toBe(200);
+      expect(rpc).toHaveBeenCalledWith('lihat_data_pelayanan', { p_tiket: 't1' });
+    });
+
+    it('petugas layanan lain ditolak sebelum audit dan sebelum data (403)', async () => {
+      const { GET, rpc } = await pasangGet({ role: 'petugas', layanan_id: 'l9' }, { error: null });
+      expect((await GET(buildRequest('GET'), ctx)).status).toBe(403);
+      expect(rpc).not.toHaveBeenCalledWith('lihat_data_pelayanan', expect.anything());
     });
   });
 });

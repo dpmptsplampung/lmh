@@ -29,6 +29,9 @@ interface ClientOpts {
   sesiError?: { message: string };
   sesiRejects?: Error;
   sesiHang?: boolean;
+  // Balasan RPC staf_modul (bawaan null); modulError = RPC mengembalikan { error }.
+  modul?: unknown;
+  modulError?: { message: string };
 }
 
 const buildRequest = (url: string, headers?: HeadersInit): NextRequest => {
@@ -75,7 +78,7 @@ describe('proxy — request ID propagation', () => {
 });
 
 const mockCreateServerClient = async ({
-  user, petugasRow, authFailure, roleFailure, sesiStatus = 'ok', sesiError, sesiRejects, sesiHang,
+  user, petugasRow, authFailure, roleFailure, sesiStatus = 'ok', sesiError, sesiRejects, sesiHang, modul = null, modulError,
 }: ClientOpts) => {
   const ssrMod = await import('@supabase/ssr');
   const createServerClient = ssrMod.createServerClient as unknown as Mock;
@@ -97,7 +100,10 @@ const mockCreateServerClient = async ({
         : Promise.resolve({ data: { user }, error: null })),
     },
     from: vi.fn().mockReturnValue(fromChain),
-    rpc: vi.fn().mockImplementation(() => {
+    rpc: vi.fn().mockImplementation((nama: string) => {
+      if (nama === 'staf_modul') {
+        return Promise.resolve(modulError ? { data: null, error: modulError } : { data: modul, error: null });
+      }
       if (sesiHang) return new Promise(() => undefined);
       if (sesiRejects) return Promise.reject(sesiRejects);
       return Promise.resolve(sesiError ? { data: null, error: sesiError } : { data: sesiStatus, error: null });
@@ -229,24 +235,41 @@ describe('proxy — /admin with JWT app_metadata.role (no role DB query)', () =>
       user: { id: 'u-1', app_metadata: { role: 'petugas' } },
     });
     const { proxy } = await import('./proxy');
-    const res = await proxy(buildRequest('http://localhost/admin'));
+    const res = await proxy(buildRequest('http://localhost/petugas/antrean'));
     expect(res.status).toBe(200);
     expectRequestId(res);
     expect(mockClient.from).toHaveBeenCalledTimes(1);
   });
 
-  it('memaksa /admin/profil?ganti=1 bila wajib_ganti_sandi, kecuali di /admin/profil', async () => {
+  it('memaksa halaman profil peran ?ganti=1 bila wajib_ganti_sandi, kecuali di halaman profil itu', async () => {
     const m = await mockCreateServerClient({
       user: { id: 'u-1', app_metadata: { role: 'petugas' } },
       petugasRow: { wajib_ganti_sandi: true },
     });
     const { proxy } = await import('./proxy');
-    const res = await proxy(buildRequest('http://localhost/admin/antrian'));
-    expect(res.headers.get('location')).toMatch(/\/admin\/profil\?ganti=1/);
+    const res = await proxy(buildRequest('http://localhost/petugas/antrean'));
+    expect(res.headers.get('location')).toBe('http://localhost/petugas/profil?ganti=1');
     m.mockClient.from.mockClear();
-    const ok = await proxy(buildRequest('http://localhost/admin/profil'));
+    const ok = await proxy(buildRequest('http://localhost/petugas/profil'));
     expect(ok.status).toBe(200);
     expect(m.mockClient.from).not.toHaveBeenCalled();
+  });
+
+  it('admin dan Front Office tetap dipaksa ke /admin/profil?ganti=1', async () => {
+    for (const role of ['admin', 'front_office']) {
+      vi.resetModules();
+      const m = await mockCreateServerClient({
+        user: { id: 'u-1', app_metadata: { role } },
+        petugasRow: { wajib_ganti_sandi: true },
+      });
+      const { proxy } = await import('./proxy');
+      const res = await proxy(buildRequest('http://localhost/admin/antrian'));
+      expect(res.headers.get('location'), role).toBe('http://localhost/admin/profil?ganti=1');
+      m.mockClient.from.mockClear();
+      const ok = await proxy(buildRequest('http://localhost/admin/profil'));
+      expect(ok.status, role).toBe(200);
+      expect(m.mockClient.from).not.toHaveBeenCalled();
+    }
   });
 
   it('redirects to /me when app_metadata.role = pengunjung (no DB query)', async () => {
@@ -310,7 +333,7 @@ describe('proxy — /me route (no role check)', () => {
   });
 });
 
-describe('proxy — sesi tunggal staf (/admin)', () => {
+describe('proxy — sesi tunggal staf (/petugas)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.resetModules();
@@ -322,7 +345,7 @@ describe('proxy — sesi tunggal staf (/admin)', () => {
   it.each(['ok', 'transisi', 'bukan_staf'])('status %s melanjutkan halaman dan memanggil sesi_status sekali', async (sesiStatus) => {
     const { mockClient } = await mockCreateServerClient({ user: staf, sesiStatus });
     const { proxy } = await import('./proxy');
-    const res = await proxy(buildRequest('http://localhost/admin/antrian'));
+    const res = await proxy(buildRequest('http://localhost/petugas/antrean'));
     expect(res.status).toBe(200);
     expect(mockClient.rpc).toHaveBeenCalledTimes(1);
     expect(mockClient.rpc).toHaveBeenCalledWith('sesi_status');
@@ -331,7 +354,7 @@ describe('proxy — sesi tunggal staf (/admin)', () => {
   it.each(['digantikan', 'idle', 'tidak_terdaftar'])('status %s dialihkan ke /login dengan alasan yang sama', async (sesiStatus) => {
     await mockCreateServerClient({ user: staf, sesiStatus });
     const { proxy } = await import('./proxy');
-    const res = await proxy(buildRequest('http://localhost/admin/antrian', { 'x-request-id': 'req-sesi' }));
+    const res = await proxy(buildRequest('http://localhost/petugas/antrean', { 'x-request-id': 'req-sesi' }));
     expect(res.headers.get('location')).toBe(`http://localhost/login?alasan=${sesiStatus}`);
     expectRequestId(res);
   });
@@ -339,7 +362,7 @@ describe('proxy — sesi tunggal staf (/admin)', () => {
   it('sesi tak sah menang atas paksaan ganti sandi (cek sesi mendahului)', async () => {
     await mockCreateServerClient({ user: staf, sesiStatus: 'digantikan', petugasRow: { wajib_ganti_sandi: true } });
     const { proxy } = await import('./proxy');
-    const res = await proxy(buildRequest('http://localhost/admin/antrian'));
+    const res = await proxy(buildRequest('http://localhost/petugas/antrean'));
     expect(res.headers.get('location')).toMatch(/alasan=digantikan/);
   });
 
@@ -360,7 +383,7 @@ describe('proxy — sesi tunggal staf (/admin)', () => {
     await mockCreateServerClient({ user: staf, ...opsi });
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const { proxy } = await import('./proxy');
-    const res = await proxy(buildRequest('http://localhost/admin/antrian'));
+    const res = await proxy(buildRequest('http://localhost/petugas/antrean'));
     expect(res.status).toBe(200);
     expect(JSON.parse(String(warn.mock.calls[0][0]))).toMatchObject({ operation: 'proxy.sesi_status_gagal' });
   });
@@ -371,11 +394,178 @@ describe('proxy — sesi tunggal staf (/admin)', () => {
       await mockCreateServerClient({ user: staf, sesiHang: true });
       vi.spyOn(console, 'warn').mockImplementation(() => undefined);
       const { proxy } = await import('./proxy');
-      const pending = proxy(buildRequest('http://localhost/admin/antrian'));
+      const pending = proxy(buildRequest('http://localhost/petugas/antrean'));
       await vi.advanceTimersByTimeAsync(3000);
       expect((await pending).status).toBe(200);
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// G4: area per peran (/admin untuk admin dan Front Office, /petugas untuk Petugas Layanan)
+// ---------------------------------------------------------------------------
+
+const lokasi = (res: Response) => res.headers.get('location');
+const penggunaDenganRole = (role: string) => ({ id: 'u-1', app_metadata: { role } });
+
+describe('proxy — petugas yang membuka /admin/* dialihkan ke /petugas/*', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    setEnv();
+  });
+
+  it.each([
+    ['/admin/antrian', '/petugas/antrean'],
+    ['/admin/absensi', '/petugas/absensi'],
+    ['/admin/chat', '/petugas/chat'],
+    ['/admin/chat/faq', '/petugas/chat/faq'],
+    ['/admin/rekap', '/petugas/rekap'],
+    ['/admin/profil', '/petugas/profil'],
+    ['/admin/umkm-tugas', '/petugas/umkm/tugas'],
+    ['/admin/umkm-laporan', '/petugas/umkm/laporan'],
+  ])('%s -> %s (padanan ada)', async (dari, ke) => {
+    const m = await mockCreateServerClient({ user: penggunaDenganRole('petugas') });
+    const { proxy } = await import('./proxy');
+    const res = await proxy(buildRequest(`http://localhost${dari}`));
+    expect(res.status).toBe(307);
+    expect(lokasi(res)).toBe(`http://localhost${ke}`);
+    expectRequestId(res);
+    expect(m.mockClient.rpc).not.toHaveBeenCalled(); // pengalihan murni, tanpa cek sesi/modul
+  });
+
+  it('query string ikut (tautan notifikasi lama)', async () => {
+    await mockCreateServerClient({ user: penggunaDenganRole('petugas') });
+    const { proxy } = await import('./proxy');
+    const res = await proxy(buildRequest('http://localhost/admin/chat?sesi=abc&x=1'));
+    expect(lokasi(res)).toBe('http://localhost/petugas/chat?sesi=abc&x=1');
+  });
+
+  it.each(['/admin', '/admin/kunjungan', '/admin/fo/registrasi', '/admin/settings', '/admin/chat/ai-log', '/admin/pengaduan', '/admin/halaman-baru'])(
+    '%s tanpa padanan -> /petugas/antrean',
+    async (dari) => {
+      await mockCreateServerClient({ user: penggunaDenganRole('petugas') });
+      const { proxy } = await import('./proxy');
+      const res = await proxy(buildRequest(`http://localhost${dari}`));
+      expect(lokasi(res)).toBe('http://localhost/petugas/antrean');
+    },
+  );
+
+  it('role dari fallback DB (tanpa klaim JWT) diperlakukan sama', async () => {
+    await mockCreateServerClient({ user: { id: 'u-1', app_metadata: null }, petugasRow: { role: 'petugas' } });
+    const { proxy } = await import('./proxy');
+    const res = await proxy(buildRequest('http://localhost/admin/antrian'));
+    expect(lokasi(res)).toBe('http://localhost/petugas/antrean');
+  });
+});
+
+describe('proxy — admin dan Front Office di /petugas/*', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    setEnv();
+  });
+
+  it.each(['admin', 'front_office'])('%s dialihkan ke /admin', async (role) => {
+    const m = await mockCreateServerClient({ user: penggunaDenganRole(role) });
+    const { proxy } = await import('./proxy');
+    for (const path of ['/petugas', '/petugas/antrean', '/petugas/umkm/tugas']) {
+      const res = await proxy(buildRequest(`http://localhost${path}`));
+      expect(res.status, path).toBe(307);
+      expect(lokasi(res), path).toBe('http://localhost/admin');
+    }
+    expect(m.mockClient.rpc).not.toHaveBeenCalled();
+  });
+
+  it('role selain staf (pengunjung) ditolak ke /me, tanpa cek sesi', async () => {
+    const m = await mockCreateServerClient({ user: penggunaDenganRole('pengunjung') });
+    const { proxy } = await import('./proxy');
+    const res = await proxy(buildRequest('http://localhost/petugas/antrean'));
+    expect(lokasi(res)).toBe('http://localhost/me');
+    expect(m.mockClient.rpc).not.toHaveBeenCalled();
+  });
+
+  it('tanpa login: /login?redirect=/petugas/antrean', async () => {
+    const m = await mockCreateServerClient({ user: null });
+    const { proxy } = await import('./proxy');
+    const res = await proxy(buildRequest('http://localhost/petugas/antrean'));
+    expect(lokasi(res)).toBe('http://localhost/login?redirect=%2Fpetugas%2Fantrean');
+    expect(m.mockClient.from).not.toHaveBeenCalled();
+  });
+});
+
+describe('proxy — otorisasi halaman di server (fail-closed)', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    setEnv();
+  });
+
+  it.each(['/petugas', '/petugas/antrean', '/petugas/absensi', '/petugas/chat', '/petugas/chat/faq', '/petugas/rekap', '/petugas/profil'])(
+    'petugas boleh membuka %s tanpa membaca modul',
+    async (path) => {
+      const m = await mockCreateServerClient({ user: penggunaDenganRole('petugas') });
+      const { proxy } = await import('./proxy');
+      const res = await proxy(buildRequest(`http://localhost${path}`));
+      expect(res.status).toBe(200);
+      expect(m.mockClient.rpc).not.toHaveBeenCalledWith('staf_modul');
+    },
+  );
+
+  it.each(['/petugas/halaman-baru', '/petugas/pengaduan', '/petugas/pesan-perilaku', '/petugas/settings/jadwal'])(
+    'petugas di rute /petugas tak terdaftar %s -> /petugas/antrean',
+    async (path) => {
+      await mockCreateServerClient({ user: penggunaDenganRole('petugas') });
+      const { proxy } = await import('./proxy');
+      const res = await proxy(buildRequest(`http://localhost${path}`));
+      expect(lokasi(res)).toBe('http://localhost/petugas/antrean');
+    },
+  );
+
+  it.each(['/petugas/umkm/tugas', '/petugas/umkm/laporan'])('petugas bermodul umkm boleh membuka %s (staf_modul dipanggil)', async (path) => {
+    const m = await mockCreateServerClient({ user: penggunaDenganRole('petugas'), modul: 'umkm' });
+    const { proxy } = await import('./proxy');
+    const res = await proxy(buildRequest(`http://localhost${path}`));
+    expect(res.status).toBe(200);
+    expect(m.mockClient.rpc).toHaveBeenCalledWith('staf_modul');
+  });
+
+  it.each([
+    ['tanpa modul', { modul: null }],
+    ['modul investasi', { modul: 'investasi' }],
+    ['nilai asing', { modul: 'lain' }],
+    ['RPC galat (migrasi belum diterapkan)', { modulError: { message: 'function staf_modul does not exist' } }],
+  ] as const)('petugas %s ditolak di /petugas/umkm/tugas -> /petugas/antrean', async (_nama, opsi) => {
+    await mockCreateServerClient({ user: penggunaDenganRole('petugas'), ...opsi });
+    const { proxy } = await import('./proxy');
+    const res = await proxy(buildRequest('http://localhost/petugas/umkm/tugas'));
+    expect(res.status).toBe(307);
+    expect(lokasi(res)).toBe('http://localhost/petugas/antrean');
+  });
+
+  it('FO ditolak di halaman admin-saja dan rute /admin tak terdaftar; boleh di halaman FO', async () => {
+    await mockCreateServerClient({ user: penggunaDenganRole('front_office') });
+    const { proxy } = await import('./proxy');
+    for (const path of ['/admin/petugas', '/admin/settings', '/admin/umkm-tugas', '/admin/halaman-baru']) {
+      const res = await proxy(buildRequest(`http://localhost${path}`));
+      expect(lokasi(res), path).toBe('http://localhost/admin/antrian');
+    }
+    for (const path of ['/admin', '/admin/fo/registrasi', '/admin/antrian', '/admin/rekap']) {
+      expect((await proxy(buildRequest(`http://localhost${path}`))).status, path).toBe(200);
+    }
+  });
+
+  it('admin boleh membuka semua halaman /admin, termasuk yang tak terdaftar dan tugas UMKM tanpa modul', async () => {
+    await mockCreateServerClient({ user: penggunaDenganRole('admin') });
+    const { proxy } = await import('./proxy');
+    for (const path of ['/admin', '/admin/petugas', '/admin/umkm-tugas', '/admin/halaman-baru']) {
+      expect((await proxy(buildRequest(`http://localhost${path}`))).status, path).toBe(200);
+    }
+  });
+
+  it('sesi tak sah di /petugas dialihkan ke login sebelum otorisasi halaman', async () => {
+    await mockCreateServerClient({ user: penggunaDenganRole('petugas'), sesiStatus: 'digantikan' });
+    const { proxy } = await import('./proxy');
+    const res = await proxy(buildRequest('http://localhost/petugas/umkm/tugas'));
+    expect(lokasi(res)).toBe('http://localhost/login?alasan=digantikan');
   });
 });

@@ -5,6 +5,7 @@ describe('tabDariParam', () => {
   it('scan -> scan; apa pun lainnya (kosong, tak dikenal, walkin) -> walkin', () => {
     expect(tabDariParam('scan')).toBe('scan');
     expect(tabDariParam('walkin')).toBe('walkin');
+    expect(tabDariParam('bukutamu')).toBe('bukutamu');
     expect(tabDariParam(null)).toBe('walkin');
     expect(tabDariParam(undefined)).toBe('walkin');
     expect(tabDariParam('ngawur')).toBe('walkin');
@@ -16,6 +17,7 @@ describe('urlRegistrasi', () => {
   it('membangun URL tab tanpa query lain', () => {
     expect(urlRegistrasi('walkin')).toBe(`${PATH_REGISTRASI}?tab=walkin`);
     expect(urlRegistrasi('scan')).toBe(`${PATH_REGISTRASI}?tab=scan`);
+    expect(urlRegistrasi('bukutamu')).toBe(`${PATH_REGISTRASI}?tab=bukutamu`);
   });
 
   it('meneruskan query lain (objek atau URLSearchParams), nilai berulang dipertahankan, parameter tab lama diganti', () => {

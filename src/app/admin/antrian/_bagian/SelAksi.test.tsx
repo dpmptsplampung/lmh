@@ -177,15 +177,116 @@ describe('SelAksi: tiket selesai', () => {
     expect(screen.getByText(/Data sudah dikunci/)).toBeInTheDocument();
   });
 
-  it('layanan tanpa pendataan: tanpa Lihat Data dan Koreksi Data', () => {
+  it('layanan tanpa pendataan: Lihat Data membuka panel Khusus baca-saja, tanpa Koreksi Data', () => {
     const t = selesai({ layanan: { nama: 'Konsultasi', form_pendataan: null } });
-    render(<SelAksi tiket={t} pengguna={ADMIN} aksi={aksiUji()} />);
-    expect(tombol('Lihat Data')).toBeNull();
+    const aksi = aksiUji();
+    render(<SelAksi tiket={t} pengguna={ADMIN} aksi={aksi} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Lihat Data' }));
+    expect(aksi.buka).toHaveBeenCalledWith('lihatKhusus', t);
     expect(tombol('Koreksi Data')).toBeNull();
+  });
+
+  it('layanan tanpa formulir: FO lintas pembuat dan Petugas layanannya (bukan pemilik) dapat Lihat Data; layanan lain tidak', () => {
+    const khusus = (over = {}) => buatTiket({
+      status: 'dilayani', dilayani_oleh: 'p-rekan', pelayan: { nama: 'Rekan' },
+      layanan: { nama: 'BPJS', form_pendataan: null }, ...over,
+    });
+    for (const pengguna of [FO, PETUGAS]) {
+      const aksi = aksiUji();
+      const t = khusus();
+      const { unmount } = render(<SelAksi tiket={t} pengguna={pengguna} aksi={aksi} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Lihat Data' }));
+      expect(aksi.buka).toHaveBeenCalledWith('lihatKhusus', t);
+      unmount();
+    }
+    render(<SelAksi tiket={khusus({ layanan_id: 'l-lain' })} pengguna={PETUGAS} aksi={aksiUji()} />);
+    expect(tombol('Lihat Data')).toBeNull();
   });
 
   it('status akhir lain (no show) hanya menampilkan durasi tanda strip', () => {
     render(<SelAksi tiket={buatTiket({ status: 'no_show' })} pengguna={PETUGAS} aksi={aksiUji()} />);
     expect(screen.getByText('—')).toBeInTheDocument();
+  });
+});
+
+describe('SelAksi: Lihat Data baca-saja (G3)', () => {
+  const menunggu = () => buatTiket({ status: 'menunggu', layanan_id: 'l-lain' });
+  const dilayaniRekan = (over = {}) =>
+    buatTiket({ status: 'dilayani', dilayani_oleh: 'p-rekan', pelayan: { nama: 'Rekan' }, ...over });
+
+  it('Front Office: Lihat Data pada tiket menunggu, dilayani petugas lain, dan selesai; tanpa aksi ubah', () => {
+    for (const t of [menunggu(), dilayaniRekan({ layanan_id: 'l-lain' }), buatTiket({ status: 'selesai' })]) {
+      const aksi = aksiUji();
+      const { unmount } = render(<SelAksi tiket={t} pengguna={FO} aksi={aksi} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Lihat Data' }));
+      expect(aksi.buka).toHaveBeenCalledWith('wizard', t);
+      for (const nama of ['Mulai Layanan', 'Selesai', 'Form Pendataan', 'Ambil alih', 'Kembalikan ke FO']) {
+        expect(tombol(new RegExp(`^${nama}`))).toBeNull();
+      }
+      unmount();
+    }
+  });
+
+  it('Front Office pada tiket dilayani: catatan baca-saja, bukan "hanya petugas yang memulai"', () => {
+    render(<SelAksi tiket={dilayaniRekan()} pengguna={FO} aksi={aksiUji()} />);
+    expect(screen.getByText(/Front Office hanya dapat melihat/)).toBeInTheDocument();
+    expect(screen.queryByText(/dapat menyelesaikan tiket ini/)).toBeNull();
+  });
+
+  it('Admin juga bisa Lihat Data tiket menunggu', () => {
+    render(<SelAksi tiket={menunggu()} pengguna={ADMIN} aksi={aksiUji()} />);
+    expect(tombol('Lihat Data')).toBeInTheDocument();
+    expect(tombol('Mulai Layanan')).toBeInTheDocument();
+  });
+
+  it('Petugas: Lihat Data tiket rekan sekantor (dilayani) tetap ada; tiket menunggu tidak', () => {
+    render(<SelAksi tiket={dilayaniRekan()} pengguna={PETUGAS} aksi={aksiUji()} />);
+    expect(tombol('Lihat Data')).toBeInTheDocument();
+    cleanup();
+    render(<SelAksi tiket={buatTiket({ status: 'menunggu' })} pengguna={PETUGAS} aksi={aksiUji()} />);
+    expect(tombol('Lihat Data')).toBeNull();
+  });
+});
+
+describe('SelAksi: Isi Pendataan (G5)', () => {
+  const BERISIAN = new Set(['l-bpjs']);
+  const tanpaForm = (over: Parameters<typeof buatTiket>[0] = {}) => buatTiket({
+    status: 'dilayani', layanan_id: 'l-bpjs', layanan: { nama: 'BPJS', form_pendataan: null }, ...over,
+  });
+  const petugasBpjs = { ...PETUGAS, layanan_id: 'l-bpjs' };
+
+  it('pemilik, Layanan punya isian aktif: Isi Pendataan membuka wizard di langkah 2 (isiPendataan)', () => {
+    const aksi = aksiUji({ layananBerisian: BERISIAN });
+    const t = tanpaForm({ dilayani_oleh: petugasBpjs.id });
+    render(<SelAksi tiket={t} pengguna={petugasBpjs} aksi={aksi} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Isi Pendataan tiket OS-001' }));
+    expect(aksi.buka).toHaveBeenCalledWith('isiPendataan', t);
+    expect(tombol('Selesai')).toBeInTheDocument();
+  });
+
+  it('pemilik, Layanan tanpa isian aktif (atau belum diketahui): tidak ada Isi Pendataan', () => {
+    const t = tanpaForm({ dilayani_oleh: petugasBpjs.id });
+    render(<SelAksi tiket={t} pengguna={petugasBpjs} aksi={aksiUji({ layananBerisian: new Set() })} />);
+    expect(tombol(/Isi Pendataan/)).toBeNull();
+    cleanup();
+    render(<SelAksi tiket={t} pengguna={petugasBpjs} aksi={aksiUji()} />);
+    expect(tombol(/Isi Pendataan/)).toBeNull();
+  });
+
+  it('layanan berformulir tetap (OSS): memakai Form Pendataan, bukan Isi Pendataan', () => {
+    const t = buatTiket({ status: 'dilayani', dilayani_oleh: PETUGAS.id });
+    render(<SelAksi tiket={t} pengguna={PETUGAS} aksi={aksiUji({ layananBerisian: new Set(['l-oss']) })} />);
+    expect(tombol('Form Pendataan')).toBeInTheDocument();
+    expect(tombol(/Isi Pendataan/)).toBeNull();
+  });
+
+  it('non-pemilik (Petugas lain, FO, Admin): tidak ada Isi Pendataan maupun Selesai', () => {
+    const t = tanpaForm({ dilayani_oleh: 'p-lain', pelayan: { nama: 'Budi' } });
+    for (const pengguna of [petugasBpjs, FO, ADMIN]) {
+      render(<SelAksi tiket={t} pengguna={pengguna} aksi={aksiUji({ layananBerisian: BERISIAN })} />);
+      expect(tombol(/Isi Pendataan/)).toBeNull();
+      expect(tombol('Selesai')).toBeNull();
+      cleanup();
+    }
   });
 });

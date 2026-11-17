@@ -31,7 +31,8 @@ import Sidebar from './Sidebar';
 
 const KEY = 'lmh.sidebar.grup';
 
-async function renderSidebar(role: 'admin' | 'front_office' | 'petugas', path: string) {
+async function renderSidebar(role: 'admin' | 'front_office' | 'petugas', path: string, modul: string | null = null) {
+  h.rpc = (nama) => ({ data: nama === 'staf_modul' ? modul : null, error: null });
   state.path = path;
   h.user = { id: 'u1' };
   h.tabel.petugas = { data: [{ id: 'p1', nama: 'Budi', role, layanan_id: role === 'petugas' ? 'lay-1' : null }], error: null };
@@ -89,10 +90,11 @@ describe('Sidebar: struktur per role', () => {
       .map((a) => a.getAttribute('href'));
     // 33 href lama - 3 tersembunyi (Daftar FO, Scan QR, Rekap Front Office) + 1 Registrasi Pengunjung
     // + 1 Saran (Pesan Perilaku; Hasil SKM lama menjadi Hasil Survei, alamat pengalihan tersembunyi)
-    // + 1 Pengawasan UMKM dan 1 Laporan UMKM.
-    expect(hrefs).toHaveLength(33);
-    expect(new Set(hrefs).size).toBe(33);
+    // + 1 Pengawasan UMKM, 1 Laporan UMKM, dan 1 Tugas UMKM (admin lolos menu modul lewat role).
+    expect(hrefs).toHaveLength(34);
+    expect(new Set(hrefs).size).toBe(34);
     expect(hrefs).toContain('/admin/umkm-laporan');
+    expect(hrefs).toContain('/admin/umkm-tugas');
     expect(hrefs).not.toContain('/admin/rekap-fo');
     expect(hrefs).not.toContain('/admin/scan');
     expect(hrefs).not.toContain('/admin/fo/daftar');
@@ -108,13 +110,52 @@ describe('Sidebar: struktur per role', () => {
     expect(within(list).getAllByRole('link', { hidden: true }).map((a) => a.textContent)).toEqual(['Jadwal Layanan', 'Kelola Layanan']);
   });
 
-  it('petugas: tanpa Dasbor dan grup Front Office; grup 1-entri jadi tautan biasa', async () => {
-    await renderSidebar('petugas', '/admin/antrian');
+  it('petugas: menu /petugas persis daftar pemilik; grup 1-entri jadi tautan biasa', async () => {
+    await renderSidebar('petugas', '/petugas/antrean');
     expect(screen.queryByRole('link', { name: 'Dasbor' })).toBeNull();
     expect(screen.queryByRole('button', { name: /Front Office/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /Pengelolaan Layanan/ })).toBeNull();
-    const nav = screen.getByRole('navigation', { name: 'Menu admin' });
-    expect(Array.from(nav.children).some((el) => el.tagName === 'A' && el.textContent === 'Jadwal Layanan')).toBe(true);
+    const nav = screen.getByRole('navigation', { name: 'Menu petugas' });
+    for (const dilarang of ['Jadwal Layanan', 'Hasil Survei', 'Pengaduan', 'Laporan UMKM', 'Tugas UMKM', 'Saran']) {
+      expect(within(nav).queryByRole('link', { name: dilarang }), dilarang).toBeNull();
+    }
+    expect(Array.from(nav.children).some((el) => el.tagName === 'A' && el.textContent === 'Rekap')).toBe(true);
+    // Semua tautan menu (nav + dasar panel, tanpa widget) di bawah /petugas, kecuali Tampilan Publik.
+    const hrefs = screen.getAllByRole('link', { hidden: true })
+      .filter((a) => !a.closest('[data-widget]'))
+      .map((a) => a.getAttribute('href'));
+    expect(hrefs).toEqual(['/petugas/antrean', '/petugas/absensi', '/petugas/chat', '/petugas/chat/faq', '/petugas/rekap', '/petugas/profil', '/']);
+    // Kartu Sesi Kerja (widget) dan tombol Keluar tetap ada.
+    expect(screen.getByRole('button', { name: 'Keluar' })).toBeInTheDocument();
+    expect(document.querySelector('[data-widget]')).not.toBeNull();
+    expect(navAktif()).toEqual(['Antrean']);
+  });
+
+  it('petugas modul umkm: menambah Laporan UMKM dan Tugas UMKM; modul dibaca lewat staf_modul()', async () => {
+    await renderSidebar('petugas', '/petugas/umkm/tugas', 'umkm');
+    expect(await screen.findByRole('link', { name: 'Tugas UMKM' })).toHaveAttribute('href', '/petugas/umkm/tugas');
+    expect(screen.getByRole('link', { name: 'Laporan UMKM', hidden: true })).toHaveAttribute('href', '/petugas/umkm/laporan');
+    expect(h.rpcLog.some((r) => r.nama === 'staf_modul')).toBe(true);
+    expect(navAktif()).toEqual(['Tugas UMKM']);
+  });
+
+  it('petugas modul investasi atau tanpa modul: tidak ada menu UMKM', async () => {
+    for (const modul of ['investasi', null]) {
+      const { unmount } = await renderSidebar('petugas', '/petugas/antrean', modul);
+      await vi.waitFor(() => expect(h.rpcLog.some((r) => r.nama === 'staf_modul')).toBe(true));
+      expect(screen.queryByRole('link', { name: 'Tugas UMKM' })).toBeNull();
+      expect(screen.queryByRole('link', { name: 'Laporan UMKM', hidden: true })).toBeNull();
+      unmount();
+      h.rpcLog.length = 0;
+    }
+  });
+
+  it('admin dan Front Office tidak memanggil staf_modul', async () => {
+    for (const role of ['admin', 'front_office'] as const) {
+      const { unmount } = await renderSidebar(role, '/admin');
+      expect(h.rpcLog.some((r) => r.nama === 'staf_modul')).toBe(false);
+      unmount();
+    }
   });
 
   it('role belum diketahui: tidak ada menu', () => {
@@ -328,7 +369,7 @@ describe('Sidebar: badge notifikasi', () => {
 
   it('petugas (semua grup terbuka bawaan, P1): lencana Antrean ada di anak; dilipat = jumlah pindah ke header', async () => {
     badges({ antrian: { count: 7, label: '7 tiket menunggu atau dipanggil hari ini' } });
-    await renderSidebar('petugas', '/admin/chat');
+    await renderSidebar('petugas', '/petugas/chat');
     expect(terbuka('Antrean & Kehadiran')).toBe(true);
     expect(within(screen.getByRole('link', { name: /Antrean/ })).getByText('7')).toBeInTheDocument();
     fireEvent.click(header('Antrean & Kehadiran'));

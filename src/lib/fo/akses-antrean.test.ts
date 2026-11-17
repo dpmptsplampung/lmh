@@ -3,9 +3,6 @@ import {
   muatAntreanFo,
   muatKunjunganFo,
   muatPratinjauReservasi,
-  jendelaTanggalFo,
-  tanggalDalamJendela,
-  pesanJendelaTanggal,
   galatTanggalDiluarBatas,
   type BarisKunjunganFo,
   formatDilayani,
@@ -135,37 +132,17 @@ describe('muatKunjunganFo', () => {
   });
 });
 
-describe('jendela tanggal Front Office non-Koordinator', () => {
-  const hariIni = '2026-11-04';
-  it('FO biasa: [hari ini-7, hari ini+1]; Admin, Koordinator, petugas, dan peran belum diketahui: bebas', () => {
-    expect(jendelaTanggalFo({ role: 'front_office', koordinator: false }, hariIni)).toEqual({ min: '2026-10-28', max: '2026-11-05' });
-    expect(jendelaTanggalFo({ role: 'front_office' }, hariIni)).toEqual({ min: '2026-10-28', max: '2026-11-05' });
-    expect(jendelaTanggalFo({ role: 'front_office', koordinator: true }, hariIni)).toBeNull();
-    expect(jendelaTanggalFo({ role: 'admin', koordinator: false }, hariIni)).toBeNull();
-    expect(jendelaTanggalFo({ role: 'petugas', koordinator: false }, hariIni)).toBeNull();
-    expect(jendelaTanggalFo(null, hariIni)).toBeNull();
+describe('daftar FO semua tanggal', () => {
+  it.each(['2026-09-18', '2027-01-16'])('meneruskan tanggal %s ke kedua RPC daftar', async (tanggal) => {
+    const antrean = klien({ data: { rows: [], total: 0, statistik: { totalSelesai: 0, rataWaktuMenit: 0 } }, error: null });
+    const kunjungan = klien({ data: { rows: [], total: 0 }, error: null });
+    expect(await muatAntreanFo(antrean, { tanggal, batas: 25, lewati: 0 })).toMatchObject({ tersedia: true });
+    expect(await muatKunjunganFo(kunjungan, { tanggal, batas: 25, lewati: 0 })).toMatchObject({ tersedia: true });
+    expect(antrean.rpc).toHaveBeenCalledWith('fo_antrean_daftar', expect.objectContaining({ p_tanggal: tanggal }));
+    expect(kunjungan.rpc).toHaveBeenCalledWith('fo_kunjungan_daftar', expect.objectContaining({ p_tanggal: tanggal }));
   });
-  it('tanggalDalamJendela: batas inklusif; tanpa jendela selalu benar; tanggal kosong/aneh salah', () => {
-    const j = { min: '2026-10-28', max: '2026-11-05' };
-    expect(tanggalDalamJendela('2026-10-28', j)).toBe(true);
-    expect(tanggalDalamJendela('2026-11-05', j)).toBe(true);
-    expect(tanggalDalamJendela('2026-10-27', j)).toBe(false);
-    expect(tanggalDalamJendela('2026-11-06', j)).toBe(false);
-    expect(tanggalDalamJendela('2020-01-01', null)).toBe(true);
-    expect(tanggalDalamJendela('', j)).toBe(false);
-  });
-  it('pesan jelas menyebut rentang tanggal dan siapa yang dapat membukakan tanggal lain', () => {
-    const t = pesanJendelaTanggal({ min: '2026-10-28', max: '2026-11-05' });
-    expect(t).toMatch(/28 Okt/);
-    expect(t).toMatch(/5 Nov/);
-    expect(t).toMatch(/Koordinator atau Admin/);
-  });
-  it('pesan tanpa jendela (peran belum diketahui) tetap jelas', () => {
-    expect(pesanJendelaTanggal(null)).toMatch(/7 hari ke belakang sampai besok/);
-  });
-  it('galatTanggalDiluarBatas mengenali pesan server TANGGAL_DILUAR_BATAS', () => {
-    expect(galatTanggalDiluarBatas({ code: '22023', message: 'TANGGAL_DILUAR_BATAS: x' })).toBe(true);
-    expect(galatTanggalDiluarBatas({ code: '22023', message: 'MASUKAN_TIDAK_VALID' })).toBe(false);
+  it('tetap mengenali galat tanggal dari server lama tanpa menafsirkan sebagai daftar kosong', () => {
+    expect(galatTanggalDiluarBatas({ message: 'TANGGAL_DILUAR_BATAS: x' })).toBe(true);
     expect(galatTanggalDiluarBatas(null)).toBe(false);
   });
 });

@@ -70,4 +70,27 @@ describe('auth callback: sesi tunggal staf', () => {
     const res = await panggil('code=abc&next=/me');
     expect(res.headers.get('location')).toBe('http://localhost/me');
   });
+
+  it.each([
+    ['petugas', '', '/petugas/antrean'],
+    ['admin', '', '/admin'],
+    ['front_office', '', '/admin'],
+    ['petugas', '&next=/admin', '/petugas/antrean'],
+    ['petugas', '&next=/admin/chat?sesi=a', '/petugas/chat?sesi=a'],
+    ['petugas', '&next=/admin/profil', '/petugas/profil'],
+    ['petugas', '&next=/petugas/profil', '/petugas/profil'],
+    ['admin', '&next=/petugas/antrean', '/admin'],
+    ['front_office', '&next=/admin/profil', '/admin/profil'],
+    ['petugas', '&next=/me', '/me'],
+  ])('staf %s dengan "%s" diarahkan ke %s', async (role, qs, tujuan) => {
+    h.peran = { role };
+    const res = await panggil(`code=abc${qs}`);
+    expect(res.headers.get('location')).toBe(`http://localhost${tujuan}`);
+  });
+
+  it('non-staf tanpa next tetap ke /me; next apa adanya, bukan ke area staf', async () => {
+    h.peran = null;
+    expect((await panggil('code=abc')).headers.get('location')).toBe('http://localhost/me');
+    expect((await panggil('code=abc&next=/chat')).headers.get('location')).toBe('http://localhost/chat');
+  });
 });

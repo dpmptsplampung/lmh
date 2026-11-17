@@ -123,3 +123,13 @@ describe('POST /api/admin/buku-tamu: validasi', () => {
     expect((await POST(post(lengkap))).status).toBe(403);
   });
 });
+
+
+it('POST meneruskan petugas yang ditemui tanpa menghapus teks kompatibilitas', async () => {
+  const { bukuCalls } = await setup();
+  const { POST } = await import('./route');
+  const menemui = '660e8400-e29b-41d4-a716-446655440002';
+  const res = await POST(post({ ...lengkap, menemui_petugas_id: menemui }));
+  expect(res.status).toBe(201);
+  expect(insertDari(bukuCalls)).toMatchObject({ menemui_petugas_id: menemui, menemui_siapa: 'Kabid' });
+});

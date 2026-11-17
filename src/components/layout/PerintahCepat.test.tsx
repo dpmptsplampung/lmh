@@ -20,9 +20,10 @@ afterEach(() => {
 const label = (role: string) => susunPerintah(role).map((p) => p.label);
 
 describe('susunPerintah: hak akses mengikuti peran', () => {
-  it('laporan UMKM tersedia untuk admin dan petugas', () => {
+  it('laporan UMKM: admin; petugas hanya bila layanannya bermodul UMKM', () => {
     expect(label('admin')).toContain('Laporan UMKM');
-    expect(label('petugas')).toContain('Laporan UMKM');
+    expect(label('petugas')).not.toContain('Laporan UMKM');
+    expect(susunPerintah('petugas', { modul: 'umkm' }).map((p) => p.label)).toContain('Laporan UMKM');
     expect(label('front_office')).not.toContain('Laporan UMKM');
   });
   it('petugas: tanpa tindakan Front Office/Admin dan tanpa menu admin-saja', () => {
@@ -33,6 +34,10 @@ describe('susunPerintah: hak akses mengikuti peran', () => {
     expect(l).not.toContain('Kelola Petugas');
     expect(l).toContain('Antrean');
     expect(l).toContain('Profil Saya');
+    // Tautan perintah petugas semuanya ke area /petugas (kecuali Tampilan Publik).
+    const href = susunPerintah('petugas').map((p) => p.href).filter((h) => h !== '/');
+    expect(href.length).toBeGreaterThan(0);
+    expect(href.every((h) => h.startsWith('/petugas/'))).toBe(true);
   });
 
   it('front_office: Registrasi Walk-in dan Scan QR, tanpa layar TV dan menu admin', () => {
@@ -53,7 +58,7 @@ describe('susunPerintah: hak akses mengikuti peran', () => {
   it('tidak memuat "Panggil berikutnya" (gelombang 2) dan tidak memuat entri tersembunyi', () => {
     for (const role of ['admin', 'front_office', 'petugas']) {
       expect(label(role)).not.toContain('Panggil berikutnya');
-      expect(label(role).filter((teks) => teks === 'Hasil Survei')).toHaveLength(1);
+      expect(label(role).filter((teks) => teks === 'Hasil Survei')).toHaveLength(role === 'petugas' ? 0 : 1);
       expect(label(role)).not.toContain('Rekap Front Office');
     }
   });
@@ -77,7 +82,7 @@ describe('saring', () => {
     expect(saring(daftar, 'chat log').map((p) => p.label)).toEqual(['Log AI Chat']);
   });
   it('mencocokkan nama kelompok dan kata tambahan tindakan', () => {
-    expect(saring(daftar, 'kemitraan').map((p) => p.label)).toEqual(['Pengawasan UMKM', 'Lead Investasi', 'Investment Gallery']);
+    expect(saring(daftar, 'kemitraan').map((p) => p.label)).toEqual(['Tugas UMKM', 'Pengawasan UMKM', 'Lead Investasi', 'Investment Gallery']);
     expect(saring(daftar, 'tv').map((p) => p.label)).toContain('Buka layar TV');
   });
   it('tidak ada yang cocok = kosong', () => expect(saring(daftar, 'zzzz')).toEqual([]));
