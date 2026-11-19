@@ -59,9 +59,11 @@ boleh diterapkan sesudah `202611160001`-`0004`. PM memeriksa ini (baca-saja) seb
 | `lokasi_teks` | `text` | NULL atau ≤ 300 | Kecamatan/desa/kawasan. |
 | `lat`, `lng` | `numeric(9,6)` | keduanya NULL atau keduanya terisi; `lat BETWEEN -6.6 AND -3.0`, `lng BETWEEN 103.0 AND 106.6` | Kotak batas Lampung (longgar). Untuk peta kelak. |
 | `pemilik` | `text` | NULL atau ≤ 200 | Instansi pemilik/pemrakarsa proyek. |
-| `nilai_rp` | `numeric(18,0)` | NULL atau `>= 0` | Keputusan 4: tampil publik. Rupiah utuh. |
+| `nilai_investasi` | `numeric(18,0)` | NULL atau `>= 0` | Keputusan 4: tampil publik. Satuannya `mata_uang` baris (tanpa konversi otomatis). |
+| `mata_uang` | `text` | NOT NULL default `'IDR'`, CHECK IN (`IDR`,`USD`) | Berlaku untuk `nilai_investasi` dan `npv_nilai`. Data FOILA bercampur IDR/USD (diverifikasi 2026-11-19). |
+| `nilai_teks` | `text` | NULL, `<= 200` | Label nilai apa adanya untuk kartu FOILA (mis. "IDR 53.18 trillion"); tidak diparse menjadi angka. |
 | `irr_persen` | `numeric(6,2)` | NULL atau `BETWEEN -100 AND 1000` | |
-| `npv_rp` | `numeric(18,0)` | NULL (boleh negatif) | |
+| `npv_nilai` | `numeric(18,0)` | NULL (boleh negatif) | Satuannya `mata_uang` baris. |
 | `payback_bulan` | `integer` | NULL atau `BETWEEN 1 AND 600` | UI menampilkan "x tahun y bulan". |
 | `skema` | `text` | NULL atau `IN ('kpbu','b2b','bumd','swasta_penuh','lainnya')` | Belum pasti; nilai `lainnya` jadi katup. |
 | `status_lahan` | `text` | NULL atau `IN ('milik_pemda','milik_bumn_bumd','milik_swasta','milik_masyarakat','belum_ditetapkan')` | Belum pasti. |
@@ -386,8 +388,8 @@ sama, dan proyek tidak punya pekerja antrean. Batch kecil bisa dilanjutkan bila 
 ### 5.1 `src/lib/data/investasi.ts` (pola G0-G9: `SupabaseClient` argumen pertama, `{ data, error }`, tanpa React)
 
 ```ts
-export const KOLOM_IPRO_KARTU = 'id, sumber, slug, judul, judul_en, ringkasan, ringkasan_en, sektor, kab_kota, nilai_rp, irr_persen, tahap_kajian, sumber_url, urutan, diterbitkan_pada';
-export const KOLOM_IPRO_DETAIL = `${KOLOM_IPRO_KARTU}, deskripsi, deskripsi_en, lokasi_teks, lat, lng, pemilik, npv_rp, payback_bulan, skema, status_lahan, luas_ha, perizinan, dokumen_id, kontak_instansi, kontak_email, kontak_telepon, diubah_pada`;
+export const KOLOM_IPRO_KARTU = 'id, sumber, slug, judul, judul_en, ringkasan, ringkasan_en, sektor, kab_kota, nilai_investasi, mata_uang, nilai_teks, irr_persen, tahap_kajian, sumber_url, urutan, diterbitkan_pada';
+export const KOLOM_IPRO_DETAIL = `${KOLOM_IPRO_KARTU}, deskripsi, deskripsi_en, lokasi_teks, lat, lng, pemilik, npv_nilai, payback_bulan, skema, status_lahan, luas_ha, perizinan, dokumen_id, kontak_instansi, kontak_email, kontak_telepon, diubah_pada`;
 export const KOLOM_IPRO_ADMIN = `${KOLOM_IPRO_DETAIL}, status, sumber_slug, versi, dibuat_pada`;
 export const KOLOM_GAMBAR = 'id, proyek_id, kunci, kunci_mini, lebar, tinggi, alt, alt_en, keterangan, keterangan_en, utama, urutan';
 export const KOLOM_MINAT_DAFTAR = 'id, kanal, status, versi, nama, instansi, created_at, aktivitas_pada, petugas_id, ipro_id, doc_id, ipro_proyek(judul), investment_documents(judul)';
@@ -691,3 +693,14 @@ larangan commit/push, larangan atribusi alat apa pun di kode/komentar/dokumen/co
    Mohon dikoreksi bila DPMPTSP memakai klasifikasi baku (mis. sektor BKPM/FOILA).
 5. **Kontak di halaman detail.** Default: hanya kontak lembaga (nama instansi, email dinas, telepon kantor) yang tampil
    publik; nomor pribadi petugas tidak pernah tampil, dan calon investor diarahkan ke tombol "Hubungi petugas".
+
+
+## Catatan implementasi P1 (2026-11-20)
+
+Perubahan terhadap rancangan di atas, hasil pembangunan dan tinjauan P1 (migrasi `202611190001` dan `202611190002`):
+- Kontrak nilai: `nilai_investasi` + `mata_uang`, `npv_nilai`, `nilai_teks` (lihat bagian 2). `sumber_url` sampai 2048 dan `sumber_slug` sampai 300 karakter; `sumber_url` wajib terisi untuk kartu FOILA.
+- Hibah `SELECT` pada `ipro_proyek` dan `ipro_gambar` bersifat per kolom dan TIDAK memuat `dibuat_oleh`/`diubah_oleh`. Akibatnya `select=*` sengaja gagal untuk semua peran; lapisan data wajib memakai kolom eksplisit (`KOLOM_*`), termasuk `RETURNING`. Jejak pengubah ada di `audit_log`.
+- Trigger audit mempertahankan `diterbitkan_pada` dan `dibuat_oleh` pada UPDATE (NULL bila petugas pembuat sudah dihapus, mengikuti FK `ON DELETE SET NULL`).
+- `investasi_kirim_minat`: cek idempotensi (operasi + sidik) dijalankan SEBELUM validasi konteks dan batas laju, sehingga kiriman ulang yang sudah tercatat tetap mengembalikan id lama walau IPRO sudah diarsipkan.
+- Backfill `aktivitas_pada` menonaktifkan lalu mengaktifkan lagi `trg_investasi_lead_updated` dalam transaksi yang sama.
+- Sektor kartu FOILA dipetakan manual oleh admin ke salah satu dari 9 sektor LMH.

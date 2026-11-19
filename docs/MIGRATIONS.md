@@ -1,5 +1,30 @@
 # Database Migrations
 
+## IPRO PTSP dan Kotak Masuk Investasi — BELUM DITERAPKAN
+
+Prasyarat kedua migrasi: `202611160001_lingkup_layanan_staf` (`staf_modul()` dan lingkup layanan);
+terapkan `202611190001` sebelum `202611190002`, masing-masing dalam satu transaksi. Bukti perilaku hanya
+lokal melalui `scripts/lokal-rantai/skenario-baru-ipro.mjs`; belum ada penerapan ke staging atau produksi.
+
+| Versi | Berkas | Isi | Status |
+|---|---|---|---|
+| 202611190001 | `202611190001_ipro_inti.sql` | IPRO PTSP/FOILA, gambar, audit/versi/slug tetap, RLS admin dan petugas modul investasi; sektor CHECK sembilan nilai; `nilai_investasi` dan `npv_nilai` memakai `mata_uang` IDR/USD, `nilai_teks` untuk label FOILA. | **BELUM DITERAPKAN** |
+| 202611190002 | `202611190002_investasi_kotak_masuk.sql` | Perluasan lead dokumen/IPRO, RPC idempoten dan consent atomik, tiga batas laju, notifikasi tanpa PII dan retensi terminal 365 hari; trigger updated_at dinonaktifkan hanya selama backfill dan langsung diaktifkan kembali. | **BELUM DITERAPKAN** |
+
+Rollback operasional yang mempertahankan data: `docs/rollback-investasi-kotak-masuk-202611190002.sql`,
+kemudian `docs/rollback-ipro-inti-202611190001.sql`; paket lanjutan harus dinonaktifkan lebih dahulu.
+
+Hak baca `ipro_proyek` dan `ipro_gambar` untuk `anon`/`authenticated` diberikan per kolom,
+tanpa UUID staf `dibuat_oleh`/`diubah_oleh`; `select=*` sengaja ditolak. Lapisan data, termasuk
+`RETURNING` penulisan staf, wajib memilih kolom publik secara eksplisit; trigger audit dan FK
+tetap berjalan, dan riwayat pengubah tersedia melalui `audit_log`. Rollback inti mencabut hak
+tingkat tabel sekaligus hak baca per kolom.
+
+RPC kirim memvalidasi sesi dan input, menghitung sidik dari isian yang dinormalisasi, kemudian
+mengunci dan mencari operasi lama sebelum memeriksa konteks publik. Retry identik tetap
+mengembalikan id lama ketika IPRO sudah diarsipkan atau dokumen dinonaktifkan, tanpa menambah
+lead, consent, notifikasi atau kuota laju; hanya operasi baru memerlukan konteks yang masih aktif.
+
 > **Status penerapan:** tanda "BELUM DITERAPKAN" di tabel dan teks lama di bawah adalah riwayat saat ditulis. Status sebenarnya di produksi (diperiksa baca-saja 2026-11-13) ada di bagian "Status penerapan terverifikasi (2026-11-13)" di akhir berkas.
 
 ## Baseline Fresh-Only
