@@ -66,6 +66,65 @@ validasi hanya di fungsi RPC, tanpa CHECK baru pada kolom email yang dapat menol
 
 > **Status penerapan:** tanda "BELUM DITERAPKAN" di tabel dan teks lama di bawah adalah riwayat saat ditulis. Status sebenarnya di produksi (diperiksa baca-saja 2026-11-13) ada di bagian "Status penerapan terverifikasi (2026-11-13)" di akhir berkas.
 
+## P7 dan P8 dokumen/lencana investasi — BELUM DITERAPKAN
+
+Migrasi baru `202611190003_investasi_dokumen_proses.sql` menambah status diproses/gagal,
+kemajuan halaman, galat maksimal 500 karakter, dan policy pengelola modul; policy admin
+serta pembacaan publik status aktif dipertahankan. Tabel `investment_pdf_claims` menyimpan
+kunci yang sudah dikonsumsi sebagai tombstone permanen: PK mencegah pendaftaran bersamaan
+dan pemakaian ulang sesudah penghapusan dokumen. RLS mengikat UID dari sesi dengan folder raw,
+dan authenticated hanya mendapat SELECT/INSERT kolom kunci, tanpa UPDATE/DELETE.
+`202611190004_nav_lencana_investasi.sql`
+mempertahankan seluruh badan lencana terbaru (`202611110002`; tidak ditimpa migrasi lingkup)
+dan menambah pesanInvestasi bagi pengelola investasi dengan SECURITY INVOKER.
+Keduanya bergantung pada `202611190001`/`0002`; urutan rantai lengkap 0001–0005 ada di manifest,
+tetapi semuanya belum diterapkan ke staging maupun produksi.
+
+Render PDF memakai delapan halaman per panggilan (`maxDuration = 60`), kemajuan ditulis per
+halaman, PNG mempunyai prefix unik per batch, dan klaim compare-and-set pada diproses_pada
+mencegah dua tab bekerja bersamaan. Lease ditinggalkan bila fungsi terputus; retry diizinkan
+setelah 65 detik (melewati batas fungsi 60 detik), atau segera setelah galat yang tertangani.
+Batch melepaskan lease setelah selesai; kegagalan menyimpan kemajuan tidak menghapus halaman
+terdahulu. Batas waktu lunak 45 detik menghentikan batch sebelum memulai halaman berikutnya;
+halaman tunggal yang terlalu lambat masih bergantung pada batas platform dan bisa dicoba ulang.
+
+Presign PDF menerima `{ area: 'investment-docs', mime, ukuran }` tanpa path; server membuat
+`raw/<uid-sesi>/<uuid>.pdf`. Path eksplisit ditolak 400, kunci pengguna lain ditolak 403 pada
+konfirmasi/pendaftaran, konsumsi ulang ditolak 409. Pendaftaran mengonsumsi kunci secara atomik,
+menyalin lewat CopyObject dengan `CopySourceIfMatch` ke `src/<docId>.pdf`, lalu memvalidasi
+SALINAN itu (%PDF-, tidak terenkripsi, maksimum 50 MiB/50 halaman). Seluruh batch memakai
+salinan final; PUT klien yang dipakai ulang pada raw tidak mengubah sumber render. PDF.js memakai
+canvasFactory milik dokumen agar canvas dan Path2D memakai backend native yang sama.
+
+Kegagalan parser/INSERT membersihkan raw dan salinan final; sukses membersihkan raw. Gagal-hapus
+dicatat sebagai `investment_docs.cleanup_gagal` bersama docId tanpa mengganti galat utama.
+Fungsi server `bersihkanRawLama(cursor?)` di `src/app/api/investment-docs/_logika/unggahan.ts`
+menyapu raw sah yang lebih tua dari 24 jam, maksimal satu listing 1000 objek per panggilan,
+dan mengembalikan cursor berikutnya. Fungsi ini untuk rekonsiliasi manual yang diotorisasi,
+belum dijadwalkan atau dijalankan pada layanan eksternal; tombstone tidak ikut dibuang.
+Salinan final yang gagal dibersihkan dapat ditelusuri melalui docId pada log untuk rekonsiliasi.
+Hash manifest 0003 diregenerasi melalui skrip setelah mengeluarkan hanya entri 0003 yang belum
+di-commit; pengecualian ini diizinkan pemilik karena 0003 belum diterapkan ke DB mana pun.
+
+PNG yang PUT-nya gagal atau checkpoint-nya gagal langsung dibersihkan; prefix per batch
+mencegah cleanup worker kedaluwarsa menghapus hasil worker baru. DELETE menolak lease aktif
+(kurang dari 65 detik) dengan 409. Lease basi dari fungsi yang mati karena timeout tidak mengunci
+dokumen: DELETE memakai CAS pada nilai lease basi itu (atau `diproses_pada IS NULL` bila tanpa
+lease), sehingga render yang mengklaim ulang sesudah SELECT tetap menang dan DELETE gagal tertutup.
+Path dari baris DB tidak dipercaya mentah: render hanya membaca `src/<docId>.pdf`, dan DELETE hanya
+menghapus `src/<docId>.pdf`, `_raw/<docId>.pdf`, `pages/<docId>/...` (path lama di luar awalan itu
+tetap), tidak pernah `raw/` atau objek dokumen lain.
+Setelah DB terhapus, pembersihan mencakup kunci final, daftar halaman tersimpan, dan listing
+SELURUH `pages/<docId>/` secara berhalaman, termasuk PNG yang belum sempat masuk checkpoint.
+Galat storage sesudah DELETE tetap dicatat agar prefix dapat disapu ulang. Page-image memeriksa
+status DB sebelum cache, sehingga nonaktif/hapus segera ditolak meskipun PNG masih tercache.
+
+Rollback: pulihkan fungsi lewat `rollback-nav-lencana-investasi-202611190004.sql`, lalu
+`rollback-investasi-dokumen-proses-202611190003.sql` hanya setelah pemilik menangani dokumen
+status diproses/gagal (constraint sengaja menolak kehilangan status). Jalankan rollback dalam
+transaksi; keduanya belum dijalankan terhadap database eksternal. Bukti PGlite hanya memakai
+data sintetis; PDF besar nyata dan kontensi beberapa koneksi PostgreSQL perlu validasi staging.
+
 ## Baseline Fresh-Only
 
 Direktori `supabase/migrations/` berisi lima migrasi final-state untuk proyek yang belum pernah dideploy:

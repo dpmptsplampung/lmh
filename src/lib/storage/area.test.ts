@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { adalahArea, ATURAN_AREA, cocokMagicBytes, kunciObjek, pathMentahIproSah } from './area';
+import { adalahArea, ATURAN_AREA, cocokMagicBytes, kunciObjek, pathMentahIproSah, pathPdfInvestasiSah } from './area';
 
 describe('area', () => {
   it('memisahkan mentah privat dan WebP publik yang hanya ditulis server', () => {
@@ -8,6 +8,13 @@ describe('area', () => {
     expect(ATURAN_AREA['investment-docs'].modul).toBe('investasi');
     expect(pathMentahIproSah('11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222.png')).toBe(true);
     expect(pathMentahIproSah('11111111-1111-4111-8111-111111111111/../a.svg')).toBe(false);
+  });
+  it('PDF hanya memakai raw/UID/UUID.pdf dan modul investasi dengan batas 50 MiB', () => {
+    expect(ATURAN_AREA['investment-docs']).toMatchObject({ peran: ['admin', 'petugas'], modul: 'investasi', bucket: 'private', maksByte: 50 * 1024 * 1024 });
+    expect(pathPdfInvestasiSah('raw/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/11111111-1111-4111-8111-111111111111.pdf', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')).toBe(true);
+    expect(pathPdfInvestasiSah('raw/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/11111111-1111-4111-8111-111111111111.pdf', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')).toBe(false);
+    expect(pathPdfInvestasiSah('raw/11111111-1111-4111-8111-111111111111.pdf')).toBe(false);
+    for (const p of ['pages/x.pdf', 'raw/x.pdf', 'raw/../x.pdf', 'raw/11111111-1111-4111-8111-111111111111.html']) expect(pathPdfInvestasiSah(p)).toBe(false);
   });
   it('kunciObjek menggabungkan area dan path', () => {
     expect(kunciObjek('umkm-photos', 'a.jpg')).toBe('umkm-photos/a.jpg');

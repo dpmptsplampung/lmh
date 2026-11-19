@@ -17,9 +17,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'file_path parameter required' }, { status: 400 });
   }
 
-  if (!filePath.startsWith('_raw/') && !filePath.startsWith('pages/')) {
+  if (!filePath.startsWith('_raw/') && !filePath.startsWith('raw/') && !filePath.startsWith('pages/')) {
     return NextResponse.json({ error: 'Invalid file_path' }, { status: 400 });
   }
+
+  let kunci: string;
+  try { kunci = kunciObjek('investment-docs', filePath); }
+  catch { return NextResponse.json({ error: 'Invalid file_path' }, { status: 400 }); }
 
   const supabase = await createClient();
 
@@ -34,7 +38,12 @@ export async function GET(request: NextRequest) {
     .eq('auth_user_id', user.id)
     .maybeSingle();
 
-  if (!petugas || petugas.role !== 'admin') {
+  let boleh = false;
+  try {
+    const akses = await supabase.rpc('boleh_kelola_investasi');
+    boleh = !akses.error && akses.data === true;
+  } catch { /* Akses tetap tertutup bila pemeriksaan sesi gagal. */ }
+  if (!petugas || !boleh) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
@@ -66,7 +75,7 @@ export async function GET(request: NextRequest) {
 
   let signedUrl: string;
   try {
-    signedUrl = await presignGet('private', kunciObjek('investment-docs', filePath), 60);
+    signedUrl = await presignGet('private', kunci, 60);
   } catch (error) {
     logServerEvent('error', { operation: 'investment_docs.signed_url.create', route: ROUTE, error });
     return NextResponse.json({ error: 'Gagal membuat tautan unduhan.' }, { status: 500 });

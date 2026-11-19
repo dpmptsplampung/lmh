@@ -70,6 +70,7 @@ try {
     if (role === 'petugas') {
       if (r !== 'ptanpa') out.antrian = await c(r, "public.tiket_antrean WHERE tanggal=$1 AND status IN ('menunggu','dipanggil') AND layanan_id=(SELECT layanan_id FROM petugas WHERE auth_user_id=auth.uid())", [hari]);
     } else out.antrian = await c(r, "public.tiket_antrean WHERE tanggal=$1 AND status='menunggu'", [hari]);
+    if (role === 'admin') out.pesanInvestasi = await c(r, "public.investasi_lead WHERE status='baru'");
     if (role === 'admin') out.pengaduan = await c(r, "public.pengaduan WHERE status='baru'");
     if (role === 'front_office') out.pengaduan = await c(r, "public.pengaduan WHERE status='baru' AND jalur='layanan'");
     if (['admin', 'front_office'].includes(role)) out.saran = await c(r, 'public.saran WHERE ditinjau_pada IS NULL');
@@ -99,6 +100,11 @@ try {
   const anon = await sebagai(db, 'anon', null, 'SELECT public.nav_lencana_saya(current_date)');
   cek('anon tidak punya EXECUTE', !anon.ok && anon.kode === '42501');
   cek('SECURITY INVOKER, STABLE', (await pg("SELECT prosecdef::text||provolatile::text AS hasil FROM pg_proc WHERE proname='nav_lencana_saya'")).rows[0].hasil === 'falses');
+
+  wajib(await pg("UPDATE layanan SET modul='investasi' WHERE slug='uji-nav-1'"));
+  wajib(await pg("SET session_replication_role=replica; INSERT INTO public.investasi_lead(nama,email,status,kanal) VALUES ('Investor','investor@example.invalid','baru','dokumen'); SET session_replication_role=origin;"));
+  cek('admin dan petugas investasi menghitung pesan baru', (await rpc('admin')).pesanInvestasi === 1 && (await rpc('p1')).pesanInvestasi === 1);
+  cek('FO dan petugas modul lain tanpa lencana investasi', (await rpc('fo1')).pesanInvestasi === undefined && (await rpc('p2')).pesanInvestasi === undefined);
 
   const rollback = readFileSync(new URL('../../docs/rollback-nav-lencana-202611110002.sql', import.meta.url), 'utf8');
   wajib(await pg(rollback));

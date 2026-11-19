@@ -14,7 +14,7 @@ const ROUTE = '/api/storage/presign';
 
 const bodySchema = z.object({
   area: z.string(),
-  path: z.string().min(1).max(300),
+  path: z.string().min(1).max(300).optional(),
   mime: z.string().min(1).max(100),
   ukuran: z.number().int().positive(),
 }).strict();
@@ -33,7 +33,13 @@ async function proses(request: NextRequest) {
   if (!body.success || !adalahArea(body.data.area) || !AREA_DILAYANI(body.data.area)) {
     return NextResponse.json({ error: 'Permintaan tidak valid' }, { status: 400 });
   }
-  const { path, mime, ukuran } = body.data;
+  const { mime, ukuran } = body.data;
+  const path = body.data.path ?? '';
+  // Kunci PDF investasi dibuat server (raw/<uid>/<uuid>.pdf); klien tidak boleh menentukan atau mengulang path.
+  if (body.data.area === 'investment-docs' && body.data.path !== undefined) {
+    return NextResponse.json({ error: 'Path ditetapkan server untuk PDF investasi' }, { status: 400 });
+  }
+  if (body.data.area !== 'investment-docs' && !path) return NextResponse.json({ error: 'Permintaan tidak valid' }, { status: 400 });
   const area = body.data.area as Area;
 
   const supabase = await createClient();
@@ -58,18 +64,18 @@ async function proses(request: NextRequest) {
     const ekstensi = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }[mime];
     const profil = !staf ? (path.startsWith(AWALAN_AKUN) ? user.id : profilDrafDariPath(path)) : null;
     const nama = `${profil ? `${profil}/` : ''}${randomUUID()}.${ekstensi}`;
-    kunci = kunciObjek(area, area === 'umkm-draf' ? nama : path);
+    kunci = kunciObjek(area, area === 'investment-docs' ? `raw/${user.id}/${randomUUID()}.pdf` : area === 'umkm-draf' ? nama : path);
   } catch {
     return NextResponse.json({ error: 'Path berkas tidak valid' }, { status: 400 });
   }
-  if (!r2Tersedia() || (['umkm-draf', 'ipro-mentah'].includes(area) && !bucketTerpisah())) {
+  if (!r2Tersedia() || (['umkm-draf', 'ipro-mentah', 'investment-docs'].includes(area) && !bucketTerpisah())) {
     logServerEvent('error', { operation: 'storage.presign.r2_belum_dikonfigurasi', route: ROUTE });
     return NextResponse.json({ error: 'Penyimpanan berkas belum dikonfigurasi' }, { status: 503 });
   }
   try {
     const uploadUrl = await presignPut(aturan.bucket, kunci, {
       contentType: mime, contentLength: ukuran,
-      ...(['umkm-draf', 'ipro-mentah'].includes(area) ? { tandatanganiContentType: true } : {}),
+      ...(['umkm-draf', 'ipro-mentah', 'investment-docs'].includes(area) ? { tandatanganiContentType: true } : {}),
     });
     return NextResponse.json({ uploadUrl, kunci, headers: { 'Content-Type': mime } },
       area === 'umkm-draf' ? { headers: { 'Cache-Control': 'private, no-store' } } : undefined);

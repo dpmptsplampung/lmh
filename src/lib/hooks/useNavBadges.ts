@@ -155,6 +155,7 @@ interface HasilRpcLencana {
   antrian?: number;
   pengaduan?: number;
   saran?: number;
+  pesanInvestasi?: number;
 }
 
 function dariRpc(data: HasilRpcLencana, who: PenggunaBadge): NavBadges {
@@ -178,6 +179,7 @@ function dariRpc(data: HasilRpcLencana, who: PenggunaBadge): NavBadges {
     who.role === 'petugas' ? `${c} tiket menunggu atau dipanggil hari ini` : `${c} tiket menunggu hari ini`,
   );
   set('pengaduan', data.pengaduan, (c) => `${c} pengaduan baru belum ditangani`);
+  set('pesanInvestasi', data.pesanInvestasi, (c) => `${c} pesan investasi baru`);
   set('saran', data.saran, (c) => `${c} saran belum ditinjau`);
   return hasil;
 }

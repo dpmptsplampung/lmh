@@ -62,6 +62,46 @@ try {
     SET session_replication_role = origin;
   `));
   await db.exec(readFileSync(new URL('../../supabase/migrations/202611190002_investasi_kotak_masuk.sql', import.meta.url), 'utf8'));
+  await db.exec(readFileSync(new URL('../../supabase/migrations/202611190003_investasi_dokumen_proses.sql', import.meta.url), 'utf8'));
+  // Konsumsi kunci satu kali, tersimpan sebagai tombstone meskipun dokumen sudah dihapus.
+  const raw = `investment-docs/raw/${U.investasi}/${D(90)}.pdf`;
+  const konsumsi = (r, kunci) => user(r, 'INSERT INTO public.investment_pdf_claims(kunci) VALUES ($1) RETURNING kunci', [kunci]);
+  cek('pengunggah mengonsumsi kunci sendiri', wajib(await konsumsi('investasi', raw)).rows[0]?.kunci === raw);
+  galat('kunci tidak dapat dikonsumsi dua kali', await konsumsi('investasi', raw), 'duplicate key', '23505');
+  galat('admin B tidak dapat mengonsumsi raw A', await konsumsi('admin', raw.replace(D(90), D(91))), 'check constraint', '23514');
+  cek('admin B tidak dapat membaca klaim A', wajib(await user('admin',
+    'SELECT kunci FROM public.investment_pdf_claims WHERE kunci=$1', [raw])).rows.length === 0);
+  galat('pemilik tidak dapat menghapus tombstone', await user('investasi',
+    'DELETE FROM public.investment_pdf_claims WHERE kunci=$1', [raw]), 'permission denied', '42501');
+  galat('pemilik tidak dapat mengganti tombstone', await user('investasi',
+    'UPDATE public.investment_pdf_claims SET kunci=$1 WHERE kunci=$1', [raw]), 'permission denied', '42501');
+  for (const r of ['umkm', 'fo', 'nonaktif', 'warga']) {
+    galat(`${r} tidak boleh mengonsumsi kunci`, await konsumsi(r, `investment-docs/raw/${U[r]}/${D(92)}.pdf`), 'row-level security', '42501');
+  }
+  galat('anon tidak membaca klaim unggahan', await sebagai(db, 'anon', null,
+    'SELECT kunci FROM public.investment_pdf_claims'), 'permission denied', '42501');
+  for (const r of ['umkm', 'fo', 'nonaktif', 'warga']) {
+    galat(`${r} tidak boleh membuat dokumen`, await user(r, `INSERT INTO public.investment_documents(judul,file_path,status)
+      VALUES ('Dilarang','raw/uji.pdf','diproses')`), 'row-level security', '42501');
+  }
+  for (const r of ['admin', 'investasi']) {
+    const dok = wajib(await user(r, `INSERT INTO public.investment_documents(judul,file_path,status,jumlah_halaman)
+      VALUES ('Proses Uji','raw/uji.pdf','diproses',2) RETURNING id,halaman_selesai`)).rows[0];
+    cek(`${r} membuat dokumen proses mulai nol`, dok.halaman_selesai === 0);
+    cek('publik tidak melihat dokumen diproses', wajib(await sebagai(db, 'anon', null,
+      'SELECT id FROM public.investment_documents WHERE id=$1', [dok.id])).rows.length === 0);
+    const claim = "UPDATE public.investment_documents SET diproses_pada=now() WHERE id=$1 AND diproses_pada IS NULL AND halaman_selesai=0 RETURNING id";
+    cek('klaim pertama menang dan klaim kedua tidak menimpa', wajib(await user(r, claim, [dok.id])).rows.length === 1
+      && wajib(await user(r, claim, [dok.id])).rows.length === 0);
+    cek('DELETE dengan fence menolak lease yang sudah diklaim', wajib(await user(r,
+      'DELETE FROM public.investment_documents WHERE id=$1 AND diproses_pada IS NULL RETURNING id', [dok.id])).rows.length === 0);
+    wajib(await user(r, `UPDATE public.investment_documents SET halaman_selesai=1,halaman_gambar=ARRAY['pages/uji/1.png'],status='gagal',galat='Galat teknis' WHERE id=$1`, [dok.id]));
+    cek('kegagalan menyimpan halaman sebelumnya', hasil(await user(r,
+      "SELECT halaman_selesai=1 AND status='gagal' AS hasil FROM public.investment_documents WHERE id=$1", [dok.id])) === true);
+    galat('pesan galat lebih dari 500 ditolak', await user(r,
+      "UPDATE public.investment_documents SET galat=repeat('x',501) WHERE id=$1", [dok.id]), 'check constraint', '23514');
+    wajib(await user(r, "DELETE FROM public.investment_documents WHERE id=$1", [dok.id]));
+  }
   cek('backfill aktivitas memakai updated_at lama', hasil(await pg(`SELECT aktivitas_pada=updated_at AS hasil
     FROM public.investasi_lead WHERE id=$1`, [id(6, 1)])) === true);
   cek('baris lama otomatis kanal dokumen dan versi 1', hasil(await pg(`SELECT kanal='dokumen' AND versi=1

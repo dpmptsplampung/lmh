@@ -3,7 +3,7 @@ import {beforeEach,describe,expect,it,vi} from 'vitest';
 import type {NextRequest} from 'next/server';
 vi.mock('@/lib/supabase/server',()=>({createClient:vi.fn()}));
 vi.mock('@/lib/observability/logger',()=>({logServerEvent:vi.fn()}));
-vi.mock('@/lib/storage/r2',()=>({r2Tersedia:vi.fn(()=>true),bucketTerpisah:vi.fn(()=>true),presignPut:vi.fn(async()=> 'https://r2.example/put'),headObject:vi.fn(async()=>({size:100,contentType:'image/jpeg'})),getObjectRange:vi.fn(async()=>Uint8Array.of(0xff,0xd8,0xff)),deleteObjects:vi.fn(),urlPublik:(k:string)=>`https://pub.example/${k}`}));
+vi.mock('@/lib/storage/r2',()=>({r2Tersedia:vi.fn(()=>true),bucketTerpisah:vi.fn(()=>true),presignPut:vi.fn(async()=> 'https://r2.example/put'),headObject:vi.fn(async()=>({size:100,contentType:'image/jpeg'})),getObjectRange:vi.fn(async()=>Uint8Array.of(0xff,0xd8,0xff)),deleteObjects:vi.fn(async()=>{}),urlPublik:(k:string)=>`https://pub.example/${k}`}));
 import {createClient} from '@/lib/supabase/server';
 import {presignPut,headObject,bucketTerpisah,deleteObjects} from '@/lib/storage/r2';
 import {POST} from './route';
@@ -43,14 +43,15 @@ describe('unggah IPRO memerlukan modul investasi', () => {
  });
 });
 let role:string,flag:boolean,aktif:boolean|null,modul:string|null,modulError:boolean,session:boolean,sessionError:boolean;
+let dipakai = false;
 let rpc:ReturnType<typeof vi.fn>;
 const req=(area='umkm-draf')=>new Request('http://localhost/api/storage/konfirmasi',{method:'POST',body:JSON.stringify({area,path:'foto.jpg',})}) as NextRequest;
-beforeEach(()=>{vi.clearAllMocks();vi.mocked(bucketTerpisah).mockReturnValue(true);role='petugas';flag=false;aktif=true;modul='umkm';modulError=false;session=true;sessionError=false;
+beforeEach(()=>{dipakai=false;vi.clearAllMocks();vi.mocked(bucketTerpisah).mockReturnValue(true);role='petugas';flag=false;aktif=true;modul='umkm';modulError=false;session=true;sessionError=false;
  rpc=vi.fn(async(nama:string)=>nama==='staf_modul'
    ? {data:modul,error:modulError?{code:'42883'}:null}
    : {data:session,error:sessionError?{code:'42501'}:null});
- vi.mocked(createClient).mockResolvedValue({auth:{getUser:async()=>({data:{user:{id:'u1'}}})},rpc,
- from:()=>({select:()=>({eq:()=>({maybeSingle:async()=>({data:{role,aktif,pemeriksa_umkm:flag},error:null})})})})} as unknown as Awaited<ReturnType<typeof createClient>>);
+ vi.mocked(createClient).mockResolvedValue({auth:{getUser:async()=>({data:{user:{id:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'}}})},rpc,
+ from:(table: string)=>({select:()=>({eq:()=>({maybeSingle:async()=>({data:table === 'investment_pdf_claims' ? (dipakai ? { kunci: 'terpakai' } : null) : {role,aktif,pemeriksa_umkm:flag},error:null})})})})} as unknown as Awaited<ReturnType<typeof createClient>>);
 });
 describe('konfirmasi area draf UMKM dengan JWT pengguna',()=>{
  it.each(['petugas','admin'])('%s aktif boleh mengunggah privat tanpa flag lama',async r=>{role=r;const res=await POST(req());expect(res.status).toBe(200);expect(rpc).toHaveBeenCalledWith('sesi_valid');expect(await res.json()).not.toHaveProperty('url');});
@@ -92,4 +93,46 @@ it('konfirmasi menerima folder akun sendiri dan menolak folder akun lain', async
   vi.mocked(headObject).mockClear();
   expect((await POST(request('22222222-2222-4222-8222-222222222222'))).status).toBe(403);
   expect(headObject).not.toHaveBeenCalled();
+});
+
+describe('konfirmasi PDF investasi', () => {
+ const pdf = () => new Request('http://localhost/api/storage/konfirmasi', { method: 'POST', body: JSON.stringify({
+   area: 'investment-docs', path: 'raw/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/11111111-1111-4111-8111-111111111111.pdf',
+ }) }) as NextRequest;
+ it.each(['umkm', null])('petugas %s ditolak sebelum membaca objek', async m => {
+   modul = m; expect((await POST(pdf())).status).toBe(403); expect(headObject).not.toHaveBeenCalled();
+ });
+ it('memeriksa MIME, ukuran dan magic PDF; berkas palsu dihapus', async () => {
+   role = 'admin';
+   vi.mocked(headObject).mockResolvedValueOnce({ size: 100, contentType: 'application/pdf' });
+   const res = await POST(pdf());
+   expect(res.status).toBe(422); expect(deleteObjects).toHaveBeenCalledWith('private', ['investment-docs/raw/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/11111111-1111-4111-8111-111111111111.pdf']);
+ });
+ it('PDF lebih dari 50 MiB ditolak', async () => {
+   role = 'admin'; vi.mocked(headObject).mockResolvedValueOnce({ size: 50 * 1024 * 1024 + 1, contentType: 'application/pdf' });
+   expect((await POST(pdf())).status).toBe(422);
+ });
+ it('PDF sah diterima bagi modul investasi', async () => {
+   modul = 'investasi'; vi.mocked(headObject).mockResolvedValueOnce({ size: 100, contentType: 'application/pdf' });
+   const { getObjectRange } = await import('@/lib/storage/r2');
+   vi.mocked(getObjectRange).mockResolvedValueOnce(new TextEncoder().encode('%PDF-1.7'));
+   const res = await POST(pdf()); expect(res.status).toBe(200);
+   expect(res.headers.get('Cache-Control')).toBe('private, no-store');
+   expect(await res.json()).toEqual({ kunci: 'investment-docs/raw/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/11111111-1111-4111-8111-111111111111.pdf' });
+ });
+});
+
+it('B tidak dapat mengonfirmasi raw A dan tidak menghapus objek A', async () => {
+  role = 'admin';
+  const res = await POST(new Request('http://localhost/api/storage/konfirmasi', { method: 'POST', body: JSON.stringify({
+    area: 'investment-docs', path: 'raw/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/11111111-1111-4111-8111-111111111111.pdf',
+  }) }) as NextRequest);
+  expect(res.status).toBe(403); expect(headObject).not.toHaveBeenCalled(); expect(deleteObjects).not.toHaveBeenCalled();
+});
+it('raw yang sudah dikonsumsi tidak dapat dikonfirmasi ulang walau PUT diulang', async () => {
+  role = 'admin'; dipakai = true;
+  const res = await POST(new Request('http://localhost/api/storage/konfirmasi', { method: 'POST', body: JSON.stringify({
+    area: 'investment-docs', path: 'raw/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/11111111-1111-4111-8111-111111111111.pdf',
+  }) }) as NextRequest);
+  expect(res.status).toBe(409); expect(headObject).not.toHaveBeenCalled(); expect(deleteObjects).not.toHaveBeenCalled();
 });

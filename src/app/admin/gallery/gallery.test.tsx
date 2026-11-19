@@ -68,7 +68,7 @@ describe('Admin gallery PDF pipeline', () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       status: 201,
-      json: async () => ({ id: 'doc-1', jumlah_halaman: 2 }),
+      json: async () => ({ id: 'doc-1', jumlah_halaman: 2, halaman_selesai: 2, selesai: true, uploadUrl: 'https://r2.example/put', kunci: 'investment-docs/raw/test.pdf', headers: { 'Content-Type': 'application/pdf' } }),
     }) as unknown as typeof fetch;
   });
 
@@ -84,11 +84,11 @@ describe('Admin gallery PDF pipeline', () => {
     const kolom = mock._select.mock.calls[0][0] as string;
     expect(kolom).not.toContain('*');
     expect(kolom.split(',').map((k) => k.trim())).toEqual([
-      'id', 'judul', 'kategori', 'urutan_tampil', 'file_path', 'jumlah_halaman', 'status', 'deskripsi', 'nilai_investasi', 'image_url',
+      'id', 'judul', 'kategori', 'urutan_tampil', 'file_path', 'jumlah_halaman', 'status', 'deskripsi', 'nilai_investasi', 'image_url', 'halaman_selesai', 'galat',
     ]);
   });
 
-  it('create path submits multipart to /api/investment-docs/upload (no client storage.upload)', async () => {
+  it('unggah PDF langsung ke R2, konfirmasi, buat catatan, lalu render bertahap', async () => {
     const mock = buildMock();
     render(<AdminGalleryPage />);
 
@@ -116,20 +116,39 @@ describe('Admin gallery PDF pipeline', () => {
       expect(globalThis.fetch).toHaveBeenCalled();
     });
 
-    const [url, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
-      string,
-      RequestInit,
-    ];
-    expect(url).toBe('/api/investment-docs/upload');
-    expect(init.method).toBe('POST');
-    expect(init.body).toBeInstanceOf(FormData);
-
-    const body = init.body as FormData;
-    expect(body.get('judul')).toBe('Proyek Baru');
-    expect(body.get('pdf')).toBeInstanceOf(File);
-
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledTimes(5));
+    const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls.map(c => c[0])).toEqual(['/api/storage/presign', 'https://r2.example/put', '/api/storage/konfirmasi', '/api/investment-docs', '/api/investment-docs/doc-1/render']);
+    expect(calls[1][1]).toMatchObject({ method: 'PUT', body: file });
+    expect(JSON.parse(calls[0][1].body)).toMatchObject({ area: 'investment-docs', mime: 'application/pdf', ukuran: file.size });
+    expect(JSON.parse(calls[0][1].body)).not.toHaveProperty('path');
+    expect(JSON.parse(calls[2][1].body)).toEqual({ area: 'investment-docs', path: 'raw/test.pdf' });
+    expect(JSON.parse(calls[3][1].body)).toMatchObject({ judul: 'Proyek Baru', kunci: 'investment-docs/raw/test.pdf' });
+    expect(JSON.parse(calls[4][1].body)).toEqual({ mulai: 1 });
     expect(mock._storageUpload).not.toHaveBeenCalled();
     expect(mock._insert).not.toHaveBeenCalled();
+  });
+
+  it('dokumen gagal dapat dilanjutkan dari halaman tersimpan dengan kemajuan aksesibel', async () => {
+    const mock = buildMock();
+    mock._select.mockReturnValue({ order: vi.fn().mockResolvedValue({ data: [{
+      id: 'doc-gagal', judul: 'Kajian Terputus', kategori: null, urutan_tampil: 1,
+      file_path: 'raw/uji.pdf', jumlah_halaman: 3, halaman_selesai: 1, status: 'gagal',
+      deskripsi: null, nilai_investasi: null, image_url: null, galat: 'Pemrosesan terhenti.',
+    }], error: null }) });
+    let selesai!: (r: unknown) => void;
+    globalThis.fetch = vi.fn(() => new Promise(resolve => { selesai = resolve; })) as typeof fetch;
+    render(<AdminGalleryPage />);
+    const lanjut = await screen.findByRole('button', { name: 'Lanjutkan pemrosesan' });
+    expect(screen.queryByTitle('Aktifkan')).not.toBeInTheDocument();
+    fireEvent.click(lanjut);
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledTimes(1));
+    const [url, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe('/api/investment-docs/doc-gagal/render');
+    expect(JSON.parse(init.body)).toEqual({ mulai: 2 });
+    expect(screen.getByRole('progressbar', { name: 'Kemajuan pemrosesan PDF' })).toHaveAttribute('value', '1');
+    selesai({ ok: true, json: async () => ({ halaman_selesai: 3, jumlah_halaman: 3, selesai: true }) });
+    await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument());
   });
 
   it('delete path calls DELETE /api/investment-docs/:id (not client DB delete)', async () => {

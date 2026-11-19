@@ -167,14 +167,6 @@ export async function GET(request: NextRequest) {
   const sessionSeed = `${getClientIp(request)}|${request.headers.get('cookie') ?? ''}`;
   const { subject, label } = await resolveWatermarkIdentity(supabase, sessionSeed);
 
-  const key = cacheKey(doc_id, page, subject);
-  const cached = cacheGet(key);
-  if (cached) {
-    return new Response(new Uint8Array(cached), {
-      headers: { 'Content-Type': 'image/png', 'Cache-Control': 'no-store' },
-    });
-  }
-
   const { data: docRow, error: docError } = await supabase
     .from('investment_documents')
     .select('halaman_gambar, jumlah_halaman, status')
@@ -190,6 +182,14 @@ export async function GET(request: NextRequest) {
   if (docRow.status !== 'aktif') {
     return NextResponse.json({ error: 'Document not found' }, { status: 404 });
   }
+  const key = cacheKey(doc_id, page, subject);
+  const cached = cacheGet(key);
+  if (cached) {
+    return new Response(new Uint8Array(cached), {
+      headers: { 'Content-Type': 'image/png', 'Cache-Control': 'no-store' },
+    });
+  }
+
   if (!docRow.halaman_gambar || docRow.halaman_gambar.length === 0) {
     return NextResponse.json({ error: 'Document not yet processed' }, { status: 404 });
   }

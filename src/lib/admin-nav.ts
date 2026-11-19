@@ -31,7 +31,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
 ];
 
 // Badge notifikasi pada menu (jumlah data yang perlu dibuka). Sumber hitungan: lib/hooks/useNavBadges.ts.
-export type AdminBadgeKey = 'kotakMasukFo' | 'liveChat' | 'penangananFo' | 'antrian' | 'pengaduan' | 'saran';
+export type AdminBadgeKey = 'kotakMasukFo' | 'liveChat' | 'penangananFo' | 'antrian' | 'pengaduan' | 'saran' | 'pesanInvestasi';
 
 // Role yang berhak melihat tiap badge (juga menentukan kueri hitungan yang dijalankan).
 // Sengaja eksplisit: tidak semua yang boleh MEMBUKA halaman perlu diberi badge (mis. petugas layanan
@@ -44,6 +44,7 @@ export const ADMIN_BADGE_ROLES: Record<AdminBadgeKey, AdminRole[]> = {
   pengaduan: ['admin', 'front_office'],
   // Saran: RLS tabel saran hanya admin dan Front Office; petugas layanan tidak melihat Saran.
   saran: ['admin', 'front_office'],
+  pesanInvestasi: ['admin', 'petugas'],
 };
 
 export function badgeKeysForRole(role: string | null | undefined): AdminBadgeKey[] {
@@ -141,9 +142,9 @@ export const ADMIN_NAV: AdminNavEntry[] = [
     roles: ['admin', 'front_office'], group: 'kemitraan' },
   { label: 'IPRO', href: '/admin/ipro', hrefPetugas: '/petugas/investasi/ipro', iconKey: 'gallery',
     roles: ['admin', 'petugas'], group: 'kemitraan', butuhModul: 'investasi' },
-  { label: 'Kotak Masuk Investasi', href: '/admin/investasi-leads', hrefPetugas: '/petugas/investasi/kotak-masuk', iconKey: 'leads',
+  { label: 'Kotak Masuk Investasi', href: '/admin/investasi-leads', hrefPetugas: '/petugas/investasi/kotak-masuk', iconKey: 'leads', badgeKey: 'pesanInvestasi',
     roles: ['admin', 'petugas'], group: 'kemitraan', butuhModul: 'investasi' },
-  { label: 'Investment Gallery', href: '/admin/gallery', iconKey: 'gallery', roles: ['admin'], group: 'kemitraan' },
+  { label: 'Investment Gallery', href: '/admin/gallery', hrefPetugas: '/petugas/investasi/dokumen', iconKey: 'gallery', roles: ['admin', 'petugas'], group: 'kemitraan', butuhModul: 'investasi' },
 
   // Konten & Dokumen
   { label: 'Dokumen Peraturan', href: '/admin/dokumen', iconKey: 'dokumen', roles: ['admin'], group: 'konten' },

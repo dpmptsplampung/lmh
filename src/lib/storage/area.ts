@@ -42,6 +42,12 @@ export function pathMentahIproSah(path: string): boolean {
   return new RegExp(`^${uuid}/${uuid}\\.(jpg|jpeg|png|webp)$`).test(path);
 }
 
+export function pathPdfInvestasiSah(path: string, pengunggah?: string): boolean {
+  const uuid = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+  return new RegExp(`^raw/${uuid}/${uuid}\\.pdf$`).test(path)
+    && (pengunggah === undefined || path.split('/')[1] === pengunggah);
+}
+
 export function adalahArea(v: unknown): v is Area {
   return typeof v === 'string' && Object.prototype.hasOwnProperty.call(ATURAN_AREA, v);
 }

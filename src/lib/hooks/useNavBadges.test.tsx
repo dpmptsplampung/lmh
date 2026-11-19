@@ -318,6 +318,13 @@ describe('muatBadge (satu RPC nav_lencana_saya)', () => {
     kotakMasukFo: { semua: 3, kembali: 1 }, liveChat: 2, penangananFo: 1, antrian: 5, pengaduan: 6, saran: 7,
   };
 
+  it('memetakan pesan investasi untuk pengelola dan mengabaikannya bagi FO', async () => {
+    h.rpc = () => ({ data: { pesanInvestasi: 3 }, error: null });
+    expect((await muatBadge(sb(), ADMIN, opsi)).pesanInvestasi).toEqual({ count: 3, label: '3 pesan investasi baru' });
+    expect((await muatBadge(sb(), PETUGAS, opsi)).pesanInvestasi?.count).toBe(3);
+    expect((await muatBadge(sb(), FO, opsi)).pesanInvestasi).toBeUndefined();
+  });
+
   it('memakai satu panggilan RPC tanpa query tabel; label sama dengan jalur lama', async () => {
     h.rpc = () => ({ data: rpcFo, error: null });
     const r = await muatBadge(sb(), FO, opsi);
