@@ -26,6 +26,7 @@ describe('Next security headers', () => {
     expect(csp).not.toContain('fonts.googleapis.com');
     expect(csp).not.toContain('fonts.gstatic.com');
     expect(csp).toContain("worker-src 'self' blob:");
+    expect(csp).toContain("frame-src 'self'");
     expect(csp).toContain("frame-ancestors 'none'");
     expect(csp).not.toContain('*');
     expect(csp).not.toContain("'unsafe-eval'");

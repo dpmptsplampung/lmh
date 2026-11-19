@@ -12,12 +12,17 @@ const h = vi.hoisted(() => ({
     },
   ],
   user: { id: 'u1' } as { id: string } | null,
+  signInAnon: vi.fn(),
 }));
 
 vi.mock('@/lib/supabase/client', () => ({
   createClient: () => ({
     from: () => ({ select: () => ({ eq: () => ({ order: async () => ({ data: h.dokumen, error: null }) }) }) }),
-    auth: { getUser: async () => ({ data: { user: h.user } }) },
+    auth: {
+      getUser: async () => ({ data: { user: h.user } }),
+      getSession: async () => ({ data: { session: h.user ? { user: h.user } : null }, error: null }),
+      signInAnonymously: h.signInAnon,
+    },
   }),
 }));
 vi.mock('@/lib/site-settings', () => ({ getSiteSettings: async () => ({}) }));
@@ -28,6 +33,8 @@ import GalleryPage from './page';
 const fetchMock = vi.fn();
 beforeEach(() => {
   h.user = { id: 'u1' };
+  h.signInAnon.mockReset();
+  h.signInAnon.mockResolvedValue({ data: { session: { user: { id: 'anon' } } }, error: null });
   fetchMock.mockReset();
   vi.stubGlobal('fetch', fetchMock);
 });
@@ -121,10 +128,16 @@ describe('Galeri: formulir minat investasi (Dialog)', () => {
     expect(kirim).toHaveFocus();
   });
 
-  it('pengguna belum masuk diminta masuk', async () => {
+  it('pengunjung tanpa sesi tetap bisa mengirim: sesi anonim dibuat otomatis, tanpa tautan masuk', async () => {
     h.user = null;
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
     const { dialog } = await bukaFormulir();
-    expect(await within(dialog).findByRole('link', { name: 'Masuk' })).toHaveAttribute('href', '/login?next=/gallery');
+    expect(within(dialog).queryByRole('link', { name: 'Masuk' })).toBeNull();
+    fireEvent.change(await within(dialog).findByLabelText(/^Nama/), { target: { value: 'Sari' } });
+    fireEvent.change(within(dialog).getByLabelText(/^Email/), { target: { value: 'sari@contoh.id' } });
+    fireEvent.submit(dialog.querySelector('form') as HTMLFormElement);
+    expect(await within(dialog).findByText(/Permintaan Anda tercatat/)).toBeInTheDocument();
+    expect(h.signInAnon).toHaveBeenCalledTimes(1);
   });
 
   it('kirim berhasil menampilkan konfirmasi; Tutup menutup dan pembukaan berikutnya mulai dari formulir kosong', async () => {

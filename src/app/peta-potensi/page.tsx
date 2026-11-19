@@ -123,7 +123,7 @@ export default function PetaPotensiPage() {
             Lihat Investment Gallery &amp; Dokumen IPRO
           </Tombol>
           <p style={{ marginTop: 'var(--space-3)', fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)' }}>
-            Dokumen profil investasi, potensi wilayah, dan IPRO tersedia untuk investor terdaftar.
+            Dokumen profil investasi, potensi wilayah, dan IPRO tersedia untuk umum.
           </p>
         </div>
         {/* Contact CTA */}

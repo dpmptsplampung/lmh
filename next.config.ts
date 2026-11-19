@@ -39,6 +39,8 @@ export function buildContentSecurityPolicy(
     // https: = foto UMKM dari tautan web eksternal (migrasi 202611030004 membatasi URL foto ke https). Hanya gambar; script/connect tetap ketat.
     `img-src 'self' data: blob:${httpOrigin ? ` ${httpOrigin}` : ''}${r2Publik ? ` ${r2Publik}` : ''} https:`,
     "font-src 'self' data:",
+    // Pratinjau PDF admin (presigned URL R2) dimuat lewat iframe.
+    `frame-src 'self'${r2Endpoint ? ` ${r2Endpoint}` : ''}`,
     "worker-src 'self' blob:",
     "object-src 'none'",
     "base-uri 'self'",

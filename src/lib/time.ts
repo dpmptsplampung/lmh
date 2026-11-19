@@ -70,3 +70,11 @@ export function menitWIB(date: Date = new Date()): number {
   const menit = Number(bagian.find((p) => p.type === 'minute')?.value ?? 0);
   return jam * 60 + menit;
 }
+
+/**
+ * Cap waktu untuk watermark/jejak yang dibaca manusia: 'YYYY-MM-DD HH:mm WIB' (zona Asia/Jakarta).
+ */
+export function capWaktuWIB(date: Date = new Date()): string {
+  const jam = jamFormatter.format(date);
+  return `${dateFormatter.format(date)} ${jam} WIB`;
+}

@@ -15,7 +15,6 @@ import {
   Mail,
   Loader2,
   CheckCircle,
-  LogIn,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { getSiteSettings } from '@/lib/site-settings';
@@ -49,7 +48,6 @@ export default function GalleryPage() {
   const [leadSending, setLeadSending] = useState(false);
   const [leadSent, setLeadSent] = useState(false);
   const [leadError, setLeadError] = useState('');
-  const [leadLoggedIn, setLeadLoggedIn] = useState<boolean | null>(null);
   const [contactEmail, setContactEmail] = useState(CONTACT_EMAIL_FALLBACK);
 
   useEffect(() => {
@@ -113,14 +111,6 @@ export default function GalleryPage() {
     setLeadSent(false);
     setLeadError('');
     setLeadSending(false);
-    setLeadLoggedIn(null);
-    try {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      setLeadLoggedIn(!!user);
-    } catch {
-      setLeadLoggedIn(false);
-    }
   };
 
   const handleSubmitLead = async (e: React.FormEvent) => {
@@ -129,6 +119,13 @@ export default function GalleryPage() {
     setLeadSending(true);
     setLeadError('');
     try {
+      // Tanpa akun: pengunjung memakai sesi anonim Supabase (RLS investasi_lead dan check_anon_rate membutuhkan sesi).
+      const supabase = createClient();
+      const { data: sesi } = await supabase.auth.getSession();
+      if (!sesi.session) {
+        const anon = await supabase.auth.signInAnonymously();
+        if (anon.error || !anon.data.session) throw new Error('Sesi tidak dapat dibuat. Muat ulang halaman lalu coba lagi.');
+      }
       const res = await fetch('/api/investasi/lead', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -230,10 +227,10 @@ export default function GalleryPage() {
                   style={{ objectFit: 'contain' }}
                 />
               </div>
-              <h3 className={styles.foilaTitle}>Portal FOILA (Fast Track)</h3>
+              <h3 className={styles.foilaTitle}>Portal FOILA</h3>
             </div>
             <p className={styles.foilaDesc}>
-              Masuk ke portal resmi Forum Investasi Lampung (FOILA) untuk mengakses direktori regulasi daerah, kalkulator investasi, insentif pajak daerah, dan pendampingan izin cepat.
+              Forum Investasi Lampung (FOILA) memuat proyek investasi daerah, panduan prosedur, infrastruktur, dan berita investasi.
             </p>
             <a
               href={foilaUrl}
@@ -270,6 +267,7 @@ export default function GalleryPage() {
                       alt={project.judul}
                       width={400}
                       height={180}
+                      unoptimized
                       className={styles.iproCardImage}
                       style={{ objectFit: 'cover' }}
                     />
@@ -402,15 +400,7 @@ export default function GalleryPage() {
 
       {leadModalDoc && (
         <Dialog terbuka onTutup={handleCloseLeadModal} judul="Ajukan Minat Investasi">
-          {leadLoggedIn === false ? (
-            <div className={styles.leadSuccess}>
-              <LogIn size={48} style={{ color: 'var(--color-primary-600)', marginBottom: 'var(--space-4)' }} aria-hidden="true" />
-              <p className={styles.leadSuccessText}>
-                Silakan masuk untuk mengajukan minat investasi.
-              </p>
-              <Tombol href="/login?next=/gallery">Masuk</Tombol>
-            </div>
-          ) : leadSent ? (
+          {leadSent ? (
             <div className={styles.leadSuccess}>
               <CheckCircle size={48} style={{ color: 'var(--status-success-fg)', marginBottom: 'var(--space-4)' }} aria-hidden="true" />
               <p className={styles.leadSuccessText}>
