@@ -80,6 +80,8 @@ const nextConfig: NextConfig = {
       { source: '/umkm/inbox', destination: '/umkm/katalog', permanent: false },
       { source: '/umkm/edit/:id', destination: '/umkm/katalog', permanent: false },
       { source: '/admin/umkm', destination: '/admin/umkm-tugas', permanent: false },
+      // Halaman lama bergerbang login digantikan seksi Peta Potensi di hub investasi (keputusan pemilik).
+      { source: '/peta-potensi', destination: '/investasi#peta-potensi', permanent: false },
     ];
   },
   async headers() {

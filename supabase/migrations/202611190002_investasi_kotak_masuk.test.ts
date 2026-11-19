@@ -77,7 +77,7 @@ describe('kontrak kotak masuk investasi', () => {
       'NOT public.sesi_valid()', "'DILARANG' USING ERRCODE = '42501'",
       "p_kanal NOT IN ('ipro', 'dokumen')", 'p_operasi_id IS NULL OR p_ref_id IS NULL',
       'char_length(v_nama) NOT BETWEEN 1 AND 200', 'v_email IS NULL OR char_length(v_email) > 254',
-      "v_email !~* '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$'",
+      "v_email !~ '^[A-Za-z0-9_+-]+(?:\\.[A-Za-z0-9_+-]+)*@(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\\.)+[A-Za-z]{2,}$'",
       "regexp_replace(p_no_hp, '[[:space:].()\\-]', '', 'g')", "v_nomor !~ '^\\+?[0-9]{8,20}$'",
       'char_length(v_instansi) > 200', 'char_length(v_pesan) > 2000',
       "p_kanal = 'ipro' AND (v_pesan IS NULL OR char_length(v_pesan) < 10)",
@@ -85,6 +85,22 @@ describe('kontrak kotak masuk investasi', () => {
       "'INPUT_TIDAK_VALID' USING ERRCODE = '22023'", "p.status = 'terbit' AND p.sumber = 'ptsp'",
       "d.status = 'aktif'", "'TIDAK_DITEMUKAN' USING ERRCODE = 'P0002'",
     ]) expect(f).toContain(token);
+  });
+
+  it('validasi email hanya pada RPC baru, tanpa CHECK yang menolak data lama', () => {
+    const pola = fungsi('investasi_kirim_minat').match(/v_email !~ '([^']+)'/)?.[1];
+    expect(pola).toBeDefined();
+    const email = new RegExp(pola!);
+    for (const alamat of ['investor@example.org', 'Investor.Uji_1+ptsp@sub.example-id.org']) {
+      expect(email.test(alamat), alamat).toBe(true);
+    }
+    for (const alamat of [
+      'investor@example.org?bcc=salin%40evil.example&body=', 'a&b@example.org', 'a%b@example.org',
+      'a@example.org#x', 'a b@example.org', 'a,b@example.org', 'a;b@example.org',
+      '"a"@example.org', '<a>@example.org', '.a@example.org', 'a..b@example.org',
+      'a@example..org', 'a@-example.org', 'a@example.o', 'a@example.123',
+    ]) expect(email.test(alamat), alamat).toBe(false);
+    expect(sql).not.toMatch(/(?:ADD\s+CONSTRAINT|ADD\s+CHECK|ALTER\s+COLUMN\s+email)[^;]*\bemail\b/i);
   });
 
   it('retry tervalidasi mengunci operasi dan mengembalikan id sebelum konteks/laju/consent', () => {

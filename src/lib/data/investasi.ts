@@ -29,6 +29,7 @@ export type IproDetail = IproKartu & {
 export type IproAdmin = IproDetail & { status: 'draf' | 'terbit' | 'arsip'; sumber_slug: string | null; versi: number; dibuat_pada: string };
 export type GambarIpro = { id: string; proyek_id: string; kunci: string; kunci_mini: string; lebar: number; tinggi: number;
   alt: string; alt_en: string | null; keterangan: string | null; keterangan_en: string | null; utama: boolean; urutan: number };
+export type GambarIproKelola = GambarIpro & { url: string; url_mini: string };
 export type MinatRingkas = { id: string; kanal: 'ipro' | 'dokumen'; status: string; versi: number; nama: string;
   instansi: string | null; created_at: string; aktivitas_pada: string; petugas_id: string | null;
   ipro_id: string | null; doc_id: string | null; ipro_proyek: { judul: string } | null; investment_documents: { judul: string } | null };
@@ -85,11 +86,19 @@ export async function iproKelolaById(sb: SupabaseClient, id: string): Promise<Ha
   if (proyek.error || gambar.error) return { data: null, error: proyek.error ?? gambar.error };
   return { data: proyek.data ? { ...proyek.data, gambar: gambar.data ?? [] } : null, error: null };
 }
-export function daftarMinat(sb: SupabaseClient, opsi: { kanal?: string; status?: string; dari: number; sampai: number }) {
-  if (!rentangSah(opsi.dari, opsi.sampai)) return Promise.resolve(gagal<MinatRingkas[]>('INPUT_TIDAK_VALID'));
+export function daftarMinat(sb: SupabaseClient, opsi: { kanal?: string; status?: string; cari?: string; dari: number; sampai: number }) {
+  // PostgREST menganggap * alias wildcard %. Tolak alias dan karakter kontrol; pencarian biasa maksimal 200 karakter.
+  if (!rentangSah(opsi.dari, opsi.sampai) || (opsi.cari !== undefined &&
+    (opsi.cari.length > 200 || /[\u0000-\u001f\u007f*]/.test(opsi.cari)))) return Promise.resolve(gagal<MinatRingkas[]>('INPUT_TIDAK_VALID'));
   let query = sb.from('investasi_lead').select(KOLOM_MINAT_DAFTAR, { count: 'exact' });
   if (opsi.kanal) query = query.eq('kanal', opsi.kanal);
   if (opsi.status) query = query.eq('status', opsi.status);
+  if (opsi.cari?.trim()) {
+    const pola = `%${opsi.cari.trim().replace(/[\\%_]/g, '\\$&')}%`;
+    // Escape LIKE dahulu, lalu kutip nilai PostgREST: koma/kurung tetap teks, kutip dan backslash tidak menutup nilai.
+    const nilai = `"${pola.replace(/[\\"]/g, '\\$&')}"`;
+    query = query.or(['nama', 'email', 'instansi'].map(kolom => `${kolom}.ilike.${nilai}`).join(','));
+  }
   return hasil<MinatRingkas[]>(query.order('created_at', { ascending: false }).range(opsi.dari, opsi.sampai));
 }
 export const minatById = (sb: SupabaseClient, id: string) => hasil<MinatDetail>(sb.from('investasi_lead').select(KOLOM_MINAT_DETAIL).eq('id', id).maybeSingle());

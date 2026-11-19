@@ -1,0 +1,118 @@
+/* Kerangka publik Investasi: pola yang sama dengan kerangka Katalog UMKM (kepala putih, kaki gelap, latar polos). */
+.kerangka {
+  /* Bayangan overlay, tirai overlay, dan teks status info untuk Dialog/Lencana di dalam kerangka publik. */
+  --shadow-overlay: 0 24px 48px -12px color-mix(in srgb, var(--color-neutral-900) 28%, transparent);
+  --surface-overlay: color-mix(in srgb, var(--color-neutral-900) 55%, transparent);
+  --status-info-fg: var(--color-primary-800);
+  --inv-latar: var(--color-neutral-100);
+  --inv-tepi: clamp(16px, 4vw, 40px);
+  --inv-lebar: 1240px;
+
+  position: relative;
+  isolation: isolate;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--inv-latar);
+  color: var(--text-primary);
+}
+
+.lompat {
+  position: absolute;
+  left: var(--space-4);
+  top: -100px;
+  z-index: 50;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-neutral-900);
+  color: var(--color-neutral-0);
+}
+.lompat:focus { top: var(--space-2); }
+
+.kepala {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--color-neutral-0);
+  box-shadow: 0 1px 0 var(--color-neutral-200);
+}
+.kepalaIsi {
+  max-width: var(--inv-lebar);
+  margin: 0 auto;
+  padding: var(--space-2) var(--inv-tepi);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 64px;
+}
+.merek {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 44px;
+  color: var(--text-primary);
+  text-decoration: none;
+  flex: none;
+}
+.logo { width: 60px; height: 48px; object-fit: contain; }
+.merekTeks { font-family: var(--font-display); font-weight: 700; font-size: var(--text-lg); }
+.nav { display: flex; align-items: center; gap: var(--space-1); min-width: 0; }
+.navTautan, .navAkun {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-neutral-700);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.navTautan:hover, .navAkun:hover { background: var(--color-neutral-100); color: var(--text-primary); }
+.navAktif { color: var(--color-primary-700); }
+.kerangka :is(a, button):focus-visible { outline: 2px solid var(--color-primary-600); outline-offset: 2px; }
+
+.utama { flex: 1; min-width: 0; outline: none; }
+
+.kaki { background: var(--color-neutral-900); color: var(--color-neutral-300); }
+.kakiIsi {
+  max-width: var(--inv-lebar);
+  margin: 0 auto;
+  padding: var(--space-12) var(--inv-tepi) var(--space-8);
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: var(--space-8);
+}
+.kakiMerek { display: flex; flex-direction: column; gap: var(--space-2); max-width: 560px; }
+.kakiMerek p { margin: 0; line-height: 1.6; }
+.kakiNama { font-family: var(--font-display); font-size: var(--text-2xl); font-weight: 700; color: var(--color-neutral-0); }
+.kakiNav { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); }
+.kakiNav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--color-neutral-0);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--color-neutral-0) 35%, transparent);
+  text-underline-offset: 4px;
+}
+.kakiNav a:hover { text-decoration-color: var(--color-neutral-0); }
+.kaki a:focus-visible { outline-color: var(--color-neutral-0); }
+.hakCipta {
+  max-width: var(--inv-lebar);
+  margin: 0 auto;
+  padding: var(--space-4) var(--inv-tepi) var(--space-8);
+  font-size: var(--text-sm);
+  color: var(--color-neutral-400);
+}
+
+@media (max-width: 1024px) {
+  .navLebar { display: none; }
+}
+@media (max-width: 640px) {
+  .merekTeks { display: none; }
+  .kakiIsi { grid-template-columns: minmax(0, 1fr); padding-top: var(--space-10); gap: var(--space-6); }
+}

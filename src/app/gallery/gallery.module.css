@@ -296,127 +296,7 @@
   line-height: 1.6;
 }
 
-/* Penampil dokumen view-only: kerangka dialog (kepala, tombol Tutup, gulir, jebak fokus) dari components/ui/Dialog.
-   Di sini hanya kanvas gelap halaman dokumen dan label peringatan di deskripsi dialog. */
-.penampilPeringatan {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  color: var(--status-danger-fg);
-  font-size: var(--text-xs);
-}
-
-.secureViewerBody {
-  background: #030712;
-  border-radius: var(--radius-lg);
-  padding: var(--space-6) var(--space-4);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-8);
-}
-
-/* Secure Page Simulation (View-only, uncopiable, watermark) */
-.securePage {
-  width: 100%;
-  max-width: 640px;
-  aspect-ratio: 210 / 297;
-  background: #fdfdfd;
-  color: #1f2937;
-  padding: var(--space-10);
-  border-radius: var(--radius-sm);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-  position: relative;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-}
-
-/* Watermark */
-.watermark {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%) rotate(-45deg);
-  font-size: 36px;
-  font-weight: 900;
-  color: rgba(239, 68, 68, 0.06);
-  pointer-events: none;
-  user-select: none;
-  white-space: nowrap;
-  letter-spacing: 0.1em;
-}
-
-.pageHeader {
-  border-bottom: 1.5px solid #d1d5db;
-  padding-bottom: var(--space-2);
-  display: flex;
-  justify-content: space-between;
-  font-size: 10px;
-  color: #6b7280;
-  font-weight: bold;
-}
-
-.pageContent {
-  flex: 1;
-  padding: var(--space-8) 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-
-.pageTitle {
-  font-size: var(--text-base);
-  font-weight: 800;
-  color: #111827;
-  text-align: center;
-  margin-bottom: var(--space-2);
-}
-
-.pageSectionTitle {
-  font-size: var(--text-sm);
-  font-weight: 700;
-  color: #1f2937;
-  border-bottom: 1px solid #e5e7eb;
-  padding-bottom: 4px;
-}
-
-.pageParagraph {
-  font-size: var(--text-xs);
-  color: #4b5563;
-  line-height: 1.7;
-  margin: 0;
-}
-
-.pageTable {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 9px;
-  margin-top: 4px;
-}
-
-.pageTable th, .pageTable td {
-  border: 1px solid #d1d5db;
-  padding: var(--space-2);
-  text-align: left;
-}
-
-.pageTable th {
-  background: #f3f4f6;
-  font-weight: bold;
-}
-
-.pageFooter {
-  border-top: 1.5px solid #d1d5db;
-  padding-top: var(--space-2);
-  display: flex;
-  justify-content: space-between;
-  font-size: 9px;
-  color: #9ca3af;
-}
-
-/* Ajukan Minat Investasi: tombol di kartu, lalu isi dialog (kerangka dari components/ui/Dialog) */
+/* Ajukan Minat Investasi: tombol di kartu; formulirnya ada di components/investasi/FormulirMinat */
 .leadCtaBtn {
   display: flex;
   align-items: center;
@@ -440,87 +320,36 @@
   box-shadow: 0 6px 20px rgba(99, 102, 241, 0.35);
 }
 
-.leadForm {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-
-.leadContext {
-  font-size: var(--text-xs);
-  color: var(--text-secondary);
-  margin: 0 0 var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  background: rgba(99, 102, 241, 0.08);
-  border-radius: var(--radius-md);
-  border-left: 3px solid var(--color-primary-500);
-}
-
-.leadSubmit {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-6);
-  margin-top: var(--space-2);
-  background: linear-gradient(135deg, var(--color-primary-500), var(--color-primary-600));
-  color: white;
-  border: none;
-  border-radius: var(--radius-xl);
-  font-weight: 700;
-  font-size: var(--text-sm);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.leadSubmit:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.35);
-}
-
-.leadSubmit:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.leadError {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
-  background: var(--status-danger-bg);
-  border: 1px solid var(--status-danger-border);
-  border-radius: var(--radius-md);
-  color: var(--status-danger-fg);
-  font-size: var(--text-sm);
-}
-
-.leadSuccess {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  padding: var(--space-8) var(--space-4);
-  gap: var(--space-2);
-}
-
-.leadSuccessText {
-  font-size: var(--text-base);
-  color: var(--text-primary);
-  margin-bottom: var(--space-4);
-  line-height: 1.6;
-}
-
 @media (max-width: 768px) {
   .topGrid {
     grid-template-columns: 1fr;
-  }
-  .securePage {
-    padding: var(--space-6);
   }
 }
 
 /* Target sentuh minimal 44px */
 .galleryNavBack {
   min-height: 44px;
+}
+
+.nilaiProyek {
+  font-size: var(--text-sm);
+  font-weight: 800;
+  color: var(--color-accent-500);
+}
+
+.remahGaleri {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.remahGaleri a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--color-primary-300);
 }

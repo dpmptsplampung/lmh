@@ -50,7 +50,7 @@ describe('PulauPengguna: tautan navigasi', () => {
     const { rerender } = render(<PulauPengguna adaBlokLayanan />);
     expect(screen.getByRole('link', { name: 'Layanan' })).toHaveAttribute('href', '#layanan');
     expect(screen.getByRole('link', { name: 'UMKM' })).toHaveAttribute('href', '/umkm/katalog');
-    expect(screen.getByRole('link', { name: 'Investasi' })).toHaveAttribute('href', '/gallery');
+    expect(screen.getByRole('link', { name: 'Investasi' })).toHaveAttribute('href', '/investasi');
     expect(screen.getByRole('link', { name: 'Live Chat' })).toHaveAttribute('href', '/chat');
     expect(screen.getByRole('link', { name: 'Transparansi' })).toHaveAttribute('href', '/transparansi');
     expect(screen.getByAltText('Lampung Maju Hub Logo')).toBeInTheDocument();

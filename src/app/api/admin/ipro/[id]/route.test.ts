@@ -3,7 +3,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 vi.mock('server-only', () => ({}));
 vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn() }));
 vi.mock('next/cache', () => ({ revalidateTag: vi.fn() }));
-vi.mock('@/lib/storage/r2', () => ({ deleteObjects: vi.fn() }));
+vi.mock('@/lib/storage/r2', () => ({ deleteObjects: vi.fn(), urlPublik: (kunci: string) => `https://gambar.test/${kunci}` }));
 vi.mock('@/lib/observability/logger', () => ({ logServerEvent: vi.fn() }));
 import { createClient } from '@/lib/supabase/server';
 import { deleteObjects } from '@/lib/storage/r2';
@@ -18,7 +18,14 @@ it.each([GET, PATCH, DELETE])('memeriksa auth 401/403 setiap metode', async hand
 });
 it('detail hanya ID sah, 404 bila tidak ada, sukses dengan gambar', async () => {
   expect((await GET(request('GET'), konteks('salah'))).status).toBe(400);
-  expect((await GET(request('GET'), konteks())).status).toBe(200);
+  const respons = await GET(request('GET'), konteks());
+  expect(respons.status).toBe(200);
+  const { data } = await respons.json();
+  expect(data.gambar).toHaveLength(1);
+  expect(data.gambar[0]).toMatchObject({
+    url: `https://gambar.test/${t.state.tabel.ipro_gambar[0].kunci}`,
+    url_mini: `https://gambar.test/${t.state.tabel.ipro_gambar[0].kunci_mini}`,
+  });
   t.state.tabel.ipro_proyek = [];
   expect((await GET(request('GET'), konteks())).status).toBe(404);
 });

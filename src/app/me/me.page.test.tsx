@@ -128,7 +128,7 @@ describe('/me (dashboard pengunjung) membaca kunjungan, bukan visit', () => {
     expect(href(/Chat WhatsApp/)).toMatch(/wa\.me|whatsapp/);
     expect(href(/Lacak Pengaduan/)).toBe('/pengaduan/lacak');
     expect(href(/Info Layanan/)).toBe('/standar-pelayanan');
-    expect(href(/Peta Potensi/)).toBe('/peta-potensi');
+    expect(href(/Peta Potensi/)).toBe('/investasi#peta-potensi');
     expect(href(/^Buat Pengaduan$/)).toBe('/pengaduan');
     expect(href(/^UMKM Saya$/)).toBe('/me/umkm');
     expect(href(/^Usaha Saya$/)).toBe('/me/usaha');

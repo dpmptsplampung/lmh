@@ -1,5 +1,6 @@
 // @vitest-environment node
-import { beforeEach, expect, it } from 'vitest';
+import { beforeEach, expect, it, vi } from 'vitest';
+import { createClient } from '@supabase/supabase-js';
 import { buatSupabaseTiruan, ID, LAIN_ID, isianProyek } from '@/app/api/admin/ipro/uji-fixture';
 import { buatIpro, daftarDokumenAktif, daftarIproKelola, daftarIproTerbit, daftarMinat, gambarUntukProyek,
   iproKelolaById, iproTerbitBySlug, minatById, ubahGambar, ubahIpro, ubahStatusMinat } from './investasi';
@@ -39,6 +40,31 @@ it('kotak masuk daftar tanpa email, detail dengan kontak, mutasi hanya RPC', asy
   const r = await ubahStatusMinat(t.sb, ID, 'dihubungi', 1);
   expect(r.data).toEqual({ id: ID, status: 'dihubungi', versi: 2 });
   expect(t.state.rpc).toContainEqual({ nama: 'investasi_ubah_status_minat', args: { p_id: ID, p_status: 'dihubungi', p_versi: 1 } });
+});
+it('pencarian kotak masuk dikirim sebagai tiga nilai ilike terkutip sebelum paginasi', async () => {
+  const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify([{ id: 'lead-email' }]), {
+    headers: { 'Content-Type': 'application/json', 'Content-Range': '25-25/26' },
+  }));
+  const sb = createClient('https://lokal.test', 'anon-uji', { global: { fetch }, auth: { persistSession: false } });
+  const r = await daftarMinat(sb, { cari: '  nama,email(PT) "100%_\\"  ', kanal: 'ipro', status: 'baru', dari: 25, sampai: 49 });
+  expect(r.error).toBeNull();
+  expect(r.data).toEqual([{ id: 'lead-email' }]);
+  expect(r.count).toBe(26);
+  const url = new URL(fetch.mock.calls[0][0]);
+  const nilai = '"%nama,email(PT) \\"100\\\\%\\\\_\\\\\\\\\\"%"';
+  expect(url.searchParams.get('or')).toBe(`(nama.ilike.${nilai},email.ilike.${nilai},instansi.ilike.${nilai})`);
+  expect(url.searchParams.get('kanal')).toBe('eq.ipro');
+  expect(url.searchParams.get('status')).toBe('eq.baru');
+  expect(url.searchParams.get('offset')).toBe('25');
+  expect(url.searchParams.get('limit')).toBe('25');
+});
+it.each(['a'.repeat(201), 'nama\u0000', '*'])('pencarian tidak sah ditolak sebelum query: %s', async cari => {
+  expect((await daftarMinat(t.sb, { cari, dari: 0, sampai: 24 })).error?.message).toBe('INPUT_TIDAK_VALID');
+  expect(t.state.catatan).toHaveLength(0);
+});
+it('pencarian kosong tidak menambahkan ekspresi or', async () => {
+  await daftarMinat(t.sb, { cari: '  ', dari: 0, sampai: 24 });
+  expect(t.state.catatan[0].langkah.some(([nama]) => nama === 'or')).toBe(false);
 });
 it('bentrok versi dibedakan dari proyek tidak ditemukan', async () => {
   expect((await ubahIpro(t.sb, ID, { versi: 2, judul: 'Baru' })).error?.message).toBe('KONFLIK_VERSI');

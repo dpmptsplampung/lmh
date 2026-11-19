@@ -148,7 +148,7 @@ afterEach(() => {
 
 describe('cache investasi publik', () => {
   it.each(['investasi', 'ipro-detail'])('loader %s memakai tag investasi dan umur 60 detik', nama => {
-    const cache = PEMBUNGKUS.find(p => p.keyParts?.includes(`publik-${nama}-v1`));
+    const cache = PEMBUNGKUS.find(p => p.keyParts?.includes(`publik-${nama}-v${nama === 'ipro-detail' ? 2 : 1}`));
     expect(cache?.opsi).toEqual({ tags: ['publik-investasi'], revalidate: 60 });
   });
   it('hub mengelompokkan sumber dan sebaran, URL gambar dibentuk server', async () => {
@@ -183,6 +183,36 @@ describe('cache investasi publik', () => {
     expect((await muatIproPublik('a'))?.id).toBe('a');
     expect((await muatIproPublik('b'))?.id).toBe('b');
     expect((await muatIproPublik('a'))?.id).toBe('a');
+  });
+  it('dokumen kajian detail dimuat langsung berdasarkan ID dengan kolom ringkas dan status aktif', async () => {
+    const t = pasang({ from: {
+      ipro_proyek: [{ data: { id: 'p1', dokumen_id: 'dok-di-luar-hub' }, error: null }],
+      ipro_gambar: [{ data: [], error: null }],
+      investment_documents: [{ data: { id: 'dok-di-luar-hub', judul: 'Kajian terpilih', jumlah_halaman: 17 }, error: null }],
+    } });
+    expect((await muatIproPublik('energi'))?.dokumen).toEqual({ id: 'dok-di-luar-hub', judul: 'Kajian terpilih', jumlah_halaman: 17 });
+    expect(dipakai(t.panggilan, 'investment_documents')).toEqual([{ tabel: 'investment_documents', langkah: [
+      ['select', 'id, judul, jumlah_halaman'], ['eq', 'id', 'dok-di-luar-hub'], ['eq', 'status', 'aktif'], ['maybeSingle'],
+    ] }]);
+  });
+  it('dokumen tidak aktif atau hilang menjadi null; tanpa dokumen_id tidak menjalankan query dokumen', async () => {
+    const t = pasang({ from: {
+      ipro_proyek: [{ data: { id: 'a', dokumen_id: 'd1' }, error: null }, { data: { id: 'b', dokumen_id: null }, error: null }],
+      ipro_gambar: [{ data: [], error: null }, { data: [], error: null }],
+      investment_documents: [{ data: null, error: null }],
+    } });
+    expect((await muatIproPublik('a'))?.dokumen).toBeNull();
+    expect((await muatIproPublik('b'))?.dokumen).toBeNull();
+    expect(dipakai(t.panggilan, 'investment_documents')).toHaveLength(1);
+  });
+  it('galat sesaat dokumen tidak disimpan sebagai detail tanpa kajian', async () => {
+    pasang({ from: {
+      ipro_proyek: [{ data: { id: 'a', dokumen_id: 'd1' }, error: null }, { data: { id: 'a', dokumen_id: 'd1' }, error: null }],
+      ipro_gambar: [{ data: [], error: null }, { data: [], error: null }],
+      investment_documents: [galat503, { data: { id: 'd1', judul: 'Pulih', jumlah_halaman: 3 }, error: null }],
+    } });
+    await expect(muatIproPublik('a')).rejects.toThrow('Data IPRO belum dapat dimuat.');
+    expect((await muatIproPublik('a'))?.dokumen?.judul).toBe('Pulih');
   });
 });
 

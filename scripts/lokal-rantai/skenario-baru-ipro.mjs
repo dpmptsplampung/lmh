@@ -57,7 +57,7 @@ try {
     INSERT INTO public.investment_documents(id,judul,file_path,status) VALUES
       ('${D(1)}','Kajian Publik','pages/uji.pdf','aktif'), ('${D(2)}','Kajian Nonaktif','pages/lama.pdf','nonaktif');
     INSERT INTO public.investasi_lead(id,doc_id,nama,email,status,updated_at) VALUES
-      ('${id(6, 1)}','${D(1)}','Baris Lama','lama@example.invalid','selesai',now()-interval '400 days'),
+      ('${id(6, 1)}','${D(1)}','Baris Lama','lama@example.invalid?bcc=salin%40evil.example&body=','selesai',now()-interval '400 days'),
       ('${id(6, 2)}',NULL,'Aktif Lama','aktif@example.invalid','baru',now()-interval '400 days');
     SET session_replication_role = origin;
   `));
@@ -66,6 +66,8 @@ try {
     FROM public.investasi_lead WHERE id=$1`, [id(6, 1)])) === true);
   cek('baris lama otomatis kanal dokumen dan versi 1', hasil(await pg(`SELECT kanal='dokumen' AND versi=1
     AND ipro_id IS NULL AND operasi_id IS NULL AS hasil FROM public.investasi_lead WHERE id=$1`, [id(6, 1)])) === true);
+  cek('migrasi mempertahankan email lama tanpa CHECK baru', hasil(await pg(`SELECT email=$2 AS hasil
+    FROM public.investasi_lead WHERE id=$1`, [id(6, 1), 'lama@example.invalid?bcc=salin%40evil.example&body='])) === true);
 
   for (const r of ['fo', 'umkm', 'nonaktif', 'warga']) {
     galat(`${r} tidak boleh menambah proyek`, await proyek(r, 20 + peran.indexOf(r)), 'row-level security', '42501');
@@ -179,6 +181,8 @@ try {
   const data = isian();
   const terkirim = hasil(await kirim('warga', data));
   cek('RPC menghasilkan tanda terima id saja', Object.keys(terkirim).join(',') === 'id' && typeof terkirim.id === 'string');
+  cek('RPC menerima email biasa', hasil(await pg('SELECT email=$2 AS hasil FROM public.investasi_lead WHERE id=$1',
+    [terkirim.id, data.email])) === true);
   cek('nomor dinormalisasi dan konteks terikat', hasil(await pg(`SELECT no_hp='+628112345678'
     AND kanal='ipro' AND ipro_id=$2 AND doc_id IS NULL AND status='baru' AND versi=1
     AND petugas_id IS NULL AND catatan=$3 AS hasil FROM public.investasi_lead WHERE id=$1`,
@@ -225,6 +229,13 @@ try {
   for (const ubah of [{ setuju: false }, { setuju: null }, { kebijakan: '' }, { nama: null }, { email: 'buruk' },
     { hp: '1234' }, { pesan: 'pendek' }, { kanal: 'lain' }, { operasi: null }, { ref: null }, { pesan: 'x'.repeat(2001) }]) {
     galat(`validasi kiriman ${Object.keys(ubah)[0]}`, await kirim('warga', isian(ubah)), 'INPUT_TIDAK_VALID', '22023');
+  }
+  for (const email of [
+    'investor@example.org?bcc=salin%40evil.example&body=', 'investor&salin@example.org', 'investor%40salin@example.org',
+    'investor@example.org#body', 'a b@example.org', 'a,b@example.org', 'a;b@example.org', '"a"@example.org', '<a>@example.org',
+    '.a@example.org', 'a..b@example.org', 'a@example..org', 'a@-example.org', 'a@example.o', 'a@example.123', 'a@example.org\n',
+  ]) {
+    galat(`email tidak aman ditolak: ${email}`, await kirim('warga', isian({ email })), 'INPUT_TIDAK_VALID', '22023');
   }
   cek('gagal validasi tidak membuat consent tambahan', await jumlah('public.consent_log', 'subjek_ref=$1', [U.warga]) === 1);
   galat('insert langsung ke lead ditolak', await user('warga',
@@ -325,6 +336,11 @@ try {
   cek('retensi dibatasi 500 per batch', hasil(await pg('SELECT public.investasi_bersihkan_retensi() AS hasil')).dihapus === 500);
   cek('batch berikutnya menyelesaikan sisa satu', hasil(await pg('SELECT public.investasi_bersihkan_retensi() AS hasil')).dihapus === 1);
   cek('aktif lama tetap ada setelah semua batch', await jumlah('public.investasi_lead', 'id=$1', [id(6, 2)]) === 1);
+
+  const emailAman = 'Investor.Uji_1+ptsp@sub.example-id.org';
+  const tandaTerimaAman = hasil(await kirim('kedua', isian({ email: emailAman })));
+  cek('email dengan titik, garis bawah, plus dan subdomain aman diterima RPC', hasil(await pg(
+    'SELECT email=$2 AS hasil FROM public.investasi_lead WHERE id=$1', [tandaTerimaAman.id, emailAman])) === true);
 
   // Penguncian pembuat harus tetap menghormati aksi FK ketika akun staf dihapus.
   const dibuatSemula = hasil(await pg('SELECT dibuat_pada::text AS hasil FROM public.ipro_proyek WHERE id=$1', [I(1)]));

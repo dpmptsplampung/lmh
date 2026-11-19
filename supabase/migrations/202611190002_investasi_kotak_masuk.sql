@@ -67,7 +67,7 @@ BEGIN
     OR p_operasi_id IS NULL OR p_ref_id IS NULL
     OR v_nama IS NULL OR char_length(v_nama) NOT BETWEEN 1 AND 200
     OR v_email IS NULL OR char_length(v_email) > 254
-    OR v_email !~* '^[^@\s]+@[^@\s]+\.[^@\s]+$'
+    OR v_email !~ '^[A-Za-z0-9_+-]+(?:\.[A-Za-z0-9_+-]+)*@(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z]{2,}$'
     OR (v_nomor IS NOT NULL AND v_nomor !~ '^\+?[0-9]{8,20}$')
     OR char_length(v_instansi) > 200
     OR char_length(v_pesan) > 2000

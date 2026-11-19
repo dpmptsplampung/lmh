@@ -1,7 +1,7 @@
 // Sumber kebenaran akses menu staf per role dan modul layanan.
 // Sidebar menyaring menu; AdminGuard (klien) dan proxy.ts (server) memakai aturan yang sama untuk rute.
 // Admin dan Front Office memakai /admin/*; Petugas memakai /petugas/* (entri dengan `hrefPetugas`, lihat PETUGAS_NAV).
-// Menu modul (UMKM; kelak Investasi) hanya untuk petugas yang layanannya bermodul itu (layanan.modul via staf_modul()).
+// Menu modul (UMKM, Investasi: IPRO dan Kotak Masuk Investasi) hanya untuk petugas yang layanannya bermodul itu (layanan.modul via staf_modul()).
 
 export type AdminRole = 'admin' | 'petugas' | 'front_office';
 
@@ -139,7 +139,10 @@ export const ADMIN_NAV: AdminNavEntry[] = [
   { label: 'Tugas UMKM', href: '/admin/umkm-tugas', hrefPetugas: '/petugas/umkm/tugas', iconKey: 'umkm', roles: ['admin', 'petugas'], group: 'kemitraan', butuhModul: 'umkm' },
   { label: 'Pengawasan UMKM', href: '/admin/umkm-pengawasan', iconKey: 'umkm',
     roles: ['admin', 'front_office'], group: 'kemitraan' },
-  { label: 'Lead Investasi', href: '/admin/investasi-leads', iconKey: 'leads', roles: ['admin'], group: 'kemitraan' },
+  { label: 'IPRO', href: '/admin/ipro', hrefPetugas: '/petugas/investasi/ipro', iconKey: 'gallery',
+    roles: ['admin', 'petugas'], group: 'kemitraan', butuhModul: 'investasi' },
+  { label: 'Kotak Masuk Investasi', href: '/admin/investasi-leads', hrefPetugas: '/petugas/investasi/kotak-masuk', iconKey: 'leads',
+    roles: ['admin', 'petugas'], group: 'kemitraan', butuhModul: 'investasi' },
   { label: 'Investment Gallery', href: '/admin/gallery', iconKey: 'gallery', roles: ['admin'], group: 'kemitraan' },
 
   // Konten & Dokumen

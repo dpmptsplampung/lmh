@@ -82,7 +82,7 @@ describe('IsiHalaman: kontrak CSS (padding dan lebar satu sumber)', () => {
   });
 });
 
-describe('IsiHalaman: adopsi delapan halaman admin', () => {
+describe('IsiHalaman: adopsi halaman admin dan komponen KotakMasuk bersama', () => {
   const HALAMAN: Array<{ dir: string; css: string[] }> = [
     { dir: 'kunjungan', css: ['kunjungan.module.css'] },
     { dir: 'absensi', css: ['absensi.module.css'] },
@@ -90,7 +90,6 @@ describe('IsiHalaman: adopsi delapan halaman admin', () => {
     { dir: 'pengaduan', css: ['pengaduan.module.css'] },
     { dir: 'rekap', css: ['rekap.module.css'] },
     { dir: 'layanan', css: ['page.dasbor.module.css'] },
-    { dir: 'investasi-leads', css: ['investasi-leads.module.css', 'page.dasbor.module.css'] },
     { dir: 'profil', css: ['profil.module.css'] },
   ];
 
@@ -106,6 +105,18 @@ describe('IsiHalaman: adopsi delapan halaman admin', () => {
       expect(isi, `${dir}/${berkas}`).not.toMatch(/--pad-page/);
       expect(isi, `${dir}/${berkas}`).not.toMatch(/max-width:\s*var\(--content-max/);
     }
+  });
+
+  it('investasi-leads merakit KotakMasuk; padding isi dimiliki IsiHalaman di komponen bersama', () => {
+    const halaman = baca('src/app/admin/investasi-leads/page.tsx');
+    expect(halaman).toContain("import KotakMasuk from '@/components/admin/investasi/KotakMasuk'");
+    expect(halaman).toContain('<KotakMasuk hrefDasbor="/admin" />');
+    const komponen = baca('src/components/admin/investasi/KotakMasuk.tsx');
+    expect(komponen).toMatch(/import IsiHalaman from '@\/components\/layout\/IsiHalaman'/);
+    expect(komponen).toMatch(/<IsiHalaman[\s>]/);
+    const css = tanpaKomentar(baca('src/components/admin/investasi/KotakMasuk.module.css'));
+    expect(css).not.toMatch(/--pad-page/);
+    expect(css).not.toMatch(/max-width:\s*var\(--content-max/);
   });
 
   it('badan cangkang admin tidak menambah padding horizontal', () => {

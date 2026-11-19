@@ -444,7 +444,10 @@ export type GambarIproPublik = Omit<GambarIpro, 'kunci' | 'kunci_mini'> & { url:
 export type KartuPublik = IproKartu & { gambar: Pick<GambarIproPublik, 'url' | 'url_mini' | 'alt' | 'lebar' | 'tinggi'> | null };
 export type InvestasiPublik = { ptsp: KartuPublik[]; foila: KartuPublik[]; dokumen: DokumenRingkas[];
   sebaran: { sektor: string; kab_kota: string; jumlah: number }[]; galat: boolean };
-export type DetailIproPublik = IproDetail & { gambar: GambarIproPublik[] };
+export type DetailIproPublik = IproDetail & {
+  gambar: GambarIproPublik[];
+  dokumen: Pick<DokumenRingkas, 'id' | 'judul' | 'jumlah_halaman'> | null;
+};
 
 function gambarIproPublik(gambar: GambarIpro): GambarIproPublik {
   const { kunci, kunci_mini, ...isian } = gambar;
@@ -475,9 +478,14 @@ export const muatInvestasiPublik = denganCache('investasi', [TAG_PUBLIK.investas
 const muatIproBerkunci = denganCache<{ ipro: DetailIproPublik | null; galat: boolean }, [string]>(
   'ipro-detail', [TAG_PUBLIK.investasi], async (sb, slug) => {
     const hasil = await denganBatasWaktu(iproTerbitBySlug(sb, slug), BATAS_MUAT_MS, null);
-    const galat = hasil === null || (!!hasil.error && !objekBelumAda(hasil.error));
-    return { data: { ipro: hasil?.data ? { ...hasil.data, gambar: hasil.data.gambar.map(gambarIproPublik) } : null, galat }, lengkap: !galat };
-  }, () => ({ ipro: null, galat: true }),
+    const dokumenId = hasil?.data?.dokumen_id;
+    const dokumen = dokumenId ? await denganBatasWaktu(sb.from('investment_documents')
+      .select('id, judul, jumlah_halaman').eq('id', dokumenId).eq('status', 'aktif').maybeSingle(), BATAS_MUAT_MS, null) : null;
+    const galat = hasil === null || (!!hasil.error && !objekBelumAda(hasil.error)) ||
+      (!!dokumenId && (dokumen === null || (!!dokumen.error && !objekBelumAda(dokumen.error))));
+    return { data: { ipro: hasil?.data ? { ...hasil.data, gambar: hasil.data.gambar.map(gambarIproPublik),
+      dokumen: dokumen?.data ?? null } : null, galat }, lengkap: !galat };
+  }, () => ({ ipro: null, galat: true }), 2,
 );
 export async function muatIproPublik(slug: string): Promise<DetailIproPublik | null> {
   const hasil = await muatIproBerkunci(slug);

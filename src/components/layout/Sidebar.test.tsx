@@ -91,8 +91,11 @@ describe('Sidebar: struktur per role', () => {
     // 33 href lama - 3 tersembunyi (Daftar FO, Scan QR, Rekap Front Office) + 1 Registrasi Pengunjung
     // + 1 Saran (Pesan Perilaku; Hasil SKM lama menjadi Hasil Survei, alamat pengalihan tersembunyi)
     // + 1 Pengawasan UMKM, 1 Laporan UMKM, dan 1 Tugas UMKM (admin lolos menu modul lewat role).
-    expect(hrefs).toHaveLength(34);
-    expect(new Set(hrefs).size).toBe(34);
+    // + 1 IPRO; Lead Investasi diganti label Kotak Masuk Investasi pada href yang sama.
+    expect(hrefs).toHaveLength(35);
+    expect(new Set(hrefs).size).toBe(35);
+    expect(hrefs).toContain('/admin/ipro');
+    expect(hrefs).toContain('/admin/investasi-leads');
     expect(hrefs).toContain('/admin/umkm-laporan');
     expect(hrefs).toContain('/admin/umkm-tugas');
     expect(hrefs).not.toContain('/admin/rekap-fo');

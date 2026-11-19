@@ -4,6 +4,7 @@ import { layaniKelola, type IdContext } from '@/lib/investasi/akses-server';
 import { hapusObjekGambar } from '@/lib/investasi/gambar-server';
 import { bacaJson, galat, headersPrivat, kodeRpc, sukses } from '@/lib/investasi/http';
 import { iproUbahSchema } from '@/lib/investasi/skema';
+import { urlPublik } from '@/lib/storage/r2';
 import { idSah, kekuranganTerbit, perubahanSah } from '../server';
 
 export const dynamic = 'force-dynamic';
@@ -13,7 +14,10 @@ export async function GET(_request: Request, context: IdContext) {
     if (!idSah(id)) return galat('INPUT_TIDAK_VALID', requestId);
     const hasil = await iproKelolaById(sb, id);
     if (hasil.error) return galat(kodeRpc(hasil.error), requestId);
-    return hasil.data ? sukses(hasil.data) : galat('TIDAK_DITEMUKAN', requestId);
+    if (!hasil.data) return galat('TIDAK_DITEMUKAN', requestId);
+    return sukses({ ...hasil.data, gambar: hasil.data.gambar.map(g => ({
+      ...g, url: urlPublik(g.kunci), url_mini: urlPublik(g.kunci_mini),
+    })) });
   });
 }
 export async function PATCH(request: Request, context: IdContext) {

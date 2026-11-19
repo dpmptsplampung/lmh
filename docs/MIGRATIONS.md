@@ -59,6 +59,10 @@ RPC kirim memvalidasi sesi dan input, menghitung sidik dari isian yang dinormali
 mengunci dan mencari operasi lama sebelum memeriksa konteks publik. Retry identik tetap
 mengembalikan id lama ketika IPRO sudah diarsipkan atau dokumen dinonaktifkan, tanpa menambah
 lead, consent, notifikasi atau kuota laju; hanya operasi baru memerlukan konteks yang masih aktif.
+Alamat email kiriman baru dibatasi ke alamat biasa: lokal memakai huruf/angka dan `._+-`,
+domain memakai huruf/angka, titik dan tanda hubung, serta TLD huruf minimal dua karakter.
+Karakter parameter URI (termasuk `%`, `?`, `&`, `#`), spasi, pemisah penerima dan kutip ditolak;
+validasi hanya di fungsi RPC, tanpa CHECK baru pada kolom email yang dapat menolak data lama.
 
 > **Status penerapan:** tanda "BELUM DITERAPKAN" di tabel dan teks lama di bawah adalah riwayat saat ditulis. Status sebenarnya di produksi (diperiksa baca-saja 2026-11-13) ada di bagian "Status penerapan terverifikasi (2026-11-13)" di akhir berkas.
 
