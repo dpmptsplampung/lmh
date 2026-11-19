@@ -1,242 +1,122 @@
 // @vitest-environment node
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createClient } from '@/lib/supabase/server';
+import { PATCH } from './route';
 
-vi.mock('@/lib/supabase/server', () => ({
-  createClient: vi.fn(),
-}));
+vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn() }));
+vi.mock('@/lib/observability/logger', () => ({ logServerEvent: vi.fn() }));
 
-vi.mock('@supabase/supabase-js', () => ({
-  createClient: vi.fn(),
-}));
-
-import type { NextRequest } from 'next/server';
-
-const buildRequest = (
-  id: string,
-  body: unknown,
-  method: 'PATCH' = 'PATCH',
-): NextRequest => {
-  const url = `http://localhost/api/investasi/lead/${id}`;
-  const req = new Request(url, {
-    method,
-    headers: { 'Content-Type': 'application/json' },
-    body: typeof body === 'string' ? body : JSON.stringify(body),
-  });
-  (req as unknown as { nextUrl: URL }).nextUrl = new URL(url);
-  return req as unknown as NextRequest;
-};
-
-const buildContext = (id: string) => ({
-  params: Promise.resolve({ id }),
+const ID = '550e8400-e29b-41d4-a716-446655440000';
+const body = { status: 'dihubungi', versi: 1 };
+const request = (input: unknown = body) => new Request(`http://localhost/api/investasi/lead/${ID}`, {
+  method: 'PATCH', body: JSON.stringify(input),
 });
+const context = (id = ID) => ({ params: Promise.resolve({ id }) });
+const rpc = vi.fn();
+const getUser = vi.fn();
 
-const VALID_ID = '550e8400-e29b-41d4-a716-446655440000';
-
-interface MockServerOpts {
-  user?: { id: string } | null;
-  role?: string | null;
-  lead?: { id: string } | null;
-  updateError?: { message: string; code?: string } | null;
-  updateData?: { id: string; status: string } | null;
-  // UPDATE tanpa error tetapi 0 baris (RLS menolak diam-diam): maybeSingle() mengembalikan data null.
-  updateNoRow?: boolean;
-}
-
-const mockServerClient = async (opts: MockServerOpts = {}) => {
-  const serverMod = await import('@/lib/supabase/server');
-  const createClient = serverMod.createClient as unknown as ReturnType<typeof vi.fn>;
-
-  const userData = opts.user === undefined ? null : opts.user;
-  const roleData = opts.role === undefined ? null : opts.role;
-  const leadData = opts.lead === undefined ? null : opts.lead;
-  const updateErr = opts.updateError ?? null;
-  const updateData = opts.updateData ?? { id: 'lead-1', status: 'dihubungi' };
-
-  const leadChain = {
-    select: vi.fn().mockReturnThis(),
-    eq: vi.fn().mockReturnThis(),
-    maybeSingle: vi.fn().mockResolvedValue({ data: leadData, error: null }),
-    update: vi.fn().mockReturnValue({
-      eq: vi.fn().mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          maybeSingle: vi.fn().mockResolvedValue({ data: opts.updateNoRow ? null : updateData, error: updateErr }),
-        }),
-      }),
-    }),
-  };
-
-  const petugasChain = {
-    select: vi.fn().mockReturnThis(),
-    eq: vi.fn().mockReturnValue({
-      maybeSingle: vi.fn().mockResolvedValue({
-        data: roleData ? { role: roleData } : null,
-        error: null,
-      }),
-    }),
-  };
-
-  const mock = {
-    auth: {
-      getUser: vi.fn().mockResolvedValue({ data: { user: userData }, error: null }),
-    },
-    from: vi.fn((table: string) => {
-      if (table === 'petugas') return petugasChain;
-      if (table === 'investasi_lead') return leadChain;
-      return {};
-    }),
-    _leadChain: leadChain,
-    _petugasChain: petugasChain,
-  };
-
-  createClient.mockResolvedValue(mock);
-  return mock;
-};
-
-describe('PATCH /api/investasi/lead/[id] — auth', () => {
+describe('PATCH /api/investasi/lead/[id]', () => {
   beforeEach(() => {
-    vi.resetModules();
+    vi.resetAllMocks();
+    rpc.mockImplementation(async (name: string) => name === 'boleh_kelola_investasi'
+      ? { data: true, error: null }
+      : { data: { id: ID, status: 'dihubungi', versi: 2 }, error: null });
+    getUser.mockResolvedValue({ data: { user: { id: ID } }, error: null });
+    vi.mocked(createClient).mockResolvedValue({
+      auth: { getUser },
+      rpc,
+    } as unknown as Awaited<ReturnType<typeof createClient>>);
   });
 
-  it('returns 401 when unauthenticated', async () => {
-    await mockServerClient({ user: null, role: null });
-    const { PATCH } = await import('./route');
-    const res = await PATCH(buildRequest(VALID_ID, { status: 'dihubungi' }), buildContext(VALID_ID));
-    expect(res.status).toBe(401);
-  });
-
-  it('returns 403 when user is petugas (not admin)', async () => {
-    await mockServerClient({ user: { id: 'u-1' }, role: 'petugas' });
-    const { PATCH } = await import('./route');
-    const res = await PATCH(buildRequest(VALID_ID, { status: 'dihubungi' }), buildContext(VALID_ID));
-    expect(res.status).toBe(403);
-  });
-
-  it('returns 403 when user has no petugas row', async () => {
-    await mockServerClient({ user: { id: 'u-1' }, role: null });
-    const { PATCH } = await import('./route');
-    const res = await PATCH(buildRequest(VALID_ID, { status: 'dihubungi' }), buildContext(VALID_ID));
-    expect(res.status).toBe(403);
-  });
-});
-
-describe('PATCH /api/investasi/lead/[id] — input validation', () => {
-  beforeEach(() => {
-    vi.resetModules();
-  });
-
-  it('returns 400 when status is missing', async () => {
-    await mockServerClient({ user: { id: 'u-1' }, role: 'admin' });
-    const { PATCH } = await import('./route');
-    const res = await PATCH(buildRequest(VALID_ID, {}), buildContext(VALID_ID));
-    expect(res.status).toBe(400);
-  });
-
-  it('returns 400 when status is invalid', async () => {
-    await mockServerClient({ user: { id: 'u-1' }, role: 'admin' });
-    const { PATCH } = await import('./route');
-    const res = await PATCH(buildRequest(VALID_ID, { status: 'invalid' }), buildContext(VALID_ID));
-    expect(res.status).toBe(400);
-  });
-
-  it('returns 400 when body is not valid JSON', async () => {
-    await mockServerClient({ user: { id: 'u-1' }, role: 'admin' });
-    const { PATCH } = await import('./route');
-    const res = await PATCH(buildRequest(VALID_ID, '{not json'), buildContext(VALID_ID));
-    expect(res.status).toBe(400);
-  });
-
-  it('accepts all valid status values', async () => {
-    await mockServerClient({
-      user: { id: 'u-1' },
-      role: 'admin',
-      lead: { id: VALID_ID },
+  it('petugas modul investasi mengubah status dengan versi melalui RPC', async () => {
+    const response = await PATCH(request(), context());
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ data: { id: ID, status: 'dihubungi', versi: 2 } });
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store');
+    expect(rpc).toHaveBeenNthCalledWith(1, 'boleh_kelola_investasi');
+    expect(rpc).toHaveBeenCalledWith('investasi_ubah_status_minat', {
+      p_id: ID, p_status: 'dihubungi', p_versi: 1,
     });
-    const { PATCH } = await import('./route');
-    for (const status of ['baru', 'dihubungi', 'berlanjut', 'ditolak', 'selesai']) {
-      const res = await PATCH(buildRequest(VALID_ID, { status }), buildContext(VALID_ID));
-      expect(res.status).toBe(200);
-    }
-  });
-});
-
-describe('PATCH /api/investasi/lead/[id] — lead existence & update', () => {
-  beforeEach(() => {
-    vi.resetModules();
   });
 
-  it('returns 404 when lead not found', async () => {
-    await mockServerClient({ user: { id: 'u-1' }, role: 'admin', lead: null });
-    const { PATCH } = await import('./route');
-    const res = await PATCH(buildRequest(VALID_ID, { status: 'dihubungi' }), buildContext(VALID_ID));
-    expect(res.status).toBe(404);
+  it('tanpa sesi mengembalikan 401', async () => {
+    getUser.mockResolvedValue({ data: { user: null }, error: null });
+    const response = await PATCH(request(), context());
+    expect(response.status).toBe(401);
+    expect((await response.json()).error.code).toBe('LOGIN_DIPERLUKAN');
+    expect(rpc).not.toHaveBeenCalled();
   });
 
-  it('returns 200 on successful update', async () => {
-    await mockServerClient({
-      user: { id: 'u-1' },
-      role: 'admin',
-      lead: { id: VALID_ID },
-      updateData: { id: VALID_ID, status: 'dihubungi' },
-    });
-    const { PATCH } = await import('./route');
-    const res = await PATCH(buildRequest(VALID_ID, { status: 'dihubungi' }), buildContext(VALID_ID));
-    expect(res.status).toBe(200);
-    const json = await res.json();
-    expect(json.id).toBe(VALID_ID);
-    expect(json.status).toBe('dihubungi');
+  it.each([false, null, 'true'])('menolak pengguna tanpa akses investasi: %s', async akses => {
+    rpc.mockResolvedValue({ data: akses, error: null });
+    const response = await PATCH(request(), context());
+    expect(response.status).toBe(403);
+    expect((await response.json()).error.code).toBe('DILARANG');
+    expect(rpc).toHaveBeenCalledTimes(1);
   });
 
-  it('returns 500 when update fails', async () => {
-    await mockServerClient({
-      user: { id: 'u-1' },
-      role: 'admin',
-      lead: { id: VALID_ID },
-      updateError: { message: 'rls denied' },
-    });
-    const { PATCH } = await import('./route');
-    const res = await PATCH(buildRequest(VALID_ID, { status: 'dihubungi' }), buildContext(VALID_ID));
-    expect(res.status).toBe(500);
+  it('galat pemeriksaan akses tidak diteruskan menjadi mutasi', async () => {
+    rpc.mockResolvedValue({ data: null, error: { code: 'XX000', message: 'internal' } });
+    const response = await PATCH(request(), context());
+    expect(response.status).toBe(500);
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(await response.text()).not.toContain('internal');
   });
-});
-
-// Audit T2d (No 98): UPDATE dibungkus mutasiWajibBaris; kontrak respons (500 'Gagal memperbarui lead') tetap, tetapi
-// kegagalannya kini tercatat dengan kode (error vs 0 baris) tanpa pesan teknis.
-describe('PATCH /api/investasi/lead/[id] — kegagalan UPDATE tercatat (audit T2d)', () => {
-  let errSpy: ReturnType<typeof vi.spyOn>;
-  beforeEach(() => {
-    vi.resetModules();
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}')));
-    errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-  });
-  afterEach(() => {
-    errSpy.mockRestore();
-    vi.unstubAllGlobals();
-  });
-  const log = () =>
-    errSpy.mock.calls
-      .map((c: unknown[]) => { try { return JSON.parse(String(c[0])) as Record<string, unknown>; } catch { return null; } })
-      .find((e: Record<string, unknown> | null) => e?.operation === 'investasi_lead.update_status');
-
-  it('0 baris tanpa error: 500 dan dicatat tidak_ada_baris', async () => {
-    await mockServerClient({ user: { id: 'u-1' }, role: 'admin', lead: { id: VALID_ID }, updateNoRow: true });
-    const { PATCH } = await import('./route');
-    const res = await PATCH(buildRequest(VALID_ID, { status: 'dihubungi' }), buildContext(VALID_ID));
-
-    expect(res.status).toBe(500);
-    expect((await res.json()).error).toBe('Gagal memperbarui lead');
-    expect(log()).toMatchObject({ kode: 'tidak_ada_baris', leadId: VALID_ID });
+  it.each([['42501', 403], ['PGRST301', 401], ['PGRST302', 401]])('pemeriksaan akses %s tertutup dengan %i', async (code, status) => {
+    rpc.mockResolvedValue({ data: null, error: { code, message: 'internal rahasia' } });
+    const response = await PATCH(request(), context());
+    expect(response.status).toBe(status);
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(await response.text()).not.toContain('rahasia');
   });
 
-  it('error RLS (42501): 500 dan dicatat ditolak tanpa pesan teknis', async () => {
-    await mockServerClient({
-      user: { id: 'u-1' }, role: 'admin', lead: { id: VALID_ID },
-      updateError: { message: 'new row violates row-level security policy secret-xyz', code: '42501' },
-    });
-    const { PATCH } = await import('./route');
-    const res = await PATCH(buildRequest(VALID_ID, { status: 'dihubungi' }), buildContext(VALID_ID));
+  it.each([
+    ['INPUT_TIDAK_VALID', 400], ['DILARANG', 403], ['TIDAK_DITEMUKAN', 404],
+    ['KONFLIK_VERSI', 409], ['TERLALU_BANYAK', 429],
+  ])('memetakan galat RPC perubahan status %s', async (code, status) => {
+    rpc.mockImplementation(async (name: string) => name === 'boleh_kelola_investasi'
+      ? { data: true, error: null } : { data: null, error: { message: code, code: 'P0001' } });
+    const response = await PATCH(request(), context());
+    expect(response.status).toBe(status);
+    expect((await response.json()).error.code).toBe(code);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store');
+    expect(response.headers.get('Retry-After')).toBe(status === 429 ? '60' : null);
+  });
 
-    expect(res.status).toBe(500);
-    expect(log()).toMatchObject({ kode: 'ditolak', asalCode: '42501' });
-    expect(JSON.stringify(log())).not.toContain('secret-xyz');
+  it.each([
+    { status: 'salah' }, { status: undefined }, { versi: undefined }, { versi: 0 },
+    { versi: 1.5 }, { versi: '1' }, { petugas_id: ID },
+  ])('menolak input status yang tidak sah: %j', async perubahan => {
+    expect((await PATCH(request({ ...body, ...perubahan }), context())).status).toBe(400);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it('menolak ID bukan UUID', async () => {
+    expect((await PATCH(request(), context('salah'))).status).toBe(400);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it('menolak JSON rusak', async () => {
+    const req = new Request(`http://localhost/api/investasi/lead/${ID}`, { method: 'PATCH', body: '{rusak' });
+    expect((await PATCH(req, context())).status).toBe(400);
+  });
+
+  it('membatasi badan PATCH 16 KiB', async () => {
+    const req = new Request(`http://localhost/api/investasi/lead/${ID}`, { method: 'PATCH', body: ' '.repeat(16385) });
+    expect((await PATCH(req, context())).status).toBe(400);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it('kegagalan koneksi menghasilkan 500 tanpa pesan internal', async () => {
+    rpc.mockRejectedValue(new Error('internal private contact'));
+    const response = await PATCH(request(), context());
+    expect(response.status).toBe(500);
+    expect(await response.text()).not.toContain('private contact');
+  });
+
+  it('tidak mengirim sukses bila hasil mutasi kosong', async () => {
+    rpc.mockImplementation(async (name: string) => name === 'boleh_kelola_investasi'
+      ? { data: true, error: null } : { data: null, error: null });
+    expect((await PATCH(request(), context())).status).toBe(500);
   });
 });

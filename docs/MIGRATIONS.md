@@ -10,8 +10,43 @@ lokal melalui `scripts/lokal-rantai/skenario-baru-ipro.mjs`; belum ada penerapan
 |---|---|---|---|
 | 202611190001 | `202611190001_ipro_inti.sql` | IPRO PTSP/FOILA, gambar, audit/versi/slug tetap, RLS admin dan petugas modul investasi; sektor CHECK sembilan nilai; `nilai_investasi` dan `npv_nilai` memakai `mata_uang` IDR/USD, `nilai_teks` untuk label FOILA. | **BELUM DITERAPKAN** |
 | 202611190002 | `202611190002_investasi_kotak_masuk.sql` | Perluasan lead dokumen/IPRO, RPC idempoten dan consent atomik, tiga batas laju, notifikasi tanpa PII dan retensi terminal 365 hari; trigger updated_at dinonaktifkan hanya selama backfill dan langsung diaktifkan kembali. | **BELUM DITERAPKAN** |
+| 202611190005 | `202611190005_ipro_gambar_atomik.sql` | RPC tambah/ubah/hapus gambar dan status dengan lock baris proyek yang sama; batas PTSP 12/FOILA 1, gambar pertama otomatis utama, rollback reset/target atomik, validasi terbit dan versi di DB. | **BELUM DITERAPKAN** |
 
-Rollback operasional yang mempertahankan data: `docs/rollback-investasi-kotak-masuk-202611190002.sql`,
+Prasyarat `202611190005_ipro_gambar_atomik.sql`: `202611190001` dan `202611190002`.
+Nomor 0003/0004 milik paket lain; paket atomik tidak bergantung padanya. Terapkan paket atomik
+bersama klien RPC dalam satu jendela rilis karena penulisan gambar langsung dicabut.
+
+RPC `ipro_tambah_gambar(uuid,jsonb)` dan `ipro_ubah_gambar(uuid,uuid,jsonb)` mengembalikan
+kolom gambar publik; `ipro_hapus_gambar(uuid,uuid)` mengembalikan `{id,kunci,kunci_mini}`
+untuk penghapusan objek R2 sesudah commit (kegagalan hapus dicatat dan respons tetap sukses); `ipro_ubah_status(uuid,text,integer)` mengembalikan
+kolom admin proyek tanpa UUID audit. Semuanya hanya untuk admin/petugas modul investasi melalui
+`boleh_kelola_investasi()`, `SECURITY DEFINER`, `SET search_path`, dan EXECUTE terbatas.
+Biaya operasi dibatasi satu proyek, hitung paling banyak 12 gambar melalui indeks `proyek_id`;
+mutasi urutan/utama memakai RPC ubah gambar. Trigger memvalidasi proyek terbit juga untuk
+INSERT/UPDATE proyek langsung; klien tidak bisa melewati lock lewat penulisan gambar tabel.
+Daftar gambar pengelola mengambil maksimum 13 baris agar satu anomali di atas batas terlihat.
+Saat unggah mendapat galat SQL yang memastikan rollback, objek hasil dibersihkan; jika jaringan
+putus dan status commit tidak pasti, kunci dicatat untuk rekonsiliasi tanpa menghapus objek
+yang mungkin sudah dirujuk DB.
+
+Pemeta HTTP tunggal ada di `src/lib/investasi/http.ts`: kode domain yang dikenal didahulukan;
+23505/23503 menjadi `KONFLIK_STATUS` (409), karena pelanggaran unik/FK tidak selalu berasal dari
+kunci idempotensi; `KONFLIK_OPERASI` hanya untuk galat domain eksplisit. 40001/55P03 menjadi
+`KONFLIK_VERSI` (409), PGRST301/302 dan 28000 menjadi 401, 42501 atau akses false menjadi 403,
+23514/22023/22P02/22003 menjadi 400, `SYARAT_TERBIT` eksplisit menjadi 409, sedangkan galat
+RPC akses XX000 dan jaringan menjadi 500 dengan akses tetap tertutup. Pesan konflik mengikuti
+kode domain; pesan database tidak pernah diteruskan, dan DETAIL syarat terbit dibatasi nama
+field publik. Versi consent untuk tujuan `investasi_minat` adalah 1.1 pada kedua kanal, dari
+satu konstanta; tujuan consent lainnya tidak diubah.
+
+Bukti PGlite mencakup unggahan serentak slot terakhir, dua unggahan pertama FOILA `utama:false`,
+publish/hapus dalam kedua urutan, dan kegagalan trigger UPDATE target sesudah reset utama.
+PGlite menserialkan query pada satu koneksi: pengujian ini membuktikan transaksi dan kedua
+urutan, sedangkan kontensi lock antarsesi PostgreSQL nyata masih harus diverifikasi di staging.
+Tidak ada migrasi paket ini yang sudah diterapkan ke staging atau produksi.
+
+Rollback operasional yang mempertahankan data: `docs/rollback-ipro-gambar-atomik-202611190005.sql`
+(menutup RPC tanpa membuka lagi mutasi rentan), lalu `docs/rollback-investasi-kotak-masuk-202611190002.sql`,
 kemudian `docs/rollback-ipro-inti-202611190001.sql`; paket lanjutan harus dinonaktifkan lebih dahulu.
 
 Hak baca `ipro_proyek` dan `ipro_gambar` untuk `anon`/`authenticated` diberikan per kolom,

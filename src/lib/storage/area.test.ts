@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { adalahArea, cocokMagicBytes, kunciObjek } from './area';
+import { adalahArea, ATURAN_AREA, cocokMagicBytes, kunciObjek, pathMentahIproSah } from './area';
 
 describe('area', () => {
+  it('memisahkan mentah privat dan WebP publik yang hanya ditulis server', () => {
+    expect(ATURAN_AREA['ipro-mentah']).toMatchObject({ bucket: 'private', maksByte: 8 * 1024 * 1024, modul: 'investasi', peran: ['admin', 'petugas'] });
+    expect(ATURAN_AREA['ipro-gambar']).toMatchObject({ bucket: 'public', mime: ['image/webp'], maksByte: 2 * 1024 * 1024, peran: [] });
+    expect(ATURAN_AREA['investment-docs'].modul).toBe('investasi');
+    expect(pathMentahIproSah('11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222.png')).toBe(true);
+    expect(pathMentahIproSah('11111111-1111-4111-8111-111111111111/../a.svg')).toBe(false);
+  });
   it('kunciObjek menggabungkan area dan path', () => {
     expect(kunciObjek('umkm-photos', 'a.jpg')).toBe('umkm-photos/a.jpg');
     expect(kunciObjek('absensi-foto', '2026-11-02/x_1.jpg')).toBe('absensi-foto/2026-11-02/x_1.jpg');

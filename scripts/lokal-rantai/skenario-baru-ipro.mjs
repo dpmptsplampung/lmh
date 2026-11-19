@@ -342,6 +342,121 @@ try {
   cek('pembuat NULL tidak dapat diisi kembali lewat UPDATE klien', hasil(await pg(
     'SELECT dibuat_oleh IS NULL AS hasil FROM public.ipro_proyek WHERE id=$1', [I(1)])) === true);
 
+  // Paket atomik diterapkan sesudah bukti kontrak lama; seluruh data hanya di PGlite lokal.
+  await db.exec(readFileSync(new URL('../../supabase/migrations/202611190005_ipro_gambar_atomik.sql', import.meta.url), 'utf8'));
+  const sqlTambah = 'SELECT public.ipro_tambah_gambar($1::uuid,$2::jsonb) AS hasil';
+  const sqlUbah = 'SELECT public.ipro_ubah_gambar($1::uuid,$2::uuid,$3::jsonb) AS hasil';
+  const sqlHapus = 'SELECT public.ipro_hapus_gambar($1::uuid,$2::uuid) AS hasil';
+  const sqlTerbit = 'SELECT public.ipro_ubah_status($1::uuid,$2,$3::integer) AS hasil';
+  const isianGambar = (n, k, ubah = {}) => ({
+    kunci: `ipro-gambar/${I(n)}/${id(8, k)}.webp`, kunci_mini: `ipro-gambar/${I(n)}/${id(8, k)}-640.webp`,
+    lebar: 1200, tinggi: 800, alt: 'Lokasi proyek sintetis', utama: false, ...ubah,
+  });
+  const tambahAtomik = (n, k, ubah) => user('admin', sqlTambah, [I(n), JSON.stringify(isianGambar(n, k, ubah))]);
+  const ubahAtomik = (n, gambarId, ubah) => user('admin', sqlUbah, [I(n), gambarId, JSON.stringify(ubah)]);
+  const versiProyek = async n => hasil(await pg('SELECT versi AS hasil FROM public.ipro_proyek WHERE id=$1', [I(n)]));
+  const utamaProyek = async n => hasil(await pg(`SELECT coalesce(jsonb_agg(id ORDER BY id),'[]'::jsonb) AS hasil
+    FROM public.ipro_gambar WHERE proyek_id=$1 AND utama`, [I(n)]));
+  const amanTerbit = async n => hasil(await pg(`SELECT status <> 'terbit' OR EXISTS (
+    SELECT 1 FROM public.ipro_gambar g WHERE g.proyek_id=p.id AND g.utama) AS hasil
+    FROM public.ipro_proyek p WHERE p.id=$1`, [I(n)]));
+  for (const n of [100, 101, 102, 103, 104, 105]) {
+    wajib(await proyek('admin', n, n === 101 ? 'foila' : 'ptsp'));
+    if (n !== 101) wajib(await user('admin', 'UPDATE public.ipro_proyek SET deskripsi=$2 WHERE id=$1', [I(n), 'Deskripsi lengkap proyek sintetis']));
+  }
+  const utama100 = hasil(await tambahAtomik(100, 100));
+  cek('gambar pertama PTSP utama meski meminta utama false', utama100.utama === true);
+  cek('RPC gambar hanya mengembalikan kolom aman', !('dibuat_oleh' in utama100) && !('dibuat_pada' in utama100));
+  const kedua100 = hasil(await tambahAtomik(100, 101));
+  cek('gambar kedua bukan utama tanpa permintaan', kedua100.utama === false);
+  const urut = hasil(await ubahAtomik(100, kedua100.id, { urutan: 7, alt: 'Sudut terbaru' }));
+  cek('ubah urutan dan metadata atomik', urut.urutan === 7 && urut.alt === 'Sudut terbaru');
+  galat('ID gambar milik proyek lain ditolak', await ubahAtomik(102, utama100.id, { utama: true }), 'TIDAK_DITEMUKAN', 'P0002');
+  galat('target hilang tidak menghapus utama lama', await ubahAtomik(100, id(8, 9999), { utama: true }), 'TIDAK_DITEMUKAN', 'P0002');
+  cek('utama tetap setelah target hilang', JSON.stringify(await utamaProyek(100)) === JSON.stringify([utama100.id]));
+
+  // Kegagalan terjadi saat UPDATE target, sesudah UPDATE reset sudah benar-benar berjalan.
+  wajib(await pg(`CREATE FUNCTION public.uji_gagal_utama() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN IF NEW.id='${kedua100.id}'::uuid AND NEW.utama THEN
+      RAISE EXCEPTION 'gagal_langkah_kedua' USING ERRCODE='23505'; END IF; RETURN NEW; END $$;
+    CREATE TRIGGER uji_gagal_utama BEFORE UPDATE ON public.ipro_gambar
+      FOR EACH ROW EXECUTE FUNCTION public.uji_gagal_utama();`));
+  galat('kegagalan langkah kedua tetapkan utama terpicu', await ubahAtomik(100, kedua100.id, { utama: true }), 'gagal_langkah_kedua', '23505');
+  cek('rollback langkah kedua mempertahankan tepat satu utama lama',
+    JSON.stringify(await utamaProyek(100)) === JSON.stringify([utama100.id]));
+  wajib(await pg('DROP TRIGGER uji_gagal_utama ON public.ipro_gambar; DROP FUNCTION public.uji_gagal_utama();'));
+  galat('INSERT gagal sesudah reset utama', await tambahAtomik(100, 100, { utama: true }), 'duplicate key', '23505');
+  cek('INSERT gagal mempertahankan utama dan jumlah gambar',
+    JSON.stringify(await utamaProyek(100)) === JSON.stringify([utama100.id]) && await jumlah('public.ipro_gambar', 'proyek_id=$1', [I(100)]) === 2);
+  cek('tetapkan utama berhasil sesudah trigger uji dilepas', hasil(await ubahAtomik(100, kedua100.id, { utama: true })).utama === true);
+  cek('utama baru tunggal', JSON.stringify(await utamaProyek(100)) === JSON.stringify([kedua100.id]));
+  const terbit100 = hasil(await user('admin', sqlTerbit, [I(100), 'terbit', await versiProyek(100)]));
+  cek('terbit via RPC tanpa UUID audit', terbit100.status === 'terbit' && !('dibuat_oleh' in terbit100) && !('diubah_oleh' in terbit100));
+  galat('optimistik versi lama ditolak', await user('admin', sqlTerbit, [I(100), 'arsip', terbit100.versi - 1]), 'KONFLIK_VERSI', '40001');
+  galat('utama terbit tidak bisa dinonaktifkan', await ubahAtomik(100, kedua100.id, { utama: false }), 'SYARAT_TERBIT', '23514');
+  galat('utama terbit tidak bisa dihapus', await user('admin', sqlHapus, [I(100), kedua100.id]), 'SYARAT_TERBIT', '23514');
+  const dihapus100 = hasil(await user('admin', sqlHapus, [I(100), utama100.id]));
+  cek('hapus sekunder terbit mengembalikan kunci R2', dihapus100.kunci === utama100.kunci && dihapus100.kunci_mini === utama100.kunci_mini);
+  cek('proyek tetap terbit dengan utama', await amanTerbit(100));
+
+  for (const r of ['fo', 'umkm', 'nonaktif', 'warga']) {
+    for (const [sql, params] of [
+      [sqlTambah, [I(100), JSON.stringify(isianGambar(100, 999))]],
+      [sqlUbah, [I(100), kedua100.id, '{"urutan":1}']], [sqlHapus, [I(100), kedua100.id]],
+      [sqlTerbit, [I(100), 'arsip', terbit100.versi]],
+    ]) galat(`${r} tidak mengakses RPC atomik ${sql.split('(')[0]}`, await user(r, sql, params), 'DILARANG', '42501');
+  }
+  galat('anon tidak menjalankan RPC definer', await sebagai(db, 'anon', null, sqlTambah,
+    [I(100), JSON.stringify(isianGambar(100, 999))]), 'permission denied', '42501');
+  galat('helper kekurangan bukan endpoint publik', await user('admin',
+    'SELECT public.ipro_kekurangan_terbit($1)', [I(100)]), 'permission denied', '42501');
+  galat('UPDATE gambar langsung ditutup', await user('admin',
+    'UPDATE public.ipro_gambar SET utama=false WHERE proyek_id=$1', [I(100)]), 'permission denied', '42501');
+  galat('INSERT gambar langsung ditutup', await gambar(999, I(100)), 'permission denied', '42501');
+  galat('DELETE gambar langsung ditutup', await user('admin',
+    'DELETE FROM public.ipro_gambar WHERE proyek_id=$1', [I(100)]), 'permission denied', '42501');
+  galat('publish DML langsung juga memeriksa gambar', await user('admin',
+    "UPDATE public.ipro_proyek SET status='terbit' WHERE id=$1", [I(102)]), 'SYARAT_TERBIT', '23514');
+  galat('RPC publish tanpa gambar ditolak', await user('admin', sqlTerbit,
+    [I(102), 'terbit', await versiProyek(102)]), 'SYARAT_TERBIT', '23514');
+
+  // PGlite hanya punya satu koneksi: Promise.all mengirim bersamaan, mesin menserialkan transaksi.
+  // Jangan memakai sebagai() serentak karena ia mengubah role/GUC koneksi yang sama.
+  // Dua urutan publish/hapus diuji; kontensi antarsesi PostgreSQL nyata tetap perlu staging.
+  const serentak = async daftar => {
+    await db.query("SELECT set_config('app.uid',$1,false)", [U.admin]);
+    await db.exec('SET ROLE authenticated');
+    try {
+      return await Promise.all(daftar.map(async ([sql, params]) => {
+        try { return { ok: true, rows: (await db.query(sql, params)).rows }; }
+        catch (error) { return { ok: false, kode: error.code, pesan: error.message }; }
+      }));
+    } finally { await db.exec('RESET ROLE'); await db.exec("SELECT set_config('app.uid','',false)"); }
+  };
+  for (let k = 0; k < 11; k++) hasil(await tambahAtomik(103, 200 + k));
+  const slot = await serentak([211, 212].map(k => [sqlTambah, [I(103), JSON.stringify(isianGambar(103, k))]]));
+  cek('unggah paralel slot terakhir: hanya satu lolos', slot.filter(r => r.ok).length === 1 && slot.some(r => !r.ok && r.pesan === 'KONFLIK_STATUS'));
+  cek('batas gambar PTSP tepat dua belas', await jumlah('public.ipro_gambar', 'proyek_id=$1', [I(103)]) === 12);
+  galat('gambar PTSP ke-13 ditolak', await tambahAtomik(103, 213), 'KONFLIK_STATUS', '23514');
+  const foila = await serentak([300, 301].map(k => [sqlTambah, [I(101), JSON.stringify(isianGambar(101, k, { utama: false }))]]));
+  cek('dua unggahan pertama FOILA utama false: satu lolos', foila.filter(r => r.ok).length === 1 && foila.some(r => !r.ok && r.pesan === 'KONFLIK_STATUS'));
+  cek('FOILA tepat satu gambar dan satu utama', await jumlah('public.ipro_gambar', 'proyek_id=$1', [I(101)]) === 1 && (await utamaProyek(101)).length === 1);
+  cek('FOILA tetap dapat terbit sesudah unggahan paralel', hasil(await user('admin', sqlTerbit,
+    [I(101), 'terbit', await versiProyek(101)])).status === 'terbit');
+  for (const [n, publishDulu] of [[104, true], [105, false]]) {
+    const g = hasil(await tambahAtomik(n, 400 + n));
+    const publish = [sqlTerbit, [I(n), 'terbit', await versiProyek(n)]];
+    const hapus = [sqlHapus, [I(n), g.id]];
+    const balapan = await serentak(publishDulu ? [publish, hapus] : [hapus, publish]);
+    cek(`publish/hapus serentak, publish dulu=${publishDulu}: satu ditolak`, balapan.filter(r => r.ok).length === 1 && balapan.some(r => !r.ok && r.pesan === 'SYARAT_TERBIT'));
+    cek(`publish/hapus tidak terbit tanpa utama, publish dulu=${publishDulu}`, await amanTerbit(n));
+  }
+  const gambarSebelumRollback = await jumlah('public.ipro_gambar');
+  wajib(await pg(readFileSync(new URL('../../docs/rollback-ipro-gambar-atomik-202611190005.sql', import.meta.url), 'utf8')));
+  galat('rollback atomik menutup RPC', await user('admin', sqlTambah,
+    [I(100), JSON.stringify(isianGambar(100, 999))]), 'permission denied', '42501');
+  cek('rollback atomik mempertahankan semua gambar', await jumlah('public.ipro_gambar') === gambarSebelumRollback);
+
   // Rollback operasional menutup akses dan RPC tanpa menghapus data.
   const rollbackInti = readFileSync(new URL('../../docs/rollback-ipro-inti-202611190001.sql', import.meta.url), 'utf8');
   galat('rollback inti menolak urutan yang salah', await pg(rollbackInti), 'Rollback Kotak Masuk Investasi');

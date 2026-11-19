@@ -7,6 +7,41 @@ vi.mock('@/lib/storage/r2',()=>({r2Tersedia:vi.fn(()=>true),bucketTerpisah:vi.fn
 import {createClient} from '@/lib/supabase/server';
 import {presignPut,headObject,bucketTerpisah} from '@/lib/storage/r2';
 import {POST} from './route';
+describe('unggah IPRO memerlukan modul investasi', () => {
+ const pathIpro = '11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222.png';
+ const kirimIpro = (ubah: Record<string, unknown> = {}) => new Request('http://localhost/api/storage/presign', {
+   method: 'POST', body: JSON.stringify({ area: 'ipro-mentah', path: pathIpro, mime: 'image/png', ukuran: 100, ...ubah }),
+ }) as NextRequest;
+ it('tanpa user 401 sebelum R2', async () => {
+   vi.mocked(createClient).mockResolvedValue({ auth: { getUser: async () => ({ data: { user: null }, error: null }) } } as unknown as Awaited<ReturnType<typeof createClient>>);
+   expect((await POST(kirimIpro())).status).toBe(401); expect(headObject).not.toHaveBeenCalled(); expect(presignPut).not.toHaveBeenCalled();
+ });
+ it.each(['umkm', null])('modul %s ditolak sebelum R2', async m => {
+   modul = m; expect((await POST(kirimIpro())).status).toBe(403); expect(headObject).not.toHaveBeenCalled(); expect(presignPut).not.toHaveBeenCalled();
+ });
+ it('FO dan area hasil server ditolak', async () => {
+   modul = 'investasi'; role = 'front_office'; expect((await POST(kirimIpro())).status).toBe(403);
+   role = 'admin'; expect((await POST(kirimIpro({ area: 'ipro-gambar' }))).status).toBe(403);
+ });
+ it('RPC gagal atau sesi tidak valid ditolak', async () => {
+   modul = 'investasi'; modulError = true; expect((await POST(kirimIpro())).status).toBe(403);
+   modulError = false; session = false; expect((await POST(kirimIpro())).status).toBe(403);
+ });
+ it('path dan JSON tak dikenal ditolak 400', async () => {
+   modul = 'investasi'; expect((await POST(kirimIpro({ path: '../x.png' }))).status).toBe(400);
+   expect((await POST(kirimIpro({ asing: true }))).status).toBe(400);
+ });
+ it('bucket mentah harus privat dan terpisah', async () => {
+   modul = 'investasi'; vi.mocked(bucketTerpisah).mockReturnValue(false);
+   expect((await POST(kirimIpro())).status).toBe(503);
+ });
+ it.each(['admin', 'petugas'])('%s investasi mendapat respons privat', async r => {
+   role = r; modul = 'investasi';
+   const res = await POST(kirimIpro());
+   expect(res.status).toBe(200); expect(res.headers.get('Cache-Control')).toBe('private, no-store');
+   expect(await res.json()).not.toHaveProperty('url');
+ });
+});
 let role:string,flag:boolean,aktif:boolean|null,modul:string|null,modulError:boolean,session:boolean,sessionError:boolean;
 let rpc:ReturnType<typeof vi.fn>;
 const req=(area='umkm-draf')=>new Request('http://localhost/api/storage/presign',{method:'POST',body:JSON.stringify({area,path:'foto.jpg',mime:'image/jpeg',ukuran:100})}) as NextRequest;
