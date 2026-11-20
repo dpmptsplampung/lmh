@@ -55,3 +55,25 @@ _Hindari_: kategori penanganan
 **Percakapan**:
 Satu rangkaian pesan tetap antara seorang pengunjung dan satu Layanan, seperti satu kontak di WhatsApp; berisi seluruh riwayat dari semua sesi. Sesi per kunjungan dicatat di belakang layar untuk rekap.
 _Hindari_: sesi chat (untuk pengertian ini), thread
+
+### Investasi
+
+**IPRO**:
+Investment Project Ready to Offer: proyek investasi daerah yang siap ditawarkan dan dikelola sendiri oleh PTSP, dengan halaman detail, galeri gambar, angka kunci, dokumen kajian, dan kontak lembaga. Disimpan di `ipro_proyek` dengan `sumber = 'ptsp'`. Bahasa Inggris belum punya antarmuka.
+_Hindari_: proyek FOILA (untuk pengertian ini), listing investasi
+
+**FOILA**:
+Portal investasi Provinsi Lampung (`invest.lampungprov.go.id`) yang dikelola PTSP tetapi lama tidak diperbarui. LMH hanya menampilkan Kartu FOILA yang menaut keluar; konten FOILA tidak dipakai sebagai sumber chatbot.
+_Hindari_: IPRO (untuk entri FOILA)
+
+**Kartu FOILA**:
+Cuplikan satu proyek FOILA di hub `/investasi` (judul, ringkasan, sektor, kabupaten/kota, nilai dalam teks bebas, satu gambar) yang diisi manual oleh pengelola dan menaut ke FOILA. Tidak punya halaman detail. Disimpan di `ipro_proyek` dengan `sumber = 'foila'`.
+_Hindari_: IPRO FOILA, salinan FOILA
+
+**Kotak Masuk Investasi**:
+Satu daftar pesan minat investasi dari pengunjung, baik dari tombol "Hubungi petugas" pada IPRO maupun dari formulir dokumen Investment Gallery. Dikelola admin dan petugas bermodul `investasi` (Front Office tidak); pesan dihapus 365 hari setelah selesai atau ditolak. Disimpan di `investasi_lead` dengan kolom `kanal`.
+_Hindari_: lead investasi, inbox
+
+**Paket B**:
+Bagian pekerjaan Investment Gallery untuk dokumen PDF besar: unggah langsung ke R2 lewat presigned PUT, lalu render halaman PNG ber-watermark per batch. Petugas bermodul `investasi` ikut mengelolanya. Bukan rilis atau tier produk.
+_Hindari_: upload PDF lama (route multipart yang sudah dihapus)

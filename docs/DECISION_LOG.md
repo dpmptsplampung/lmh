@@ -870,3 +870,28 @@ Konteks: rencana `docs/superpowers/plans/2026-11-11-refaktor-arsitektur-ui.md`, 
 6. **Kunci cache publik berversi**: `denganCache` menerima `versi`; `layanan`, `beranda`, `faq` naik ke v2 saat bentuk hasilnya berubah (temuan review: entri cache lama tanpa `chatbotAktif` mematikan bot). FAQ publik meminta batas+1 dan menandai `terpotong`; `/chat` memuat FAQ per Layanan di klien bila terpotong (temuan review: FAQ di posisi > 500 hilang).
 7. **Revalidasi cache FAQ** setelah simpan/hapus/alih aktif hanya dipanggil untuk Admin (route-nya Admin saja).
 8. **Cara kerja**: Sonnet melaksanakan, Opus mendesain dan mereview, Codex (`gpt-6.1-sol`/`terra`) mereview independen dan menghapus `.btn` global; PM mengintegrasikan dan menjalankan gerbang. Review independen Codex atas G5-G9 menemukan dua regresi P2 pada data awal chat (butir 6), keduanya diperbaiki dengan test.
+
+## IPRO PTSP dan Kotak Masuk Investasi (2026-11-19)
+
+Konteks: branch `investmentgallery`, rancangan [spec IPRO PTSP](superpowers/specs/2026-11-19-ipro-ptsp-design.md), ringkasan fitur [docs/fase/investasi-ipro.md](fase/investasi-ipro.md).
+
+### Keputusan pemilik (2026-11-19)
+
+1. **IPRO PTSP dan FOILA**: PTSP memiliki IPRO sendiri yang lebih lengkap daripada FOILA (FOILA dikelola PTSP tetapi lama tidak diperbarui). Keduanya satu tabel `ipro_proyek` (`sumber` `ptsp`/`foila`), tetapi kartu FOILA hanya cuplikan dengan tautan keluar ke `invest.lampungprov.go.id`, diisi manual oleh admin. Tidak ada penarikan otomatis dan tidak ada hotlink gambar.
+2. **Konten FOILA bukan sumber RAG chatbot**: `robots` FOILA memuat `ai-train=no`. Sumber RAG mana pun kelak wajib menyaring `sumber = 'ptsp'`.
+3. **Hubungi petugas tanpa login**: tombol per IPRO PTSP (dan formulir dokumen) masuk ke satu Kotak Masuk Investasi (`investasi_lead` diperluas, bukan tabel baru). Pengirim memakai sesi anonim Supabase; kontrolnya honeypot, batas laju per UID dan global, kunci idempoten, tanpa captcha.
+4. **PDP**: persetujuan dicatat di `consent_log` tujuan `investasi_minat`, versi `1.1` (hanya untuk tujuan ini; reservasi dan chat tetap `1.0`). Naskah: "Saya setuju data saya (...) dipakai oleh petugas Investment Gallery DPMPTSP Provinsi Lampung untuk menanggapi minat investasi saya." Data pesan tidak diteruskan ke pihak lain.
+5. **Retensi**: pesan dihapus 365 hari setelah `selesai` atau `ditolak` (UMKM memakai 180 hari; minat investasi berjalan lebih lama). Baris `consent_log` tidak dihapus.
+6. **Hak kelola**: admin dan petugas bermodul `investasi`; Front Office tidak (ADR 0004). Kontak publik hanya kontak lembaga.
+7. **Lain-lain**: `/peta-potensi` dialihkan ke `/investasi#peta-potensi` (pencatatan `jejak_minat_investasi` dari halaman lama berhenti); peta v1 tanpa ubin (`lat`/`lng` disimpan untuk tahap berikut); sembilan sektor; nilai investasi = angka + mata uang IDR/USD, kartu FOILA memakai teks bebas; Indonesia dulu, kolom `_en` disiapkan.
+
+### Keputusan teknis
+
+1. Kotak masuk memperluas `investasi_lead` (alur status, audit, dan pencatat laju sudah ada) agar petugas membuka satu daftar; sisip dan ubah status hanya lewat RPC `SECURITY DEFINER`.
+2. Hibah baca per kolom pada `ipro_proyek`/`ipro_gambar` tanpa UUID staf; `select=*` sengaja gagal.
+3. Operasi gambar dan status IPRO atomik di DB (`202611190005`) dengan lock baris proyek yang sama.
+4. Dokumen PDF besar (Paket B): presigned PUT ke R2, render PNG per batch delapan halaman yang dipicu klien, bukan `after()` atau antrean.
+
+### Penerapan migrasi ditunda
+
+`202611190001` sampai `0005` DITERAPKAN ke produksi pada 2026-11-20 setelah kode final, dry-run bersih, host dan daftar berkas ditampilkan, dan pemilik setuju (pemilik menyatakan melewati aturan staging D-37 untuk penerapan ini; staging belum ada). Prasyarat `202611160001` sampai `0004` sudah ada di produksi. Awalnya ditunda sampai semua kode final atas permintaan pemilik; urutan dan prasyarat ada di [MIGRATIONS](MIGRATIONS.md). Bukti perilaku baru lokal (PGlite dan test kontrak).

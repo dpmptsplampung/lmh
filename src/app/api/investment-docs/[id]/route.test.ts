@@ -7,7 +7,7 @@ vi.mock('@/lib/supabase/server', () => ({
 vi.mock('@/lib/storage/r2', async () => {
   const { createClient } = await import('@/lib/supabase/server');
   const { r2DariTiruanSupabase } = await import('@/lib/storage/r2-test-adapter');
-  return r2DariTiruanSupabase(createClient as never);
+  return { ...r2DariTiruanSupabase(createClient as never), listObjects: vi.fn(async () => ({ items: [], nextCursor: null })) };
 });
 
 import type { NextRequest } from 'next/server';
@@ -30,12 +30,14 @@ interface DocRow {
   id: string;
   file_path: string | null;
   halaman_gambar: string[] | null;
+  diproses_pada?: string | null;
 }
 
 const mockSupabase = async (
   auth: { user: { id: string } | null; role: string | null },
   opts: {
     doc?: DocRow | null;
+    kelola?: boolean;
     deleteError?: unknown;
     // Baris yang dikembalikan DELETE ... .select('id'); [] = 0 baris tanpa error (RLS menolak / sudah hilang).
     deleteRows?: unknown[];
@@ -81,6 +83,7 @@ const mockSupabase = async (
   };
 
   const mock = {
+    rpc: vi.fn(async () => ({ data: opts.kelola ?? auth.role === 'admin', error: null })),
     auth: {
       getUser: vi.fn().mockResolvedValue({ data: { user: auth.user }, error: null }),
     },
@@ -91,7 +94,12 @@ const mockSupabase = async (
           select: selectChain.select,
           eq: selectChain.eq,
           maybeSingle: selectChain.maybeSingle,
-          delete: vi.fn().mockReturnValue({ eq: deleteEq }),
+          delete: vi.fn().mockReturnValue({ eq: (...args: unknown[]) => {
+            const query = (deleteEq as (...a: unknown[]) => Record<string, unknown>)(...args);
+            query.is = vi.fn().mockReturnValue(query);
+            query.eq = vi.fn().mockReturnValue(query);
+            return query;
+          } }),
         };
       }
       return {};
@@ -124,11 +132,17 @@ describe('DELETE /api/investment-docs/[id] — auth', () => {
     expect(res.status).toBe(401);
   });
 
-  it('returns 403 when user is petugas (not admin)', async () => {
+  it('returns 403 when petugas tidak bermodul investasi', async () => {
     await mockSupabase({ user: { id: 'u-1' }, role: 'petugas' });
     const { DELETE } = await import('./route');
     const res = await DELETE(buildRequest(), paramsOf());
     expect(res.status).toBe(403);
+  });
+
+  it('petugas modul investasi boleh menghapus dokumen', async () => {
+    await mockSupabase({ user: { id: 'u-1' }, role: 'petugas' }, { kelola: true });
+    const { DELETE } = await import('./route');
+    expect((await DELETE(buildRequest(), paramsOf())).status).toBe(200);
   });
 
   it('returns 403 when user has no petugas row', async () => {
@@ -297,5 +311,79 @@ describe('DELETE /api/investment-docs/[id] — hasil DELETE DB dicek (audit T2d)
       .map((c: unknown[]) => { try { return JSON.parse(String(c[0])) as Record<string, unknown>; } catch { return null; } })
       .find((e: Record<string, unknown> | null) => e?.operation === 'investment_docs.delete.storage');
     expect(l).toBeTruthy();
+  });
+});
+
+describe('penghapusan dengan fence render dan sapu seluruh prefix', () => {
+  beforeEach(() => { vi.resetModules(); });
+  it('menolak hapus saat render memegang lease, tanpa menyentuh file', async () => {
+    const mock = await mockSupabase({ user: { id: 'u-1' }, role: 'admin' }, { doc: {
+      id: DOC_ID, file_path: `src/${DOC_ID}.pdf`, halaman_gambar: [], diproses_pada: new Date().toISOString(),
+    } });
+    const { DELETE } = await import('./route');
+    expect((await DELETE(buildRequest(), paramsOf())).status).toBe(409);
+    expect(mock._deleteEq).not.toHaveBeenCalled(); expect(mock._remove).not.toHaveBeenCalled();
+    // Setelah renderer melepas lease, penghapusan menyapu PNG di luar checkpoint juga.
+    mock._selectChain.maybeSingle.mockResolvedValueOnce({ data: {
+      id: DOC_ID, file_path: `src/${DOC_ID}.pdf`, halaman_gambar: [], diproses_pada: null,
+    }, error: null });
+    const { listObjects } = await import('@/lib/storage/r2');
+    vi.mocked(listObjects).mockResolvedValueOnce({ items: [{ key: `investment-docs/pages/${DOC_ID}/orphan.png`, lastModified: new Date() }], nextCursor: null });
+    expect((await DELETE(buildRequest(), paramsOf())).status).toBe(200);
+    expect(mock._remove.mock.calls.flatMap(c => c[0])).toContain(`pages/${DOC_ID}/orphan.png`);
+  });
+  it('menghapus PNG tak tercatat di semua halaman listing setelah lease dilepas', async () => {
+    const mock = await mockSupabase({ user: { id: 'u-1' }, role: 'admin' }, { doc: {
+      id: DOC_ID, file_path: `src/${DOC_ID}.pdf`, halaman_gambar: [], diproses_pada: null,
+    } });
+    const { listObjects } = await import('@/lib/storage/r2');
+    vi.mocked(listObjects).mockResolvedValueOnce({ items: [{ key: `investment-docs/pages/${DOC_ID}/orphan-1.png`, lastModified: new Date() }], nextCursor: 'kedua' })
+      .mockResolvedValueOnce({ items: [{ key: `investment-docs/pages/${DOC_ID}/orphan-2.png`, lastModified: new Date() }], nextCursor: null });
+    const { DELETE } = await import('./route');
+    expect((await DELETE(buildRequest(), paramsOf())).status).toBe(200);
+    expect(mock._remove.mock.calls.flatMap(c => c[0])).toEqual([`src/${DOC_ID}.pdf`, `pages/${DOC_ID}/orphan-1.png`, `pages/${DOC_ID}/orphan-2.png`]);
+    expect(listObjects).toHaveBeenLastCalledWith('private', `investment-docs/pages/${DOC_ID}/`, 'kedua');
+    expect(mock._deleteEq.mock.results[0].value.is).toHaveBeenCalledWith('diproses_pada', null);
+  });
+  it('lease yang diklaim sesudah SELECT mencegah DELETE dan pembersihan', async () => {
+    const mock = await mockSupabase({ user: { id: 'u-1' }, role: 'admin' }, { deleteRows: [] });
+    const { DELETE } = await import('./route');
+    expect((await DELETE(buildRequest(), paramsOf())).status).toBe(500);
+    expect(mock._deleteEq.mock.results[0].value.is).toHaveBeenCalledWith('diproses_pada', null);
+    expect(mock._remove).not.toHaveBeenCalled();
+  });
+});
+
+describe('lease basi dan path asing', () => {
+  beforeEach(() => { vi.resetModules(); });
+  it('lease basi (render mati karena timeout) tidak mengunci hapus selamanya; DELETE ber-CAS pada lease itu', async () => {
+    const basi = new Date(Date.now() - 120_000).toISOString();
+    const mock = await mockSupabase({ user: { id: 'u-1' }, role: 'admin' }, { doc: {
+      id: DOC_ID, file_path: `src/${DOC_ID}.pdf`, halaman_gambar: [], diproses_pada: basi,
+    } });
+    const { DELETE } = await import('./route');
+    expect((await DELETE(buildRequest(), paramsOf())).status).toBe(200);
+    const query = mock._deleteEq.mock.results[0].value;
+    expect(query.eq).toHaveBeenCalledWith('diproses_pada', basi);
+    expect(query.is).not.toHaveBeenCalled();
+  });
+  it('lease basi yang diklaim ulang render sebelum DELETE: 0 baris, storage tidak disentuh', async () => {
+    const mock = await mockSupabase({ user: { id: 'u-1' }, role: 'admin' }, { deleteRows: [], doc: {
+      id: DOC_ID, file_path: `src/${DOC_ID}.pdf`, halaman_gambar: [], diproses_pada: new Date(Date.now() - 120_000).toISOString(),
+    } });
+    const { DELETE } = await import('./route');
+    expect((await DELETE(buildRequest(), paramsOf())).status).toBe(500);
+    expect(mock._remove).not.toHaveBeenCalled();
+  });
+  it('path dari baris yang diubah lewat PostgREST tidak dapat menghapus objek dokumen lain atau raw', async () => {
+    const LAIN = '22222222-2222-2222-2222-222222222222';
+    const UID = '33333333-3333-3333-3333-333333333333';
+    const mock = await mockSupabase({ user: { id: 'u-1' }, role: 'admin' }, { doc: {
+      id: DOC_ID, file_path: `src/${LAIN}.pdf`, diproses_pada: null,
+      halaman_gambar: [`pages/${LAIN}/b/page-1.png`, `raw/${UID}/${LAIN}.pdf`, `_raw/${LAIN}.pdf`, `pages/${DOC_ID}/b/page-2.png`],
+    } });
+    const { DELETE } = await import('./route');
+    expect((await DELETE(buildRequest(), paramsOf())).status).toBe(200);
+    expect(mock._remove.mock.calls.flatMap(c => c[0])).toEqual([`pages/${DOC_ID}/b/page-2.png`]);
   });
 });

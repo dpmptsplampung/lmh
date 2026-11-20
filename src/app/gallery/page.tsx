@@ -7,20 +7,15 @@ import {
   FileText,
   ArrowLeft,
   ExternalLink,
-  Info,
   FileCheck,
   TrendingUp,
-  ChevronLeft,
-  ChevronRight,
   Mail,
-  Loader2,
-  CheckCircle,
-  LogIn,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { getSiteSettings } from '@/lib/site-settings';
 import { CONTACT_EMAIL_FALLBACK } from '@/lib/constants';
-import Dialog from '@/components/ui/Dialog';
+import FormulirMinat from '@/components/investasi/FormulirMinat';
+import PenampilDokumen from '@/components/investasi/PenampilDokumen';
 import Tombol from '@/components/ui/Tombol';
 import styles from './gallery.module.css';
 
@@ -42,14 +37,8 @@ export default function GalleryPage() {
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
   const [docs, setDocs] = useState<GalleryDoc[]>([]);
   const [foilaUrl, setFoilaUrl] = useState('https://invest.lampungprov.go.id/');
-  const [currentPage, setCurrentPage] = useState(1);
 
   const [leadModalDoc, setLeadModalDoc] = useState<GalleryDoc | null>(null);
-  const [leadForm, setLeadForm] = useState({ nama: '', email: '', instansi: '', minat: '', catatan: '' });
-  const [leadSending, setLeadSending] = useState(false);
-  const [leadSent, setLeadSent] = useState(false);
-  const [leadError, setLeadError] = useState('');
-  const [leadLoggedIn, setLeadLoggedIn] = useState<boolean | null>(null);
   const [contactEmail, setContactEmail] = useState(CONTACT_EMAIL_FALLBACK);
 
   useEffect(() => {
@@ -84,88 +73,17 @@ export default function GalleryPage() {
     loadData();
   }, []);
 
-  useEffect(() => {
-    // Reset to page 1 whenever a new document is opened.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setCurrentPage(1);
-  }, [selectedDocId]);
-
   const selectedDoc = selectedDocId ? docs.find((d) => d.id === selectedDocId) ?? null : null;
-  const pageCount = selectedDoc?.jumlah_halaman ?? 0;
   const hasPages = !!(selectedDoc?.halaman_gambar && selectedDoc.halaman_gambar.length > 0);
-
-  const handleContextMenu = (e: React.MouseEvent) => {
-    e.preventDefault();
-  };
-
-  // Fokus awal, jebak fokus, Escape, dan pengembalian fokus ke pemicu dibawa Dialog (KerangkaModal).
-  const handleCloseViewer = () => setSelectedDocId(null);
-
-  const handleCloseLeadModal = () => {
-    setLeadModalDoc(null);
-    setLeadSent(false);
-    setLeadError('');
-  };
-
-  const handleOpenLeadModal = async (doc: GalleryDoc) => {
-    setLeadModalDoc(doc);
-    setLeadForm({ nama: '', email: '', instansi: '', minat: '', catatan: '' });
-    setLeadSent(false);
-    setLeadError('');
-    setLeadSending(false);
-    setLeadLoggedIn(null);
-    try {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      setLeadLoggedIn(!!user);
-    } catch {
-      setLeadLoggedIn(false);
-    }
-  };
-
-  const handleSubmitLead = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!leadModalDoc) return;
-    setLeadSending(true);
-    setLeadError('');
-    try {
-      const res = await fetch('/api/investasi/lead', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          doc_id: leadModalDoc.id,
-          nama: leadForm.nama,
-          email: leadForm.email,
-          instansi: leadForm.instansi || undefined,
-          minat: leadForm.minat || undefined,
-          catatan: leadForm.catatan || undefined,
-        }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || 'Gagal mengirim permintaan');
-      }
-      setLeadSent(true);
-    } catch (err) {
-      setLeadError(err instanceof Error ? err.message : 'Gagal mengirim permintaan');
-    } finally {
-      setLeadSending(false);
-    }
-  };
-
-  const getSelectedDocTitle = () => {
-    const doc = docs.find((d) => d.id === selectedDocId);
-    return doc?.judul || 'Dokumen Investasi';
-  };
 
   return (
     <div className={styles.galleryPage}>
       {/* Navbar */}
       <nav className={styles.galleryNav}>
-        <Link href="/" className={styles.galleryNavBrand}>
+        <Link href="/" className={styles.galleryNavBrand} aria-label="Lampung Maju Hub, ke beranda">
           <Image
             src="/logo.png"
-            alt="Lampung Maju Hub Logo"
+            alt=""
             width={100}
             height={40}
             style={{ objectFit: 'contain' }}
@@ -180,12 +98,17 @@ export default function GalleryPage() {
 
       {/* Header */}
       <div className={styles.galleryHeader}>
+        <nav aria-label="Remah roti" className={styles.remahGaleri}>
+          <Link href="/investasi">Investasi</Link>
+          <span aria-hidden="true">›</span>
+          <span aria-current="page">Dokumen Investasi</span>
+        </nav>
         <h1 className={styles.galleryHeaderTitle}>
           <FileText size={36} style={{ display: 'inline', marginRight: '12px', verticalAlign: 'middle', color: 'var(--color-primary-400)' }} />
-          Investment Gallery
+          Dokumen Investasi
         </h1>
         <p className={styles.galleryHeaderDesc}>
-          Galeri promosi komoditas unggulan dan peluang investasi Provinsi Lampung. Seluruh dokumen dilindungi hak cipta untuk kepentingan pameran daring (view only).
+          Galeri promosi komoditas unggulan dan peluang investasi Provinsi Lampung. Seluruh dokumen dilindungi hak cipta untuk kepentingan pameran daring (hanya lihat).
         </p>
       </div>
 
@@ -230,10 +153,10 @@ export default function GalleryPage() {
                   style={{ objectFit: 'contain' }}
                 />
               </div>
-              <h3 className={styles.foilaTitle}>Portal FOILA (Fast Track)</h3>
+              <h3 className={styles.foilaTitle}>Portal FOILA</h3>
             </div>
             <p className={styles.foilaDesc}>
-              Masuk ke portal resmi Forum Investasi Lampung (FOILA) untuk mengakses direktori regulasi daerah, kalkulator investasi, insentif pajak daerah, dan pendampingan izin cepat.
+              Forum Investasi Lampung (FOILA) memuat proyek investasi daerah, panduan prosedur, infrastruktur, dan berita investasi.
             </p>
             <a
               href={foilaUrl}
@@ -252,7 +175,7 @@ export default function GalleryPage() {
         <div className={styles.iproSection}>
           <h2 className={styles.sectionTitle}>
             <TrendingUp size={20} style={{ color: 'var(--color-primary-400)' }} />
-            Investment Project Ready to Offer (IPRO)
+            Dokumen proyek investasi
           </h2>
 
           {docs.length === 0 ? (
@@ -270,6 +193,7 @@ export default function GalleryPage() {
                       alt={project.judul}
                       width={400}
                       height={180}
+                      unoptimized
                       className={styles.iproCardImage}
                       style={{ objectFit: 'cover' }}
                     />
@@ -289,7 +213,7 @@ export default function GalleryPage() {
                       {project.nilai_investasi && (
                         <>
                           <span style={{ fontSize: '9px', color: 'var(--color-neutral-400)', fontWeight: 'bold' }}>NILAI PROYEK</span>
-                          <span style={{ fontSize: 'var(--text-sm)', fontWeight: 800, color: '#f59e0b' }}>{project.nilai_investasi}</span>
+                          <span className={styles.nilaiProyek}>{project.nilai_investasi}</span>
                         </>
                       )}
                     </div>
@@ -298,6 +222,7 @@ export default function GalleryPage() {
                       varian="sekunder"
                       ukuran="kecil"
                       ikon={FileCheck}
+                      className={styles.lihatDokumen}
                       onClick={() => setSelectedDocId(project.id)}
                     >
                       Lihat Dokumen
@@ -307,7 +232,7 @@ export default function GalleryPage() {
                   <button
                     type="button"
                     className={styles.leadCtaBtn}
-                    onClick={() => handleOpenLeadModal(project)}
+                    onClick={() => setLeadModalDoc(project)}
                   >
                     <Mail size={14} />
                     Ajukan Minat Investasi
@@ -320,193 +245,25 @@ export default function GalleryPage() {
 
       </div>
 
-      {/* SECURE VIEW-ONLY MODAL VIEWER */}
-      {selectedDocId && (
-        <Dialog
-          terbuka
-          onTutup={handleCloseViewer}
-          lebarMaks={860}
-          judul={getSelectedDocTitle()}
-          deskripsi={
-            <span className={styles.penampilPeringatan}>
-              <Info size={12} aria-hidden="true" />
-              View-only (Unduh dinonaktifkan)
-            </span>
-          }
-        >
-          <div className={styles.secureViewerBody} role="presentation" onContextMenu={handleContextMenu}>
-            <style>{`@media print { .no-print { display: none !important; }`}</style>
-            <div className="no-print" style={{ width: '100%', position: 'relative' }}>
-              {!hasPages ? (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '600px', color: 'var(--color-neutral-400)', gap: 'var(--space-4)' }}>
-                  <FileText size={48} style={{ opacity: 0.4 }} />
-                  <p>Dokumen ini sedang diproses.</p>
-                  <a href={`mailto:${contactEmail}`} style={{ color: 'var(--color-primary-400)', fontSize: 'var(--text-sm)' }}>
-                    Hubungi admin untuk informasi lebih lanjut
-                  </a>
-                </div>
-              ) : (
-                <>
-                  <div style={{
-                    position: 'absolute',
-                    top: '50%',
-                    left: '50%',
-                    transform: 'translate(-50%, -50%) rotate(-30deg)',
-                    fontSize: '32px',
-                    fontWeight: 900,
-                    color: 'rgba(239, 68, 68, 0.10)',
-                    pointerEvents: 'none',
-                    userSelect: 'none',
-                    whiteSpace: 'nowrap',
-                    letterSpacing: '0.1em',
-                    zIndex: 1,
-                  }}>
-                    DPMPTSP PROV LAMPUNG — DILINDUNGI
-                  </div>
-                  {/* eslint-disable-next-line @next/next/no-img-element -- dynamic watermarked PNG, next/image does not apply */}
-                  <img
-                    src={`/api/investment-docs/page-image?doc_id=${selectedDocId}&page=${currentPage}`}
-                    alt={`Halaman ${currentPage} dari ${pageCount}`}
-                    style={{ width: '100%', maxWidth: '640px', height: 'auto', border: 'none', position: 'relative', zIndex: 2, display: 'block', margin: '0 auto', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}
-                    draggable={false}
-                  />
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-4)', marginTop: 'var(--space-4)' }}>
-                    <Tombol
-                      varian="sekunder"
-                      ukuran="kecil"
-                      ikon={ChevronLeft}
-                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                      disabled={currentPage <= 1}
-                    >
-                      Sebelumnya
-                    </Tombol>
-                    <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-neutral-400)' }}>
-                      Halaman {currentPage} dari {pageCount}
-                    </span>
-                    <Tombol
-                      varian="sekunder"
-                      ukuran="kecil"
-                      onClick={() => setCurrentPage((p) => Math.min(pageCount, p + 1))}
-                      disabled={currentPage >= pageCount}
-                    >
-                      Berikutnya
-                      <ChevronRight size={16} aria-hidden="true" style={{ verticalAlign: 'middle', marginLeft: 8 }} />
-                    </Tombol>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        </Dialog>
+      {/* Penampil view-only dipakai bersama halaman detail IPRO. Dipasang hanya saat dibuka (halaman mulai dari 1). */}
+      {selectedDoc && (
+        <PenampilDokumen
+          dokumenId={selectedDoc.id}
+          judul={selectedDoc.judul}
+          jumlahHalaman={hasPages ? selectedDoc.jumlah_halaman : 0}
+          kontakEmail={contactEmail}
+          onTutup={() => setSelectedDocId(null)}
+        />
       )}
 
-      {leadModalDoc && (
-        <Dialog terbuka onTutup={handleCloseLeadModal} judul="Ajukan Minat Investasi">
-          {leadLoggedIn === false ? (
-            <div className={styles.leadSuccess}>
-              <LogIn size={48} style={{ color: 'var(--color-primary-600)', marginBottom: 'var(--space-4)' }} aria-hidden="true" />
-              <p className={styles.leadSuccessText}>
-                Silakan masuk untuk mengajukan minat investasi.
-              </p>
-              <Tombol href="/login?next=/gallery">Masuk</Tombol>
-            </div>
-          ) : leadSent ? (
-            <div className={styles.leadSuccess}>
-              <CheckCircle size={48} style={{ color: 'var(--status-success-fg)', marginBottom: 'var(--space-4)' }} aria-hidden="true" />
-              <p className={styles.leadSuccessText}>
-                Permintaan Anda tercatat. Tim kami akan menghubungi Anda.
-              </p>
-              <Tombol onClick={handleCloseLeadModal}>Tutup</Tombol>
-            </div>
-          ) : (
-            <form className={styles.leadForm} onSubmit={handleSubmitLead}>
-              <p className={styles.leadContext}>
-                Untuk dokumen: <strong>{leadModalDoc.judul}</strong>
-              </p>
-
-              {leadError && (
-                <div className={styles.leadError} role="alert">
-                  <Info size={14} />
-                  {leadError}
-                </div>
-              )}
-
-              <div className="form-group">
-                <label htmlFor="lead-nama" className="form-label form-label--required">Nama</label>
-                <input
-                  id="lead-nama"
-                  type="text"
-                  className="form-input"
-                  value={leadForm.nama}
-                  onChange={(e) => setLeadForm({ ...leadForm, nama: e.target.value })}
-                  required
-                  maxLength={200}
-                />
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="lead-email" className="form-label form-label--required">Email</label>
-                <input
-                  id="lead-email"
-                  type="email"
-                  className="form-input"
-                  value={leadForm.email}
-                  onChange={(e) => setLeadForm({ ...leadForm, email: e.target.value })}
-                  required
-                />
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="lead-instansi" className="form-label">Instansi</label>
-                <input
-                  id="lead-instansi"
-                  type="text"
-                  className="form-input"
-                  value={leadForm.instansi}
-                  onChange={(e) => setLeadForm({ ...leadForm, instansi: e.target.value })}
-                  maxLength={200}
-                />
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="lead-minat" className="form-label">Minat</label>
-                <textarea
-                  id="lead-minat"
-                  className="form-textarea"
-                  value={leadForm.minat}
-                  onChange={(e) => setLeadForm({ ...leadForm, minat: e.target.value })}
-                  rows={3}
-                  maxLength={1000}
-                />
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="lead-catatan" className="form-label">Catatan</label>
-                <textarea
-                  id="lead-catatan"
-                  className="form-textarea"
-                  value={leadForm.catatan}
-                  onChange={(e) => setLeadForm({ ...leadForm, catatan: e.target.value })}
-                  rows={3}
-                  maxLength={2000}
-                />
-              </div>
-
-              <button
-                type="submit"
-                className={styles.leadSubmit}
-                disabled={leadSending}
-              >
-                {leadSending ? (
-                  <><Loader2 size={16} className="animate-pulse" /> Mengirim...</>
-                ) : (
-                  <><Mail size={16} /> Kirim Permintaan</>
-                )}
-              </button>
-            </form>
-          )}
-        </Dialog>
-      )}
+      {/* Formulir minat tanpa login: persetujuan PDP, operasi_id, dan honeypot dibawa FormulirMinat. */}
+      <FormulirMinat
+        terbuka={leadModalDoc !== null}
+        onTutup={() => setLeadModalDoc(null)}
+        kanal="dokumen"
+        refId={leadModalDoc?.id ?? ''}
+        konteks={leadModalDoc?.judul ?? ''}
+      />
     </div>
   );
 }

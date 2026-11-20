@@ -44,6 +44,7 @@ vi.mock('next/headers', () => ({ cookies: h.cookies, headers: h.headers }));
 vi.mock('next/navigation', () => ({ unstable_rethrow: h.rethrow }));
 vi.mock('@/lib/observability/logger', () => ({ logServerEvent: h.log }));
 vi.mock('@supabase/supabase-js', () => ({ createClient: h.createClient }));
+vi.mock('@/lib/storage/r2', () => ({ urlPublik: (kunci: string) => `https://gambar.test/${kunci}` }));
 
 import {
   REVALIDASI_DETIK,
@@ -54,6 +55,8 @@ import {
   muatOpsiLayananPengaduan,
   muatStandarPublik,
   muatTransparansiPublik,
+  muatInvestasiPublik,
+  muatIproPublik,
   rentangKuartalWIB,
 } from './publik-server';
 
@@ -77,7 +80,7 @@ function klienTiruan(
       const catatan: Panggilan = { tabel, langkah: [] };
       panggilan.push(catatan);
       const q: Record<string, unknown> = {};
-      for (const nama of ['select', 'in', 'eq', 'neq', 'order', 'limit']) {
+      for (const nama of ['select', 'in', 'eq', 'neq', 'order', 'limit', 'maybeSingle']) {
         q[nama] = (...args: unknown[]) => {
           catatan.langkah.push([nama, ...args]);
           return q;
@@ -143,6 +146,76 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
+describe('cache investasi publik', () => {
+  it.each(['investasi', 'ipro-detail'])('loader %s memakai tag investasi dan umur 60 detik', nama => {
+    const cache = PEMBUNGKUS.find(p => p.keyParts?.includes(`publik-${nama}-v${nama === 'ipro-detail' ? 2 : 1}`));
+    expect(cache?.opsi).toEqual({ tags: ['publik-investasi'], revalidate: 60 });
+  });
+  it('hub mengelompokkan sumber dan sebaran, URL gambar dibentuk server', async () => {
+    pasang({ from: {
+      ipro_proyek: [{ data: [{ id: 'p1', sumber: 'ptsp', sektor: 'energi', kab_kota: 'Lampung' },
+        { id: 'p2', sumber: 'foila', sektor: 'energi', kab_kota: 'Lampung' }], error: null }],
+      ipro_gambar: [{ data: [{ proyek_id: 'p1', kunci: 'gambar.webp', kunci_mini: 'mini.webp', utama: true, alt: 'Energi', lebar: 1600, tinggi: 800 }], error: null }],
+      investment_documents: [{ data: [], error: null }],
+    } });
+    const r = await muatInvestasiPublik();
+    expect(r.galat).toBe(false); expect(r.ptsp).toHaveLength(1); expect(r.foila).toHaveLength(1);
+    expect(r.ptsp[0].gambar?.url_mini).toBe('https://gambar.test/mini.webp');
+    expect(r.sebaran).toEqual([{ sektor: 'energi', kab_kota: 'Lampung', jumlah: 2 }]);
+  });
+  it('galat sesaat hub tidak tersimpan sehingga percobaan berikut dapat pulih', async () => {
+    pasang({ from: {
+      ipro_proyek: [galat503, { data: [], error: null }],
+      investment_documents: [{ data: [], error: null }, { data: [], error: null }],
+    } });
+    expect((await muatInvestasiPublik()).galat).toBe(true);
+    expect((await muatInvestasiPublik()).galat).toBe(false);
+  });
+  it('detail tidak ditemukan null; galat sesaat dilempar dan tidak disimpan', async () => {
+    pasang({ from: { ipro_proyek: [galat503, { data: null, error: null }],
+      ipro_gambar: [{ data: [], error: null }, { data: [], error: null }] } });
+    await expect(muatIproPublik('energi')).rejects.toThrow('Data IPRO belum dapat dimuat.');
+    expect(await muatIproPublik('energi')).toBeNull();
+  });
+  it('slug menjadi bagian kunci cache detail', async () => {
+    pasang({ from: { ipro_proyek: [{ data: { id: 'a' }, error: null }, { data: { id: 'b' }, error: null }],
+      ipro_gambar: [{ data: [], error: null }, { data: [], error: null }] } });
+    expect((await muatIproPublik('a'))?.id).toBe('a');
+    expect((await muatIproPublik('b'))?.id).toBe('b');
+    expect((await muatIproPublik('a'))?.id).toBe('a');
+  });
+  it('dokumen kajian detail dimuat langsung berdasarkan ID dengan kolom ringkas dan status aktif', async () => {
+    const t = pasang({ from: {
+      ipro_proyek: [{ data: { id: 'p1', dokumen_id: 'dok-di-luar-hub' }, error: null }],
+      ipro_gambar: [{ data: [], error: null }],
+      investment_documents: [{ data: { id: 'dok-di-luar-hub', judul: 'Kajian terpilih', jumlah_halaman: 17 }, error: null }],
+    } });
+    expect((await muatIproPublik('energi'))?.dokumen).toEqual({ id: 'dok-di-luar-hub', judul: 'Kajian terpilih', jumlah_halaman: 17 });
+    expect(dipakai(t.panggilan, 'investment_documents')).toEqual([{ tabel: 'investment_documents', langkah: [
+      ['select', 'id, judul, jumlah_halaman'], ['eq', 'id', 'dok-di-luar-hub'], ['eq', 'status', 'aktif'], ['maybeSingle'],
+    ] }]);
+  });
+  it('dokumen tidak aktif atau hilang menjadi null; tanpa dokumen_id tidak menjalankan query dokumen', async () => {
+    const t = pasang({ from: {
+      ipro_proyek: [{ data: { id: 'a', dokumen_id: 'd1' }, error: null }, { data: { id: 'b', dokumen_id: null }, error: null }],
+      ipro_gambar: [{ data: [], error: null }, { data: [], error: null }],
+      investment_documents: [{ data: null, error: null }],
+    } });
+    expect((await muatIproPublik('a'))?.dokumen).toBeNull();
+    expect((await muatIproPublik('b'))?.dokumen).toBeNull();
+    expect(dipakai(t.panggilan, 'investment_documents')).toHaveLength(1);
+  });
+  it('galat sesaat dokumen tidak disimpan sebagai detail tanpa kajian', async () => {
+    pasang({ from: {
+      ipro_proyek: [{ data: { id: 'a', dokumen_id: 'd1' }, error: null }, { data: { id: 'a', dokumen_id: 'd1' }, error: null }],
+      ipro_gambar: [{ data: [], error: null }, { data: [], error: null }],
+      investment_documents: [galat503, { data: { id: 'd1', judul: 'Pulih', jumlah_halaman: 3 }, error: null }],
+    } });
+    await expect(muatIproPublik('a')).rejects.toThrow('Data IPRO belum dapat dimuat.');
+    expect((await muatIproPublik('a'))?.dokumen?.judul).toBe('Pulih');
+  });
+});
+
 describe('konfigurasi cache', () => {
   it('TAG_PUBLIK dan revalidate sesuai kontrak rencana 4.2', () => {
     expect(TAG_PUBLIK).toEqual({
@@ -151,14 +224,15 @@ describe('konfigurasi cache', () => {
       faq: 'publik-faq',
       transparansi: 'publik-transparansi',
       standar: 'publik-standar',
+      investasi: 'publik-investasi',
     });
     expect(REVALIDASI_DETIK).toBe(60);
   });
 
-  it('enam fungsi publik masing-masing dibungkus unstable_cache dengan kunci unik dan revalidate 60', () => {
-    expect(PEMBUNGKUS).toHaveLength(6);
+  it('delapan fungsi publik masing-masing dibungkus unstable_cache dengan kunci unik dan revalidate 60', () => {
+    expect(PEMBUNGKUS).toHaveLength(8);
     const kunci = PEMBUNGKUS.map((p) => JSON.stringify(p.keyParts));
-    expect(new Set(kunci).size).toBe(6);
+    expect(new Set(kunci).size).toBe(8);
     for (const p of PEMBUNGKUS) expect(p.opsi?.revalidate).toBe(60);
   });
 

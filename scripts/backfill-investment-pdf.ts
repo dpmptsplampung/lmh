@@ -12,7 +12,7 @@
  * seeding), it is treated as the raw PDF path directly.
  */
 import { createClient } from '@supabase/supabase-js';
-import { convertPdfToPngBuffers } from '../src/app/api/investment-docs/upload/route';
+import { bukaPdf, renderHalaman } from '../src/app/api/investment-docs/_logika/pdf';
 import { kunciObjek } from '../src/lib/storage/area';
 import { getObjectBytes, putObject } from '../src/lib/storage/r2';
 
@@ -56,7 +56,11 @@ async function backfill() {
 
     let pngs: Buffer[];
     try {
-      pngs = await convertPdfToPngBuffers(pdfBytes);
+      const pdf = await bukaPdf(pdfBytes);
+      try {
+        pngs = [];
+        for (let n = 1; n <= pdf.doc.numPages; n++) pngs.push(await renderHalaman(pdf.doc, n));
+      } finally { await pdf.tutup(); }
     } catch (e) {
       console.error(`  SKIP: conversion failed: ${e instanceof Error ? e.message : String(e)}`);
       continue;

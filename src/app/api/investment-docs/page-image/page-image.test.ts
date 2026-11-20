@@ -197,3 +197,18 @@ describe('GET /api/investment-docs/page-image — watermark + stream', () => {
     expect(res.status).toBe(500);
   });
 });
+
+describe('cache harus tunduk pada status terbaru', () => {
+  beforeEach(() => { vi.resetModules(); });
+  it.each(['nonaktif', 'dihapus'])('menolak dokumen %s walau PNG masih ada dalam cache', async status => {
+    const doc = { halaman_gambar: ['pages/cache/page-1.png'], jumlah_halaman: 1, status: 'aktif' };
+    await mockSupabase(doc); await mockServiceClient();
+    const sharp = await mockSharp(Buffer.from('cached PNG'));
+    const { GET } = await import('./route');
+    const req = () => buildRequest({ doc_id: '11111111-1111-4111-8111-111111111111', page: '1' });
+    expect((await GET(req())).status).toBe(200);
+    await mockSupabase(status === 'dihapus' ? null : { ...doc, status });
+    expect((await GET(req())).status).toBe(404);
+    expect(sharp.toBuffer).toHaveBeenCalledTimes(1);
+  });
+});

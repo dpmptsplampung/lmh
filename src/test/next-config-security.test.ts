@@ -10,6 +10,15 @@ async function getHeaders(supabaseUrl?: string) {
   return Object.fromEntries((rules?.[0]?.headers ?? []).map(({ key, value }) => [key, value]));
 }
 
+describe('Pengalihan alamat lama', () => {
+  it('/peta-potensi dialihkan sementara ke seksi Peta Potensi di hub investasi', async () => {
+    vi.resetModules();
+    const { default: nextConfig } = await import('../../next.config');
+    const aturan = await nextConfig.redirects?.();
+    expect(aturan).toContainEqual({ source: '/peta-potensi', destination: '/investasi#peta-potensi', permanent: false });
+  });
+});
+
 describe('Next security headers', () => {
   afterEach(() => vi.unstubAllEnvs());
 
@@ -26,6 +35,7 @@ describe('Next security headers', () => {
     expect(csp).not.toContain('fonts.googleapis.com');
     expect(csp).not.toContain('fonts.gstatic.com');
     expect(csp).toContain("worker-src 'self' blob:");
+    expect(csp).toContain("frame-src 'self'");
     expect(csp).toContain("frame-ancestors 'none'");
     expect(csp).not.toContain('*');
     expect(csp).not.toContain("'unsafe-eval'");

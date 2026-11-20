@@ -187,7 +187,7 @@ const ROLES_SEBELUM: Record<string, string[]> = {
   '/admin/buku-tamu': [A, F], '/admin/chat': [A, P, F], '/admin/chat/ai-log': [A],
   '/admin/chat/faq': [A, P, F], '/admin/data-governance': [A], '/admin/dokumen': [A],
   '/admin/fo/daftar': [A, F], '/admin/fo/kotak-masuk': [A, F], '/admin/fo/penanganan': [A, F],
-  '/admin/fo/registrasi': [A, F], '/admin/gallery': [A], '/admin/investasi-leads': [A], '/admin/kunjungan': [A, F],
+  '/admin/fo/registrasi': [A, F], '/admin/gallery': [A, P], '/admin/investasi-leads': [A, P], '/admin/ipro': [A, P], '/admin/kunjungan': [A, F],
   '/admin/layanan': [A, F], '/admin/layar': [A], '/admin/pengaduan': [A, F], '/admin/performa': [A],
   '/admin/petugas': [A], '/admin/profil': [A, P, F], '/admin/rekap': [A, P, F], '/admin/rekap-fo': [A, F],
   '/admin/riwayat': [A], '/admin/scan': [A, F], '/admin/settings': [A], '/admin/settings/ai': [A],
@@ -229,7 +229,7 @@ describe('pengelompokan menu: data', () => {
     expect(anak('pesanPerilaku')).toEqual(['Hasil Survei', 'Saran', 'Pengaduan']);
     expect(anak('laporan')).toEqual(['Rekap', 'Laporan UMKM', 'Performa Pelayanan']);
     expect(anak('pengelolaan')).toEqual(['Jadwal Layanan', 'Kelola Layanan', 'Topik Penanganan', 'Kelola Layar']);
-    expect(anak('kemitraan')).toEqual(['Tugas UMKM', 'Pengawasan UMKM', 'Lead Investasi', 'Investment Gallery']);
+    expect(anak('kemitraan')).toEqual(['Tugas UMKM', 'Pengawasan UMKM', 'IPRO', 'Kotak Masuk Investasi', 'Investment Gallery']);
     expect(anak('konten')).toEqual(['Dokumen Peraturan', 'Konten Landing']);
     expect(anak('sistem')).toEqual(['Kelola Petugas', 'Pengaturan', 'Pengaturan AI', 'Tata Kelola Data', 'Riwayat Perubahan']);
   });
@@ -298,8 +298,55 @@ describe('buildNavTree', () => {
     expect(hrefs.filter((h) => h !== '/').every((h) => h.startsWith('/petugas/'))).toBe(true);
   });
 
-  it('petugas modul investasi: belum ada menu modul (Investasi dikerjakan setelah UMKM)', () => {
-    expect(urutanHref(buildNavTree('petugas', { modul: 'investasi' }))).toEqual(urutanHref(buildNavTree('petugas')));
+  it('petugas modul investasi: menambah persis IPRO, Kotak Masuk Investasi, dan dokumen (di /petugas/investasi/*)', () => {
+    const tree = buildNavTree('petugas', { modul: 'investasi' });
+    expect(urutanLabel(tree)).toEqual(['Antrean', 'Absensi', 'Live Chat', 'Kelola FAQ', 'Rekap', 'IPRO', 'Kotak Masuk Investasi', 'Investment Gallery', 'Profil Saya', 'Tampilan Publik']);
+    const hrefs = urutanHref(tree);
+    expect(hrefs).toContain('/petugas/investasi/ipro');
+    expect(hrefs).toContain('/petugas/investasi/kotak-masuk');
+    expect(hrefs).toContain('/petugas/investasi/dokumen');
+    expect(hrefs.filter((h) => h !== '/').every((h) => h.startsWith('/petugas/'))).toBe(true);
+    // Modul umkm dan tanpa modul tidak melihat menu investasi.
+    for (const m of ['umkm', null] as const) {
+      const label = urutanLabel(buildNavTree('petugas', { modul: m }));
+      expect(label).not.toContain('IPRO');
+      expect(label).not.toContain('Investment Gallery');
+      expect(label).not.toContain('Kotak Masuk Investasi');
+    }
+  });
+
+  it('IPRO, Kotak Masuk Investasi, dan dokumen: entri modul investasi untuk admin dan petugas, tidak untuk Front Office', () => {
+    for (const href of ['/admin/ipro', '/admin/investasi-leads', '/admin/gallery']) {
+      const entri = ADMIN_NAV.find((e) => e.href === href);
+      expect(entri?.butuhModul, href).toBe('investasi');
+      expect(entri?.roles, href).toEqual(['admin', 'petugas']);
+      expect(entri?.group, href).toBe('kemitraan');
+      expect(canAccessAdminPath('admin', href), href).toBe(true);
+      expect(canAccessAdminPath('front_office', href, { modul: 'investasi' }), href).toBe(false);
+    }
+    expect(ADMIN_NAV.find((e) => e.href === '/admin/ipro')?.hrefPetugas).toBe('/petugas/investasi/ipro');
+    expect(ADMIN_NAV.find((e) => e.href === '/admin/investasi-leads')?.hrefPetugas).toBe('/petugas/investasi/kotak-masuk');
+    expect(ADMIN_NAV.find((e) => e.href === '/admin/gallery')?.hrefPetugas).toBe('/petugas/investasi/dokumen');
+    expect(ADMIN_NAV.some((e) => e.label === 'Lead Investasi')).toBe(false);
+  });
+
+  it('rute IPRO: subrute mewarisi entri; petugas hanya bermodul investasi; FO ditolak', () => {
+    const modul = { modul: 'investasi' } as const;
+    for (const h of ['/petugas/investasi/ipro', '/petugas/investasi/ipro/baru', '/petugas/investasi/ipro/abc-123', '/petugas/investasi/dokumen']) {
+      expect(bolehAksesRute('petugas', h, modul), h).toBe(true);
+      expect(bolehAksesRute('petugas', h, { modul: 'umkm' }), h).toBe(false);
+      expect(bolehAksesRute('petugas', h), h).toBe(false);
+      expect(bolehAksesRute('admin', h), h).toBe(false);
+      expect(bolehAksesRute('front_office', h, modul), h).toBe(false);
+      expect(butuhModulUntukRute('petugas', h), h).toBe(true);
+    }
+    for (const h of ['/admin/ipro', '/admin/ipro/baru', '/admin/ipro/abc-123']) {
+      expect(bolehAksesRute('admin', h), h).toBe(true);
+      expect(bolehAksesRute('front_office', h, modul), h).toBe(false);
+      expect(bolehAksesRute('petugas', h, modul), h).toBe(false);
+    }
+    expect(findActiveNavEntry('/admin/ipro/abc-123')?.label).toBe('IPRO');
+    expect(findActiveNavEntry('/petugas/investasi/ipro/abc-123')?.label).toBe('IPRO');
   });
 
   it('admin selalu melihat menu modul lewat role (tanpa konteks modul)', () => {
@@ -310,12 +357,21 @@ describe('buildNavTree', () => {
 
   it('tiap pohon hanya memuat entri yang rolenya mencakup pengguna, tanpa duplikat', () => {
     for (const role of ['admin', 'petugas', 'front_office'] as AdminRole[]) {
-      const hrefs = urutanHref(buildNavTree(role, { modul: 'umkm' }));
-      expect(new Set(hrefs).size).toBe(hrefs.length);
-      // Petugas memakai href /petugas; petakan kembali ke href admin lewat entri sumbernya.
-      const keAdmin = (h: string) => (role === 'petugas' ? ADMIN_NAV.find((e) => e.hrefPetugas === h)!.href : h);
-      for (const h of hrefs) expect(ROLES_SEBELUM[keAdmin(h)], `${role} ${h}`).toContain(role);
-      expect(hrefs.map(keAdmin).sort()).toEqual(Object.keys(ROLES_SEBELUM).filter((h) => ROLES_SEBELUM[h].includes(role) && !HIDDEN.includes(h)).sort());
+      for (const modul of ['umkm', 'investasi'] as const) {
+        const hrefs = urutanHref(buildNavTree(role, { modul }));
+        expect(new Set(hrefs).size).toBe(hrefs.length);
+        // Petugas memakai href /petugas; petakan kembali ke href admin lewat entri sumbernya.
+        const keAdmin = (h: string) => (role === 'petugas' ? ADMIN_NAV.find((e) => e.hrefPetugas === h)!.href : h);
+        for (const h of hrefs) expect(ROLES_SEBELUM[keAdmin(h)], `${role} ${h}`).toContain(role);
+        // Entri modul hanya tampil bagi petugas yang modulnya cocok (admin lolos lewat role).
+        const boleh = (h: string) => {
+          const butuh = ADMIN_NAV.find((e) => e.href === h)?.butuhModul;
+          return role !== 'petugas' || !butuh || butuh === modul;
+        };
+        expect(hrefs.map(keAdmin).sort()).toEqual(
+          Object.keys(ROLES_SEBELUM).filter((h) => ROLES_SEBELUM[h].includes(role) && !HIDDEN.includes(h) && boleh(h)).sort(),
+        );
+      }
     }
   });
 
@@ -384,6 +440,7 @@ describe('peta badge menu', () => {
       '/admin/chat': 'liveChat',
       '/admin/pengaduan': 'pengaduan',
       '/admin/saran': 'saran',
+      '/admin/investasi-leads': 'pesanInvestasi',
     });
     expect(Object.keys(ADMIN_BADGE_ROLES).sort()).toEqual(Object.values(peta).sort() as string[]);
   });
@@ -396,9 +453,9 @@ describe('peta badge menu', () => {
   });
 
   it('badge per role', () => {
-    expect(badgeKeysForRole('admin').sort()).toEqual(['antrian', 'kotakMasukFo', 'liveChat', 'penangananFo', 'pengaduan', 'saran']);
+    expect(badgeKeysForRole('admin').sort()).toEqual(['antrian', 'kotakMasukFo', 'liveChat', 'penangananFo', 'pengaduan', 'pesanInvestasi', 'saran']);
     expect(badgeKeysForRole('front_office').sort()).toEqual(['antrian', 'kotakMasukFo', 'liveChat', 'penangananFo', 'pengaduan', 'saran']);
-    expect(badgeKeysForRole('petugas').sort()).toEqual(['antrian', 'liveChat']);
+    expect(badgeKeysForRole('petugas').sort()).toEqual(['antrian', 'liveChat', 'pesanInvestasi']);
     expect(badgeKeysForRole(null)).toEqual([]);
     expect(badgeKeysForRole('pengunjung')).toEqual([]);
   });

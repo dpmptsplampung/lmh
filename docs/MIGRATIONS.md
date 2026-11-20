@@ -2,6 +2,143 @@
 
 > **Status penerapan:** tanda "BELUM DITERAPKAN" di tabel dan teks lama di bawah adalah riwayat saat ditulis. Status sebenarnya di produksi (diperiksa baca-saja 2026-11-13) ada di bagian "Status penerapan terverifikasi (2026-11-13)" di akhir berkas.
 
+## Investment Gallery (IPRO PTSP): urutan terapan dan prasyarat
+
+**Migrasi `202611190001` sampai `0005` DITERAPKAN ke produksi pada 2026-11-20** (host `aws-1-ap-southeast-1.pooler.supabase.com`, satu transaksi per berkas, didahului dry-run bersih; staging belum ada, pemilik menyatakan melewati aturan staging D-37 untuk penerapan ini). Prasyarat `202611160001` sampai `0004` sudah ada di produksi (diperiksa baca-saja sebelum penerapan: `staf_modul()`, `layanan.modul`, `pendataan_khusus_draf`, `buku_tamu_catat_keluar`, `fo_antrean_daftar`). Verifikasi pasca-penerapan baca-saja: semua objek penanda ada, `investasi_lead` 0 baris, job `investasi_retensi_harian` terdaftar. Belum teruji nyata: kontensi PostgreSQL, CopyObject/ETag R2, render PDF besar. Ringkasan fitur: [docs/fase/investasi-ipro.md](fase/investasi-ipro.md).
+
+Urutan terapan (satu berkas per transaksi, hanya sesudah host dan daftar berkas ditampilkan dan pemilik setuju; skrip penerapan menyentuh DB produksi):
+
+| Urutan | Berkas | Bergantung pada | Isi singkat | Status |
+|---|---|---|---|---|
+| 0 | `202611160001_lingkup_layanan_staf.sql` | baseline | `layanan.modul`, `staf_modul()` | **BELUM DITERAPKAN** |
+| 1 | `202611190001_ipro_inti.sql` | `202611160001` | `ipro_proyek`, `ipro_gambar`, `boleh_kelola_investasi()`, RLS | **DITERAPKAN 2026-11-20** |
+| 2 | `202611190002_investasi_kotak_masuk.sql` | `0001` | `investasi_lead` diperluas, RPC kirim dan ubah status, retensi + cron | **DITERAPKAN 2026-11-20** |
+| 3 | `202611190003_investasi_dokumen_proses.sql` | `0001`, `0002` | status `diproses`/`gagal`, `investment_pdf_claims` | **DITERAPKAN 2026-11-20** |
+| 4 | `202611190004_nav_lencana_investasi.sql` | `0001`, `0002` | lencana `pesanInvestasi` | **DITERAPKAN 2026-11-20** |
+| 5 | `202611190005_ipro_gambar_atomik.sql` | `0001`, `0002` | RPC gambar dan status atomik | **DITERAPKAN 2026-11-20** |
+
+Terapkan `0005` bersama klien RPC dalam satu jendela rilis, karena penulisan gambar langsung dicabut. Rantai lengkap tercatat di `supabase/migrations/MANIFEST.json`. Bukti perilaku hanya lokal (PGlite `scripts/lokal-rantai/skenario-baru-ipro.mjs` dan `skenario-nav-lencana.mjs`, test kontrak `supabase/migrations/2026111900*.test.ts`); belum ada bukti terhadap PostgreSQL nyata dengan beberapa koneksi.
+
+### Rincian 0001, 0002, 0005: IPRO inti, Kotak Masuk, gambar atomik (BELUM DITERAPKAN)
+
+Prasyarat: `202611160001_lingkup_layanan_staf`; terapkan `202611190001` sebelum `202611190002`, masing-masing dalam satu transaksi. Bukti perilaku hanya lokal melalui `scripts/lokal-rantai/skenario-baru-ipro.mjs`; belum ada penerapan ke staging atau produksi.
+
+| Versi | Berkas | Isi | Status |
+|---|---|---|---|
+| 202611190001 | `202611190001_ipro_inti.sql` | IPRO PTSP/FOILA, gambar, audit/versi/slug tetap, RLS admin dan petugas modul investasi; sektor CHECK sembilan nilai; `nilai_investasi` dan `npv_nilai` memakai `mata_uang` IDR/USD, `nilai_teks` untuk label FOILA. | **DITERAPKAN 2026-11-20** |
+| 202611190002 | `202611190002_investasi_kotak_masuk.sql` | Perluasan lead dokumen/IPRO, RPC idempoten dan consent atomik, tiga batas laju, notifikasi tanpa PII dan retensi terminal 365 hari; trigger updated_at dinonaktifkan hanya selama backfill dan langsung diaktifkan kembali. | **DITERAPKAN 2026-11-20** |
+| 202611190005 | `202611190005_ipro_gambar_atomik.sql` | RPC tambah/ubah/hapus gambar dan status dengan lock baris proyek yang sama; batas PTSP 12/FOILA 1, gambar pertama otomatis utama, rollback reset/target atomik, validasi terbit dan versi di DB. | **DITERAPKAN 2026-11-20** |
+
+Prasyarat `202611190005_ipro_gambar_atomik.sql`: `202611190001` dan `202611190002`; tidak bergantung pada `0003`/`0004`.
+Terapkan paket atomik bersama klien RPC dalam satu jendela rilis karena penulisan gambar langsung dicabut.
+
+RPC `ipro_tambah_gambar(uuid,jsonb)` dan `ipro_ubah_gambar(uuid,uuid,jsonb)` mengembalikan
+kolom gambar publik; `ipro_hapus_gambar(uuid,uuid)` mengembalikan `{id,kunci,kunci_mini}`
+untuk penghapusan objek R2 sesudah commit (kegagalan hapus dicatat dan respons tetap sukses); `ipro_ubah_status(uuid,text,integer)` mengembalikan
+kolom admin proyek tanpa UUID audit. Semuanya hanya untuk admin/petugas modul investasi melalui
+`boleh_kelola_investasi()`, `SECURITY DEFINER`, `SET search_path`, dan EXECUTE terbatas.
+Biaya operasi dibatasi satu proyek, hitung paling banyak 12 gambar melalui indeks `proyek_id`;
+mutasi urutan/utama memakai RPC ubah gambar. Trigger memvalidasi proyek terbit juga untuk
+INSERT/UPDATE proyek langsung; klien tidak bisa melewati lock lewat penulisan gambar tabel.
+Daftar gambar pengelola mengambil maksimum 13 baris agar satu anomali di atas batas terlihat.
+Saat unggah mendapat galat SQL yang memastikan rollback, objek hasil dibersihkan; jika jaringan
+putus dan status commit tidak pasti, kunci dicatat untuk rekonsiliasi tanpa menghapus objek
+yang mungkin sudah dirujuk DB.
+
+Pemeta HTTP tunggal ada di `src/lib/investasi/http.ts`: kode domain yang dikenal didahulukan;
+23505/23503 menjadi `KONFLIK_STATUS` (409), karena pelanggaran unik/FK tidak selalu berasal dari
+kunci idempotensi; `KONFLIK_OPERASI` hanya untuk galat domain eksplisit. 40001/55P03 menjadi
+`KONFLIK_VERSI` (409), PGRST301/302 dan 28000 menjadi 401, 42501 atau akses false menjadi 403,
+23514/22023/22P02/22003 menjadi 400, `SYARAT_TERBIT` eksplisit menjadi 409, sedangkan galat
+RPC akses XX000 dan jaringan menjadi 500 dengan akses tetap tertutup. Pesan konflik mengikuti
+kode domain; pesan database tidak pernah diteruskan, dan DETAIL syarat terbit dibatasi nama
+field publik. Versi consent untuk tujuan `investasi_minat` adalah 1.1 pada kedua kanal, dari
+satu konstanta; tujuan consent lainnya tidak diubah.
+
+Bukti PGlite mencakup unggahan serentak slot terakhir, dua unggahan pertama FOILA `utama:false`,
+publish/hapus dalam kedua urutan, dan kegagalan trigger UPDATE target sesudah reset utama.
+PGlite menserialkan query pada satu koneksi: pengujian ini membuktikan transaksi dan kedua
+urutan, sedangkan kontensi lock antarsesi PostgreSQL nyata masih harus diverifikasi di staging.
+Tidak ada migrasi paket ini yang sudah diterapkan ke staging atau produksi.
+
+Rollback operasional yang mempertahankan data: `docs/rollback-ipro-gambar-atomik-202611190005.sql`
+(menutup RPC tanpa membuka lagi mutasi rentan), lalu `docs/rollback-investasi-kotak-masuk-202611190002.sql`,
+kemudian `docs/rollback-ipro-inti-202611190001.sql`; paket lanjutan harus dinonaktifkan lebih dahulu.
+
+Hak baca `ipro_proyek` dan `ipro_gambar` untuk `anon`/`authenticated` diberikan per kolom,
+tanpa UUID staf `dibuat_oleh`/`diubah_oleh`; `select=*` sengaja ditolak. Lapisan data, termasuk
+`RETURNING` penulisan staf, wajib memilih kolom publik secara eksplisit; trigger audit dan FK
+tetap berjalan, dan riwayat pengubah tersedia melalui `audit_log`. Rollback inti mencabut hak
+tingkat tabel sekaligus hak baca per kolom.
+
+RPC kirim memvalidasi sesi dan input, menghitung sidik dari isian yang dinormalisasi, kemudian
+mengunci dan mencari operasi lama sebelum memeriksa konteks publik. Retry identik tetap
+mengembalikan id lama ketika IPRO sudah diarsipkan atau dokumen dinonaktifkan, tanpa menambah
+lead, consent, notifikasi atau kuota laju; hanya operasi baru memerlukan konteks yang masih aktif.
+Alamat email kiriman baru dibatasi ke alamat biasa: lokal memakai huruf/angka dan `._+-`,
+domain memakai huruf/angka, titik dan tanda hubung, serta TLD huruf minimal dua karakter.
+Karakter parameter URI (termasuk `%`, `?`, `&`, `#`), spasi, pemisah penerima dan kutip ditolak;
+validasi hanya di fungsi RPC, tanpa CHECK baru pada kolom email yang dapat menolak data lama.
+
+### Rincian 0003 dan 0004: dokumen per batch dan lencana (BELUM DITERAPKAN)
+
+Migrasi baru `202611190003_investasi_dokumen_proses.sql` menambah status diproses/gagal,
+kemajuan halaman, galat maksimal 500 karakter, dan policy pengelola modul; policy admin
+serta pembacaan publik status aktif dipertahankan. Tabel `investment_pdf_claims` menyimpan
+kunci yang sudah dikonsumsi sebagai tombstone permanen: PK mencegah pendaftaran bersamaan
+dan pemakaian ulang sesudah penghapusan dokumen. RLS mengikat UID dari sesi dengan folder raw,
+dan authenticated hanya mendapat SELECT/INSERT kolom kunci, tanpa UPDATE/DELETE.
+`202611190004_nav_lencana_investasi.sql`
+mempertahankan seluruh badan lencana terbaru (`202611110002`; tidak ditimpa migrasi lingkup)
+dan menambah pesanInvestasi bagi pengelola investasi dengan SECURITY INVOKER.
+Keduanya bergantung pada `202611190001`/`0002`; urutan rantai lengkap 0001–0005 ada di manifest,
+tetapi semuanya belum diterapkan ke staging maupun produksi.
+
+Render PDF memakai delapan halaman per panggilan (`maxDuration = 60`), kemajuan ditulis per
+halaman, PNG mempunyai prefix unik per batch, dan klaim compare-and-set pada diproses_pada
+mencegah dua tab bekerja bersamaan. Lease ditinggalkan bila fungsi terputus; retry diizinkan
+setelah 65 detik (melewati batas fungsi 60 detik), atau segera setelah galat yang tertangani.
+Batch melepaskan lease setelah selesai; kegagalan menyimpan kemajuan tidak menghapus halaman
+terdahulu. Batas waktu lunak 45 detik menghentikan batch sebelum memulai halaman berikutnya;
+halaman tunggal yang terlalu lambat masih bergantung pada batas platform dan bisa dicoba ulang.
+
+Presign PDF menerima `{ area: 'investment-docs', mime, ukuran }` tanpa path; server membuat
+`raw/<uid-sesi>/<uuid>.pdf`. Path eksplisit ditolak 400, kunci pengguna lain ditolak 403 pada
+konfirmasi/pendaftaran, konsumsi ulang ditolak 409. Pendaftaran mengonsumsi kunci secara atomik,
+menyalin lewat CopyObject dengan `CopySourceIfMatch` ke `src/<docId>.pdf`, lalu memvalidasi
+SALINAN itu (%PDF-, tidak terenkripsi, maksimum 50 MiB/50 halaman). Seluruh batch memakai
+salinan final; PUT klien yang dipakai ulang pada raw tidak mengubah sumber render. PDF.js memakai
+canvasFactory milik dokumen agar canvas dan Path2D memakai backend native yang sama.
+
+Kegagalan parser/INSERT membersihkan raw dan salinan final; sukses membersihkan raw. Gagal-hapus
+dicatat sebagai `investment_docs.cleanup_gagal` bersama docId tanpa mengganti galat utama.
+Fungsi server `bersihkanRawLama(cursor?)` di `src/app/api/investment-docs/_logika/unggahan.ts`
+menyapu raw sah yang lebih tua dari 24 jam, maksimal satu listing 1000 objek per panggilan,
+dan mengembalikan cursor berikutnya. Fungsi ini untuk rekonsiliasi manual yang diotorisasi,
+belum dijadwalkan atau dijalankan pada layanan eksternal; tombstone tidak ikut dibuang.
+Salinan final yang gagal dibersihkan dapat ditelusuri melalui docId pada log untuk rekonsiliasi.
+Hash manifest 0003 diregenerasi melalui skrip setelah mengeluarkan hanya entri 0003 yang belum
+di-commit; pengecualian ini diizinkan pemilik karena 0003 belum diterapkan ke DB mana pun.
+
+PNG yang PUT-nya gagal atau checkpoint-nya gagal langsung dibersihkan; prefix per batch
+mencegah cleanup worker kedaluwarsa menghapus hasil worker baru. DELETE menolak lease aktif
+(kurang dari 65 detik) dengan 409. Lease basi dari fungsi yang mati karena timeout tidak mengunci
+dokumen: DELETE memakai CAS pada nilai lease basi itu (atau `diproses_pada IS NULL` bila tanpa
+lease), sehingga render yang mengklaim ulang sesudah SELECT tetap menang dan DELETE gagal tertutup.
+Path dari baris DB tidak dipercaya mentah: render hanya membaca `src/<docId>.pdf`, dan DELETE hanya
+menghapus `src/<docId>.pdf`, `_raw/<docId>.pdf`, `pages/<docId>/...` (path lama di luar awalan itu
+tetap), tidak pernah `raw/` atau objek dokumen lain.
+Setelah DB terhapus, pembersihan mencakup kunci final, daftar halaman tersimpan, dan listing
+SELURUH `pages/<docId>/` secara berhalaman, termasuk PNG yang belum sempat masuk checkpoint.
+Galat storage sesudah DELETE tetap dicatat agar prefix dapat disapu ulang. Page-image memeriksa
+status DB sebelum cache, sehingga nonaktif/hapus segera ditolak meskipun PNG masih tercache.
+
+Rollback: pulihkan fungsi lewat `rollback-nav-lencana-investasi-202611190004.sql`, lalu
+`rollback-investasi-dokumen-proses-202611190003.sql` hanya setelah pemilik menangani dokumen
+status diproses/gagal (constraint sengaja menolak kehilangan status). Jalankan rollback dalam
+transaksi; keduanya belum dijalankan terhadap database eksternal. Bukti PGlite hanya memakai
+data sintetis; PDF besar nyata dan kontensi beberapa koneksi PostgreSQL perlu validasi staging.
+
 ## Baseline Fresh-Only
 
 Direktori `supabase/migrations/` berisi lima migrasi final-state untuk proyek yang belum pernah dideploy:

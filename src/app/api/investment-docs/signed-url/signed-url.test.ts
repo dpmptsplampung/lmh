@@ -27,6 +27,7 @@ const buildRequest = (filePath: string | null = FILE): NextRequest => {
 interface Opts {
   user?: { id: string } | null;
   role?: string | null;
+  kelola?: boolean;
   signedError?: { message: string } | null;
   // Klien service untuk audit: 'ada' | 'null' (env tidak disetel) | hasil insert
   service?: 'null' | { error: { message: string; code?: string } | null } | 'throws';
@@ -43,6 +44,7 @@ async function setup(o: Opts = {}) {
   });
   const serverMod = await import('@/lib/supabase/server');
   (serverMod.createClient as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+    rpc: vi.fn(async () => ({ data: o.kelola ?? role === 'admin', error: null })),
     auth: { getUser: vi.fn().mockResolvedValue({ data: { user }, error: null }) },
     from: () => ({
       select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: user && role ? { role } : null, error: null }) }) }),
@@ -97,6 +99,13 @@ describe('GET /api/investment-docs/signed-url', () => {
     vi.resetModules();
     await setup();
     expect((await (await import('./route')).GET(buildRequest('../rahasia.pdf'))).status).toBe(400);
+  });
+
+  it('petugas investasi dapat membuka path raw baru dengan audit tetap wajib', async () => {
+    const h = await setup({ role: 'petugas', kelola: true });
+    const { GET } = await import('./route');
+    expect((await GET(buildRequest(FILE.replace('_raw/', 'raw/')))).status).toBe(200);
+    expect(h.insert).toHaveBeenCalledWith(expect.objectContaining({ actor_role: 'petugas' }));
   });
 
   it('admin: 200 dengan signedUrl dan audit akses PDF mentah ditulis', async () => {

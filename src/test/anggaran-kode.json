@@ -1,18 +1,18 @@
 {
-  "hex": 46,
-  "rgb": 58,
+  "hex": 33,
+  "rgb": 54,
   "zIndexLiteral": 0,
   "breakpointLuarSkala": 41,
   "tokenTakTerdefinisi": 0,
   "kelasBtn": 0,
   "windowConfirm": 0,
   "selectBintang": 0,
-  "kueriDiPage": 92,
+  "kueriDiPage": 84,
   "barisPageRaksasa": 571,
   "hexLuarModul": 5,
   "rgbLuarModul": 14,
   "zIndexLuarModul": 0,
   "breakpointLuarModul": 4,
-  "hexInline": 9,
+  "hexInline": 7,
   "zIndexInline": 1
 }

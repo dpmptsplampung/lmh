@@ -57,7 +57,7 @@
   font-size: var(--text-xs);
   color: var(--text-tertiary);
   margin-top: 2px;
-  max-width: 280px;
+  max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -76,12 +76,28 @@
 .sel19 {
   font-size: var(--text-sm);
   text-align: center;
+  min-width: 2ch;
+}
+
+/* Tombol geser urut di sebelah angka urutan: satu kolom, jadi tabel muat di kartu tanpa menggeser. */
+.urutan {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
 }
 
 .baris20 {
   display: flex;
-  gap: var(--space-2);
+  gap: var(--space-1);
   flex-wrap: wrap;
+  max-width: 96px; /* ikon aksi berjajar 2x2 di tabel; di kartu HP selebar kartu */
+}
+
+@media (max-width: 640px) {
+  .baris20 {
+    max-width: none;
+    gap: var(--space-2);
+  }
 }
 
 .area21 {
@@ -121,7 +137,40 @@
 .kisi30 {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
+  align-items: end;
   gap: var(--space-4);
+}
+
+@media (max-width: 640px) {
+  .kisi30 {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .kisi30 > :last-child {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Kontrol berkas bawaan peramban: tombol "pilih berkas" mengikuti rupa tombol sekunder dasbor. */
+.berkas {
+  cursor: pointer;
+}
+
+.berkas::file-selector-button {
+  margin-right: var(--space-3);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.berkas:disabled,
+.berkas:disabled::file-selector-button {
+  cursor: not-allowed;
 }
 
 .baris31 {

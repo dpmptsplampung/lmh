@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { kunciObjek } from '@/lib/storage/area';
 import { getObjectBytes } from '@/lib/storage/r2';
+import { capWaktuWIB } from '@/lib/time';
 import { z } from 'zod';
 import crypto from 'node:crypto';
 import sharp from 'sharp';
@@ -12,9 +13,8 @@ const querySchema = z.object({
   page: z.coerce.number().int().positive(),
 });
 
-// Per-IP rate limit (in-memory, best-effort lokal) — lapisan pertama, murah.
-// Lapisan kedua yang efektif lintas-instance: check_anon_rate di DB (dipakai
-// bila ada sesi). Rate limit in-memory dibiarkan sebagai pertahanan dini CPU.
+// Per-IP rate limit (in-memory, best-effort per instance) dicek PERTAMA, sebelum auth dan query DB,
+// supaya permintaan berlebih tidak memicu kerja mahal. Belum ada lapisan lintas-instance di endpoint ini.
 const RATE_LIMIT_MAX = 30;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const rateBuckets = new Map<string, { windowStart: number; count: number }>();
@@ -153,13 +153,7 @@ export async function GET(request: NextRequest) {
 
   const supabase = await createClient();
 
-  // Identitas watermark (login: nama+email; anon: sesi). Seed sesi dari IP+cookie
-  // agar anon konsisten per perangkat tanpa menyimpan PII.
-  const sessionSeed = `${getClientIp(request)}|${request.headers.get('cookie') ?? ''}`;
-  const { subject, label } = await resolveWatermarkIdentity(supabase, sessionSeed);
-
-  // Rate limit: lapisan IP lokal (cepat). Untuk pengguna bersesi, lapisan DB
-  // check_anon_rate menambah efektivitas lintas-instance (SEC-02).
+  // Rate limit IP lokal dulu (murah), sebelum auth dan query.
   const ipHash = await hashIp(getClientIp(request));
   if (!checkIpRate(ipHash)) {
     return NextResponse.json(
@@ -168,13 +162,10 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const key = cacheKey(doc_id, page, subject);
-  const cached = cacheGet(key);
-  if (cached) {
-    return new Response(new Uint8Array(cached), {
-      headers: { 'Content-Type': 'image/png', 'Cache-Control': 'no-store' },
-    });
-  }
+  // Identitas watermark (login: nama+email; anon: sesi). Seed sesi dari IP+cookie
+  // agar anon konsisten per perangkat tanpa menyimpan PII.
+  const sessionSeed = `${getClientIp(request)}|${request.headers.get('cookie') ?? ''}`;
+  const { subject, label } = await resolveWatermarkIdentity(supabase, sessionSeed);
 
   const { data: docRow, error: docError } = await supabase
     .from('investment_documents')
@@ -191,6 +182,14 @@ export async function GET(request: NextRequest) {
   if (docRow.status !== 'aktif') {
     return NextResponse.json({ error: 'Document not found' }, { status: 404 });
   }
+  const key = cacheKey(doc_id, page, subject);
+  const cached = cacheGet(key);
+  if (cached) {
+    return new Response(new Uint8Array(cached), {
+      headers: { 'Content-Type': 'image/png', 'Cache-Control': 'no-store' },
+    });
+  }
+
   if (!docRow.halaman_gambar || docRow.halaman_gambar.length === 0) {
     return NextResponse.json({ error: 'Document not yet processed' }, { status: 404 });
   }
@@ -213,7 +212,7 @@ export async function GET(request: NextRequest) {
   const pageBuffer = Buffer.from(pageBytes);
 
   // INV-04: watermark memuat identitas peminta + waktu (dibakar di server, bukan overlay CSS).
-  const ts = new Date().toISOString();
+  const ts = capWaktuWIB();
   const watermarkText = `${label} | ${ts}`;
 
   const metadata = await sharp(pageBuffer).metadata();

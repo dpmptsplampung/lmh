@@ -1,6 +1,6 @@
 // Uji helper zona waktu Asia/Jakarta (RPT-07 / I-21 / SK-31).
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { todayWIB, toWIBDateString, addDaysWIB } from './time';
+import { todayWIB, toWIBDateString, addDaysWIB, capWaktuWIB } from './time';
 
 // Helper: set waktu sistem palsu ke instan UTC tertentu.
 function setNow(isoUtc: string) {
@@ -66,5 +66,11 @@ describe('menitWIB', () => {
     const { menitWIB } = await import('./time');
     expect(menitWIB(new Date('2026-10-14T03:00:00Z'))).toBe(10 * 60); // 10:00 WIB
     expect(menitWIB(new Date('2026-10-14T17:10:00Z'))).toBe(10); // 00:10 WIB hari berikutnya
+  });
+});
+
+describe('capWaktuWIB', () => {
+  it('memformat waktu UTC ke WIB (UTC+7) dengan akhiran WIB', () => {
+    expect(capWaktuWIB(new Date('2026-11-18T23:20:00Z'))).toBe('2026-11-19 06:20 WIB');
   });
 });

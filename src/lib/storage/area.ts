@@ -1,16 +1,20 @@
 // Aturan per "area" penyimpanan R2: bucket, tipe berkas, batas ukuran, dan peran yang boleh mengunggah.
 // Hak akses yang dulu ada di policy storage.objects Supabase kini dijaga route /api/storage/*.
 import type { Bucket } from './r2';
+import type { ModulLayanan } from '@/lib/admin-nav';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 export const AWALAN_AKUN = 'akun/';
 
-export type Area = 'investment-docs' | 'umkm-photos' | 'absensi-foto' | 'pengaduan-bukti' | 'umkm-legalitas' | 'chat-lampiran' | 'umkm-draf';
+export type Area = 'investment-docs' | 'umkm-photos' | 'absensi-foto' | 'pengaduan-bukti' | 'umkm-legalitas' | 'chat-lampiran' | 'umkm-draf' | 'ipro-mentah' | 'ipro-gambar';
 export type PeranStaf = 'admin' | 'petugas' | 'front_office';
 
 const GAMBAR = ['image/jpeg', 'image/png', 'image/webp'] as const;
 
-export const ATURAN_AREA: Record<Area, { bucket: Bucket; mime: readonly string[]; maksByte: number; peran: readonly PeranStaf[] }> = {
-  'investment-docs': { bucket: 'private', mime: ['application/pdf'], maksByte: 50 * 1024 * 1024, peran: ['admin'] },
+export const ATURAN_AREA: Record<Area, { bucket: Bucket; mime: readonly string[]; maksByte: number; peran: readonly PeranStaf[]; modul?: ModulLayanan }> = {
+  'investment-docs': { bucket: 'private', mime: ['application/pdf'], maksByte: 50 * 1024 * 1024, peran: ['admin', 'petugas'], modul: 'investasi' },
+  'ipro-mentah': { bucket: 'private', mime: GAMBAR, maksByte: 8 * 1024 * 1024, peran: ['admin', 'petugas'], modul: 'investasi' },
+  'ipro-gambar': { bucket: 'public', mime: ['image/webp'], maksByte: 2 * 1024 * 1024, peran: [] },
   'umkm-draf': { bucket: 'private', mime: GAMBAR, maksByte: 2 * 1024 * 1024, peran: ['admin', 'petugas'] },
   'umkm-photos': { bucket: 'public', mime: GAMBAR, maksByte: 2 * 1024 * 1024, peran: ['admin', 'petugas'] },
   'absensi-foto': { bucket: 'private', mime: GAMBAR, maksByte: 5 * 1024 * 1024, peran: ['admin', 'front_office'] },
@@ -18,6 +22,31 @@ export const ATURAN_AREA: Record<Area, { bucket: Bucket; mime: readonly string[]
   'umkm-legalitas': { bucket: 'private', mime: [...GAMBAR, 'application/pdf'], maksByte: 5 * 1024 * 1024, peran: ['admin', 'front_office'] },
   'chat-lampiran': { bucket: 'private', mime: GAMBAR, maksByte: 5 * 1024 * 1024, peran: ['admin', 'petugas', 'front_office'] },
 };
+
+export async function bolehUnggahArea(sb: Pick<SupabaseClient, 'rpc'>, staf: { role: string; aktif: boolean } | null, area: Area): Promise<boolean> {
+  const aturan = ATURAN_AREA[area];
+  if (!aturan.modul) return true;
+  if (!staf || staf.aktif !== true || !aturan.peran.includes(staf.role as PeranStaf)) return false;
+  try {
+    if (staf.role === 'petugas') {
+      const modul = await sb.rpc('staf_modul');
+      if (modul.error || modul.data !== aturan.modul) return false;
+    }
+    const sesi = await sb.rpc('sesi_valid');
+    return !sesi.error && sesi.data === true;
+  } catch { return false; }
+}
+
+export function pathMentahIproSah(path: string): boolean {
+  const uuid = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+  return new RegExp(`^${uuid}/${uuid}\\.(jpg|jpeg|png|webp)$`).test(path);
+}
+
+export function pathPdfInvestasiSah(path: string, pengunggah?: string): boolean {
+  const uuid = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+  return new RegExp(`^raw/${uuid}/${uuid}\\.pdf$`).test(path)
+    && (pengunggah === undefined || path.split('/')[1] === pengunggah);
+}
 
 export function adalahArea(v: unknown): v is Area {
   return typeof v === 'string' && Object.prototype.hasOwnProperty.call(ATURAN_AREA, v);

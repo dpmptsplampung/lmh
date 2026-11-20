@@ -26,6 +26,10 @@ import { logServerEvent } from '@/lib/observability/logger';
 import type { IkmRow } from '@/lib/ikm';
 import { toWIBDateString } from '@/lib/time';
 import { gabungkanBlok, type BlokTersusun } from '@/lib/homepage/blok';
+import { daftarDokumenAktif, daftarIproTerbit, gambarUntukProyek, iproTerbitBySlug,
+  type DokumenRingkas, type GambarIpro, type IproDetail, type IproKartu } from './investasi';
+import { urlPublik } from '@/lib/storage/r2';
+import { objekBelumAda } from '@/lib/akses-data/galat';
 import {
   BATAS_MUAT_MS,
   GAGAL_LAYANAN,
@@ -44,6 +48,7 @@ export const TAG_PUBLIK = {
   faq: 'publik-faq',
   transparansi: 'publik-transparansi',
   standar: 'publik-standar',
+  investasi: 'publik-investasi',
 } as const;
 export type TagPublik = (typeof TAG_PUBLIK)[keyof typeof TAG_PUBLIK];
 
@@ -433,4 +438,57 @@ const transparansiBerkunci = denganCache<HasilTransparansiPublik, [string, strin
 export function muatTransparansiPublik(): Promise<HasilTransparansiPublik> {
   const { mulai, selesai } = rentangKuartalWIB();
   return transparansiBerkunci(mulai, selesai);
+}
+
+export type GambarIproPublik = Omit<GambarIpro, 'kunci' | 'kunci_mini'> & { url: string; url_mini: string };
+export type KartuPublik = IproKartu & { gambar: Pick<GambarIproPublik, 'url' | 'url_mini' | 'alt' | 'lebar' | 'tinggi'> | null };
+export type InvestasiPublik = { ptsp: KartuPublik[]; foila: KartuPublik[]; dokumen: DokumenRingkas[];
+  sebaran: { sektor: string; kab_kota: string; jumlah: number }[]; galat: boolean };
+export type DetailIproPublik = IproDetail & {
+  gambar: GambarIproPublik[];
+  dokumen: Pick<DokumenRingkas, 'id' | 'judul' | 'jumlah_halaman'> | null;
+};
+
+function gambarIproPublik(gambar: GambarIpro): GambarIproPublik {
+  const { kunci, kunci_mini, ...isian } = gambar;
+  return { ...isian, url: urlPublik(kunci), url_mini: urlPublik(kunci_mini) };
+}
+const investasiBawaan = (): InvestasiPublik => ({ ptsp: [], foila: [], dokumen: [], sebaran: [], galat: true });
+async function muatInvestasiMentah(sb: SupabaseClient): Promise<Termuat<InvestasiPublik>> {
+  const [proyek, dokumen] = await Promise.all([
+    denganBatasWaktu(daftarIproTerbit(sb), BATAS_MUAT_MS, null),
+    denganBatasWaktu(daftarDokumenAktif(sb, 12), BATAS_MUAT_MS, null),
+  ]);
+  const daftar = proyek?.data ?? [];
+  const gambar = await denganBatasWaktu(gambarUntukProyek(sb, daftar.map(p => p.id)), BATAS_MUAT_MS, null);
+  const galat = [proyek, dokumen, gambar].some(r => r === null || (!!r.error && !objekBelumAda(r.error)));
+  const kelompok = new Map<string, { sektor: string; kab_kota: string; jumlah: number }>();
+  const kartu = daftar.map(p => {
+    const g = gambar?.data?.find(g => g.proyek_id === p.id && g.utama) ?? gambar?.data?.find(g => g.proyek_id === p.id);
+    const kunci = JSON.stringify([p.sektor, p.kab_kota]);
+    const sebaran = kelompok.get(kunci) ?? { sektor: p.sektor, kab_kota: p.kab_kota, jumlah: 0 };
+    sebaran.jumlah++; kelompok.set(kunci, sebaran);
+    return { ...p, gambar: g ? gambarIproPublik(g) : null };
+  });
+  return { data: { ptsp: kartu.filter(p => p.sumber === 'ptsp'), foila: kartu.filter(p => p.sumber === 'foila'),
+    dokumen: dokumen?.data ?? [], sebaran: [...kelompok.values()], galat }, lengkap: !galat };
+}
+export const muatInvestasiPublik = denganCache('investasi', [TAG_PUBLIK.investasi], muatInvestasiMentah, investasiBawaan);
+
+const muatIproBerkunci = denganCache<{ ipro: DetailIproPublik | null; galat: boolean }, [string]>(
+  'ipro-detail', [TAG_PUBLIK.investasi], async (sb, slug) => {
+    const hasil = await denganBatasWaktu(iproTerbitBySlug(sb, slug), BATAS_MUAT_MS, null);
+    const dokumenId = hasil?.data?.dokumen_id;
+    const dokumen = dokumenId ? await denganBatasWaktu(sb.from('investment_documents')
+      .select('id, judul, jumlah_halaman').eq('id', dokumenId).eq('status', 'aktif').maybeSingle(), BATAS_MUAT_MS, null) : null;
+    const galat = hasil === null || (!!hasil.error && !objekBelumAda(hasil.error)) ||
+      (!!dokumenId && (dokumen === null || (!!dokumen.error && !objekBelumAda(dokumen.error))));
+    return { data: { ipro: hasil?.data ? { ...hasil.data, gambar: hasil.data.gambar.map(gambarIproPublik),
+      dokumen: dokumen?.data ?? null } : null, galat }, lengkap: !galat };
+  }, () => ({ ipro: null, galat: true }), 2,
+);
+export async function muatIproPublik(slug: string): Promise<DetailIproPublik | null> {
+  const hasil = await muatIproBerkunci(slug);
+  if (hasil.galat) throw new Error('Data IPRO belum dapat dimuat.');
+  return hasil.ipro;
 }

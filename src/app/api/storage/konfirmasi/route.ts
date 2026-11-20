@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { bolehUnggahDraf } from '@/lib/umkm-katalog/akses-server';
 import { logServerEvent } from '@/lib/observability/logger';
-import { ATURAN_AREA, adalahArea, cocokMagicBytes, kunciObjek, type Area } from '@/lib/storage/area';
+import { ATURAN_AREA, adalahArea, bolehUnggahArea, cocokMagicBytes, kunciObjek, pathMentahIproSah, pathPdfInvestasiSah, type Area } from '@/lib/storage/area';
+import { bacaJson } from '@/lib/investasi/http';
 import { deleteObjects, getObjectRange, headObject, r2Tersedia, bucketTerpisah, urlPublik } from '@/lib/storage/r2';
 
 export const dynamic = 'force-dynamic';
@@ -20,15 +21,15 @@ export async function POST(request: NextRequest) {
 }
 
 async function proses(request: NextRequest) {
-  const body = bodySchema.safeParse(await request.json().catch(() => null));
+  const body = bodySchema.safeParse(await bacaJson(request).catch(() => null));
   if (!body.success || !adalahArea(body.data.area) || body.data.area === 'chat-lampiran') {
     return NextResponse.json({ error: 'Permintaan tidak valid' }, { status: 400 });
   }
   const area = body.data.area as Area;
 
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { data: staf } = await supabase.from('petugas').select('role, aktif').eq('auth_user_id', user.id).maybeSingle();
   const aturan = ATURAN_AREA[area];
   if (area !== 'umkm-draf' && (!staf || staf.aktif === false || !aturan.peran.includes(staf.role as never))) {
@@ -37,6 +38,17 @@ async function proses(request: NextRequest) {
   if (area === 'umkm-draf' && !(await bolehUnggahDraf(supabase, user, body.data.path))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403, headers: { 'Cache-Control': 'private, no-store' } });
   }
+  if (!(await bolehUnggahArea(supabase, staf, area))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (area === 'ipro-mentah' && !pathMentahIproSah(body.data.path)) return NextResponse.json({ error: 'Path berkas tidak valid' }, { status: 400 });
+
+  if (area === 'investment-docs') {
+    if (!pathPdfInvestasiSah(body.data.path)) return NextResponse.json({ error: 'Path berkas tidak valid' }, { status: 400 });
+    if (!pathPdfInvestasiSah(body.data.path, user.id)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const klaim = await supabase.from('investment_pdf_claims').select('kunci')
+      .eq('kunci', kunciObjek(area, body.data.path)).maybeSingle();
+    if (klaim.error) return NextResponse.json({ error: 'Gagal memeriksa unggahan' }, { status: 500 });
+    if (klaim.data) return NextResponse.json({ error: 'Unggahan sudah digunakan' }, { status: 409 });
+  }
 
   let kunci: string;
   try {
@@ -44,7 +56,7 @@ async function proses(request: NextRequest) {
   } catch {
     return NextResponse.json({ error: 'Path berkas tidak valid' }, { status: 400 });
   }
-  if (!r2Tersedia() || (area === 'umkm-draf' && !bucketTerpisah())) return NextResponse.json({ error: 'Penyimpanan berkas belum dikonfigurasi' }, { status: 503 });
+  if (!r2Tersedia() || (['umkm-draf', 'ipro-mentah', 'investment-docs'].includes(area) && !bucketTerpisah())) return NextResponse.json({ error: 'Penyimpanan berkas belum dikonfigurasi' }, { status: 503 });
 
   try {
     const head = await headObject(aturan.bucket, kunci);
