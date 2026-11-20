@@ -9,7 +9,7 @@ import Lencana from '@/components/ui/Lencana';
 import Field from '@/components/ui/Field';
 import Skeleton from '@/components/ui/Skeleton';
 import Galat from '@/components/ui/Galat';
-import { capWaktuWIB } from '@/lib/time';
+import { formatTanggalWaktu } from '@/lib/utils';
 import type { MinatDetail } from '@/lib/data/investasi';
 import { useDetailMinat, type HasilUbahStatus } from './_hook/useDetailMinat';
 import {
@@ -18,7 +18,7 @@ import {
 } from './KotakMasukLogika';
 import styles from './KotakMasuk.module.css';
 
-const wib = (iso: string) => capWaktuWIB(new Date(iso));
+const wib = (iso: string) => `${formatTanggalWaktu(iso)} WIB`;
 
 function Butir({ label, lebar, children }: { label: string; lebar?: boolean; children: React.ReactNode }) {
   return (

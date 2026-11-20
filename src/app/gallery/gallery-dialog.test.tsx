@@ -72,7 +72,7 @@ describe('Galeri: penampil dokumen (Dialog)', () => {
     expect(dialog).toHaveAttribute('aria-modal', 'true');
     expect(dialog).toHaveAccessibleName('Proyek Kopi Robusta');
     expect(within(dialog).getByRole('heading', { level: 2, name: 'Proyek Kopi Robusta' })).toBeInTheDocument();
-    expect(dialog).toHaveAccessibleDescription(/View-only/);
+    expect(dialog).toHaveAccessibleDescription(/Hanya lihat/);
     expect(within(dialog).getByAltText('Halaman 1 dari 3')).toBeInTheDocument();
   });
 

@@ -12,9 +12,9 @@ export default function KerangkaInvestasi({ aktif, children }: { aktif: 'hub' | 
       <a href="#isi-investasi" className={styles.lompat}>Langsung ke isi</a>
       <header className={styles.kepala}>
         <div className={styles.kepalaIsi}>
-          <Link href="/" className={styles.merek}>
+          <Link href="/" className={styles.merek} aria-label="Lampung Maju Hub, ke beranda">
             <Image src="/logo.png" alt="" width={60} height={48} className={styles.logo} priority />
-            <span className={styles.merekTeks}>Lampung Maju Hub</span>
+            <span className={styles.merekTeks} aria-hidden="true">Lampung Maju Hub</span>
           </Link>
           <nav aria-label="Navigasi utama" className={styles.nav}>
             <Link href="/" className={styles.navTautan}>Beranda</Link>
@@ -24,7 +24,7 @@ export default function KerangkaInvestasi({ aktif, children }: { aktif: 'hub' | 
             <Link href="/chat" className={`${styles.navTautan} ${styles.navLebar}`}>Live Chat</Link>
             <Link href="/me" className={styles.navAkun}>
               <UserRound size={18} aria-hidden="true" />
-              <span>Akun saya</span>
+              <span className={styles.navAkunTeks}>Akun saya</span>
             </Link>
           </nav>
         </div>

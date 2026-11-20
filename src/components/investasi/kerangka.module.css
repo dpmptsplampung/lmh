@@ -22,6 +22,7 @@
   left: var(--space-4);
   top: -100px;
   z-index: 50;
+  min-height: 44px;
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-md);
   background: var(--color-neutral-900);
@@ -114,5 +115,18 @@
 }
 @media (max-width: 640px) {
   .merekTeks { display: none; }
+  /* Kepala tidak boleh melebihi 320 px: jarak dirapatkan, "Akun saya" jadi ikon (nama tetap terbaca pembaca layar). */
+  .kepalaIsi { gap: var(--space-2); }
+  .nav { gap: 0; }
+  .navTautan { padding: 0 var(--space-2); }
+  .navAkun { min-width: 44px; justify-content: center; padding: 0; }
+  .navAkunTeks {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
   .kakiIsi { grid-template-columns: minmax(0, 1fr); padding-top: var(--space-10); gap: var(--space-6); }
 }

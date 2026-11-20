@@ -3,7 +3,12 @@
 .paginasi { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border-default); }
 .ringkasan { margin: 0; color: var(--text-secondary); font-size: var(--fs-small); }
 .navHalaman { display: flex; align-items: center; gap: var(--space-3); font-size: var(--fs-small); }
+/* Tombol aksi kepala membungkus di layar sempit (tidak terpotong di 320-390 px). */
+.aksiKepala { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 @media (max-width: 640px) {
+  .aksiKepala :is(a, button) { min-height: 44px; }
+  .tautanJudul { display: inline-flex; align-items: center; min-height: 44px; }
+  .navHalaman :is(a, button) { min-height: 44px; }
   .saringan { grid-template-columns: minmax(0, 1fr); }
   .paginasi { flex-direction: column; align-items: stretch; }
   .navHalaman { justify-content: space-between; }

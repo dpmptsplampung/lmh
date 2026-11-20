@@ -10,12 +10,13 @@ export default function PahlawanHub({ jumlahProyek }: { jumlahProyek: number }) 
           Jelajahi proyek investasi yang siap ditawarkan di Provinsi Lampung, lihat dokumen kajiannya, lalu hubungi petugas
           DPMPTSP untuk pendampingan.
         </p>
-        <div className={styles.pahlawanAksi}>
-          <Tombol href="#proyek-ptsp" varian="aksen" ukuran="besar">
-            {jumlahProyek > 0 ? `Lihat ${jumlahProyek} proyek` : 'Lihat proyek'}
-          </Tombol>
-          <Tombol href="#peta-potensi" varian="sekunder" ukuran="besar">Peta potensi</Tombol>
-        </div>
+        {/* Tanpa proyek tidak ada yang bisa dilihat: tombol lompat dan Peta Potensi ikut disembunyikan. */}
+        {jumlahProyek > 0 && (
+          <div className={styles.pahlawanAksi}>
+            <Tombol href="#proyek-ptsp" varian="aksen" ukuran="besar">{`Lihat ${jumlahProyek} proyek`}</Tombol>
+            <Tombol href="#peta-potensi" varian="sekunder" ukuran="besar">Peta potensi</Tombol>
+          </div>
+        )}
       </div>
     </section>
   );

@@ -128,10 +128,20 @@ describe('hub /investasi', () => {
     expect(screen.getByRole('link', { name: /Kunjungi portal FOILA/ })).toHaveAttribute('href', 'https://invest.lampungprov.go.id/');
   });
 
+  it('tanpa proyek: seksi Peta Potensi dan tombol lompat di hero tidak tampil', async () => {
+    h.data = { ...lengkap(), ptsp: [], sebaran: [] };
+    await tampil();
+    expect(screen.queryByRole('region', { name: 'Peta Potensi Investasi' })).toBeNull();
+    expect(screen.queryByRole('link', { name: /Lihat .*proyek/ })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Peta potensi' })).toBeNull();
+  });
+
   it('navigasi: lompat ke isi, kepala dan kaki bernama', async () => {
     await tampil();
     expect(screen.getByRole('link', { name: 'Langsung ke isi' })).toHaveAttribute('href', '#isi-investasi');
     expect(screen.getByRole('navigation', { name: 'Navigasi utama' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Lampung Maju Hub, ke beranda' })).toHaveAttribute('href', '/');
+    expect(screen.getByRole('link', { name: 'Akun saya' })).toHaveAttribute('href', '/me');
     expect(screen.getByRole('link', { name: 'Investasi', current: 'page' })).toHaveAttribute('href', '/investasi');
   });
 });

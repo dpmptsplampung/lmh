@@ -45,7 +45,7 @@ export default function GaleriDokumen() {
         <div className={tampilan.baris1}>
           <Tombol varian="hantu" ukuran="kecil" type="button" onClick={loadData}>
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-            Refresh
+            Muat ulang
           </Tombol>
           <Tombol varian="utama" ukuran="kecil" type="button" disabled={uploadingFile} onClick={() => handleOpenForm()}>
             <Plus size={16} />
@@ -65,24 +65,8 @@ export default function GaleriDokumen() {
         {loading ? <Skeleton bentuk="baris" jumlah={5} label="Memuat galeri" /> : loadError ? (
           <Galat pesan={loadError} onRetry={() => { void loadData(); }} />
         ) : (
-          <Tabel caption="Daftar dokumen galeri" baris={docs} kunciBaris="id" kosong={<StatusKosong ikon={FileText} judul="Belum ada dokumen. Klik &quot;Tambah Dokumen&quot; untuk menambahkan." />} kolom={[
-{ kunci: 'kolom0', judul: "Atur urutan", render: (doc, idx) => (<><div className={tampilan.baris9}>
-                        <Tombol
-                          varian="hantu" ukuran="kecil" className={["", tampilan.area10].filter(Boolean).join('')}
-                          title="Pindah ke atas"
-                          disabled={idx === 0}
-                          onClick={() => handleMoveUp(doc)}>
-                          <ChevronUp size={14} />
-                        </Tombol>
-                        <Tombol
-                          varian="hantu" ukuran="kecil" className={["", tampilan.area10].filter(Boolean).join('')}
-                          title="Pindah ke bawah"
-                          disabled={idx === docs.length - 1}
-                          onClick={() => handleMoveDown(doc)}>
-                          <ChevronDown size={14} />
-                        </Tombol>
-                      </div></>) },
-{ kunci: 'kolom1', judul: "Dokumen", judulBaris: true, render: (doc) => (<><div className={tampilan.baris11}>
+          <Tabel caption="Daftar dokumen galeri" kartuDiHp baris={docs} kunciBaris="id" kosong={<StatusKosong ikon={FileText} judul="Belum ada dokumen. Klik &quot;Tambah Dokumen&quot; untuk menambahkan." />} kolom={[
+{ kunci: 'kolom1', judul: "Dokumen", judulBaris: true, peran: 'utama', render: (doc) => (<><div className={tampilan.baris11}>
                         {doc.image_url ? (
                           <Image
                             src={doc.image_url}
@@ -106,13 +90,29 @@ export default function GaleriDokumen() {
                       </div></>) },
 { kunci: 'kolom2', judul: "Kategori", render: (doc) => (<>{doc.kategori && <Lencana nada="netral">{doc.kategori}</Lencana>}</>) },
 { kunci: 'kolom3', judul: "Nilai Investasi", render: (doc) => (<div className={tampilan.sel17}>{doc.nilai_investasi ?? '—'}</div>) },
-{ kunci: 'kolom4', judul: "Halaman", angka: true, render: (doc) => (<div className={tampilan.sel18}>{doc.jumlah_halaman}hal</div>) },
-{ kunci: 'kolom5', judul: "Urutan", angka: true, render: (doc) => (<div className={tampilan.sel19}>{doc.urutan_tampil}</div>) },
+{ kunci: 'kolom4', judul: "Halaman", angka: true, render: (doc) => (<div className={tampilan.sel18}>{doc.status === 'diproses' ? 'Diproses' : `${doc.jumlah_halaman} hal`}</div>) },
+{ kunci: 'kolom5', judul: "Urutan", render: (doc, idx) => (<div className={tampilan.urutan}>
+                        <Tombol
+                          varian="hantu" ukuran="kecil" className={tampilan.area10}
+                          title="Pindah ke atas" aria-label={`Pindah ke atas: ${doc.judul}`}
+                          disabled={idx === 0}
+                          onClick={() => handleMoveUp(doc)}>
+                          <ChevronUp size={14} />
+                        </Tombol>
+                        <span className={tampilan.sel19}>{doc.urutan_tampil}</span>
+                        <Tombol
+                          varian="hantu" ukuran="kecil" className={tampilan.area10}
+                          title="Pindah ke bawah" aria-label={`Pindah ke bawah: ${doc.judul}`}
+                          disabled={idx === docs.length - 1}
+                          onClick={() => handleMoveDown(doc)}>
+                          <ChevronDown size={14} />
+                        </Tombol>
+                      </div>) },
 { kunci: 'kolom6', judul: "Status", render: (doc) => (<><Lencana nada={doc.status === 'aktif' ? 'sukses' : 'netral'}>
                         {doc.status === 'aktif' ? '✓ Aktif' : doc.status === 'nonaktif' ? 'Nonaktif' : doc.status === 'gagal' ? 'Gagal' : `Diproses ${doc.halaman_selesai}/${doc.jumlah_halaman}`}
                         {doc.galat && <span>{doc.galat}</span>}
                       </Lencana></>) },
-{ kunci: 'kolom7', judul: "Aksi", render: (doc) => (<><div className={tampilan.baris20}>
+{ kunci: 'kolom7', judul: "Aksi", peran: 'aksi', render: (doc) => (<><div className={tampilan.baris20}>
                         <Tombol varian="hantu" ukuran="kecil" type="button" title="Detail" onClick={() => handleViewDoc(doc)}>
                           <Eye size={14} />
                         </Tombol>
@@ -152,10 +152,10 @@ export default function GaleriDokumen() {
               </Field>
               <div className={tampilan.kisi27}>
                 <Field label="Kategori">
-                  <input id="gallery-kategori" className="form-input" placeholder="e.g. Manufaktur & Industri" value={form.kategori} onChange={e => setForm(f => ({ ...f, kategori: e.target.value }))} />
+                  <input id="gallery-kategori" className="form-input" placeholder="mis. Manufaktur & Industri" value={form.kategori} onChange={e => setForm(f => ({ ...f, kategori: e.target.value }))} />
                 </Field>
                 <Field label="Nilai Investasi">
-                  <input id="gallery-nilai" className="form-input" placeholder="e.g. Rp 2.4 Triliun" value={form.nilai_investasi} onChange={e => setForm(f => ({ ...f, nilai_investasi: e.target.value }))} />
+                  <input id="gallery-nilai" className="form-input" placeholder="mis. Rp 2,4 Triliun" value={form.nilai_investasi} onChange={e => setForm(f => ({ ...f, nilai_investasi: e.target.value }))} />
                 </Field>
               </div>
               <Field label="Deskripsi Singkat">
@@ -170,7 +170,7 @@ export default function GaleriDokumen() {
                   id="gallery-pdf"
                   type="file"
                   accept="application/pdf"
-                  className="form-input"
+                  className={["form-input", tampilan.berkas].join(' ')}
                   onChange={e => {
                     const file = e.target.files?.[0];
                     if (file) handlePdfSelect(file);

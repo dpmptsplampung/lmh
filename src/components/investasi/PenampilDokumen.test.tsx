@@ -11,7 +11,7 @@ describe('PenampilDokumen', () => {
     render(<PenampilDokumen dokumenId={DOK} judul="Kajian Pelabuhan" jumlahHalaman={3} onTutup={() => {}} />);
     const dialog = screen.getByRole('dialog');
     expect(dialog).toHaveAccessibleName('Kajian Pelabuhan');
-    expect(dialog).toHaveAccessibleDescription(/View-only/);
+    expect(dialog).toHaveAccessibleDescription(/Hanya lihat/);
     const gambar = within(dialog).getByAltText('Halaman 1 dari 3');
     expect(gambar).toHaveAttribute('src', `/api/investment-docs/page-image?doc_id=${DOK}&page=1`);
     expect(within(dialog).getByRole('button', { name: /Sebelumnya/ })).toBeDisabled();

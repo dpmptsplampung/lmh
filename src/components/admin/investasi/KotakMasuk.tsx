@@ -16,7 +16,7 @@ import Skeleton from '@/components/ui/Skeleton';
 import StatusKosong from '@/components/ui/StatusKosong';
 import Galat from '@/components/ui/Galat';
 import Pagination from '@/components/Pagination';
-import { capWaktuWIB } from '@/lib/time';
+import { formatTanggalWaktu } from '@/lib/utils';
 import type { MinatRingkas } from '@/lib/data/investasi';
 import { useDaftarMinat } from './_hook/useDaftarMinat';
 import KotakMasukPanel from './KotakMasukPanel';
@@ -103,10 +103,10 @@ function KotakMasukIsi({ hrefDasbor = '/admin' }: KotakMasukProps) {
                   { kunci: 'nama', judul: 'Nama', judulBaris: true, peran: 'utama', render: (r) => (
                     <span className={styles.konteks}><span>{r.nama}</span>{r.instansi && <span className={styles.konteksKosong}>{r.instansi}</span>}</span>
                   ) },
-                  { kunci: 'waktu', judul: 'Masuk', render: (r) => capWaktuWIB(new Date(r.created_at)) },
+                  { kunci: 'waktu', judul: 'Masuk', render: (r) => `${formatTanggalWaktu(r.created_at)} WIB` },
                   { kunci: 'status', judul: 'Status', render: (r) => <Lencana nada={nadaStatus(r.status)}>{labelStatus(r.status)}</Lencana> },
                   { kunci: 'aksi', judul: 'Aksi', peran: 'aksi', render: (r) => (
-                    <Tombol varian="sekunder" ukuran="kecil" onClick={() => buka(r.id)} aria-label={`Buka pesan dari ${r.nama}`}>Buka</Tombol>
+                    <Tombol varian="sekunder" ukuran="kecil" className={styles.tombolBuka} onClick={() => buka(r.id)} aria-label={`Buka pesan dari ${r.nama}`}>Buka</Tombol>
                   ) },
                 ]}
               />

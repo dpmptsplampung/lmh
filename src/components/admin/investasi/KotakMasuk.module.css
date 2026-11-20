@@ -129,3 +129,8 @@
     grid-column: 1 / -1;
   }
 }
+
+@media (max-width: 640px) {
+  /* Target sentuh >= 44px untuk tombol Buka di kartu HP. */
+  button.tombolBuka { min-height: 44px; }
+}

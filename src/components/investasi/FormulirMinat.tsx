@@ -60,6 +60,7 @@ function IsiFormulir({ onTutup, kanal, refId, konteks }: Omit<Props, 'terbuka'>)
   return (
     <KerangkaModal
       varian="dialog"
+      className={styles.dialogMinat}
       terbuka
       onTutup={onTutup}
       dikunci={sedang}

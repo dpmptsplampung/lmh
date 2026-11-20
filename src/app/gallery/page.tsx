@@ -80,10 +80,10 @@ export default function GalleryPage() {
     <div className={styles.galleryPage}>
       {/* Navbar */}
       <nav className={styles.galleryNav}>
-        <Link href="/" className={styles.galleryNavBrand}>
+        <Link href="/" className={styles.galleryNavBrand} aria-label="Lampung Maju Hub, ke beranda">
           <Image
             src="/logo.png"
-            alt="Lampung Maju Hub Logo"
+            alt=""
             width={100}
             height={40}
             style={{ objectFit: 'contain' }}
@@ -108,7 +108,7 @@ export default function GalleryPage() {
           Dokumen Investasi
         </h1>
         <p className={styles.galleryHeaderDesc}>
-          Galeri promosi komoditas unggulan dan peluang investasi Provinsi Lampung. Seluruh dokumen dilindungi hak cipta untuk kepentingan pameran daring (view only).
+          Galeri promosi komoditas unggulan dan peluang investasi Provinsi Lampung. Seluruh dokumen dilindungi hak cipta untuk kepentingan pameran daring (hanya lihat).
         </p>
       </div>
 
@@ -222,6 +222,7 @@ export default function GalleryPage() {
                       varian="sekunder"
                       ukuran="kecil"
                       ikon={FileCheck}
+                      className={styles.lihatDokumen}
                       onClick={() => setSelectedDocId(project.id)}
                     >
                       Lihat Dokumen

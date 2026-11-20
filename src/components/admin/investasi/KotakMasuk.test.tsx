@@ -59,7 +59,7 @@ describe('KotakMasuk: daftar', () => {
     expect(within(baris[1]).getByText('IPRO')).toBeInTheDocument();
     expect(within(baris[1]).getByText('Pabrik Singkong')).toBeInTheDocument();
     expect(within(baris[1]).getByText('Budi Santoso')).toBeInTheDocument();
-    expect(within(baris[1]).getByText('2026-11-19 10:30 WIB')).toBeInTheDocument();
+    expect(within(baris[1]).getByText('19 November 2026 10.30 WIB')).toBeInTheDocument();
     expect(within(baris[1]).getByText('Baru')).toBeInTheDocument();
     expect(within(baris[2]).getByText('Dokumen')).toBeInTheDocument();
     expect(within(baris[2]).getByText('Peta Potensi 2026')).toBeInTheDocument();
@@ -125,8 +125,8 @@ describe('KotakMasuk: panel detail', () => {
     expect(await within(panel).findByText('Kami tertarik pada lahan 5 hektare.')).toBeInTheDocument();
     expect(within(panel).getByText('PT Maju Jaya')).toBeInTheDocument();
     expect(within(panel).getByText('081234567890')).toBeInTheDocument();
-    expect(within(panel).getByText('2026-11-19 10:30 WIB', { selector: 'dd' })).toBeInTheDocument();
-    expect(within(panel).getByText('2026-11-19 12:00 WIB', { selector: 'dd' })).toBeInTheDocument();
+    expect(within(panel).getByText('19 November 2026 10.30 WIB', { selector: 'dd' })).toBeInTheDocument();
+    expect(within(panel).getByText('19 November 2026 12.00 WIB', { selector: 'dd' })).toBeInTheDocument();
     expect(within(panel).getByText('Belum ada penangan')).toBeInTheDocument();
     const balas = within(panel).getByRole('link', { name: /balas lewat email/i });
     expect(balas.getAttribute('href')).toMatch(/^mailto:budi%40contoh\.id\?subject=/);

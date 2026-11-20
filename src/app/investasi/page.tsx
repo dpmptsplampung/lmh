@@ -32,7 +32,7 @@ export default async function InvestasiPage() {
             </CatatanKeadaan>
           )}
           <SeksiIproPtsp daftar={data.ptsp} />
-          <SeksiPetaPotensi sebaran={data.ptsp.map(({ sektor, kab_kota }) => ({ sektor, kab_kota, jumlah: 1 }))} />
+          {data.ptsp.length > 0 && <SeksiPetaPotensi sebaran={data.ptsp.map(({ sektor, kab_kota }) => ({ sektor, kab_kota, jumlah: 1 }))} />}
           <SeksiFoila daftar={data.foila} />
           <SeksiDokumen daftar={data.dokumen} />
           <AjakanHub />

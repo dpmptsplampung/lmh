@@ -23,6 +23,7 @@
 .galleryNavBrand {
   display: flex;
   align-items: center;
+  min-height: 44px;
   gap: var(--space-2);
   text-decoration: none;
   color: white;
@@ -235,7 +236,7 @@
 /* IPRO Grid Layout */
 .iproGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
   gap: var(--space-6);
 }
 
@@ -303,6 +304,7 @@
   justify-content: center;
   gap: var(--space-2);
   width: 100%;
+  min-height: 44px;
   padding: var(--space-3) var(--space-4);
   margin-top: var(--space-3);
   background: linear-gradient(135deg, var(--color-primary-500), var(--color-primary-600));
@@ -327,6 +329,10 @@
 }
 
 /* Target sentuh minimal 44px */
+@media (max-width: 640px) {
+  .iproCard .lihatDokumen { min-height: 44px; }
+}
+
 .galleryNavBack {
   min-height: 44px;
 }

@@ -24,8 +24,10 @@ export default function DaftarIpro({ basis }: { basis: BasisIpro }) {
   return (
     <>
       <PageHeader title="IPRO" description="Proyek investasi siap tawar milik PTSP dan kartu proyek dari FOILA.">
-        <Tombol href={`${href}/baru?sumber=ptsp`} ikon={Plus}>Tambah IPRO PTSP</Tombol>
-        <Tombol href={`${href}/baru?sumber=foila`} ikon={Plus} varian="sekunder">Tambah kartu FOILA</Tombol>
+        <div className={styles.aksiKepala}>
+          <Tombol href={`${href}/baru?sumber=ptsp`} ikon={Plus}>Tambah IPRO PTSP</Tombol>
+          <Tombol href={`${href}/baru?sumber=foila`} ikon={Plus} varian="sekunder">Tambah kartu FOILA</Tombol>
+        </div>
       </PageHeader>
       <IsiHalaman>
         <Kartu>
@@ -36,7 +38,8 @@ export default function DaftarIpro({ basis }: { basis: BasisIpro }) {
         ) : (
           <Kartu padding="tanpa">
             <TabelIpro baris={d.baris} hrefDaftar={href} memuat={d.memuat} kosong={kosong} />
-            <div className={styles.paginasi}>
+            {/* Daftar kosong sudah dijelaskan oleh pesan kosong di tabel: footer rentang tidak diulang. */}
+            {(d.memuat || d.baris.length > 0) && <div className={styles.paginasi}>
               <p className={styles.ringkasan} aria-live="polite">{d.memuat ? 'Memuat…' : ringkasanRentang(d.halaman, d.baris.length, d.total)}</p>
               {total > 1 && (
                 <nav className={styles.navHalaman} aria-label="Halaman daftar IPRO">
@@ -45,7 +48,7 @@ export default function DaftarIpro({ basis }: { basis: BasisIpro }) {
                   <Tombol type="button" ukuran="kecil" varian="sekunder" disabled={d.halaman >= total || d.memuat} onClick={() => d.setHalaman(d.halaman + 1)}>Berikutnya</Tombol>
                 </nav>
               )}
-            </div>
+            </div>}
           </Kartu>
         )}
       </IsiHalaman>

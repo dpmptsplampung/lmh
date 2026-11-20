@@ -17,7 +17,7 @@ export type PropsPenampilDokumen = {
 };
 
 /**
- * Penampil dokumen kajian (view-only): halaman PDF dirender server menjadi gambar ber-watermark
+ * Penampil dokumen kajian (hanya lihat): halaman PDF dirender server menjadi gambar ber-watermark
  * (`/api/investment-docs/page-image`). Dipasang hanya saat dibuka (induk merender bersyarat), jadi halaman selalu mulai dari 1.
  * Fokus awal, jebak fokus, Escape, dan pengembalian fokus ke pemicu dibawa Dialog.
  */
@@ -35,7 +35,7 @@ export default function PenampilDokumen({ dokumenId, judul, jumlahHalaman, konta
       deskripsi={
         <span className={styles.penampilPeringatan}>
           <Info size={12} aria-hidden="true" />
-          View-only (Unduh dinonaktifkan)
+          Hanya lihat (unduh dinonaktifkan)
         </span>
       }
     >
