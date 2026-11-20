@@ -1,10 +1,27 @@
 # Database Migrations
 
-## IPRO PTSP dan Kotak Masuk Investasi — BELUM DITERAPKAN
+> **Status penerapan:** tanda "BELUM DITERAPKAN" di tabel dan teks lama di bawah adalah riwayat saat ditulis. Status sebenarnya di produksi (diperiksa baca-saja 2026-11-13) ada di bagian "Status penerapan terverifikasi (2026-11-13)" di akhir berkas.
 
-Prasyarat kedua migrasi: `202611160001_lingkup_layanan_staf` (`staf_modul()` dan lingkup layanan);
-terapkan `202611190001` sebelum `202611190002`, masing-masing dalam satu transaksi. Bukti perilaku hanya
-lokal melalui `scripts/lokal-rantai/skenario-baru-ipro.mjs`; belum ada penerapan ke staging atau produksi.
+## Investment Gallery (IPRO PTSP): urutan terapan dan prasyarat
+
+**Semua migrasi `202611190001` sampai `0005` BELUM diterapkan ke staging maupun produksi.** Penerapan sengaja ditunda sampai semua kode final, atas permintaan pemilik (2026-11-19). Prasyarat `202611160001_lingkup_layanan_staf` (`staf_modul()`, `lingkup_layanan_saya()`, `layanan.modul`) juga belum diterapkan; spec menyarankan `202611160001` sampai `0004` lebih dulu. Ringkasan fitur: [docs/fase/investasi-ipro.md](fase/investasi-ipro.md).
+
+Urutan terapan (satu berkas per transaksi, hanya sesudah host dan daftar berkas ditampilkan dan pemilik setuju; skrip penerapan menyentuh DB produksi):
+
+| Urutan | Berkas | Bergantung pada | Isi singkat | Status |
+|---|---|---|---|---|
+| 0 | `202611160001_lingkup_layanan_staf.sql` | baseline | `layanan.modul`, `staf_modul()` | **BELUM DITERAPKAN** |
+| 1 | `202611190001_ipro_inti.sql` | `202611160001` | `ipro_proyek`, `ipro_gambar`, `boleh_kelola_investasi()`, RLS | **BELUM DITERAPKAN** |
+| 2 | `202611190002_investasi_kotak_masuk.sql` | `0001` | `investasi_lead` diperluas, RPC kirim dan ubah status, retensi + cron | **BELUM DITERAPKAN** |
+| 3 | `202611190003_investasi_dokumen_proses.sql` | `0001`, `0002` | status `diproses`/`gagal`, `investment_pdf_claims` | **BELUM DITERAPKAN** |
+| 4 | `202611190004_nav_lencana_investasi.sql` | `0001`, `0002` | lencana `pesanInvestasi` | **BELUM DITERAPKAN** |
+| 5 | `202611190005_ipro_gambar_atomik.sql` | `0001`, `0002` | RPC gambar dan status atomik | **BELUM DITERAPKAN** |
+
+Terapkan `0005` bersama klien RPC dalam satu jendela rilis, karena penulisan gambar langsung dicabut. Rantai lengkap tercatat di `supabase/migrations/MANIFEST.json`. Bukti perilaku hanya lokal (PGlite `scripts/lokal-rantai/skenario-baru-ipro.mjs` dan `skenario-nav-lencana.mjs`, test kontrak `supabase/migrations/2026111900*.test.ts`); belum ada bukti terhadap PostgreSQL nyata dengan beberapa koneksi.
+
+### Rincian 0001, 0002, 0005: IPRO inti, Kotak Masuk, gambar atomik (BELUM DITERAPKAN)
+
+Prasyarat: `202611160001_lingkup_layanan_staf`; terapkan `202611190001` sebelum `202611190002`, masing-masing dalam satu transaksi. Bukti perilaku hanya lokal melalui `scripts/lokal-rantai/skenario-baru-ipro.mjs`; belum ada penerapan ke staging atau produksi.
 
 | Versi | Berkas | Isi | Status |
 |---|---|---|---|
@@ -12,9 +29,8 @@ lokal melalui `scripts/lokal-rantai/skenario-baru-ipro.mjs`; belum ada penerapan
 | 202611190002 | `202611190002_investasi_kotak_masuk.sql` | Perluasan lead dokumen/IPRO, RPC idempoten dan consent atomik, tiga batas laju, notifikasi tanpa PII dan retensi terminal 365 hari; trigger updated_at dinonaktifkan hanya selama backfill dan langsung diaktifkan kembali. | **BELUM DITERAPKAN** |
 | 202611190005 | `202611190005_ipro_gambar_atomik.sql` | RPC tambah/ubah/hapus gambar dan status dengan lock baris proyek yang sama; batas PTSP 12/FOILA 1, gambar pertama otomatis utama, rollback reset/target atomik, validasi terbit dan versi di DB. | **BELUM DITERAPKAN** |
 
-Prasyarat `202611190005_ipro_gambar_atomik.sql`: `202611190001` dan `202611190002`.
-Nomor 0003/0004 milik paket lain; paket atomik tidak bergantung padanya. Terapkan paket atomik
-bersama klien RPC dalam satu jendela rilis karena penulisan gambar langsung dicabut.
+Prasyarat `202611190005_ipro_gambar_atomik.sql`: `202611190001` dan `202611190002`; tidak bergantung pada `0003`/`0004`.
+Terapkan paket atomik bersama klien RPC dalam satu jendela rilis karena penulisan gambar langsung dicabut.
 
 RPC `ipro_tambah_gambar(uuid,jsonb)` dan `ipro_ubah_gambar(uuid,uuid,jsonb)` mengembalikan
 kolom gambar publik; `ipro_hapus_gambar(uuid,uuid)` mengembalikan `{id,kunci,kunci_mini}`
@@ -64,9 +80,7 @@ domain memakai huruf/angka, titik dan tanda hubung, serta TLD huruf minimal dua 
 Karakter parameter URI (termasuk `%`, `?`, `&`, `#`), spasi, pemisah penerima dan kutip ditolak;
 validasi hanya di fungsi RPC, tanpa CHECK baru pada kolom email yang dapat menolak data lama.
 
-> **Status penerapan:** tanda "BELUM DITERAPKAN" di tabel dan teks lama di bawah adalah riwayat saat ditulis. Status sebenarnya di produksi (diperiksa baca-saja 2026-11-13) ada di bagian "Status penerapan terverifikasi (2026-11-13)" di akhir berkas.
-
-## P7 dan P8 dokumen/lencana investasi — BELUM DITERAPKAN
+### Rincian 0003 dan 0004: dokumen per batch dan lencana (BELUM DITERAPKAN)
 
 Migrasi baru `202611190003_investasi_dokumen_proses.sql` menambah status diproses/gagal,
 kemajuan halaman, galat maksimal 500 karakter, dan policy pengelola modul; policy admin

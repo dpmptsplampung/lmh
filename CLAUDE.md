@@ -63,7 +63,7 @@ Test ada di samping source (`*.test.ts(x)`) dan di `supabase/migrations/*.test.t
 - Chat & bot: `api/chat/ai/route.ts` = RAG (FAQ + `dokumen_peraturan` via pgvector 3072-dim & FTS) dengan `lib/gemini.ts`; rantai LLM multi-vendor + circuit breaker + kuota harian di `lib/llm/registry.ts` (env `LLM_CHAT_PROVIDERS` format `provider:model,...`); redaksi PII/deteksi prompt-injection di `lib/pii.ts`. Percakapan per Layanan dan minta petugas: [Fase 5](docs/fase/fase-5-live-chat.md).
 - Rekap dan masukan: `admin/rekap` → `api/admin/rekap/terpadu[/export]` → RPC berlingkup ([Fase 3](docs/fase/fase-3-koordinator-rekap.md)); survei SPAK/SKM, IKM, saran, pengaduan = Pesan Perilaku ([pesan-perilaku](docs/fase/pesan-perilaku.md)).
 - UMKM: Katalog UMKM publik `/umkm/katalog` (`api/umkm-katalog`, `lib/umkm-katalog`, `components/umkm-katalog`), pemilik usaha `/me/usaha` (`api/umkm-pemilik`), perusahaan pencari pemasok `/me/umkm`, staf `admin/umkm-tugas`/`umkm-pengawasan`/`umkm-laporan`; rencana `docs/umkm/`. Marketplace lama `/umkm` DIHAPUS 2026-11-10 (alamat lama dialihkan di `next.config.ts`, tabel lama tetap di DB). Rincian: [umkm](docs/fase/umkm.md).
-- Investasi: gallery/`peta-potensi` (PDF di-render jadi PNG ber-watermark: `api/investment-docs/*`, `canvas`/`pdfjs-dist`/`sharp`). Konten situs lewat `lib/site-settings.ts`; beranda dari `homepage_blok` ([Fase 2](docs/fase/fase-2-homepage.md)).
+- Investasi: hub `/investasi` (IPRO PTSP, kartu FOILA, Kotak Masuk Investasi; migrasi `202611190001`-`0005` BELUM diterapkan, rincian [investasi-ipro](docs/fase/investasi-ipro.md)), `/peta-potensi` dialihkan ke `/investasi#peta-potensi`, gallery (PDF di-render jadi PNG ber-watermark: `api/investment-docs/*`, `canvas`/`pdfjs-dist`/`sharp`). Konten situs lewat `lib/site-settings.ts`; beranda dari `homepage_blok` ([Fase 2](docs/fase/fase-2-homepage.md)).
 - Notifikasi: trigger DB → `api/notif/{send,retry}` dipanggil cron (header `Authorization: Bearer $CRON_SECRET`); Resend (`lib/email-html.ts`) + web-push (`public/sw-push.js`). PWA offline: `public/sw.js`, `lib/offline/{queue,replay}.ts`. Observability: `lib/observability/logger.ts` (`logServerEvent`), `api/health/{live,ready,error}`, header `Server-Timing` (`lib/observability/durasi.ts`).
 
 ## Lapisan hasil refaktor G0-G9 (pegangan kode baru)
@@ -93,7 +93,7 @@ Kelompok tabel utama (daftar lama yang lebih lengkap: [docs/fase/peta-kode-rinci
 - Pelayanan: `layanan` (+ `instansi`, `layanan_tautan`), `jadwal_standby` + `hari_libur`, `kunjungan` (data induk), `tiket_antrean` + `antrean_counter`, `penanganan`, `pelayanan_{oss,perizinan}`, `topik_penanganan`, `pendataan_khusus_*`, `absensi_petugas`, `petugas` (+ penanda `koordinator`), `layar_token`, `panggilan_layar`; `visit` = arsip. Lihat [Fase 1](docs/fase/fase-1-layanan-dinamis.md), [Fase 3](docs/fase/fase-3-koordinator-rekap.md), [Fase 4](docs/fase/fase-4-pendataan.md), [identitas](docs/fase/identitas.md), [absensi FO](docs/fase/absensi-fo.md).
 - Chat/AI: `chat_sesi`, `chat_pesan`, `chat_ai_log`, `faq_knowledge_base`, `faq_sinonim`, `dokumen_peraturan`, `dokumen_potongan` ([Fase 5](docs/fase/fase-5-live-chat.md)).
 - Masukan: `survei_undangan`, `skm_respons`, `spak_respons`, `saran`, `pengaduan` (+ `pengaduan_riwayat`) ([pesan-perilaku](docs/fase/pesan-perilaku.md)).
-- UMKM/investasi: katalog `umkm_*` (privat, diakses lewat RPC); tabel marketplace lama (`listing_umkm`, `umkm_inquiry`, `umkm_listing_owner`, `umkm_verifikasi_jejak`) tinggal data; `investment_documents`, `investasi_lead` ([umkm](docs/fase/umkm.md)).
+- UMKM/investasi: katalog `umkm_*` (privat, diakses lewat RPC); tabel marketplace lama (`listing_umkm`, `umkm_inquiry`, `umkm_listing_owner`, `umkm_verifikasi_jejak`) tinggal data; `investment_documents`, `investasi_lead` ([umkm](docs/fase/umkm.md)); IPRO: `ipro_proyek`, `ipro_gambar`, `investasi_lead` diperluas ([investasi-ipro](docs/fase/investasi-ipro.md)).
 - Lain: `homepage_blok`, `site_settings`, `notifikasi`, `push_subscriptions`, `audit_log`, `consent_log`, `error_log`, `anon_rate_limit`. Fungsi kunci: Auth Hook `set_user_role_claim`; helper RLS `get_my_role`/`is_ptsp_staff`/`peran_saya`/`sesi_valid`/`boleh_*`; nomor antrean `terbit_tiket`/`generate_nomor_tiket`; RAG `match_faq`/`match_dokumen`. Job `pg_cron` (notifikasi, alpa otomatis, no-show, akhir hari, retensi); `vercel.json` kosong — penjadwalan ada di DB.
 
 ## Database & migrasi
@@ -117,6 +117,7 @@ Dipindah utuh dari versi lama berkas ini; tiap berkas diakhiri catatan refaktor/
 - [Identitas satu kesatuan](docs/fase/identitas.md): `kunjungan` data induk, email nyata wajib saat layanan selesai.
 - [Storage R2](docs/fase/storage-r2.md), [Absensi FO](docs/fase/absensi-fo.md), [Pesan Perilaku](docs/fase/pesan-perilaku.md) (survei SPAK/SKM, IKM, saran, pengaduan).
 - [UMKM](docs/fase/umkm.md): Katalog UMKM dan sisa marketplace lama.
+- [Investasi IPRO](docs/fase/investasi-ipro.md): IPRO PTSP, kartu FOILA, Kotak Masuk Investasi, dokumen PDF Paket B, status migrasi dan backlog.
 - [Peta kode rinci](docs/fase/peta-kode-rinci.md): daftar lama per halaman, API, `lib/`, komponen, dan tabel.
 
 ## Dokumen rujukan cepat

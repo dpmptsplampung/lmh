@@ -35,7 +35,7 @@
 | Ekspor data ber-PII | ✓ (tercatat) | ✓ (tercatat) | `S` (tercatat) | ✗ | ✗ |
 | CMS halaman & running text | ✓ | ✗ | ✗ | ✗ | ✗ |
 | Lihat UMKM & galeri investasi | ✓ | ✓ | ✓ | ✓ | ✓ |
-| **Lihat peta potensi** | ✓ | ✓ | ✓ | ✓ | **✗ (RBA-11)** |
+| **Lihat peta potensi** | ✓ | ✓ | ✓ | ✓ | **✗ (RBA-11)**; sejak 2026-11-19 digantikan seksi Peta Potensi publik di `/investasi` (bagian 13) |
 | Lihat dokumen IPRO | ✓ | ✓ | ✓ | ✓ (watermark nama+email) | ✓ (watermark sesi) |
 | Layar TV (token) | – | – | – | – | ✓ baca antrean saja |
 
@@ -86,7 +86,7 @@
 | `/admin/chat/ai-log` | ✓ | ✗ | ✗ | ✗ | ✗ |
 | `/admin/dokumen` (baru) | ✓ | ✗ | `S` | ✗ | ✗ |
 | `/admin/umkm` | ✓ | ✗ | `S` (Matchmaking) | ✗ | ✗ |
-| `/admin/gallery`, `/admin/investasi-leads` | ✓ | ✗ | ✗ | ✗ | ✗ |
+| `/admin/gallery`, `/admin/investasi-leads`, `/admin/ipro` | ✓ | ✗ | `S` (hanya bila layanannya bermodul `investasi`, lewat rute `/petugas/investasi/*`; lihat bagian 13) | ✗ | ✗ |
 | `/admin/pengaduan` (baru) | ✓ | ✓ (layanan saja) | `S` (diteruskan) | ✗ | ✗ |
 | `/admin/pengaduan/integritas` (baru) | ✓ | **✗** | **✗** | ✗ | ✗ |
 | `/admin/skm` (tab IKM; tab SPAK dan unduhan `/api/admin/survei/export` hanya Admin dan FO) | ✓ | ✓ | `S` | ✗ | ✗ |
@@ -341,3 +341,26 @@ Rollback menutup RPC G2 tetapi mempertahankan isi privat, bukti izin, audit dan 
 Perbaikan G2: rencana salin hanya untuk pemeriksa aktif pemegang profil terbit; FO tetap memicu
 penghapusan melalui route darurat. Rencana muda dan pointer aktif tidak masuk antrean hapus.
 Selesai mendesak otomatis mengulangi pembersihan. Batas kirim tetap hanya konstanta internal.
+
+## 13. Investment Gallery: IPRO PTSP dan Kotak Masuk Investasi, 2026-11-19 (migrasi `202611190001`-`0005`, BELUM DITERAPKAN)
+
+Ringkasan fitur: [docs/fase/investasi-ipro.md](../fase/investasi-ipro.md). Helper `boleh_kelola_investasi()` = admin dengan sesi valid ATAU petugas aktif yang layanannya bermodul `investasi` (`staf_modul()`); ia memerlukan `202611160001`. Front Office sengaja tidak termasuk (ADR 0004). Di policy dibungkus `(SELECT ...)`; EXECUTE hanya untuk `authenticated`.
+
+| Data/aksi | Anonim (sesi anonim) | Pengunjung login | Petugas modul `investasi` | Petugas modul lain atau tanpa modul | FO | Admin |
+|---|---|---|---|---|---|---|
+| Baca IPRO dan kartu FOILA berstatus `terbit`, gambarnya, hub `/investasi`, detail PTSP | Ya | Ya | Ya | Ya | Ya | Ya |
+| Baca draf dan arsip | Tidak | Tidak | Ya | Tidak | Tidak | Ya |
+| Buat, ubah, terbit/arsip, kelola gambar IPRO | Tidak | Tidak | Ya | Tidak | Tidak | Ya |
+| Hapus IPRO | Tidak | Tidak | Hanya draf | Tidak | Tidak | Hanya draf |
+| Kirim pesan "Hubungi petugas" dan minat dokumen (RPC `investasi_kirim_minat`) | Ya, batas laju dan persetujuan PDP | Ya, sama | Ya, sama | Ya, sama | Ya, sama | Ya, sama |
+| Baca Kotak Masuk (`investasi_lead`, berisi PII) | Tidak (tanda terima hanya `id`) | Tidak | Ya | Tidak | Tidak | Ya |
+| Ubah status pesan (RPC `investasi_ubah_status_minat`, kunci `versi`) | Tidak | Tidak | Ya | Tidak | Tidak | Ya |
+| Lencana `pesanInvestasi` di sidebar | Tidak | Tidak | Ya | Tidak | Tidak | Ya |
+| Unggah gambar IPRO mentah dan PDF dokumen (area R2 `ipro-mentah`, `investment-docs`) | Tidak | Tidak | Ya | Tidak (403) | Tidak | Ya |
+| Kelola dokumen Investment Gallery (`investment_documents`, policy `investment_kelola_modul`) | Tidak | Tidak | Ya | Tidak | Tidak | Ya |
+
+Catatan:
+- Insert dan update langsung ke `investasi_lead` dicabut dari `authenticated`; semua lewat RPC. `service_role` tidak diberi EXECUTE pada RPC baru.
+- Route `/api/admin/ipro/**` dan `/api/investasi/lead/[id]` memeriksa `boleh_kelola_investasi()` dengan JWT pengguna (tanpa service role).
+- Nomor HP dan email pengirim tidak masuk email notifikasi dan log server. Retensi 365 hari: [KEBIJAKAN_PDP](../KEBIJAKAN_PDP.md).
+- Bukti perilaku baru lokal (PGlite `skenario-baru-ipro.mjs` dan test kontrak); belum ada uji terhadap PostgreSQL nyata.

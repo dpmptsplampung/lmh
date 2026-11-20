@@ -16,7 +16,8 @@ LMH mengumpulkan data pribadi berikut:
 | Pendaftaran walk-in oleh Front Office (`/admin/fo/daftar`, RPC `fo_mulai_kunjungan`; menggantikan form check-in mandiri `/checkin` dan `POST /api/checkin` yang sudah dihapus) | Nama, asal instansi, HP, kategori, email, keperluan, layanan saran; catatan penanganan (topik + catatan staf) | Pelayanan loket, antrian, rekap penanganan |
 | Reservasi online | Nama, instansi, tanggal kunjungan, QR token | Penjadwalan kunjungan |
 | Profil pengunjung | Asal instansi, kategori (UMKM/Umum/Instansi/Investor) | Statistik layanan |
-| Investment Gallery | Dokumen PDF (metadata: judul, kategori) | Informasi publik |
+| Investment Gallery: dokumen dan proyek IPRO | Dokumen PDF dan proyek IPRO PTSP (judul, kategori, kontak lembaga) | Informasi publik |
+| Investment Gallery: minat investasi (formulir "Hubungi petugas", tanpa login; tujuan `investasi_minat`) | Nama, email, nomor HP (bila diisi), instansi, dan isi pesan; UID sesi anonim pengirim | Menanggapi minat investasi oleh petugas Investment Gallery |
 | Matchmaking UMKM | Nama UMKM, kontak (nama/hp/email), kebutuhan | Marketplace publik |
 
 ## Tujuan Pengolahan
@@ -26,7 +27,7 @@ Data pribadi yang dikumpulkan digunakan secara terbatas untuk:
 1. **Pelayanan publik DPMPTSP** — antrian kunjungan, eskalasi chat ke petugas, reservasi.
 2. **Statistik layanan** — agregasi jumlah kunjungan per layanan, waktu tunggu rata-rata.
 3. **Marketplace UMKM** — publikasi kebutuhan UMKM (dengan consent kontak).
-4. **Investment Gallery** — publikasi dokumen informasi investasi.
+4. **Investment Gallery** — publikasi dokumen dan proyek IPRO PTSP (informasi publik), serta menanggapi minat investasi yang dikirim pengunjung lewat formulir "Hubungi petugas" (tujuan `investasi_minat`, lihat bagian di bawah).
 
 Data **tidak** digunakan untuk pemasaran komersial, profiling otomatis, atau dibagikan ke pihak ketiga di luar keperluan layanan publik DPMPTSP.
 
@@ -42,7 +43,8 @@ Data **tidak** digunakan untuk pemasaran komersial, profiling otomatis, atau dib
   - `foto_url` → `NULL`
 - **Cakupan baru (migrasi `202610140008`, DITERAPKAN ke produksi 2026-10-14 malam):** anonimisasi 730 hari juga mengosongkan PII `kunjungan` (nama → `[anonim]`; HP, email, instansi, nama yang ditemui, keperluan → NULL), `penanganan.catatan` → `[anonim]`, dan arsip `visit` (tabel `visit` menjadi arsip baca saja setelah migrasi `202610140007`). Belum mencakup `pelayanan_oss`/`pelayanan_perizinan`, `buku_tamu`, dan isi chat (pertanyaan terbuka).
 - **Pencarian pengunjung lama FO (Fase 6, migrasi `202611010001`):** hanya akun FO/Admin aktif; saran memuat HP tersamar; identitas penuh hanya diambil untuk satu pengunjung terpilih, dicatat di `audit_log` (tanpa PII) dan dibatasi 60/10 menit; data teranonimkan dan kunjungan > 730 hari tidak pernah dikembalikan.
-- **Pengecualian:** dokumen Investment Gallery dan listing UMKM bersifat publik (bukan data pribadi per individu) sehingga tidak dianonimisasi otomatis.
+- **Pengecualian:** dokumen dan proyek IPRO Investment Gallery serta listing UMKM bersifat publik (bukan data pribadi per individu) sehingga tidak dianonimisasi otomatis.
+- **Pesan minat investasi (`investasi_lead`)** mengikuti retensi tersendiri (365 hari setelah selesai atau ditolak, bagian "Minat investasi" di bawah), bukan retensi 730 hari pengunjung.
 - **Manual trigger:** jika pg_cron belum di-enable, admin dapat menjalankan:
   ```sql
   SELECT anonymize_inactive_pengunjung();
@@ -60,8 +62,9 @@ Pemakaian pemberitahuan tanpa kotak centang pada formulir UMKM perlu ditinjau DP
 | Mulai sesi chat `/chat` | `consent_log` | `chat_followup` |
 | Simpan profil pengunjung (kotak centang pernyataan kebenaran data; K12) | `consent_log` | `pernyataan_kebenaran` — versi teks di `src/lib/pernyataan-kebenaran.ts` (`versi_kebijakan`); `subjek_ref` = `auth.uid()`; gagal mencatat = profil tidak disimpan. Setelah profil lengkap, Nama Lengkap terkunci di database; perubahan hanya oleh Front Office/admin lewat `ubah_nama_pengunjung` dengan `audit_log` |
 | Kontak UMKM (checkbox consent saat admin submit listing) | `consent_log` | `umkm_contact_public` — **Diimplementasikan 2026-07-20** (checkbox consent saat admin submit listing + baris `consent_log` tujuan `umkm_contact_public`) |
+| Formulir minat investasi ("Hubungi petugas" pada IPRO dan dokumen; tanpa login) | `consent_log` | `investasi_minat`, `versi_kebijakan` `1.1`; `subjek_ref` = `auth.uid()` sesi anonim; dicatat oleh RPC `investasi_kirim_minat` dalam transaksi yang sama dengan baris `investasi_lead`; kotak centang wajib. **Kode selesai, migrasi `202611190002` belum diterapkan** |
 
-- Consent dicatat di tabel `consent_log` dengan kolom `disetujui` (boolean), `versi_kebijakan` (saat ini `1.0`), dan `created_at`.
+- Consent dicatat di tabel `consent_log` dengan kolom `disetujui` (boolean), `versi_kebijakan` (`1.0`; khusus tujuan `investasi_minat` `1.1`), dan `created_at`.
 - Pada form yang masih memakai kotak centang (chat, profil pengunjung) checkbox consent bersifat **required** — tombol submit dinonaktifkan sampai checkbox dicentang.
 - Pengunjung dapat membaca kebijakan ini via link "Baca kebijakan" di samping checkbox.
 
@@ -130,7 +133,8 @@ Pembaruan naskah UMKM tahap A, 9 November 2026, disiapkan untuk dibaca pemilik s
 Peninjauan oleh DPO disarankan sebelum formulir dibuka. Formulir tidak dibuka sebelum naskah
 ini terbit. Sakelar statistik tetap mati sampai naskah ini terbit.
 
-Versi persetujuan tetap `1.0`, selaras dengan `CONSENT_VERSION` pada reservasi dan chat.
+Versi persetujuan reservasi dan chat tetap `1.0`, selaras dengan `CONSENT_VERSION`.
+Versi `1.1` berlaku hanya untuk tujuan `investasi_minat` (konstanta `VERSI_KEBIJAKAN_INVESTASI` di `src/lib/investasi/konstanta.ts`); tujuan lain tidak ikut naik.
 Naskah ini tidak mengubah alur persetujuan layanan tersebut. Kenaikan versi persetujuan
 harus dibahas dengan PM dan diselaraskan dengan layanan yang mencatatnya.
 
@@ -139,6 +143,25 @@ harus dibahas dengan PM dan diselaraskan dengan layanan yang mencatatnya.
 | 1.0 | Fase 1 / I8 | Kebijakan awal — audit log, consent checkin/chat, retensi 730 hari, DPO dashboard |
 | 1.0, pembaruan naskah | 2026-11-09 | Katalog UMKM tahap A, formulir, laporan, WhatsApp pribadi, dan retensi awal |
 | 1.0, pembaruan naskah | 2026-11-09 | Tahap B: data perusahaan, izin nomor, nomor hanya di akun pemohon, retensi 730 hari |
+| 1.1 (hanya tujuan `investasi_minat`), pembaruan naskah | 2026-11-19 | Formulir minat investasi Investment Gallery: data, penerima, tanpa penerusan, retensi 365 hari. Disiapkan untuk dibaca pemilik; belum berlaku sebelum migrasi `202611190002` diterapkan |
+
+## Minat investasi (Investment Gallery)
+
+Formulir "Hubungi petugas" pada halaman proyek IPRO (`/investasi/ipro/[slug]`) dan pada dokumen di `/gallery` dapat dikirim tanpa login. Pengirim memakai sesi anonim Supabase; tidak ada akun yang dibuat.
+
+| Hal | Ketentuan |
+|---|---|
+| Tujuan (`consent_log.tujuan`) | `investasi_minat` |
+| Data | Nama, email, nomor HP (hanya bila diisi; kanal IPRO), instansi, isi pesan, dan UID sesi anonim pengirim |
+| Penerima | Petugas Investment Gallery DPMPTSP Provinsi Lampung (admin dan petugas bermodul `investasi`). Front Office tidak termasuk. |
+| Penerusan | Data pesan tidak diteruskan ke pihak lain, termasuk instansi pemilik proyek. Email notifikasi ke petugas hanya memuat jenis, judul proyek atau dokumen (data publik), dan tautan; nama, email, HP, dan isi pesan tidak ikut. |
+| Retensi | 365 hari sejak aktivitas terakhir pada pesan yang berstatus `selesai` atau `ditolak`, lalu dihapus oleh job `pg_cron` `investasi_retensi_harian` (fungsi `investasi_bersihkan_retensi()`, batch 500). Pesan yang masih berjalan tidak dihapus. |
+| Bukti persetujuan | Baris `consent_log` (UID, tujuan, `disetujui`, versi) tidak ikut dihapus bersama pesan. |
+| Naskah persetujuan | "Saya setuju data saya (nama, email, nomor HP (bila diisi), instansi, dan pesan) dipakai oleh petugas Investment Gallery DPMPTSP Provinsi Lampung untuk menanggapi minat investasi saya." Kanal dokumen menyebut "nama, email, instansi, dan pesan". Sumber naskah: `src/components/investasi/teks-pdp.ts`. |
+| Kontak publik | Halaman IPRO hanya menampilkan kontak lembaga; nomor pribadi petugas tidak pernah tampil. |
+| Pembatasan spam | Honeypot, batas kiriman per UID dan global, kunci idempoten; catatan laju memuat UID dan waktu, tanpa isi pesan. |
+
+Status: kode selesai di branch `investmentgallery`, tetapi migrasi `202611190001` sampai `0005` belum diterapkan ke produksi (ditunda sampai semua kode final; lihat [MIGRATIONS](MIGRATIONS.md)). Sebelum formulir dibuka, naskah di atas perlu dibaca pemilik dan DPO.
 
 ## Katalog UMKM tahap A
 
