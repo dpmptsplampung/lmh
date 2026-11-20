@@ -120,7 +120,7 @@ Bagian di atas (keputusan 2026-10-14) dibalik sebagian oleh keputusan berikut. B
 
 ## DPO (Data Protection Officer)
 
-**[Placeholder — diisi oleh DPMPTSP]**
+**[Placeholder — diisi oleh DPMPTSP]** Penunjukan DPO masih menunggu keputusan pemilik (dicatat 2026-11-21); halaman publik `/kebijakan-privasi` sengaja tidak mencantumkan DPO perorangan.
 
 - Nama DPO: ____________________
 - Email: ____________________
@@ -143,7 +143,7 @@ harus dibahas dengan PM dan diselaraskan dengan layanan yang mencatatnya.
 | 1.0 | Fase 1 / I8 | Kebijakan awal — audit log, consent checkin/chat, retensi 730 hari, DPO dashboard |
 | 1.0, pembaruan naskah | 2026-11-09 | Katalog UMKM tahap A, formulir, laporan, WhatsApp pribadi, dan retensi awal |
 | 1.0, pembaruan naskah | 2026-11-09 | Tahap B: data perusahaan, izin nomor, nomor hanya di akun pemohon, retensi 730 hari |
-| 1.1 (hanya tujuan `investasi_minat`), pembaruan naskah | 2026-11-19 | Formulir minat investasi Investment Gallery: data, penerima, tanpa penerusan, retensi 365 hari. Disiapkan untuk dibaca pemilik; migrasi `202611190002` sudah diterapkan (2026-11-20) |
+| 1.1 (hanya tujuan `investasi_minat`), pembaruan naskah | 2026-11-19 | Formulir minat investasi Investment Gallery: data, penerima, tanpa penerusan, retensi 365 hari. Naskah disetujui pemilik DPMPTSP pada 2026-11-21; migrasi `202611190002` sudah diterapkan (2026-11-20) |
 
 ## Minat investasi (Investment Gallery)
 
@@ -161,7 +161,7 @@ Formulir "Hubungi petugas" pada halaman proyek IPRO (`/investasi/ipro/[slug]`) d
 | Kontak publik | Halaman IPRO hanya menampilkan kontak lembaga; nomor pribadi petugas tidak pernah tampil. |
 | Pembatasan spam | Honeypot, batas kiriman per UID dan global, kunci idempoten; catatan laju memuat UID dan waktu, tanpa isi pesan. |
 
-Status: migrasi `202611190001` sampai `0005` sudah diterapkan ke produksi (2026-11-20; lihat [MIGRATIONS](MIGRATIONS.md)), tetapi kodenya baru ada di branch `investmentgallery` dan belum di-deploy, jadi formulir belum terbuka untuk umum. Sebelum rilis, naskah di atas perlu dibaca pemilik dan DPO.
+Status: migrasi `202611190001` sampai `0005` sudah diterapkan ke produksi (2026-11-20; lihat [MIGRATIONS](MIGRATIONS.md)), dan kodenya sudah di-merge ke `main` (PR #27, 2026-11-20). Halaman publik `/kebijakan-privasi` bagian 5 memuat ringkasan formulir ini (diperbarui 2026-11-21). Naskah di atas disetujui pemilik DPMPTSP pada 2026-11-21 (naskah formulir di `src/components/investasi/teks-pdp.ts` dan teks halaman publik bagian 5). Tinjauan DPO resmi menunggu penunjukan DPO; nama DPO di bagian DPO belum diisi.
 
 ## Katalog UMKM tahap A
 
@@ -247,6 +247,6 @@ gelombang implementasinya, bukan dinyatakan sudah aktif oleh pembaruan naskah in
 
 Foto yang dilampirkan di live chat disimpan di Cloudflare R2 (bucket privat, area `chat-lampiran`) dan dihapus otomatis **90 hari** setelah pesan dikirim (`POST /api/chat/lampiran/bersihkan`, dipanggil cron dengan `CRON_SECRET`); teks pesan tetap. Hanya pemilik sesi dan staf dalam lingkup yang dapat membaca (404 seragam bagi pihak lain). Foto absensi petugas disimpan di area `absensi-foto` (hanya admin/front office).
 
-### Pembaruan 2026-11-16 (ADR 0004, migrasi `202611160001`, belum diterapkan)
+### Pembaruan 2026-11-16 (ADR 0004, migrasi `202611160001`, diterapkan ke produksi, terverifikasi baca-saja 2026-11-20)
 
 Front Office kembali membaca SEMUA data antrean dan "Lihat Data" semua Layanan (baca-saja), termasuk kontak pengunjung. Pengendali: setiap "Lihat Data" lintas-pembuat dan setiap ekspor (rekap semua Layanan, Buku Tamu) wajib tercatat di `audit_log` dan gagal-tertutup bila pencatatan gagal; baca langsung tabel sensitif oleh FO tetap mengikuti aturan basis. Petugas Layanan hanya melihat dan merekap Layanannya sendiri. Pengecualian disengaja: koreksi data layanan terkunci (`koreksi_pelayanan`) tetap bisa dilakukan FO dan admin.

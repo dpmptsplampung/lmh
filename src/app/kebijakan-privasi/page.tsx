@@ -2,10 +2,12 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { APP_NAME } from '@/lib/constants';
+import { VERSI_KEBIJAKAN_INVESTASI } from '@/lib/investasi/konstanta';
 import styles from './kebijakan-privasi.module.css';
 
 /** Selaras dengan versi persetujuan reservasi dan chat. */
 const POLICY_VERSION = '1.0';
+const VERSI_INVESTASI = VERSI_KEBIJAKAN_INVESTASI;
 
 export const metadata: Metadata = {
   title: 'Kebijakan Privasi',
@@ -98,6 +100,19 @@ export default function KebijakanPrivasiPage() {
             Aktivitas login untuk fitur ini tercatat dalam <code>consent_log</code> saat Anda
             memberikan persetujuan. Anda dapat keberatan atas pencatatan ini dengan menghubungi
             kami melalui kontak di bawah.
+          </p>
+          <p className={styles.paragraf}>
+            <strong>Formulir minat investasi.</strong> Tombol &ldquo;Hubungi petugas&rdquo; pada
+            proyek IPRO dan dokumen Investment Gallery dapat dikirim tanpa login. Kami meminta
+            nama, email, instansi, dan pesan Anda; nomor HP hanya bila Anda mengisinya pada
+            formulir proyek IPRO. Kami juga menyimpan penanda sesi anonim peramban Anda. Data ini
+            dipakai petugas Investment Gallery DPMPTSP Provinsi Lampung hanya untuk menanggapi
+            minat investasi Anda, dan <strong>tidak diteruskan ke pihak lain</strong>, termasuk
+            instansi pemilik proyek. Persetujuan Anda dicatat dalam <code>consent_log</code>
+            (tujuan <code>investasi_minat</code>, versi <strong>{VERSI_INVESTASI}</strong>).
+            Pesan disimpan 365 hari setelah selesai ditangani atau ditolak, lalu dihapus; catatan
+            persetujuan tetap disimpan sebagai bukti. Pemberitahuan email ke petugas tidak memuat
+            nama, email, HP, atau isi pesan Anda.
           </p>
         </section>
 
@@ -202,7 +217,8 @@ export default function KebijakanPrivasiPage() {
           </h2>
           <p className={styles.paragraf}>
             Versi kebijakan privasi yang dirujuk oleh formulir persetujuan di aplikasi adalah{' '}
-            <strong>{POLICY_VERSION}</strong>. Perubahan material akan diumumkan dengan
+            <strong>{POLICY_VERSION}</strong>, kecuali formulir minat investasi yang memakai versi{' '}
+            <strong>{VERSI_INVESTASI}</strong>. Perubahan material akan diumumkan dengan
             menaikkan nomor versi dan memperbarui teks persetujuan pada layanan yang terkait.
           </p>
         </section>
