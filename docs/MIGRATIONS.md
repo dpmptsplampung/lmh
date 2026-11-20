@@ -10,7 +10,7 @@ Urutan terapan (satu berkas per transaksi, hanya sesudah host dan daftar berkas 
 
 | Urutan | Berkas | Bergantung pada | Isi singkat | Status |
 |---|---|---|---|---|
-| 0 | `202611160001_lingkup_layanan_staf.sql` | baseline | `layanan.modul`, `staf_modul()` | **BELUM DITERAPKAN** |
+| 0 | `202611160001_lingkup_layanan_staf.sql` | baseline | `layanan.modul`, `staf_modul()` | **SUDAH ADA DI PRODUKSI** (terverifikasi baca-saja 2026-11-20) |
 | 1 | `202611190001_ipro_inti.sql` | `202611160001` | `ipro_proyek`, `ipro_gambar`, `boleh_kelola_investasi()`, RLS | **DITERAPKAN 2026-11-20** |
 | 2 | `202611190002_investasi_kotak_masuk.sql` | `0001` | `investasi_lead` diperluas, RPC kirim dan ubah status, retensi + cron | **DITERAPKAN 2026-11-20** |
 | 3 | `202611190003_investasi_dokumen_proses.sql` | `0001`, `0002` | status `diproses`/`gagal`, `investment_pdf_claims` | **DITERAPKAN 2026-11-20** |
@@ -21,7 +21,7 @@ Terapkan `0005` bersama klien RPC dalam satu jendela rilis, karena penulisan gam
 
 ### Rincian 0001, 0002, 0005: IPRO inti, Kotak Masuk, gambar atomik (BELUM DITERAPKAN)
 
-Prasyarat: `202611160001_lingkup_layanan_staf`; terapkan `202611190001` sebelum `202611190002`, masing-masing dalam satu transaksi. Bukti perilaku hanya lokal melalui `scripts/lokal-rantai/skenario-baru-ipro.mjs`; belum ada penerapan ke staging atau produksi.
+Prasyarat: `202611160001_lingkup_layanan_staf`; terapkan `202611190001` sebelum `202611190002`, masing-masing dalam satu transaksi. Bukti perilaku hanya lokal melalui `scripts/lokal-rantai/skenario-baru-ipro.mjs`; `0001` sampai `0005` sudah diterapkan ke produksi pada 2026-11-20 (lihat paragraf di atas); staging belum ada.
 
 | Versi | Berkas | Isi | Status |
 |---|---|---|---|
