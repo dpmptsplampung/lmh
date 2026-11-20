@@ -372,7 +372,7 @@ describe('Homepage etalase: popup dan alamatnya', () => {
     h.params = new URLSearchParams('layanan=helpdesk-oss');
     await tampil();
     const dlg = await screen.findByRole('dialog');
-    expect(within(dlg).getByText('Buka sekarang')).toBeInTheDocument();
+    expect(await within(dlg).findByText('Buka sekarang')).toBeInTheDocument();
     expect(within(dlg).getByRole('table', { name: /jadwal mingguan/i })).toBeInTheDocument();
     await waitFor(() => expect(within(dlg).getByText(/4 menunggu/)).toBeInTheDocument());
   });
