@@ -161,7 +161,7 @@ Formulir "Hubungi petugas" pada halaman proyek IPRO (`/investasi/ipro/[slug]`) d
 | Kontak publik | Halaman IPRO hanya menampilkan kontak lembaga; nomor pribadi petugas tidak pernah tampil. |
 | Pembatasan spam | Honeypot, batas kiriman per UID dan global, kunci idempoten; catatan laju memuat UID dan waktu, tanpa isi pesan. |
 
-Status: migrasi `202611190001` sampai `0005` sudah diterapkan ke produksi (2026-11-20; lihat [MIGRATIONS](MIGRATIONS.md)), tetapi kodenya baru ada di branch `investmentgallery` dan belum di-deploy, jadi formulir belum terbuka untuk umum. Sebelum rilis, naskah di atas perlu dibaca pemilik dan DPO.
+Status: migrasi `202611190001` sampai `0005` sudah diterapkan ke produksi (2026-11-20; lihat [MIGRATIONS](MIGRATIONS.md)), dan kodenya sudah di-merge ke `main` (PR #27, 2026-11-20). Halaman publik `/kebijakan-privasi` bagian 5 memuat ringkasan formulir ini (diperbarui 2026-11-21). Naskah di atas masih perlu dibaca pemilik dan DPO; nama DPO di bagian DPO belum diisi.
 
 ## Katalog UMKM tahap A
 
