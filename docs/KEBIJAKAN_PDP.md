@@ -62,7 +62,7 @@ Pemakaian pemberitahuan tanpa kotak centang pada formulir UMKM perlu ditinjau DP
 | Mulai sesi chat `/chat` | `consent_log` | `chat_followup` |
 | Simpan profil pengunjung (kotak centang pernyataan kebenaran data; K12) | `consent_log` | `pernyataan_kebenaran` — versi teks di `src/lib/pernyataan-kebenaran.ts` (`versi_kebijakan`); `subjek_ref` = `auth.uid()`; gagal mencatat = profil tidak disimpan. Setelah profil lengkap, Nama Lengkap terkunci di database; perubahan hanya oleh Front Office/admin lewat `ubah_nama_pengunjung` dengan `audit_log` |
 | Kontak UMKM (checkbox consent saat admin submit listing) | `consent_log` | `umkm_contact_public` — **Diimplementasikan 2026-07-20** (checkbox consent saat admin submit listing + baris `consent_log` tujuan `umkm_contact_public`) |
-| Formulir minat investasi ("Hubungi petugas" pada IPRO dan dokumen; tanpa login) | `consent_log` | `investasi_minat`, `versi_kebijakan` `1.1`; `subjek_ref` = `auth.uid()` sesi anonim; dicatat oleh RPC `investasi_kirim_minat` dalam transaksi yang sama dengan baris `investasi_lead`; kotak centang wajib. **Kode selesai, migrasi `202611190002` belum diterapkan** |
+| Formulir minat investasi ("Hubungi petugas" pada IPRO dan dokumen; tanpa login) | `consent_log` | `investasi_minat`, `versi_kebijakan` `1.1`; `subjek_ref` = `auth.uid()` sesi anonim; dicatat oleh RPC `investasi_kirim_minat` dalam transaksi yang sama dengan baris `investasi_lead`; kotak centang wajib. **Kode selesai, migrasi `202611190002` diterapkan ke produksi 2026-11-20** |
 
 - Consent dicatat di tabel `consent_log` dengan kolom `disetujui` (boolean), `versi_kebijakan` (`1.0`; khusus tujuan `investasi_minat` `1.1`), dan `created_at`.
 - Pada form yang masih memakai kotak centang (chat, profil pengunjung) checkbox consent bersifat **required** — tombol submit dinonaktifkan sampai checkbox dicentang.
@@ -143,7 +143,7 @@ harus dibahas dengan PM dan diselaraskan dengan layanan yang mencatatnya.
 | 1.0 | Fase 1 / I8 | Kebijakan awal — audit log, consent checkin/chat, retensi 730 hari, DPO dashboard |
 | 1.0, pembaruan naskah | 2026-11-09 | Katalog UMKM tahap A, formulir, laporan, WhatsApp pribadi, dan retensi awal |
 | 1.0, pembaruan naskah | 2026-11-09 | Tahap B: data perusahaan, izin nomor, nomor hanya di akun pemohon, retensi 730 hari |
-| 1.1 (hanya tujuan `investasi_minat`), pembaruan naskah | 2026-11-19 | Formulir minat investasi Investment Gallery: data, penerima, tanpa penerusan, retensi 365 hari. Disiapkan untuk dibaca pemilik; belum berlaku sebelum migrasi `202611190002` diterapkan |
+| 1.1 (hanya tujuan `investasi_minat`), pembaruan naskah | 2026-11-19 | Formulir minat investasi Investment Gallery: data, penerima, tanpa penerusan, retensi 365 hari. Disiapkan untuk dibaca pemilik; migrasi `202611190002` sudah diterapkan (2026-11-20) |
 
 ## Minat investasi (Investment Gallery)
 
@@ -161,7 +161,7 @@ Formulir "Hubungi petugas" pada halaman proyek IPRO (`/investasi/ipro/[slug]`) d
 | Kontak publik | Halaman IPRO hanya menampilkan kontak lembaga; nomor pribadi petugas tidak pernah tampil. |
 | Pembatasan spam | Honeypot, batas kiriman per UID dan global, kunci idempoten; catatan laju memuat UID dan waktu, tanpa isi pesan. |
 
-Status: kode selesai di branch `investmentgallery`, tetapi migrasi `202611190001` sampai `0005` belum diterapkan ke produksi (ditunda sampai semua kode final; lihat [MIGRATIONS](MIGRATIONS.md)). Sebelum formulir dibuka, naskah di atas perlu dibaca pemilik dan DPO.
+Status: migrasi `202611190001` sampai `0005` sudah diterapkan ke produksi (2026-11-20; lihat [MIGRATIONS](MIGRATIONS.md)), tetapi kodenya baru ada di branch `investmentgallery` dan belum di-deploy, jadi formulir belum terbuka untuk umum. Sebelum rilis, naskah di atas perlu dibaca pemilik dan DPO.
 
 ## Katalog UMKM tahap A
 

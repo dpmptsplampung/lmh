@@ -5,7 +5,7 @@ Peta fitur ringkas untuk branch `investmentgallery` (kode `e21d2a2` sampai `930a
 ## Status
 
 - **Kode**: selesai di branch `investmentgallery`, belum digabung ke `main`.
-- **Migrasi `202611190001` sampai `0005` BELUM diterapkan ke staging maupun produksi.** Penerapan sengaja ditunda sampai semua kode final, atas permintaan pemilik. Prasyaratnya, `202611160001_lingkup_layanan_staf` (`staf_modul()`, `layanan.modul`), juga belum diterapkan. Urutan dan prasyarat: [docs/MIGRATIONS.md](../MIGRATIONS.md).
+- **Migrasi `202611190001` sampai `0005` DITERAPKAN ke produksi pada 2026-11-20** (tanpa staging; pemilik melewati aturan staging D-37 untuk ini). Prasyaratnya, `202611160001` sampai `0004`, sudah ada di produksi. Urutan dan prasyarat: [docs/MIGRATIONS.md](../MIGRATIONS.md).
 - **Bukti perilaku DB** hanya lokal: harness PGlite `scripts/lokal-rantai/skenario-baru-ipro.mjs` dan test kontrak statis di `supabase/migrations/2026111900*.test.ts`.
 - Sebelum migrasi diterapkan, halaman `/investasi` dan API-nya akan galat di lingkungan yang memakai DB produksi, karena tabel dan RPC belum ada.
 

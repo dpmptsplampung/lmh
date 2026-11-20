@@ -4,18 +4,18 @@
 
 ## Investment Gallery (IPRO PTSP): urutan terapan dan prasyarat
 
-**Semua migrasi `202611190001` sampai `0005` BELUM diterapkan ke staging maupun produksi.** Penerapan sengaja ditunda sampai semua kode final, atas permintaan pemilik (2026-11-19). Prasyarat `202611160001_lingkup_layanan_staf` (`staf_modul()`, `lingkup_layanan_saya()`, `layanan.modul`) juga belum diterapkan; spec menyarankan `202611160001` sampai `0004` lebih dulu. Ringkasan fitur: [docs/fase/investasi-ipro.md](fase/investasi-ipro.md).
+**Migrasi `202611190001` sampai `0005` DITERAPKAN ke produksi pada 2026-11-20** (host `aws-1-ap-southeast-1.pooler.supabase.com`, satu transaksi per berkas, didahului dry-run bersih; staging belum ada, pemilik menyatakan melewati aturan staging D-37 untuk penerapan ini). Prasyarat `202611160001` sampai `0004` sudah ada di produksi (diperiksa baca-saja sebelum penerapan: `staf_modul()`, `layanan.modul`, `pendataan_khusus_draf`, `buku_tamu_catat_keluar`, `fo_antrean_daftar`). Verifikasi pasca-penerapan baca-saja: semua objek penanda ada, `investasi_lead` 0 baris, job `investasi_retensi_harian` terdaftar. Belum teruji nyata: kontensi PostgreSQL, CopyObject/ETag R2, render PDF besar. Ringkasan fitur: [docs/fase/investasi-ipro.md](fase/investasi-ipro.md).
 
 Urutan terapan (satu berkas per transaksi, hanya sesudah host dan daftar berkas ditampilkan dan pemilik setuju; skrip penerapan menyentuh DB produksi):
 
 | Urutan | Berkas | Bergantung pada | Isi singkat | Status |
 |---|---|---|---|---|
 | 0 | `202611160001_lingkup_layanan_staf.sql` | baseline | `layanan.modul`, `staf_modul()` | **BELUM DITERAPKAN** |
-| 1 | `202611190001_ipro_inti.sql` | `202611160001` | `ipro_proyek`, `ipro_gambar`, `boleh_kelola_investasi()`, RLS | **BELUM DITERAPKAN** |
-| 2 | `202611190002_investasi_kotak_masuk.sql` | `0001` | `investasi_lead` diperluas, RPC kirim dan ubah status, retensi + cron | **BELUM DITERAPKAN** |
-| 3 | `202611190003_investasi_dokumen_proses.sql` | `0001`, `0002` | status `diproses`/`gagal`, `investment_pdf_claims` | **BELUM DITERAPKAN** |
-| 4 | `202611190004_nav_lencana_investasi.sql` | `0001`, `0002` | lencana `pesanInvestasi` | **BELUM DITERAPKAN** |
-| 5 | `202611190005_ipro_gambar_atomik.sql` | `0001`, `0002` | RPC gambar dan status atomik | **BELUM DITERAPKAN** |
+| 1 | `202611190001_ipro_inti.sql` | `202611160001` | `ipro_proyek`, `ipro_gambar`, `boleh_kelola_investasi()`, RLS | **DITERAPKAN 2026-11-20** |
+| 2 | `202611190002_investasi_kotak_masuk.sql` | `0001` | `investasi_lead` diperluas, RPC kirim dan ubah status, retensi + cron | **DITERAPKAN 2026-11-20** |
+| 3 | `202611190003_investasi_dokumen_proses.sql` | `0001`, `0002` | status `diproses`/`gagal`, `investment_pdf_claims` | **DITERAPKAN 2026-11-20** |
+| 4 | `202611190004_nav_lencana_investasi.sql` | `0001`, `0002` | lencana `pesanInvestasi` | **DITERAPKAN 2026-11-20** |
+| 5 | `202611190005_ipro_gambar_atomik.sql` | `0001`, `0002` | RPC gambar dan status atomik | **DITERAPKAN 2026-11-20** |
 
 Terapkan `0005` bersama klien RPC dalam satu jendela rilis, karena penulisan gambar langsung dicabut. Rantai lengkap tercatat di `supabase/migrations/MANIFEST.json`. Bukti perilaku hanya lokal (PGlite `scripts/lokal-rantai/skenario-baru-ipro.mjs` dan `skenario-nav-lencana.mjs`, test kontrak `supabase/migrations/2026111900*.test.ts`); belum ada bukti terhadap PostgreSQL nyata dengan beberapa koneksi.
 
@@ -25,9 +25,9 @@ Prasyarat: `202611160001_lingkup_layanan_staf`; terapkan `202611190001` sebelum 
 
 | Versi | Berkas | Isi | Status |
 |---|---|---|---|
-| 202611190001 | `202611190001_ipro_inti.sql` | IPRO PTSP/FOILA, gambar, audit/versi/slug tetap, RLS admin dan petugas modul investasi; sektor CHECK sembilan nilai; `nilai_investasi` dan `npv_nilai` memakai `mata_uang` IDR/USD, `nilai_teks` untuk label FOILA. | **BELUM DITERAPKAN** |
-| 202611190002 | `202611190002_investasi_kotak_masuk.sql` | Perluasan lead dokumen/IPRO, RPC idempoten dan consent atomik, tiga batas laju, notifikasi tanpa PII dan retensi terminal 365 hari; trigger updated_at dinonaktifkan hanya selama backfill dan langsung diaktifkan kembali. | **BELUM DITERAPKAN** |
-| 202611190005 | `202611190005_ipro_gambar_atomik.sql` | RPC tambah/ubah/hapus gambar dan status dengan lock baris proyek yang sama; batas PTSP 12/FOILA 1, gambar pertama otomatis utama, rollback reset/target atomik, validasi terbit dan versi di DB. | **BELUM DITERAPKAN** |
+| 202611190001 | `202611190001_ipro_inti.sql` | IPRO PTSP/FOILA, gambar, audit/versi/slug tetap, RLS admin dan petugas modul investasi; sektor CHECK sembilan nilai; `nilai_investasi` dan `npv_nilai` memakai `mata_uang` IDR/USD, `nilai_teks` untuk label FOILA. | **DITERAPKAN 2026-11-20** |
+| 202611190002 | `202611190002_investasi_kotak_masuk.sql` | Perluasan lead dokumen/IPRO, RPC idempoten dan consent atomik, tiga batas laju, notifikasi tanpa PII dan retensi terminal 365 hari; trigger updated_at dinonaktifkan hanya selama backfill dan langsung diaktifkan kembali. | **DITERAPKAN 2026-11-20** |
+| 202611190005 | `202611190005_ipro_gambar_atomik.sql` | RPC tambah/ubah/hapus gambar dan status dengan lock baris proyek yang sama; batas PTSP 12/FOILA 1, gambar pertama otomatis utama, rollback reset/target atomik, validasi terbit dan versi di DB. | **DITERAPKAN 2026-11-20** |
 
 Prasyarat `202611190005_ipro_gambar_atomik.sql`: `202611190001` dan `202611190002`; tidak bergantung pada `0003`/`0004`.
 Terapkan paket atomik bersama klien RPC dalam satu jendela rilis karena penulisan gambar langsung dicabut.

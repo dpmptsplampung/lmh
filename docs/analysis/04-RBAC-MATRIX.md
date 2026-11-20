@@ -342,7 +342,7 @@ Perbaikan G2: rencana salin hanya untuk pemeriksa aktif pemegang profil terbit; 
 penghapusan melalui route darurat. Rencana muda dan pointer aktif tidak masuk antrean hapus.
 Selesai mendesak otomatis mengulangi pembersihan. Batas kirim tetap hanya konstanta internal.
 
-## 13. Investment Gallery: IPRO PTSP dan Kotak Masuk Investasi, 2026-11-19 (migrasi `202611190001`-`0005`, BELUM DITERAPKAN)
+## 13. Investment Gallery: IPRO PTSP dan Kotak Masuk Investasi, 2026-11-19 (migrasi `202611190001`-`0005`, DITERAPKAN ke produksi 2026-11-20)
 
 Ringkasan fitur: [docs/fase/investasi-ipro.md](../fase/investasi-ipro.md). Helper `boleh_kelola_investasi()` = admin dengan sesi valid ATAU petugas aktif yang layanannya bermodul `investasi` (`staf_modul()`); ia memerlukan `202611160001`. Front Office sengaja tidak termasuk (ADR 0004). Di policy dibungkus `(SELECT ...)`; EXECUTE hanya untuk `authenticated`.
 
