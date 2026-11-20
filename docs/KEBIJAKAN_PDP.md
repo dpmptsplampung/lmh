@@ -120,7 +120,7 @@ Bagian di atas (keputusan 2026-10-14) dibalik sebagian oleh keputusan berikut. B
 
 ## DPO (Data Protection Officer)
 
-**[Placeholder — diisi oleh DPMPTSP]**
+**[Placeholder — diisi oleh DPMPTSP]** Penunjukan DPO masih menunggu keputusan pemilik (dicatat 2026-11-21); halaman publik `/kebijakan-privasi` sengaja tidak mencantumkan DPO perorangan.
 
 - Nama DPO: ____________________
 - Email: ____________________
