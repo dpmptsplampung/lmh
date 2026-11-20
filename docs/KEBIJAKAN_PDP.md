@@ -143,7 +143,7 @@ harus dibahas dengan PM dan diselaraskan dengan layanan yang mencatatnya.
 | 1.0 | Fase 1 / I8 | Kebijakan awal — audit log, consent checkin/chat, retensi 730 hari, DPO dashboard |
 | 1.0, pembaruan naskah | 2026-11-09 | Katalog UMKM tahap A, formulir, laporan, WhatsApp pribadi, dan retensi awal |
 | 1.0, pembaruan naskah | 2026-11-09 | Tahap B: data perusahaan, izin nomor, nomor hanya di akun pemohon, retensi 730 hari |
-| 1.1 (hanya tujuan `investasi_minat`), pembaruan naskah | 2026-11-19 | Formulir minat investasi Investment Gallery: data, penerima, tanpa penerusan, retensi 365 hari. Disiapkan untuk dibaca pemilik; migrasi `202611190002` sudah diterapkan (2026-11-20) |
+| 1.1 (hanya tujuan `investasi_minat`), pembaruan naskah | 2026-11-19 | Formulir minat investasi Investment Gallery: data, penerima, tanpa penerusan, retensi 365 hari. Naskah disetujui pemilik DPMPTSP pada 2026-11-21; migrasi `202611190002` sudah diterapkan (2026-11-20) |
 
 ## Minat investasi (Investment Gallery)
 
@@ -161,7 +161,7 @@ Formulir "Hubungi petugas" pada halaman proyek IPRO (`/investasi/ipro/[slug]`) d
 | Kontak publik | Halaman IPRO hanya menampilkan kontak lembaga; nomor pribadi petugas tidak pernah tampil. |
 | Pembatasan spam | Honeypot, batas kiriman per UID dan global, kunci idempoten; catatan laju memuat UID dan waktu, tanpa isi pesan. |
 
-Status: migrasi `202611190001` sampai `0005` sudah diterapkan ke produksi (2026-11-20; lihat [MIGRATIONS](MIGRATIONS.md)), dan kodenya sudah di-merge ke `main` (PR #27, 2026-11-20). Halaman publik `/kebijakan-privasi` bagian 5 memuat ringkasan formulir ini (diperbarui 2026-11-21). Naskah di atas masih perlu dibaca pemilik dan DPO; nama DPO di bagian DPO belum diisi.
+Status: migrasi `202611190001` sampai `0005` sudah diterapkan ke produksi (2026-11-20; lihat [MIGRATIONS](MIGRATIONS.md)), dan kodenya sudah di-merge ke `main` (PR #27, 2026-11-20). Halaman publik `/kebijakan-privasi` bagian 5 memuat ringkasan formulir ini (diperbarui 2026-11-21). Naskah di atas disetujui pemilik DPMPTSP pada 2026-11-21 (naskah formulir di `src/components/investasi/teks-pdp.ts` dan teks halaman publik bagian 5). Tinjauan DPO resmi menunggu penunjukan DPO; nama DPO di bagian DPO belum diisi.
 
 ## Katalog UMKM tahap A
 

@@ -895,3 +895,7 @@ Konteks: branch `investmentgallery`, rancangan [spec IPRO PTSP](superpowers/spec
 ### Penerapan migrasi ditunda
 
 `202611190001` sampai `0005` DITERAPKAN ke produksi pada 2026-11-20 setelah kode final, dry-run bersih, host dan daftar berkas ditampilkan, dan pemilik setuju (pemilik menyatakan melewati aturan staging D-37 untuk penerapan ini; staging belum ada). Prasyarat `202611160001` sampai `0004` sudah ada di produksi. Awalnya ditunda sampai semua kode final atas permintaan pemilik; urutan dan prasyarat ada di [MIGRATIONS](MIGRATIONS.md). Bukti perilaku baru lokal (PGlite dan test kontrak).
+
+### Persetujuan naskah PDP minat investasi (2026-11-21)
+
+Pemilik DPMPTSP membaca dan menyetujui naskah persetujuan PDP versi 1.1 untuk formulir minat investasi (kalimat kotak centang di `src/components/investasi/teks-pdp.ts` dan bagian 5 halaman `/kebijakan-privasi`): data tidak diteruskan ke pihak lain, retensi 365 hari. Penunjukan DPO masih menunggu keputusan pemilik; tinjauan DPO resmi menyusul setelah itu.
