@@ -89,7 +89,7 @@ Route multipart lama `POST /api/investment-docs/upload` sudah dihapus. Galat mem
 
 ## Hal belum pasti dan backlog
 
-1. `bersihkanRawLama` di `src/app/api/investment-docs/_logika/unggahan.ts` belum punya pemanggil. Objek mentah R2 yatim lebih dari 24 jam hanya bisa disapu manual; pembersih terjadwal belum ada.
+1. `bersihkanRawLama` di `src/app/api/investment-docs/_logika/unggahan.ts` belum punya pemanggil dari aplikasi. Sapu manual objek mentah R2 yatim lebih dari 24 jam sekarang lewat skrip `scripts/bersihkan-raw-investasi/bersihkan-raw-investasi.mjs` (dry-run bawaan; `--hapus` menghapus; hanya awalan `raw/` berpola sah; `doppler run --project lmh --config prd -- node ...`). Pembersih terjadwal belum ada (keputusan pemilik 2026-11-21: skrip manual).
 2. PNG yatim mungkin tertinggal bila render ber-lease basi menulis sesudah DELETE selesai (risiko kecil).
 3. `CopyObject`/ETag R2 yang nyata dan kinerja render PDF besar di Vercel belum diuji; baru tiruan dan lokal.
 4. Kontensi PostgreSQL nyata belum diuji; PGlite hanya satu koneksi, jadi hanya membuktikan transaksi dan urutan, bukan kunci antarsesi.
