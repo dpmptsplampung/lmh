@@ -1,5 +1,6 @@
 import { cocokMagicBytes } from '@/lib/storage/area';
 import { getObjectBytes, headObject } from '@/lib/storage/r2';
+import { logServerEvent } from '@/lib/observability/logger';
 
 export const MAKS_BYTE = 50 * 1024 * 1024;
 const MAKS_PIKSEL = 40_000_000;
@@ -25,7 +26,9 @@ export async function bukaPdf(bytes: Uint8Array) {
     const doc = await task.promise;
     if (await doc.getPermissions() !== null || doc.numPages < 1 || doc.numPages > 50) throw new Error('INPUT_TIDAK_VALID');
     return { doc, tutup: () => task.destroy() };
-  } catch {
+  } catch (error) {
+    // Jangan telan galat pembuka: tanpa log ini kegagalan pdfjs di server tampak sebagai berkas tidak valid.
+    logServerEvent('warn', { operation: 'investasi.pdf.buka_gagal', error });
     await task.destroy();
     throw new Error('INPUT_TIDAK_VALID');
   }
