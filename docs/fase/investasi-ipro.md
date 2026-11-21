@@ -103,3 +103,8 @@ Route multipart lama `POST /api/investment-docs/upload` sudah dihapus. Galat mem
 ## Rujukan
 
 [Spec](../superpowers/specs/2026-11-19-ipro-ptsp-design.md), [MIGRATIONS](../MIGRATIONS.md), [KEBIJAKAN_PDP](../KEBIJAKAN_PDP.md), [DECISION_LOG](../DECISION_LOG.md), [matriks RBAC](../analysis/04-RBAC-MATRIX.md) bagian 13, [Storage R2](storage-r2.md), [ADR 0004](../adr/0004-lingkup-peran-petugas-layanan-fo-admin.md) (peran Petugas Layanan, FO, admin).
+
+## Pengisian awal kartu FOILA (2026-11-21)
+
+Tujuh kartu FOILA diisi dari API publik FOILA lewat `scripts/isi-kartu-foila/isi-kartu-foila.mjs` (dry-run bawaan, `--terapkan` menulis, idempoten per `sumber_url`). Semuanya berstatus **draf**, masing-masing dengan satu gambar utama (thumbnail resmi FOILA diolah seperti `olahGambarIpro` dan diunggah ke R2 publik kita, tanpa hotlink); admin meninjau di `/admin/ipro` lalu menerbitkan. Pemetaan sektor per proyek diputuskan pemilik dan tertulis di `scripts/isi-kartu-foila/lib.mjs`. Judul dan ringkasan memakai terjemahan Indonesia FOILA (ringkasan dipotong di batas kata sampai 600 karakter), versi Inggris disimpan di kolom `_en`. Nilai investasi dikosongkan karena FOILA mengisi 0 untuk semua proyek.
+
