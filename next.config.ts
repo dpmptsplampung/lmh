@@ -58,10 +58,27 @@ const contentSecurityPolicy = buildContentSecurityPolicy(process.env.NEXT_PUBLIC
 // deploymentId Vercel maksimal 32 karakter; SHA commit penuh (40) membuat build gagal.
 const buildId = (process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.NEXT_DEPLOYMENT_ID)?.slice(0, 12);
 
+/** Berkas runtime pdfjs yang dimuat dinamis (kanvas native, worker, font standar, cmap); hanya build linux-x64 glibc. */
+const PDF_BERKAS_RUNTIME = [
+  './node_modules/@napi-rs/canvas/**/*',
+  './node_modules/@napi-rs/canvas-linux-x64-gnu/**/*',
+  './node_modules/pdfjs-dist/legacy/build/**/*',
+  './node_modules/pdfjs-dist/standard_fonts/**/*',
+  './node_modules/pdfjs-dist/cmaps/**/*',
+  './node_modules/pdfjs-dist/iccs/**/*',
+  './node_modules/pdfjs-dist/wasm/**/*',
+];
+
 const nextConfig: NextConfig = {
   // Version skew: klien yang memegang build lama otomatis hard-navigate saat ID deploy berbeda.
   ...(buildId ? { deploymentId: buildId } : {}),
   env: { NEXT_PUBLIC_BUILD_ID: buildId ?? 'dev' },
+  // pdfjs-dist memuat @napi-rs/canvas (polyfill DOMMatrix/Path2D, kanvas render) lewat require dinamis yang tidak
+  // terlacak saat bundling; tanpa ini fungsi Vercel gagal membuka PDF (INPUT_TIDAK_VALID). Diverifikasi 2026-11-21.
+  outputFileTracingIncludes: {
+    '/api/investment-docs': PDF_BERKAS_RUNTIME,
+    '/api/investment-docs/**': PDF_BERKAS_RUNTIME,
+  },
   images: {
     remotePatterns: [
       {
