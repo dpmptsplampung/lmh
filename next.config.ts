@@ -75,6 +75,9 @@ const nextConfig: NextConfig = {
   env: { NEXT_PUBLIC_BUILD_ID: buildId ?? 'dev' },
   // pdfjs-dist memuat @napi-rs/canvas (polyfill DOMMatrix/Path2D, kanvas render) lewat require dinamis yang tidak
   // terlacak saat bundling; tanpa ini fungsi Vercel gagal membuka PDF (INPUT_TIDAK_VALID). Diverifikasi 2026-11-21.
+  // Turbopack membundel pdfjs-dist ke satu chunk sehingga pdf.worker.mjs dicari di .next/server/chunks dan tidak ada
+  // ("Setting up fake worker failed"). Sebagai paket eksternal, pdfjs dimuat dari node_modules pada lokasi aslinya.
+  serverExternalPackages: ['pdfjs-dist', '@napi-rs/canvas'],
   outputFileTracingIncludes: {
     '/api/investment-docs': PDF_BERKAS_RUNTIME,
     '/api/investment-docs/**': PDF_BERKAS_RUNTIME,
