@@ -12,7 +12,7 @@ export default function Error({
   return (
     <div
       style={{
-        minHeight: '70vh',
+        minHeight: '70dvh',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',

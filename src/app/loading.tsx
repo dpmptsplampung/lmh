@@ -2,7 +2,7 @@ export default function Loading() {
   return (
     <div
       style={{
-        minHeight: '40vh',
+        minHeight: '40dvh',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',

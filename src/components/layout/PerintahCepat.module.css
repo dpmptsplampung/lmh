@@ -5,7 +5,7 @@
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  padding: 12vh 16px 16px;
+  padding: 12svh 16px 16px;
   background: var(--surface-overlay, rgba(15, 23, 42, 0.45));
 }
 
@@ -14,7 +14,7 @@
   flex-direction: column;
   width: 100%;
   max-width: 560px;
-  max-height: min(70vh, 520px);
+  max-height: min(70svh, 520px);
   overflow: hidden;
   background: var(--bg-surface);
   border-radius: var(--radius-panel, 20px);
@@ -152,7 +152,7 @@
 
 @media (max-width: 640px) {
   .latar {
-    padding-top: 8vh;
+    padding-top: 8svh;
   }
 
   .bantu {

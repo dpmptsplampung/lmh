@@ -50,6 +50,8 @@ html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   scroll-behavior: smooth;
+  /* Sediakan lajur scrollbar tetap: membuka modal atau laci (overflow body = hidden) tidak menggeser halaman. */
+  scrollbar-gutter: stable;
 }
 
 body {
@@ -88,6 +90,12 @@ h1, h2, h3, h4, h5, h6 {
   font-weight: 700;
   line-height: 1.25;
   color: var(--text-primary);
+  text-wrap: balance;
+}
+
+/* Paragraf pendek-sedang: hindari satu kata yatim di baris terakhir. Bukan untuk sel tabel atau log chat panjang. */
+p, li, figcaption {
+  text-wrap: pretty;
 }
 
 h1 { font-size: var(--text-4xl); }
@@ -420,8 +428,11 @@ img, video {
   position: absolute;
   width: 1px;
   height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
   overflow: hidden;
-  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
   white-space: nowrap;
 }
 
@@ -729,9 +740,10 @@ img, video {
     scroll-behavior: auto;
   }
 
-  *,
-  *::before,
-  *::after {
+  /* Penanda muat (.spin/.spinner) tetap berputar: ia memberi tahu sistem masih bekerja, bukan hiasan. */
+  *:not(.spin, .spinner),
+  *:not(.spin, .spinner)::before,
+  *:not(.spin, .spinner)::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;

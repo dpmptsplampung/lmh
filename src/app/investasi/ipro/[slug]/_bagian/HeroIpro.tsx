@@ -24,7 +24,7 @@ export default function HeroIpro({ ipro, aksi }: Props) {
       <div className={styles.heroKisi}>
         <div className={styles.heroFoto}>
           {utama ? (
-            <Image src={utama.url} alt={utama.alt} width={utama.lebar} height={utama.tinggi} sizes="(max-width: 1024px) 100vw, 640px" unoptimized priority />
+            <Image src={utama.url} alt={utama.alt} width={utama.lebar} height={utama.tinggi} sizes="(max-width: 1024px) 100vw, 640px" unoptimized loading="eager" fetchPriority="high" />
           ) : (
             <span className={styles.heroKosong} aria-hidden="true"><Landmark size={56} strokeWidth={1.5} /></span>
           )}

@@ -43,6 +43,7 @@ import {
 import { useKameraPemindai } from '@/lib/hooks/useKameraPemindai';
 import { muatPratinjauReservasi } from '@/lib/fo/akses-antrean';
 import styles from './scan-panel.module.css';
+import { enterTanpaKomposisi } from '@/components/ui/interaksi';
 
 // Pratinjau reservasi (kontrak §6.4). Semua kolom dibaca dari `kunjungan`: sejak WP-24 (migrasi 202610140007) reservasi
 // lama sudah dilengkapi/dibuatkan baris `kunjungan`, dan tabel `visit` hanya arsip baca-saja (tidak dibaca lagi di sini).
@@ -213,7 +214,7 @@ export default function ScanPanel() {
         inputManualRef.current?.focus();
         fokusInputRef.current = false;
       }
-    } else if (scanState !== 'mencari' && !document.querySelector('[role="dialog"][aria-modal="true"]')) {
+    } else if (scanState !== 'mencari' && !document.querySelector('dialog[open], [role="dialog"][aria-modal="true"]')) {
       // Jangan merebut fokus dari dialog yang sedang terbuka (mis. pembacaan ulang di belakang dialog tolak).
       hasilRef.current?.focus();
     }
@@ -345,7 +346,7 @@ export default function ScanPanel() {
                     placeholder="Tempel token QR di sini…"
                     value={manualToken}
                     onChange={(e) => setManualToken(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') void handleManualLookup(); }}
+                    onKeyDown={(e) => { if (enterTanpaKomposisi(e)) void handleManualLookup(); }}
                     autoComplete="off"
                   />
                   <Tombol

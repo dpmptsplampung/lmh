@@ -13,7 +13,7 @@ export default function KerangkaInvestasi({ aktif, children }: { aktif: 'hub' | 
       <header className={styles.kepala}>
         <div className={styles.kepalaIsi}>
           <Link href="/" className={styles.merek} aria-label="Lampung Maju Hub, ke beranda">
-            <Image src="/logo.png" alt="" width={60} height={48} className={styles.logo} priority />
+            <Image src="/logo.png" alt="" width={60} height={48} className={styles.logo} />
             <span className={styles.merekTeks} aria-hidden="true">Lampung Maju Hub</span>
           </Link>
           <nav aria-label="Navigasi utama" className={styles.nav}>

@@ -19,6 +19,7 @@ import {
   type IkmRow,
 } from '@/lib/ikm';
 import styles from './IkmPanel.module.css';
+import { BISA_DIFOKUS } from '@/components/ui/fokus';
 
 const CHART_COLORS = ['var(--chart-1, #6366f1)', 'var(--chart-2, #10b981)', 'var(--chart-3, #f59e0b)', 'var(--chart-4, #ef4444)', 'var(--chart-5, #3b82f6)', 'var(--chart-6, #8b5cf6)', 'var(--chart-1, #ec4899)', 'var(--chart-2, #14b8a6)', 'var(--chart-3, #f97316)'];
 
@@ -105,15 +106,16 @@ export default function IkmPanel({ rows, periodLabel, mode }: IkmPanelProps) {
         </div>
       </div>
 
-      <div className={styles.tableSection}>
+      <div className={styles.tableSection} role="region" aria-label="Tabel IKM per Layanan" {...BISA_DIFOKUS}>
         {mode === 'admin' && <h3 className={styles.tableTitle}>Tabel IKM per Layanan</h3>}
         <table className={styles.table}>
+          <caption className="sr-only">Tabel IKM per Layanan</caption>
           <thead>
             <tr>
-              <th>Layanan</th>
-              <th>IKM</th>
-              <th>Responden</th>
-              <th>Predikat</th>
+              <th scope="col">Layanan</th>
+              <th scope="col">IKM</th>
+              <th scope="col">Responden</th>
+              <th scope="col">Predikat</th>
             </tr>
           </thead>
           <tbody>

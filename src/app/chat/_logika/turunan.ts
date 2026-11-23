@@ -12,7 +12,7 @@ import type { StatusSesi, Tampilan } from './mesinChat';
  */
 export function urutkanFaq(daftar: readonly FaqChat[], layananId: string): FaqChat[] {
   const kelompok = (f: FaqChat) => (f.layanan_id === layananId ? 0 : 1);
-  return [...daftar].sort((a, b) => kelompok(a) - kelompok(b) || (a.urutan ?? 0) - (b.urutan ?? 0));
+  return daftar.toSorted((a, b) => kelompok(a) - kelompok(b) || (a.urutan ?? 0) - (b.urutan ?? 0));
 }
 
 /** Layanan dari parameter ?layanan=<id|nama> (tautan popup etalase dan UMKM): id persis, nama persis, lalu nama memuat. */
@@ -110,7 +110,7 @@ export const hanyaBaca = (p: {
 
 /** Bubble milik pengunjung terakhir -> status "Terkirim" (hanya bila sudah tersimpan). */
 export const idPesanPengunjungTerakhir = (pesan: readonly ChatMsg[]): string | undefined =>
-  [...pesan].reverse().find((m) => m.pengirim === 'pengunjung')?.id;
+  pesan.findLast((m) => m.pengirim === 'pengunjung')?.id;
 
 export function placeholderPesan(p: { daring: boolean; hanyaBaca: boolean; sesiId: string | null; status: StatusSesi }): string {
   if (!p.daring) return 'Anda sedang offline...';

@@ -1,7 +1,7 @@
 /* I3: SKM public transparency page */
 
 .tPage {
-  min-height: 100vh;
+  min-height: 100dvh;
   background: linear-gradient(180deg, var(--color-primary-50) 0%, var(--bg-surface) 50%);
   padding: var(--space-8) var(--space-4);
   animation: fadeIn 0.4s ease-out;

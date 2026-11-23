@@ -9,6 +9,7 @@ import { Search } from 'lucide-react';
 import { buildNavTree, canAccessAdminPath, type AdminRole, type AdminNavContext } from '@/lib/admin-nav';
 import styles from './PerintahCepat.module.css';
 import { usePemeriksaUmkm } from '@/components/admin/umkm-tugas/PemeriksaContext';
+import { sedangMenyusun } from '@/components/ui/interaksi';
 
 export interface Perintah {
   id: string;
@@ -165,6 +166,7 @@ export default function PerintahCepat({ role, pembukaRef, buka: bukaLuar, onUbah
         setAktif(Math.max(0, hasil.length - 1));
         break;
       case 'Enter': {
+        if (sedangMenyusun(e)) break;
         e.preventDefault();
         // Klik tautan aktif: navigasi klien Next berjalan lewat Link.
         document.getElementById(`${idDaftar}-${aktifAman}`)?.click();

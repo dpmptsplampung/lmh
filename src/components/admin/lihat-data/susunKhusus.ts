@@ -66,7 +66,7 @@ export function susunJawabanFinal(khusus: readonly JawabanFinalApi[]): TahapKhus
 
 /** Draf: satu baris per definisi (terlihat dahulu, urut); isian tersembunyi hanya bila ada jawabannya. */
 export function susunDraf(draf: DrafApi, definisi: readonly DefinisiKhususApi[]): BarisKhusus[] {
-  const urut = [...definisi].sort((a, b) => Number(a.tersembunyi) - Number(b.tersembunyi) || a.urut - b.urut);
+  const urut = definisi.toSorted((a, b) => Number(a.tersembunyi) - Number(b.tersembunyi) || a.urut - b.urut);
   const baris: BarisKhusus[] = [];
   for (const d of urut) {
     const nilai = draf.jawaban?.[d.id];

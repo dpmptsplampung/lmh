@@ -1,5 +1,5 @@
 .galleryPage {
-  min-height: 100vh;
+  min-height: 100dvh;
   background: #0b0f19;
   color: white;
   user-select: none;
@@ -109,7 +109,7 @@
   flex-direction: column;
   justify-content: space-between;
   gap: var(--space-4);
-  transition: all var(--transition-base);
+  transition: transform var(--transition-base), border-color var(--transition-base), box-shadow var(--transition-base);
   cursor: pointer;
   position: relative;
   overflow: hidden;
@@ -174,7 +174,7 @@
   flex-direction: column;
   justify-content: space-between;
   gap: var(--space-4);
-  transition: all var(--transition-base);
+  transition: transform var(--transition-base), border-color var(--transition-base), box-shadow var(--transition-base);
 }
 
 .foilaCard:hover {
@@ -225,7 +225,7 @@
   font-weight: 700;
   font-size: var(--text-sm);
   text-decoration: none;
-  transition: all var(--transition-fast);
+  transition: background-color var(--transition-fast), transform var(--transition-fast);
 }
 
 .foilaLinkBtn:hover {
@@ -249,7 +249,7 @@
   flex-direction: column;
   justify-content: space-between;
   gap: var(--space-4);
-  transition: all var(--transition-base);
+  transition: transform var(--transition-base), border-color var(--transition-base), box-shadow var(--transition-base);
 }
 
 .iproCard:hover {
@@ -314,7 +314,7 @@
   font-weight: 700;
   font-size: var(--text-sm);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .leadCtaBtn:hover {

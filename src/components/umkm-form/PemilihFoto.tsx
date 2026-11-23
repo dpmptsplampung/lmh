@@ -7,6 +7,7 @@ import FotoUmkm from '@/components/umkm/FotoUmkm';
 import type { FotoInput } from '@/lib/umkm-katalog/schemas';
 import { validasiUrlFoto } from '@/lib/umkm/foto-url';
 import styles from './umkm-form.module.css';
+import { sedangMenyusun } from '@/components/ui/interaksi';
 
 export type PratinjauFoto = { src?: string | null; tersembunyi?: boolean };
 
@@ -121,7 +122,7 @@ export default function PemilihFoto({
           <Field label="Tambah tautan foto HTTPS">
             <input type="url" value={tautan} maxLength={500} disabled={mati}
               onChange={(e) => setTautan(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); tambahTautan(); } }} />
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (!sedangMenyusun(e)) tambahTautan(); } }} />
           </Field>
           <Tombol varian="sekunder" disabled={mati || !tautan.trim()} onClick={tambahTautan}>Tambah tautan</Tombol>
         </div>}

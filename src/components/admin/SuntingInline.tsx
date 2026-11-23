@@ -11,6 +11,7 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { Pencil, Plus } from 'lucide-react';
 import Tombol from '@/components/ui/Tombol';
 import styles from './SuntingInline.module.css';
+import { sedangMenyusun } from '@/components/ui/interaksi';
 
 const kapitalAwal = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
@@ -101,6 +102,7 @@ export function SelTeksInline({ nilai, label, onSimpan, validasi, maxLength, tek
 
   const tombolKey = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
+      if (sedangMenyusun(e)) return;
       e.preventDefault();
       void simpan(false);
     } else if (e.key === 'Escape') {
@@ -209,6 +211,7 @@ export function BarisTambah({ kolom, bidang, labelTombol = 'Tambah', ariaTombol,
 
   const enter = (e: KeyboardEvent<HTMLElement>) => {
     if (e.key === 'Enter') {
+      if (sedangMenyusun(e)) return;
       e.preventDefault();
       void kirim();
     }

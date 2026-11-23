@@ -7,6 +7,7 @@ import { WARNA_BESARAN, WARNA_GRID, WARNA_SKALA_SPAK, fmt1, fmtPersen } from './
 import KartuKpi from './KartuKpi';
 import TrenGrafik from './TrenGrafik';
 import styles from './HasilGlobal.module.css';
+import { BISA_DIFOKUS } from '@/components/ui/fokus';
 
 export interface ResponseRateGlobal {
   diundang: number;
@@ -97,8 +98,9 @@ export default function PanelSpakGlobal({ data, responseRate, periodeLabel }: Pr
 
           <section className={styles.kartu} aria-label="Tabel SPAK per pernyataan">
             <h3 className={styles.judulKartu}>Tabel SPAK per pernyataan</h3>
-            <div className={styles.tabelBungkus}>
+            <div className={styles.tabelBungkus} role="region" aria-label="Tabel SPAK per pernyataan" {...BISA_DIFOKUS}>
               <table className={styles.tabel}>
+                <caption className="sr-only">Tabel SPAK per pernyataan</caption>
                 <thead>
                   <tr>
                     <th scope="col">Pernyataan</th>

@@ -49,6 +49,7 @@ import { muatAsalSering } from '@/lib/fo/pengunjung-lama';
 import { periksaKetersediaan, type PengunjungTerpilih } from '@/lib/fo/cari-pengunjung';
 import InputSaranPengunjung from './InputSaranPengunjung';
 import styles from './walkin-panel.module.css';
+import { enterTanpaKomposisi, perilakuGulir } from '@/components/ui/interaksi';
 
 interface LayananOpsi {
   id: string;
@@ -63,7 +64,7 @@ function fokusField(k: keyof DataWalkin) {
   const el = document.getElementById(idField(k));
   if (!el) return;
   el.focus();
-  el.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+  el.scrollIntoView?.({ block: 'center', behavior: perilakuGulir() });
 }
 
 /** Satu isian: label + ikon status + kontrol + petunjuk + galat, dengan id yang saling terhubung (aria-describedby). */
@@ -204,7 +205,7 @@ export default function WalkinPanel({ fokusAwal = true }: WalkinPanelProps) {
       return;
     }
     if (!el) return;
-    el.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+    el.scrollIntoView?.({ block: 'center', behavior: perilakuGulir() });
     el.focus({ preventScroll: true });
   }, [umpan]);
 
@@ -228,7 +229,7 @@ export default function WalkinPanel({ fokusAwal = true }: WalkinPanelProps) {
   };
 
   const enterPindah = (k: keyof DataWalkin) => (e: React.KeyboardEvent) => {
-    if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+    if (!enterTanpaKomposisi(e)) return;
     e.preventDefault();
     const berikut = URUTAN_FIELD_WALKIN[URUTAN_FIELD_WALKIN.indexOf(k) + 1];
     if (berikut) fokusField(berikut);

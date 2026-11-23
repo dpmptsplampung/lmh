@@ -198,7 +198,8 @@ function CetakPesanPerilaku() {
                 <>
                   <p className={styles.catatan}><b>IKM {fmtIkm(ikm.ikm)}</b> — {ikm.mutuLabel} ({ikm.responden} responden)</p>
                   <table className={styles.tabel}>
-                    <thead><tr><th>Unsur</th><th className={styles.angka}>Jawaban</th><th className={styles.angka}>Rata-rata (1–4)</th><th className={styles.angka}>Nilai (25–100)</th><th>Grafik (0–100)</th></tr></thead>
+<caption className="sr-only">IKM per unsur</caption>
+                    <thead><tr><th scope="col">Unsur</th><th scope="col" className={styles.angka}>Jawaban</th><th scope="col" className={styles.angka}>Rata-rata (1–4)</th><th scope="col" className={styles.angka}>Nilai (25–100)</th><th scope="col">Grafik (0–100)</th></tr></thead>
                     <tbody>
                       {ikm.unsur.map((u) => (
                         <tr key={u.kunci}>
@@ -210,7 +211,7 @@ function CetakPesanPerilaku() {
                         </tr>
                       ))}
                       <tr>
-                        <th>Keseluruhan</th><th className={styles.angka}>{ikm.responden}</th><th />
+                        <th scope="row">Keseluruhan</th><th className={styles.angka}>{ikm.responden}</th><th />
                         <th className={styles.angka}>{fmtIkm(ikm.ikm)}</th><th><Batang nilai={ikm.ikm} /></th>
                       </tr>
                     </tbody>
@@ -229,10 +230,11 @@ function CetakPesanPerilaku() {
                     netral {fmtPersen(spak.persenNetral)}, tidak setuju {fmtPersen(spak.persenTidakSetuju)}.
                   </p>
                   <table className={styles.tabel}>
+<caption className="sr-only">SPAK per pernyataan</caption>
                     <thead>
                       <tr>
-                        <th>Pernyataan</th><th className={styles.angka}>Rata-rata</th><th className={styles.angka}>Indeks</th>
-                        <th className={styles.angka}>Setuju</th><th className={styles.angka}>Netral</th><th className={styles.angka}>Tidak setuju</th><th>Grafik setuju</th>
+                        <th scope="col">Pernyataan</th><th scope="col" className={styles.angka}>Rata-rata</th><th scope="col" className={styles.angka}>Indeks</th>
+                        <th scope="col" className={styles.angka}>Setuju</th><th scope="col" className={styles.angka}>Netral</th><th scope="col" className={styles.angka}>Tidak setuju</th><th scope="col">Grafik setuju</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -248,7 +250,7 @@ function CetakPesanPerilaku() {
                         </tr>
                       ))}
                       <tr>
-                        <th>Keseluruhan</th><th className={styles.angka}>{fmtAngka(spak.rata, 2)}</th><th className={styles.angka}>{fmtAngka(spak.indeks)}</th>
+                        <th scope="row">Keseluruhan</th><th className={styles.angka}>{fmtAngka(spak.rata, 2)}</th><th className={styles.angka}>{fmtAngka(spak.indeks)}</th>
                         <th className={styles.angka}>{fmtPersen(spak.persenSetuju)}</th><th className={styles.angka}>{fmtPersen(spak.persenNetral)}</th>
                         <th className={styles.angka}>{fmtPersen(spak.persenTidakSetuju)}</th><th><Batang nilai={spak.persenSetuju} /></th>
                       </tr>
@@ -263,7 +265,8 @@ function CetakPesanPerilaku() {
               <h2>4. Tingkat Pengisian Survei</h2>
               {rrGab.diundang === 0 ? <p className={styles.kosong}>Belum ada undangan pada periode ini.</p> : (
                 <table className={styles.tabel}>
-                  <thead><tr><th>Diundang</th><th className={styles.angka}>Mengisi</th><th className={styles.angka}>Persen</th><th>Grafik</th></tr></thead>
+<caption className="sr-only">Tingkat pengisian survei</caption>
+                  <thead><tr><th scope="col">Diundang</th><th scope="col" className={styles.angka}>Mengisi</th><th scope="col" className={styles.angka}>Persen</th><th scope="col">Grafik</th></tr></thead>
                   <tbody>
                     <tr>
                       <td>{rrGab.diundang}</td><td className={styles.angka}>{rrGab.mengisi}</td>
@@ -279,11 +282,12 @@ function CetakPesanPerilaku() {
               {pengaduanBelum ? <CatatanKeadaan jenis="menunggu-migrasi">Data pengaduan belum tersedia (pembaruan basis data belum diterapkan); angka pengaduan tidak dapat dicetak.</CatatanKeadaan>
                 : totalPengaduan === 0 ? <p className={styles.kosong}>Tidak ada pengaduan pada periode ini.</p> : (
                 <table className={styles.tabel}>
-                  <thead><tr><th>Kelompok</th><th>Rincian</th><th className={styles.angka}>Jumlah</th></tr></thead>
+<caption className="sr-only">Pengaduan per kelompok</caption>
+                  <thead><tr><th scope="col">Kelompok</th><th scope="col">Rincian</th><th scope="col" className={styles.angka}>Jumlah</th></tr></thead>
                   <tbody>
                     {Object.entries(perStatus).map(([k, v]) => <tr key={`s-${k}`}><td>Status</td><td>{STATUS_PENGADUAN[k] ?? k}</td><td className={styles.angka}>{v}</td></tr>)}
                     {Object.entries(perSumber).map(([k, v]) => <tr key={`m-${k}`}><td>Sumber</td><td>{SUMBER[k] ?? k}</td><td className={styles.angka}>{v}</td></tr>)}
-                    <tr><th colSpan={2}>Total</th><th className={styles.angka}>{totalPengaduan}</th></tr>
+                    <tr><th colSpan={2} scope="row">Total</th><th className={styles.angka}>{totalPengaduan}</th></tr>
                   </tbody>
                 </table>
               )}

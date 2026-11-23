@@ -16,7 +16,7 @@ interface SegmenSkmProps {
 }
 
 // Tampil dari kiri ke kanan: Kurang (1) ... Sangat Baik (4), searah dengan skala SPAK (buruk di kiri, baik di kanan).
-const OPSI = [...SKALA_SKM].sort((a, b) => a.nilai - b.nilai);
+const OPSI = SKALA_SKM.toSorted((a, b) => a.nilai - b.nilai);
 const URUTAN = OPSI.map((s) => s.nilai);
 // Ikon wajah hanya penguat visual (aria-hidden); arti tetap dari label teks, tidak dari warna atau ikon saja.
 const IKON: Record<number, LucideIcon> = { 4: Laugh, 3: Smile, 2: Meh, 1: Frown };

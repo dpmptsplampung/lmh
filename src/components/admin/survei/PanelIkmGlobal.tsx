@@ -9,6 +9,7 @@ import KartuKpi from './KartuKpi';
 import TrenGrafik from './TrenGrafik';
 import type { ResponseRateGlobal } from './PanelSpakGlobal';
 import styles from './HasilGlobal.module.css';
+import { BISA_DIFOKUS } from '@/components/ui/fokus';
 
 const MUTU = RENTANG_MUTU_IKM;
 
@@ -63,8 +64,9 @@ export default function PanelIkmGlobal({ data, responseRate, periodeLabel }: Pro
           <section className={styles.kartu} aria-label="Sebaran mutu pelayanan">
             <h3 className={styles.judulKartu}>Sebaran mutu pelayanan</h3>
             <p className={styles.subJudul}>Banyak responden menurut IKM masing-masing.</p>
-            <div className={styles.tabelBungkus}>
+            <div className={styles.tabelBungkus} role="region" aria-label="Sebaran mutu pelayanan" {...BISA_DIFOKUS}>
               <table className={styles.tabel}>
+                <caption className="sr-only">Sebaran mutu pelayanan</caption>
                 <thead>
                   <tr>
                     <th scope="col">Mutu</th>
@@ -91,8 +93,9 @@ export default function PanelIkmGlobal({ data, responseRate, periodeLabel }: Pro
 
           <section className={styles.kartu} aria-label="Tabel IKM per unsur">
             <h3 className={styles.judulKartu}>Tabel IKM per unsur</h3>
-            <div className={styles.tabelBungkus}>
+            <div className={styles.tabelBungkus} role="region" aria-label="Tabel IKM per unsur" {...BISA_DIFOKUS}>
               <table className={styles.tabel}>
+                <caption className="sr-only">Tabel IKM per unsur</caption>
                 <thead>
                   <tr>
                     <th scope="col">Unsur</th>

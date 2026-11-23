@@ -1,7 +1,7 @@
 /* Halaman statis /kebijakan-privasi (Server Component). Gaya dipindah dari inline style; tampilan sama, hanya token. */
 
 .halaman {
-  min-height: 100vh;
+  min-height: 100dvh;
   background: var(--surface-secondary);
   padding: var(--space-8) var(--space-4);
 }

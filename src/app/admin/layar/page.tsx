@@ -32,6 +32,7 @@ import {
 import styles from './layar.module.css';
 import tokenStyles from './token.module.css';
 import { formatTokenTampilan, tokenBerupaAngka, tautanLayar } from './tokenTampilan';
+import { enterTanpaKomposisi } from '@/components/ui/interaksi';
 
 interface LayarToken {
   id: string;
@@ -386,7 +387,7 @@ export default function AdminLayarPage() {
         <Kartu judul="Tambah Layar Baru">
           <div className={styles.buatToken}>
             <Field label="Nama layar" className={styles.namaToken} wajib>
-              <input type="text" placeholder="Nama layar, misal: Layar Lobby Utama" value={namaLayar} onChange={e => setNamaLayar(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleBuat()} />
+              <input type="text" placeholder="Nama layar, misal: Layar Lobby Utama" value={namaLayar} onChange={e => setNamaLayar(e.target.value)} onKeyDown={e => { if (enterTanpaKomposisi(e)) handleBuat(); }} />
             </Field>
             <Tombol ikon={Plus} onClick={handleBuat} disabled={creating || !namaLayar.trim()} memuat={creating}>Buat Token</Tombol>
           </div>
