@@ -3,6 +3,7 @@
 import { X } from 'lucide-react';
 import { useEffect, useId, useRef, type FormEvent, type ReactNode, type MouseEvent as MouseEventReact } from 'react';
 import { useDialogFokus } from '@/components/admin/useDialogFokus';
+import { daftarkanInangToast } from '@/components/ui/inangToast';
 import { cn } from '@/lib/utils';
 import styles from './KerangkaModal.module.css';
 
@@ -79,6 +80,7 @@ export default function KerangkaModal({
   children,
 }: KerangkaModalProps) {
   const wadah = useRef<HTMLDialogElement>(null);
+  const inangToast = useRef<HTMLDivElement>(null);
   const idDasar = useId();
   const idJudul = `${idDasar}-judul`;
   const idDesk = `${idDasar}-desk`;
@@ -94,6 +96,12 @@ export default function KerangkaModal({
 
   // useDialogFokus membuka <dialog> dengan showModal() (setelah mencatat pemicu fokus) lalu memilih fokus awal.
   useDialogFokus(terbuka, wadah, () => mintaTutupRef.current());
+
+  // Toast harus tetap bisa diklik saat modal terbuka: daftarkan inang di dalam dialog (lihat inangToast.ts).
+  useEffect(() => {
+    if (!terbuka || !inangToast.current) return;
+    return daftarkanInangToast(inangToast.current);
+  }, [terbuka]);
 
   // Kunci gulir halaman selama terbuka; kembalikan nilai sebelumnya (bisa bertumpuk dengan laci).
   useEffect(() => {
@@ -185,6 +193,7 @@ export default function KerangkaModal({
         ) : (
           isi
         )}
+        <div ref={inangToast} className={styles.inangToast} data-toast-inang="" />
     </dialog>
   );
 }

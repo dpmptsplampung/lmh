@@ -66,8 +66,6 @@ body {
   min-height: 100vh;
   min-height: 100dvh;
   overflow-wrap: break-word;
-  /* clip (bukan hidden) agar position: sticky tetap jalan; mencegah geser horizontal */
-  overflow-x: clip;
 }
 
 /* Ambient color blobs — glassmorphism needs a vibrant backdrop to blur against.

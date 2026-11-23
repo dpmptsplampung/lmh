@@ -24,6 +24,11 @@
   overscroll-behavior: contain;
 }
 
+/* Inang toast: kosong dan tak memengaruhi tata letak; wadah toast (popover, top layer) dipindah ke sini saat modal terbuka. */
+.inangToast {
+  display: contents;
+}
+
 .kotak:focus {
   outline: none;
 }
@@ -164,10 +169,16 @@
 
 /* HP: panel samping menjadi lembar bawah. */
 @media (max-width: 640px) {
+  /* Layar penuh sungguhan: tinggi tetap sama dengan viewport (bukan setinggi isi), badan menggulir di dalamnya dan
+     kaki (aksi) menempel di dasar. Fallback vh untuk peramban tanpa dvh. */
   .kotakPenuhHp {
     width: 100%;
     max-width: 100%;
+    height: 100vh;
+    height: 100dvh;
+    max-height: 100vh;
     max-height: 100dvh;
+    margin: 0;
     border-radius: 0;
   }
 
