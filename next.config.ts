@@ -72,7 +72,6 @@ const PDF_BERKAS_RUNTIME = [
 const nextConfig: NextConfig = {
   // Version skew: klien yang memegang build lama otomatis hard-navigate saat ID deploy berbeda.
   ...(buildId ? { deploymentId: buildId } : {}),
-  env: { NEXT_PUBLIC_BUILD_ID: buildId ?? 'dev' },
   // pdfjs-dist memuat @napi-rs/canvas (polyfill DOMMatrix/Path2D, kanvas render) lewat require dinamis yang tidak
   // terlacak saat bundling; tanpa ini fungsi Vercel gagal membuka PDF (INPUT_TIDAK_VALID). Diverifikasi 2026-11-21.
   // Turbopack membundel pdfjs-dist ke satu chunk sehingga pdf.worker.mjs dicari di .next/server/chunks dan tidak ada
@@ -116,7 +115,16 @@ const nextConfig: NextConfig = {
         // 'unsafe-inline' untuk script/style sehingga transisi tidak memutus fungsi.
         { key: 'Content-Security-Policy', value: contentSecurityPolicy },
       ],
-    }];
+    }, ...['/sw.js', '/sw-push.js'].map((source) => ({
+      source,
+      headers: [
+        { key: 'Content-Type', value: 'application/javascript; charset=utf-8' },
+        { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' },
+      ],
+    })), ...['/', '/offline'].map((source) => ({
+      source,
+      headers: [{ key: 'X-LMH-Offline-Cache', value: 'public' }],
+    }))];
   },
 };
 

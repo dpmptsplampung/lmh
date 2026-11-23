@@ -39,10 +39,7 @@ export function slugify(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 }
 
-/** Tanggal hari ini menurut zona waktu kantor (WIB), format YYYY-MM-DD. */
-export function todayWIB(): string {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' });
-}
+export { todayWIB } from '@/lib/time';
 
 // ---------------------------------------------------------------------------
 // Rekap penanganan (Tahap D): label status/hasil dan helper hari WIB.

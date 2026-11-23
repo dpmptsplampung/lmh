@@ -1,133 +1,152 @@
-// sw.js — Unified service worker for LMH (I9: offline-first PWA + push)
-// Handles: precache app shell, runtime caching, background sync, web push.
-// Framework-agnostic (no build step) — served from /public.
-// Registered by root layout (offline) + /me/notifications (push).
+// Registrasi baru memakai /sw.js. /sw-push.js memuat worker ini jika masih
+// menjadi URL registrasi lama, sehingga scope dan langganan push tetap sama.
+if (self.location.pathname === '/sw.js') importScripts('/sw-push.js');
 
-// Versi cache diturunkan dari ?v=<build id> pada URL pendaftaran (ServiceWorkerRegister) sehingga
-// tiap rilis memakai cache baru dan cache rilis lama dibuang saat activate (anti version skew).
-function bacaVersiBuild() {
-  try {
-    const m = /[?&]v=([^&]+)/.exec((self.location && self.location.search) || '');
-    return m ? decodeURIComponent(m[1]) : 'v3';
-  } catch {
-    return 'v3';
-  }
-}
-const CACHE_VERSION = 'lmh-' + bacaVersiBuild();
-const PRECACHE_URLS = [
-  '/',
-  '/offline',
+const CACHE_VERSION = 'lmh-sw-v4';
+const CACHE_PUBLIC = CACHE_VERSION + '-public';
+const CACHE_STATIC = CACHE_VERSION + '-static';
+const MAX_STATIC_ENTRIES = 256;
+const MAX_PUBLIC_AGE_MS = 24 * 60 * 60 * 1000;
+const OFFLINE_URL = '/offline';
+const PUBLIC_PAGES = new Set(['/', OFFLINE_URL]);
+const PUBLIC_ASSETS = new Set([
   '/logo.png',
   '/manifest.json',
-];
+  '/manifest-icon-192.png',
+  '/manifest-icon-512.png',
+  '/manifest-icon-maskable-512.png',
+]);
 
-function isCacheableResponse(response) {
-  const cacheControl = response.headers.get('cache-control') || '';
-  return !cacheControl.toLowerCase().includes('no-store');
+function cacheDirectives(response) {
+  const control = response.headers.get('cache-control') || '';
+  return new Set(control.toLowerCase().split(',').map((entry) => entry.split('=')[0].trim()));
+}
+
+async function saveResponse(cacheName, request, response) {
+  if (response.status !== 200 || response.type !== 'basic' || response.redirected) return;
+
+  const directives = cacheDirectives(response);
+  if (['no-store', 'no-cache', 'private'].some((directive) => directives.has(directive))) return;
+  if (/\b(cookie|authorization)\b|\*/i.test(response.headers.get('vary') || '')) return;
+
+  const path = new URL(request.url).pathname;
+  if (PUBLIC_PAGES.has(path)) {
+    if (response.headers.get('x-lmh-offline-cache') !== 'public') return;
+    if (!response.headers.get('content-type')?.startsWith('text/html')) return;
+  } else {
+    if (!directives.has('public')) return;
+    if (cacheName === CACHE_STATIC && !directives.has('immutable')) return;
+  }
+
+  // Klon sebelum await agar respons asli bisa mulai dikirim ke halaman.
+  const copy = response.clone();
+  const cache = await caches.open(cacheName);
+  await cache.put(request, copy);
+  if (cacheName === CACHE_STATIC) {
+    const entries = await cache.keys();
+    const excess = entries.length - MAX_STATIC_ENTRIES;
+    if (excess > 0) await Promise.all(entries.slice(0, excess).map((entry) => cache.delete(entry)));
+  }
+}
+
+function matchCache(cacheName, request) {
+  return caches.match(request, { cacheName }).catch(() => undefined);
+}
+
+function offlineRequest() {
+  return new Request(new URL(OFFLINE_URL, self.location.origin), {
+    credentials: 'omit',
+    headers: { Accept: 'text/html' },
+  });
+}
+
+async function offlineFallback() {
+  const cached = await matchCache(CACHE_PUBLIC, offlineRequest());
+  return cached || new Response(
+    '<!doctype html><html lang="id"><meta charset="utf-8"><title>Offline | LMH</title>' +
+    '<h1>Anda Sedang Offline</h1><p>Periksa koneksi internet, lalu coba lagi.</p>' +
+    '<a href="/">Kembali ke Beranda</a></html>',
+    { headers: { 'Content-Type': 'text/html; charset=utf-8' } },
+  );
 }
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_VERSION).then((cache) => cache.addAll(PRECACHE_URLS)).then(() => self.skipWaiting()),
-  );
+  const requests = [
+    offlineRequest(),
+    ...Array.from(PUBLIC_ASSETS, (path) => new Request(new URL(path, self.location.origin), { credentials: 'omit' })),
+  ];
+  // Kegagalan cache atau jaringan tetap memberi fallback HTML dan menjaga push/sync aktif.
+  event.waitUntil(Promise.allSettled(requests.map(async (request) => {
+    const response = await fetch(request);
+    await saveResponse(CACHE_PUBLIC, request, response);
+  })).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_VERSION).map((k) => caches.delete(k))),
-    ).then(() => self.clients.claim()),
-  );
+  event.waitUntil(caches.keys().then((keys) => Promise.all(
+    keys.filter((key) => key.startsWith('lmh-') && key !== CACHE_PUBLIC && key !== CACHE_STATIC)
+      .map((key) => caches.delete(key)),
+  )).catch(() => undefined).then(() => self.clients.claim()));
 });
 
-// Helper: network-first with cache fallback (for pages)
-async function networkFirst(request) {
-  const cache = await caches.open(CACHE_VERSION);
-  try {
-    const fresh = await fetch(request);
-    if (fresh && fresh.ok && fresh.type === 'basic' && isCacheableResponse(fresh)) {
-      cache.put(request, fresh.clone());
+function respondWithCache(event, cacheName) {
+  const request = event.request;
+  const isStatic = cacheName === CACHE_STATIC;
+  const result = (async () => {
+    if (isStatic) {
+      const cached = await matchCache(cacheName, request);
+      if (cached) return { response: cached };
     }
-    return fresh;
-  } catch (err) {
-    const cached = await cache.match(request);
-    if (cached) return cached;
-    const offline = await cache.match('/offline');
-    if (offline) return offline;
-    throw err;
-  }
-}
+    const response = await fetch(request);
+    const write = saveResponse(cacheName, request, response);
+    return { response, write };
+  })();
 
-// Helper: cache-first (for static assets)
-async function cacheFirst(request) {
-  const cache = await caches.open(CACHE_VERSION);
-  const cached = await cache.match(request);
-  if (cached) return cached;
-  try {
-    const fresh = await fetch(request);
-    if (fresh && fresh.ok && isCacheableResponse(fresh)) {
-      cache.put(request, fresh.clone());
-    }
-    return fresh;
-  } catch (err) {
-    throw err;
-  }
+  event.waitUntil(result.then(({ write }) => write).catch(() => undefined));
+  event.respondWith(result.then(({ response }) => response).catch(async (error) => {
+    if (isStatic) throw error;
+    const cached = await matchCache(cacheName, request);
+    const age = Date.now() - Date.parse(cached?.headers.get('date') || '');
+    if (cached && age <= MAX_PUBLIC_AGE_MS) return cached;
+    if (request.mode === 'navigate') return offlineFallback();
+    throw error;
+  }));
 }
 
 self.addEventListener('fetch', (event) => {
-  const req = event.request;
-  if (req.method !== 'GET') return;
+  const request = event.request;
+  if (request.method !== 'GET') return;
 
-  const url = new URL(req.url);
-
-  // Skip cross-origin requests (e.g. Supabase, Google Fonts) — let them go to network.
-  if (url.origin !== self.location.origin) return;
-
-  // Health probes must always reach the runtime and must never use offline data.
-  if (url.pathname.startsWith('/api/health/')) return;
-
-  // API dinamis (antrean, rekap, pengaduan, dsb.) tidak boleh tersaji dari
-  // cache stale-while-revalidate — data lama membuat petugas melihat antrean beku.
-  if (url.pathname.startsWith('/api/')) return;
-
-  // Permintaan RSC/payload navigasi Next (fetch klien, bukan navigasi dokumen) tidak boleh dari
-  // cache: payload lama merujuk chunk build lama -> "module factory is not available".
+  const url = new URL(request.url);
+  // API (termasuk health) dan navigasi RSC selalu melewati cache worker.
+  if (url.origin !== self.location.origin || url.pathname === '/api' || url.pathname.startsWith('/api/')) return;
   if (
-    req.headers.get('rsc') ||
-    req.headers.get('next-router-state-tree') ||
-    req.headers.get('next-router-prefetch') ||
+    request.headers.has('rsc') ||
+    request.headers.has('next-router-state-tree') ||
+    request.headers.has('next-router-prefetch') ||
+    request.headers.has('next-router-segment-prefetch') ||
     url.searchParams.has('_rsc') ||
     url.pathname.startsWith('/_next/data/')
-  ) {
-    return;
+  ) return;
+
+  if (!request.headers.has('authorization')) {
+    if (url.pathname.startsWith('/_next/static/')) {
+      respondWithCache(event, CACHE_STATIC);
+      return;
+    }
+    if (!url.search && (PUBLIC_ASSETS.has(url.pathname) ||
+        (request.mode === 'navigate' && PUBLIC_PAGES.has(url.pathname)))) {
+      respondWithCache(event, CACHE_PUBLIC);
+      return;
+    }
   }
 
-  // Static assets: cache-first
-  if (url.pathname.startsWith('/_next/static/') || url.pathname === '/logo.png' || url.pathname === '/manifest.json') {
-    event.respondWith(cacheFirst(req));
-    return;
+  // Halaman akun, staf, dan rute lain hanya mendapat fallback umum saat jaringan putus.
+  if (request.mode === 'navigate') {
+    const protectedRoute = /^\/(admin|petugas|me)(\/|$)/.test(url.pathname);
+    const network = protectedRoute ? fetch(request, { cache: 'no-store' }) : fetch(request);
+    event.respondWith(network.catch(offlineFallback));
   }
-
-  // Navigation requests (pages): network-first with offline fallback
-  if (req.mode === 'navigate') {
-    event.respondWith(networkFirst(req));
-    return;
-  }
-
-  // Other same-origin GETs: stale-while-revalidate (best effort)
-  event.respondWith(
-    (async () => {
-      const cache = await caches.open(CACHE_VERSION);
-      const cached = await cache.match(req);
-      const network = fetch(req)
-        .then((fresh) => {
-          if (fresh && fresh.ok && isCacheableResponse(fresh)) cache.put(req, fresh.clone());
-          return fresh;
-        })
-        .catch(() => cached);
-      return cached || network;
-    })(),
-  );
 });
 
 // ============================================================
@@ -173,43 +192,3 @@ async function replayQueueFromIDB() {
   const hasil = await Promise.all(clients.map(askClientToReplay));
   if (!hasil.some(Boolean)) throw new Error('replay: tidak ada konfirmasi dari halaman');
 }
-
-// ============================================================
-// Push notifications (copied from sw-push.js — I5)
-// ============================================================
-self.addEventListener('push', (event) => {
-  let data = { title: 'Notifikasi DPMPTSP Lampung', body: '' };
-  try {
-    if (event.data) {
-      data = event.data.json();
-    }
-  } catch {
-    data.body = event.data ? event.data.text() : '';
-  }
-  event.waitUntil(
-    self.registration.showNotification(data.title || 'Notifikasi DPMPTSP Lampung', {
-      body: data.body || '',
-      icon: '/logo.png',
-      badge: '/logo.png',
-      data: data.payload || {},
-    }),
-  );
-});
-
-self.addEventListener('notificationclick', (event) => {
-  event.notification.close();
-  const target = (event.notification.data && event.notification.data.url) || '/me';
-  event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      for (const client of clientList) {
-        if (client.url.includes(target) && 'focus' in client) {
-          return client.focus();
-        }
-      }
-      if (self.clients.openWindow) {
-        return self.clients.openWindow(target);
-      }
-      return null;
-    }),
-  );
-});

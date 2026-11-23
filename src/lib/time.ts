@@ -11,10 +11,11 @@
 
 const TIMEZONE = 'Asia/Jakarta';
 
-// Formatter tanggal 'YYYY-MM-DD' pada zona Asia/Jakarta.
-// 'en-CA' menghasilkan format ISO (YYYY-MM-DD) secara konsisten.
-const dateFormatter = new Intl.DateTimeFormat('en-CA', {
+// Komponen tanggal disusun sendiri agar separator dan urutan tidak bergantung locale.
+const dateFormatter = new Intl.DateTimeFormat(undefined, {
   timeZone: TIMEZONE,
+  calendar: 'iso8601',
+  numberingSystem: 'latn',
   year: 'numeric',
   month: '2-digit',
   day: '2-digit',
@@ -25,14 +26,18 @@ const dateFormatter = new Intl.DateTimeFormat('en-CA', {
  * Aman dipakai untuk filter tanggal, penomoran antrean, batas reservasi, dll.
  */
 export function todayWIB(): string {
-  return dateFormatter.format(new Date());
+  return toWIBDateString(new Date());
 }
 
 /**
  * Konversi sebuah Date ke string tanggal 'YYYY-MM-DD' pada zona Asia/Jakarta.
  */
 export function toWIBDateString(date: Date): string {
-  return dateFormatter.format(date);
+  const parts = dateFormatter.formatToParts(date);
+  const year = parts.find((part) => part.type === 'year')!.value.padStart(4, '0');
+  const month = parts.find((part) => part.type === 'month')!.value;
+  const day = parts.find((part) => part.type === 'day')!.value;
+  return `${year}-${month}-${day}`;
 }
 
 /**
@@ -44,7 +49,8 @@ export function addDaysWIB(days: number, from: Date = new Date()): string {
   const base = toWIBDateString(from); // 'YYYY-MM-DD'
   const [y, m, d] = base.split('-').map((v) => parseInt(v, 10));
   // Gunakan UTC midday agar tidak terkena pergeseran DST (WIB tidak punya DST).
-  const shifted = new Date(Date.UTC(y, m - 1, d + days, 12));
+  const shifted = new Date(Date.UTC(1970, 0, 1, 12));
+  shifted.setUTCFullYear(y, m - 1, d + days);
   return toWIBDateString(shifted);
 }
 
@@ -76,5 +82,5 @@ export function menitWIB(date: Date = new Date()): number {
  */
 export function capWaktuWIB(date: Date = new Date()): string {
   const jam = jamFormatter.format(date);
-  return `${dateFormatter.format(date)} ${jam} WIB`;
+  return `${toWIBDateString(date)} ${jam} WIB`;
 }

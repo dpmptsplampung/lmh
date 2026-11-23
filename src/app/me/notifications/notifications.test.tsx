@@ -194,6 +194,10 @@ describe('I5 /me/notifications page — subscribe uses upsert (23505 fix)', () =
     await waitFor(() => {
       expect(mock._upsertMock).toHaveBeenCalledTimes(1);
     });
+    expect(registerMock).toHaveBeenCalledExactlyOnceWith('/sw.js', {
+      scope: '/',
+      updateViaCache: 'none',
+    });
     const [payload, options] = mock._upsertMock.mock.calls[0];
     expect(payload.user_id).toBe('user-1');
     expect(payload.endpoint).toBe('https://fcm.googleapis.com/fcm/send/abc-123');
@@ -204,6 +208,24 @@ describe('I5 /me/notifications page — subscribe uses upsert (23505 fix)', () =
     await waitFor(() => {
       expect(screen.getByText(/Notifikasi push diaktifkan/i)).toBeInTheDocument();
     });
+  });
+
+  it('menampilkan kegagalan registrasi meski serviceWorker.ready belum selesai', async () => {
+    const mock = buildMockSupabase([]);
+    Object.defineProperty(navigator, 'serviceWorker', {
+      configurable: true,
+      value: {
+        register: vi.fn().mockRejectedValue(new Error('registrasi gagal')),
+        ready: new Promise(() => {}),
+      },
+    });
+
+    render(<NotificationsPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /Aktifkan notifikasi push/i }));
+
+    expect(await screen.findByText(/Notifikasi push belum siap/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Aktifkan notifikasi push/i })).toBeEnabled();
+    expect(mock._upsertMock).not.toHaveBeenCalled();
   });
 });
 

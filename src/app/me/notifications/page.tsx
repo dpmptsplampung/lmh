@@ -5,6 +5,7 @@ import { Bell, BellOff, Check, Mail } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { MutasiError, mutasiBolehKosong, mutasiInsert } from '@/lib/supabase/mutate';
 import { formatTanggalWaktu } from '@/lib/utils';
+import { daftarkanServiceWorker } from '@/lib/offline/registrasi';
 import PageHeader from '@/components/layout/PageHeader';
 import Kartu from '@/components/ui/Kartu';
 import Lencana, { type NadaLencana } from '@/components/ui/Lencana';
@@ -86,24 +87,19 @@ export default function NotificationsPage() {
     setPercobaan((n) => n + 1);
   };
 
-  useEffect(() => {
-    if (!pushSupported) return;
-    navigator.serviceWorker
-      .register('/sw.js')
-      .catch(() => {
-        // non-fatal; push toggle still surfaced but may fail on enable
-      });
-  }, [pushSupported]);
-
   const handleTogglePush = async () => {
     if (!user) return;
     if (!pushSupported) return;
     setBusy(true);
     setMessage(null);
     try {
+      const reg = await daftarkanServiceWorker().catch(() => null);
+      if (!reg) {
+        setMessage('Notifikasi push belum siap. Periksa koneksi internet, lalu coba lagi.');
+        return;
+      }
       const supabase = createClient();
       if (!pushEnabled) {
-        const reg = await navigator.serviceWorker.ready;
         const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
         if (!publicKey) {
           setMessage('VAPID key belum dikonfigurasi.');
@@ -154,7 +150,6 @@ export default function NotificationsPage() {
         setPushEnabled(true);
         setMessage('Notifikasi push diaktifkan.');
       } else {
-        const reg = await navigator.serviceWorker.ready;
         const sub = await reg.pushManager.getSubscription();
         if (!sub) {
           // Browser/perangkat ini tidak punya langganan, jadi baris yang membuat toggle aktif milik perangkat
