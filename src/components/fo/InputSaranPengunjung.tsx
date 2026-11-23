@@ -21,6 +21,7 @@ import {
 import { formatTanggal } from '@/lib/utils';
 import { todayWIB } from '@/lib/time';
 import styles from './saran-pengunjung.module.css';
+import { enterTanpaKomposisi } from '@/components/ui/interaksi';
 
 export const JEDA_CARI_MS = 300;
 const JEDA_TUTUP_BLUR_MS = 150;
@@ -153,7 +154,7 @@ export default function InputSaranPengunjung({
         setSorot((i) => (e.key === 'ArrowDown' ? (i + 1) % saran.length : i <= 0 ? saran.length - 1 : i - 1));
         return;
       }
-      if (e.key === 'Enter' && buka && sorot >= 0 && saran[sorot]) {
+      if (enterTanpaKomposisi(e) && buka && sorot >= 0 && saran[sorot]) {
         e.preventDefault();
         void pilih(saran[sorot]);
         return;

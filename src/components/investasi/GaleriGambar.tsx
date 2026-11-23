@@ -43,7 +43,7 @@ export default function GaleriGambar({ gambar, judul }: { gambar: GambarGaleri[]
           {/* Panah papan ketik hanya berlaku di dalam dialog (isi dialog menerima fokus). */}
           {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions -- penangkap panah untuk anak yang dapat difokus */}
           <div className={styles.galeriBesar} onKeyDown={tekanTombol}>
-            <Image src={aktif.url} alt={aktif.alt} width={aktif.lebar} height={aktif.tinggi} sizes="(max-width: 1024px) 100vw, 900px" unoptimized priority />
+            <Image src={aktif.url} alt={aktif.alt} width={aktif.lebar} height={aktif.tinggi} sizes="(max-width: 1024px) 100vw, 900px" unoptimized />
             {aktif.keterangan && <p className={styles.galeriKeterangan}>{aktif.keterangan}</p>}
             {gambar.length > 1 && (
               <div className={styles.galeriNav}>

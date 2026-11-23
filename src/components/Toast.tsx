@@ -1,8 +1,10 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { X, CheckCircle, AlertCircle, AlertTriangle, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useInangToast } from '@/components/ui/inangToast';
 import styles from './Toast.module.css';
 
 type ToastType = 'success' | 'error' | 'warning' | 'info';
@@ -45,14 +47,43 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  // Modal asli (<dialog> + showModal) berada di top layer dan menutupi z-index apa pun. Wadah toast dijadikan popover
+  // manual lalu ditampilkan ulang tiap daftar berubah, supaya naik ke atas modal yang baru dibuka. Peramban tanpa
+  // dukungan popover mengabaikannya: wadah tetap tampil normal lewat z-index.
+  // Saat modal terbuka, wadah dipindah (portal) ke inang di dalam dialog itu: subtree dialog modal tidak inert, jadi
+  // toast bisa diklik dan klik tombol tutupnya tidak jatuh ke latar. Tanpa modal, wadah tetap di akar provider.
+  const inang = useInangToast();
+  const wadah = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = wadah.current;
+    if (!el || typeof el.showPopover !== 'function') return;
+    try {
+      // Atribut dipasang di sini (bukan di JSX): gaya bawaan [popover] tertutup menyembunyikan elemen di jsdom.
+      if (!el.hasAttribute('popover')) el.setAttribute('popover', 'manual');
+      const terbuka = el.matches(':popover-open');
+      if (toasts.length === 0) {
+        if (terbuka) el.hidePopover();
+        return;
+      }
+      if (terbuka) el.hidePopover();
+      el.showPopover();
+    } catch {
+      // Tanpa dukungan penuh: tampil biasa.
+    }
+  }, [toasts, inang]);
+
+  const wadahToast = (
+    <div ref={wadah} className={styles.wadah} data-toast="wadah">
+      {toasts.map((t) => (
+        <ToastCard key={t.id} toast={t} onClose={removeToast} />
+      ))}
+    </div>
+  );
+
   return (
     <ToastContext.Provider value={{ toast }}>
       {children}
-      <div className={styles.wadah} data-toast="wadah">
-        {toasts.map((t) => (
-          <ToastCard key={t.id} toast={t} onClose={removeToast} />
-        ))}
-      </div>
+      {inang ? createPortal(wadahToast, inang) : wadahToast}
     </ToastContext.Provider>
   );
 }
@@ -110,7 +141,13 @@ function ToastCard({ toast, onClose }: { toast: ToastItem; onClose: (id: string)
         type="button"
         onClick={() => onClose(toast.id)}
         onKeyDown={(e) => {
-          if (e.key === 'Escape') onClose(toast.id);
+          if (e.key === 'Escape') {
+            // Di dalam modal, Esc pada toast hanya menutup toast, bukan dialog di sekelilingnya. stopPropagation menahan
+            // pendengar keydown dokumen; preventDefault mencegah peramban memicu `cancel` pada <dialog> (aksi bawaan Esc).
+            e.preventDefault();
+            e.stopPropagation();
+            onClose(toast.id);
+          }
         }}
         className={styles.tutup}
         style={{ minWidth: '44px', minHeight: '44px' }}

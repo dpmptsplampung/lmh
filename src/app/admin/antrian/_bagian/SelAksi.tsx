@@ -35,6 +35,18 @@ import type { JenisModalAntrian } from '../_hook/useModalAntrian';
 import { bolehLihatData, bolehLihatSemuaLayanan, durasiTeks, namaPelayanDari, punyaPendataan } from '../_logika/turunan';
 import styles from '../antrian.module.css';
 
+/**
+ * Keterangan tombol untuk teknologi bantu: `title` tidak tampil saat fokus papan ketik maupun di layar sentuh, jadi
+ * teksnya ditaruh di elemen tersembunyi yang dirujuk `aria-describedby`. `title` tetap ada untuk pointer.
+ */
+function Ket({ id, teks }: { id: string; teks: string }) {
+  return (
+    <span id={id} hidden>
+      {teks}
+    </span>
+  );
+}
+
 /** Penangan dan keadaan aksi tiket yang dibutuhkan sel aksi (dirakit halaman dari useAksiAntrean + useModalAntrian). */
 export interface AksiTiket {
   sedangProses: ReadonlySet<string>;
@@ -62,29 +74,41 @@ export default function SelAksi({ tiket: a, pengguna, aksi, statusSurvei }: SelA
   const milikSaya = bolehSelesaikanTiket(pengguna, a);
   const sibuk = aksi.sedangProses.has(a.id);
   const memanggil = aksi.sedangPanggil.has(a.id);
+  const idKet = (k: string) => `${a.id}-ket-${k}`;
+  const ketAmbilAlih = bolehAmbilAlihTiket(pengguna, a)
+    ? 'Darurat: jadikan Anda penanggung jawab tiket ini (wajib alasan, tercatat di audit)'
+    : 'Koordinator: ambil alih pendataan ini (wajib alasan, tercatat di audit; petugas semula diberi tahu)';
   const lihatData = bolehLihatData(pengguna, a) && (
-    <Tombol
-      varian="hantu"
-      ukuran="kecil"
-      ikon={FileText}
-      onClick={() => aksi.buka(punyaPendataan(a) ? 'wizard' : 'lihatKhusus', a)}
-      title="Buka data pendataan (baca-saja)"
-    >
-      Lihat Data
-    </Tombol>
+    <>
+      <Tombol
+        varian="hantu"
+        ukuran="kecil"
+        ikon={FileText}
+        onClick={() => aksi.buka(punyaPendataan(a) ? 'wizard' : 'lihatKhusus', a)}
+        title="Buka data pendataan (baca-saja)"
+        aria-describedby={idKet('lihat')}
+      >
+        Lihat Data
+      </Tombol>
+      <Ket id={idKet('lihat')} teks="Buka data pendataan (baca-saja)" />
+    </>
   );
   const tombolAlihkan = bolehAlihkanTiket(pengguna, a) && (
-    <Tombol
-      varian="sekunder"
-      ukuran="kecil"
-      ikon={ArrowRightLeft}
-      onClick={() => aksi.buka('alihkan', a)}
-      disabled={sibuk}
-      aria-label={`Alihkan tiket ${a.nomor_display} ke layanan lain`}
-      title="Pindahkan tiket ini ke layanan lain (Admin; wajib alasan, tercatat di audit)"
-    >
-      Alihkan
-    </Tombol>
+    <>
+      <Tombol
+        varian="sekunder"
+        ukuran="kecil"
+        ikon={ArrowRightLeft}
+        onClick={() => aksi.buka('alihkan', a)}
+        disabled={sibuk}
+        aria-label={`Alihkan tiket ${a.nomor_display} ke layanan lain`}
+        aria-describedby={idKet('alihkan')}
+        title="Pindahkan tiket ini ke layanan lain (Admin; wajib alasan, tercatat di audit)"
+      >
+        Alihkan
+      </Tombol>
+      <Ket id={idKet('alihkan')} teks="Pindahkan tiket ini ke layanan lain (Admin; wajib alasan, tercatat di audit)" />
+    </>
   );
 
   if (a.status === 'menunggu') {
@@ -97,10 +121,12 @@ export default function SelAksi({ tiket: a, pengguna, aksi, statusSurvei }: SelA
           ikon={memanggil ? BellRing : Volume2}
           onClick={() => aksi.panggil(a.id, a.nomor_display)}
           disabled={memanggil}
+          aria-describedby={idKet('panggil')}
           title="Panggil ke layar antrean. Bisa diklik lagi untuk memanggil ulang."
         >
           {memanggil ? 'Terpanggil' : 'Panggil'}
         </Tombol>
+        <Ket id={idKet('panggil')} teks="Panggil ke layar antrean. Bisa diklik lagi untuk memanggil ulang." />
         {bolehMulaiTiket(pengguna, a) && (
           <Tombol varian="utama" ukuran="kecil" ikon={Play} onClick={() => aksi.mulai(a)} disabled={sibuk} memuat={sibuk}>
             {sibuk ? 'Memproses…' : 'Mulai Layanan'}
@@ -129,10 +155,14 @@ export default function SelAksi({ tiket: a, pengguna, aksi, statusSurvei }: SelA
               onClick={() => aksi.buka('isiPendataan', a)}
               disabled={sibuk}
               aria-label={`Isi Pendataan tiket ${a.nomor_display}`}
+              aria-describedby={idKet('isi')}
               title="Buka isian Pendataan Khusus (tersimpan otomatis sebagai draf)"
             >
               Isi Pendataan
             </Tombol>
+          )}
+          {!punyaPendataan(a) && aksi.layananBerisian?.has(a.layanan_id) && (
+            <Ket id={idKet('isi')} teks="Buka isian Pendataan Khusus (tersimpan otomatis sebagai draf)" />
           )}
           <Tombol varian="sekunder" ukuran="kecil" ikon={CheckCircle2} onClick={() => aksi.selesaikan(a)} disabled={sibuk} memuat={sibuk}>
             {sibuk ? 'Memproses…' : 'Selesai'}
@@ -145,10 +175,14 @@ export default function SelAksi({ tiket: a, pengguna, aksi, statusSurvei }: SelA
               onClick={() => aksi.buka('kembalikanKeFo', a)}
               disabled={sibuk}
               aria-label={`Kembalikan tiket ${a.nomor_display} ke Front Office`}
+              aria-describedby={idKet('kembali')}
               title="Kembalikan pengunjung ke kotak masuk Front Office (wajib catatan)"
             >
               Kembalikan ke FO
             </Tombol>
+          )}
+          {bolehKembalikanTiket(pengguna, a) && (
+            <Ket id={idKet('kembali')} teks="Kembalikan pengunjung ke kotak masuk Front Office (wajib catatan)" />
           )}
           {tombolAlihkan}
         </div>
@@ -170,12 +204,14 @@ export default function SelAksi({ tiket: a, pengguna, aksi, statusSurvei }: SelA
               ikon={UserCog}
               onClick={() => aksi.buka('ambilAlih', a)}
               disabled={sibuk}
-              title={bolehAmbilAlihTiket(pengguna, a)
-                ? 'Darurat: jadikan Anda penanggung jawab tiket ini (wajib alasan, tercatat di audit)'
-                : 'Koordinator: ambil alih pendataan ini (wajib alasan, tercatat di audit; petugas semula diberi tahu)'}
+              aria-describedby={idKet('ambil')}
+              title={ketAmbilAlih}
             >
               Ambil alih
             </Tombol>
+          )}
+          {(bolehAmbilAlihTiket(pengguna, a) || bolehKoordinatorAmbilAlihTiket(pengguna, a)) && (
+            <Ket id={idKet('ambil')} teks={ketAmbilAlih} />
           )}
           {tombolAlihkan}
         </div>
@@ -206,15 +242,19 @@ export default function SelAksi({ tiket: a, pengguna, aksi, statusSurvei }: SelA
       )}
       {a.status === 'selesai' && punyaPendataan(a) && (
         bolehLihatSemuaLayanan(pengguna) ? (
+          <>
           <Tombol
             varian="sekunder"
             ukuran="kecil"
             ikon={Pencil}
             onClick={() => aksi.buka('koreksi', a)}
+            aria-describedby={idKet('koreksi')}
             title="Koreksi data yang sudah dikunci (wajib alasan, tercatat di riwayat)"
           >
             Koreksi Data
           </Tombol>
+          <Ket id={idKet('koreksi')} teks="Koreksi data yang sudah dikunci (wajib alasan, tercatat di riwayat)" />
+          </>
         ) : pengguna?.role === 'petugas' && (
           <small className={styles.catatanAksi}>
             Data sudah dikunci. Hubungi Front Office atau Admin untuk koreksi.

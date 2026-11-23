@@ -78,7 +78,7 @@ export function namaPemegang(s: RingkasSesi, petugasNama: Readonly<Record<string
 
 /** Chat yang menunggu diambil (kotak masuk) tampil paling atas; urutan lain tetap (sort stabil). */
 export function urutkanSesi(sesi: readonly RingkasSesi[]): RingkasSesi[] {
-  return [...sesi].sort((a, b) => Number(b.status === 'eskalasi') - Number(a.status === 'eskalasi'));
+  return sesi.toSorted((a, b) => Number(b.status === 'eskalasi') - Number(a.status === 'eskalasi'));
 }
 
 export function hitungSesi(sesi: readonly RingkasSesi[]): { aktif: number; menunggu: number } {

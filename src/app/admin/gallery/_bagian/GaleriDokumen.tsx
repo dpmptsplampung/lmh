@@ -113,25 +113,27 @@ export default function GaleriDokumen() {
                         {doc.galat && <span>{doc.galat}</span>}
                       </Lencana></>) },
 { kunci: 'kolom7', judul: "Aksi", peran: 'aksi', render: (doc) => (<><div className={tampilan.baris20}>
-                        <Tombol varian="hantu" ukuran="kecil" type="button" title="Detail" onClick={() => handleViewDoc(doc)}>
-                          <Eye size={14} />
+                        <Tombol varian="hantu" ukuran="kecil" type="button" title="Detail" aria-label={`Detail dokumen ${doc.judul}`} onClick={() => handleViewDoc(doc)}>
+                          <Eye size={14} aria-hidden="true" />
                         </Tombol>
-                        {['aktif', 'nonaktif'].includes(doc.status) && <Tombol varian="hantu" ukuran="kecil" type="button" title="Edit" onClick={() => handleOpenForm(doc)}>
-                          <Edit2 size={14} />
+                        {['aktif', 'nonaktif'].includes(doc.status) && <Tombol varian="hantu" ukuran="kecil" type="button" title="Edit" aria-label={`Edit dokumen ${doc.judul}`} onClick={() => handleOpenForm(doc)}>
+                          <Edit2 size={14} aria-hidden="true" />
                         </Tombol>}
                         {['aktif', 'nonaktif'].includes(doc.status) && <Tombol
                           varian="hantu" ukuran="kecil" type="button"
                           title={doc.status === 'aktif' ? 'Nonaktifkan' : 'Aktifkan'}
+                          aria-label={`${doc.status === 'aktif' ? 'Nonaktifkan' : 'Aktifkan'} dokumen ${doc.judul}`}
                           onClick={() => handleToggleStatus(doc.id, doc.status)}>
-                          {doc.status === 'aktif' ? <EyeOff size={14} /> : <Eye size={14} />}
+                          {doc.status === 'aktif' ? <EyeOff size={14} aria-hidden="true" /> : <Eye size={14} aria-hidden="true" />}
                         </Tombol>}
                         {['diproses', 'gagal'].includes(doc.status) && <Tombol ukuran="kecil" disabled={uploadingFile} onClick={() => void handleLanjutkan(doc)}>Lanjutkan pemrosesan</Tombol>}
                         <Tombol
                           varian="hantu" ukuran="kecil" className={["", tampilan.area21].filter(Boolean).join('')}
                           title="Hapus"
+                          aria-label={`Hapus dokumen ${doc.judul}`}
 
                           onClick={() => setHapusDok({ id: doc.id, judul: doc.judul })}>
-                          <Trash2 size={14} />
+                          <Trash2 size={14} aria-hidden="true" />
                         </Tombol>
                       </div></>) }
 ]} />

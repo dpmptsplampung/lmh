@@ -117,6 +117,22 @@ describe('ProfileCompletenessGate K12: pernyataan kebenaran', () => {
     expect(panggilan[1].opsi).toEqual({ onConflict: 'auth_user_id' });
   });
 
+  it('dialog konfirmasi: alertdialog bernama, fokus ke Periksa Kembali, Esc menutup tanpa menulis', async () => {
+    const panggilan = siapkan();
+    render(<ProfileCompletenessGate><p>ISI</p></ProfileCompletenessGate>);
+    await isiFormLengkap();
+    fireEvent.click(screen.getByLabelText(PERNYATAAN_KEBENARAN_TEKS));
+    fireEvent.click(tombolSimpan());
+
+    const dialog = await screen.findByRole('alertdialog', { name: 'Konfirmasi Data Anda' });
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    expect(screen.getByRole('button', { name: 'Periksa Kembali' })).toHaveFocus();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(panggilan).toEqual([]);
+  });
+
   it('consent_log gagal: profil TIDAK disimpan, pesan jelas, gerbang tetap terkunci', async () => {
     const panggilan = siapkan({
       consent: () => ({ data: null, error: { message: 'new row violates row-level security policy', code: '42501' } }),
@@ -176,7 +192,7 @@ describe('ProfileCompletenessGate K12: field wajib', () => {
     fireEvent.click(tombolSimpan());
 
     expect(await screen.findByRole('alert')).toBeInTheDocument();
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
     expect(panggilan).toEqual([]);
   });
 

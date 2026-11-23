@@ -9,10 +9,17 @@ function setNow(isoUtc: string) {
 }
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.useRealTimers();
 });
 
 describe('toWIBDateString', () => {
+  it('menyusun tanggal mesin meski formatter tampilan memakai urutan bulan/hari/tahun', () => {
+    const prototype = Intl.DateTimeFormat.prototype as { format: unknown };
+    vi.spyOn(prototype, 'format', 'get').mockReturnValue(() => '07/30/2026');
+    expect(toWIBDateString(new Date('2026-07-29T17:00:00Z'))).toBe('2026-07-30');
+  });
+
   it('mengembalikan tanggal menurut kalender Asia/Jakarta', () => {
     // 2026-07-29 16:00 UTC = 2026-07-29 23:00 WIB -> masih tanggal 29 di WIB.
     expect(toWIBDateString(new Date('2026-07-29T16:00:00Z'))).toBe('2026-07-29');
@@ -47,6 +54,14 @@ describe('todayWIB', () => {
 });
 
 describe('addDaysWIB', () => {
+  it.each([
+    ['2024-02-28T17:00:00Z', 1, '2024-03-01'],
+    ['2025-12-30T17:00:00Z', 1, '2026-01-01'],
+    ['0099-12-30T16:00:00Z', 1, '0099-12-31'],
+  ] as const)('menggeser tanggal WIB %s sebanyak %d hari', (utc, hari, tanggal) => {
+    expect(addDaysWIB(hari, new Date(utc))).toBe(tanggal);
+  });
+
   it('menambah N hari pada kalender WIB (untuk horizon reservasi H+7)', () => {
     setNow('2026-07-29T17:00:00Z'); // = 2026-07-30 00:00 WIB
     expect(addDaysWIB(7)).toBe('2026-08-06');

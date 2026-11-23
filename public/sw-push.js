@@ -1,20 +1,11 @@
-// sw-push.js — Service worker for web push notifications (I5)
-// Registered by /me/notifications page. Minimal: show notification on push.
-// Keep framework-agnostic (no build step) so it can be served from /public.
-
-self.addEventListener('install', () => {
-  self.skipWaiting();
-});
-
-self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
-});
+// Handler push bersama. Registrasi /sw-push.js lama juga mendapat offline dan sync.
+if (self.location.pathname === '/sw-push.js') importScripts('/sw.js');
 
 self.addEventListener('push', (event) => {
   let data = { title: 'Notifikasi DPMPTSP Lampung', body: '' };
   try {
     if (event.data) {
-      data = event.data.json();
+      data = event.data.json() || data;
     }
   } catch {
     data.body = event.data ? event.data.text() : '';
@@ -29,20 +20,27 @@ self.addEventListener('push', (event) => {
   );
 });
 
+function notificationTarget(raw) {
+  if (typeof raw !== 'string' || !raw.trim()) return null;
+
+  try {
+    const url = new URL(raw, self.location.origin);
+    if (url.protocol !== self.location.protocol || url.origin !== self.location.origin) return null;
+    if (url.username || url.password) return null;
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const target = (event.notification.data && event.notification.data.url) || '/me';
+  const target = notificationTarget(event.notification.data?.url) || new URL('/me', self.location.origin).href;
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      for (const client of clientList) {
-        if (client.url.includes(target) && 'focus' in client) {
-          return client.focus();
-        }
-      }
-      if (self.clients.openWindow) {
-        return self.clients.openWindow(target);
-      }
-      return null;
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      const existing = clients.find((client) => notificationTarget(client.url) === target && 'focus' in client);
+      if (existing) return existing.focus();
+      return self.clients.openWindow?.(target);
     }),
   );
 });

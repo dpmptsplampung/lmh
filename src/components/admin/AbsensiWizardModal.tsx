@@ -14,6 +14,7 @@ import Field from '@/components/ui/Field';
 import Tombol from '@/components/ui/Tombol';
 import { cn } from '@/lib/utils';
 import styles from './AbsensiWizardModal.module.css';
+import { enterTanpaKomposisi } from '@/components/ui/interaksi';
 
 interface Layanan { id: string; nama: string; }
 
@@ -231,7 +232,7 @@ export default function AbsensiWizardModal({
       try {
         await unggahKeR2('absensi-foto', path, w.foto.blob);
       } catch (e) {
-        throw new Error(`Upload foto gagal: ${e instanceof Error ? e.message : 'coba lagi'}`);
+        throw new Error(`Upload foto gagal: ${e instanceof Error ? e.message : 'coba lagi'}`, { cause: e });
       }
 
       const supabase = createClient();
@@ -394,7 +395,7 @@ export default function AbsensiWizardModal({
               placeholder="Ketik nama lengkap petugas"
               value={w.nama}
               onChange={e => dispatch({ type: 'SET_NAMA', nama: e.target.value })}
-              onKeyDown={e => { if (e.key === 'Enter' && !submitting) void handleSelesai(); }}
+              onKeyDown={e => { if (enterTanpaKomposisi(e) && !submitting) void handleSelesai(); }}
             />
           </Field>
         </div>

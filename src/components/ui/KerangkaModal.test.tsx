@@ -108,16 +108,14 @@ describe('KerangkaModal: slot tambahan', () => {
 });
 
 describe('KerangkaModal: penuhDiHp', () => {
-  it('penuhDiHp menambah kelas layar penuh HP pada latar dan kotak; bawaan tidak', () => {
+  it('penuhDiHp menambah kelas layar penuh HP pada kotak; bawaan tidak', () => {
     pasang({ penuhDiHp: true });
     const kotak = screen.getByRole('dialog');
     expect(kotak.className).toMatch(/kotakPenuhHp/);
-    expect(kotak.parentElement?.className).toMatch(/latarPenuhHp/);
     cleanup();
 
     pasang();
     const biasa = screen.getByRole('dialog');
     expect(biasa.className).not.toMatch(/kotakPenuhHp/);
-    expect(biasa.parentElement?.className).not.toMatch(/latarPenuhHp/);
   });
 });

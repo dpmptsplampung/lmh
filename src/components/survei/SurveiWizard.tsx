@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { ArrowLeft, ArrowRight, LoaderCircle, Send } from 'lucide-react';
 import ErrorRetry from '@/components/ErrorRetry';
 import Tombol from '@/components/ui/Tombol';
@@ -255,7 +255,7 @@ export default function SurveiWizard({ token, konteks, onSelesai }: SurveiWizard
           </p>
         </div>
         <div className={styles.progres} aria-hidden="true">
-          <span className={styles.progresIsi} style={{ width: `${(jumlahTerjawab / JUMLAH_SOAL) * 100}%` }} />
+          <span className={styles.progresIsi} style={{ '--progres': jumlahTerjawab / JUMLAH_SOAL } as CSSProperties} />
         </div>
         <h2 ref={judulRef} tabIndex={-1} className={styles.judulLangkah}>
           <span className={styles.judulSurvei}>{SURVEI[langkah.survei].judul}</span>

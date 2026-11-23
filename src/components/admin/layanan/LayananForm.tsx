@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Loader2, AlertTriangle } from 'lucide-react';
 import type { InstansiRow, LayananAdmin, LayananTautan } from '@/lib/layanan/schemas';
 import TautanEditor, { bersihkanTautan, validasiTautan } from './TautanEditor';
+import { perilakuGulir } from '@/components/ui/interaksi';
 
 export type StatusTampilan = 'aktif' | 'coming_soon' | 'nonaktif';
 export type FormPendataan = 'oss' | 'perizinan';
@@ -87,7 +88,7 @@ export default function LayananForm({
   useEffect(() => {
     if (!konfirmasiNama) return;
     const el = peringatanNamaRef.current;
-    el?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+    el?.scrollIntoView?.({ block: 'center', behavior: perilakuGulir() });
     el?.focus({ preventScroll: true });
   }, [konfirmasiNama]);
 

@@ -32,6 +32,9 @@
 
 /* ---- Lingkup publik (:root) ---- */
 :root {
+  /* Halaman publik hanya punya palet terang: cegah auto-darken peramban seluler merusak palet indigo/kaca. */
+  color-scheme: only light;
+
   /* Brand Colors — inspired by Lampung's vibrant culture */
   --color-primary-50: #eef2ff;
   --color-primary-100: #e0e7ff;

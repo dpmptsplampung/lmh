@@ -132,7 +132,7 @@ export function useGalleryData() {
   };
 
   const handleMoveUp = async (doc: GalleryDoc) => {
-    const sorted = [...docs].sort((a, b) => a.urutan_tampil - b.urutan_tampil);
+    const sorted = docs.toSorted((a, b) => a.urutan_tampil - b.urutan_tampil);
     const index = sorted.findIndex(d => d.id === doc.id);
     if (index <= 0) return;
 
@@ -140,7 +140,7 @@ export function useGalleryData() {
   };
 
   const handleMoveDown = async (doc: GalleryDoc) => {
-    const sorted = [...docs].sort((a, b) => a.urutan_tampil - b.urutan_tampil);
+    const sorted = docs.toSorted((a, b) => a.urutan_tampil - b.urutan_tampil);
     const index = sorted.findIndex(d => d.id === doc.id);
     if (index < 0 || index >= sorted.length - 1) return;
 
