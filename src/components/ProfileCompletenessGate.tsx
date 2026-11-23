@@ -10,8 +10,9 @@ import {
   PERNYATAAN_KEBENARAN_VERSI,
 } from '@/lib/pernyataan-kebenaran';
 import { isPhoneValid, profilLengkap, profilPengunjungSchema, validasiProfil } from '@/lib/profil-pengunjung';
-import { AlertCircle, CheckCircle2, HelpCircle, Loader2, Lock, Sparkles } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Loader2, Lock, Sparkles } from 'lucide-react';
 import Tombol from '@/components/ui/Tombol';
+import KerangkaModal from '@/components/ui/KerangkaModal';
 import styles from './profile-gate.module.css';
 
 interface ProfileCompletenessGateProps {
@@ -406,69 +407,65 @@ export default function ProfileCompletenessGate({ children }: ProfileCompletenes
           </form>
         </div>
 
-        {/* Modal Confirmation Dialog Popup */}
-        {showConfirmModal && (
-          <div className={styles.modalOverlay} role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title">
-            <div className={styles.modalCard}>
-              <div className={styles.modalHeader}>
-                <div className={styles.ikonWrap}>
-                  <div className={`${styles.ikonKotak} ${styles.ikonBulat}`}>
-                    <HelpCircle size={24} strokeWidth={1.75} aria-hidden="true" />
-                  </div>
-                </div>
-                <h3 id="confirm-modal-title" className={styles.modalTitle}>Konfirmasi Data Anda</h3>
-                <p className={styles.modalSubtitle}>
-                  Apakah data yang Anda masukkan di bawah ini sudah benar dan sesuai? Nama Lengkap tidak dapat diubah
-                  sendiri setelah disimpan.
-                </p>
-              </div>
-
-              <div className={styles.summaryContainer}>
-                <div className={styles.summaryRow}>
-                  <span className={styles.summaryLabel}>Nama Lengkap</span>
-                  <span className={styles.summaryValue}>{formNama}</span>
-                </div>
-                <div className={styles.summaryRow}>
-                  <span className={styles.summaryLabel}>Nomor HP / WhatsApp</span>
-                  <span className={styles.summaryValue}>{formNoHp}</span>
-                </div>
-                <div className={styles.summaryRow}>
-                  <span className={styles.summaryLabel}>Email</span>
-                  <span className={styles.summaryValue}>{formEmail}</span>
-                </div>
-                <div className={styles.summaryRow}>
-                  <span className={styles.summaryLabel}>Asal / Instansi</span>
-                  <span className={styles.summaryValue}>{formAsal}</span>
-                </div>
-                <div className={styles.summaryRow}>
-                  <span className={styles.summaryLabel}>Kategori Pengunjung</span>
-                  <span className={styles.summaryValue}>
-                    {KATEGORI_PENGUNJUNG[formKategori as keyof typeof KATEGORI_PENGUNJUNG] || formKategori}
-                  </span>
-                </div>
-              </div>
-
-              <div className={styles.modalActions}>
-                <Tombol
-                  varian="sekunder"
-                  className={styles.cancelBtn}
-                  onClick={() => setShowConfirmModal(false)}
-                  disabled={saving}
-                >
-                  Periksa Kembali
-                </Tombol>
-                <Tombol
-                  className={styles.confirmBtn}
-                  onClick={handleConfirmSave}
-                  memuat={saving}
-                  disabled={saving}
-                >
-                  {saving ? 'Menyimpan...' : 'Ya, Sudah Benar'}
-                </Tombol>
-              </div>
+        {/* Dialog konfirmasi: KerangkaModal memegang fokus, Esc, jebak fokus, dan kunci gulir latar. */}
+        <KerangkaModal
+          terbuka={showConfirmModal}
+          onTutup={() => setShowConfirmModal(false)}
+          judul="Konfirmasi Data Anda"
+          deskripsi="Apakah data yang Anda masukkan di bawah ini sudah benar dan sesuai? Nama Lengkap tidak dapat diubah sendiri setelah disimpan."
+          dikunci={saving}
+          varian="dialog"
+          peran="alertdialog"
+          lebarMaks={440}
+          kaki={
+            <>
+              <Tombol
+                type="button"
+                varian="sekunder"
+                className={styles.cancelBtn}
+                data-autofocus=""
+                onClick={() => setShowConfirmModal(false)}
+                disabled={saving}
+              >
+                Periksa Kembali
+              </Tombol>
+              <Tombol
+                type="button"
+                className={styles.confirmBtn}
+                onClick={handleConfirmSave}
+                memuat={saving}
+                disabled={saving}
+              >
+                {saving ? 'Menyimpan...' : 'Ya, Sudah Benar'}
+              </Tombol>
+            </>
+          }
+        >
+          <div className={styles.summaryContainer}>
+            <div className={styles.summaryRow}>
+              <span className={styles.summaryLabel}>Nama Lengkap</span>
+              <span className={styles.summaryValue}>{formNama}</span>
+            </div>
+            <div className={styles.summaryRow}>
+              <span className={styles.summaryLabel}>Nomor HP / WhatsApp</span>
+              <span className={styles.summaryValue}>{formNoHp}</span>
+            </div>
+            <div className={styles.summaryRow}>
+              <span className={styles.summaryLabel}>Email</span>
+              <span className={styles.summaryValue}>{formEmail}</span>
+            </div>
+            <div className={styles.summaryRow}>
+              <span className={styles.summaryLabel}>Asal / Instansi</span>
+              <span className={styles.summaryValue}>{formAsal}</span>
+            </div>
+            <div className={styles.summaryRow}>
+              <span className={styles.summaryLabel}>Kategori Pengunjung</span>
+              <span className={styles.summaryValue}>
+                {KATEGORI_PENGUNJUNG[formKategori as keyof typeof KATEGORI_PENGUNJUNG] || formKategori}
+              </span>
             </div>
           </div>
-        )}
+        </KerangkaModal>
       </div>
     );
   }

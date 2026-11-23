@@ -165,6 +165,39 @@ describe('Toast durasi dan penutupan (A8)', () => {
     expect(document.querySelector('[data-toast="wadah"]')).not.toBeNull();
   });
 
+  it('wadah berupa popover manual yang ditampilkan ulang (naik ke atas modal) tiap toast masuk', () => {
+    const buka = new Set<Element>();
+    const showPopover = vi.fn(function (this: HTMLElement) { buka.add(this); });
+    const hidePopover = vi.fn(function (this: HTMLElement) { buka.delete(this); });
+    Object.assign(HTMLElement.prototype, { showPopover, hidePopover });
+    const matches = vi.spyOn(HTMLElement.prototype, 'matches').mockImplementation(function (this: HTMLElement, sel: string) {
+      return sel === ':popover-open' ? buka.has(this) : Element.prototype.matches.call(this, sel);
+    });
+    try {
+      render(
+        <ToastProvider>
+          <Trigger message="Satu" type="success" />
+        </ToastProvider>,
+      );
+      const wadah = document.querySelector('[data-toast="wadah"]') as HTMLElement;
+      expect(showPopover).not.toHaveBeenCalled();
+      act(() => {
+        screen.getByRole('button', { name: 'show' }).click();
+      });
+      expect(wadah).toHaveAttribute('popover', 'manual');
+      expect(showPopover).toHaveBeenCalledTimes(1);
+      act(() => {
+        screen.getByRole('button', { name: 'show' }).click();
+      });
+      expect(hidePopover).toHaveBeenCalledTimes(1);
+      expect(showPopover).toHaveBeenCalledTimes(2);
+    } finally {
+      matches.mockRestore();
+      Reflect.deleteProperty(HTMLElement.prototype, 'showPopover');
+      Reflect.deleteProperty(HTMLElement.prototype, 'hidePopover');
+    }
+  });
+
   it('toast baru tidak mengulang timer toast lama', () => {
     vi.useFakeTimers();
     render(

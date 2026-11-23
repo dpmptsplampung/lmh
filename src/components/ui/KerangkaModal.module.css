@@ -1,27 +1,27 @@
-.latar {
-  position: fixed;
-  inset: 0;
-  z-index: var(--z-modal);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-4);
-  background: var(--surface-overlay);
-}
-
-.latarSamping {
-  align-items: stretch;
-  justify-content: flex-end;
-  padding: 0;
-}
-
+/* Kotak = elemen <dialog> yang dibuka dengan showModal(): berada di top layer (tanpa z-index), latar di belakangnya
+   inert, dan ::backdrop menjadi lapisan gelap. Reset gaya bawaan <dialog> supaya tampilan sama seperti sebelumnya. */
 .kotak {
   display: flex;
   flex-direction: column;
   width: 100%;
+  margin: auto;
+  padding: 0;
+  border: 0;
+  overflow: visible;
   background: var(--bg-surface);
   box-shadow: var(--shadow-overlay);
   color: var(--text-primary);
+  overscroll-behavior: contain;
+}
+
+/* display:flex di atas mengalahkan display:none bawaan <dialog> yang belum dibuka. */
+.kotak:not([open]) {
+  display: none;
+}
+
+.kotak::backdrop {
+  background: var(--surface-overlay, color-mix(in srgb, CanvasText 45%, transparent));
+  overscroll-behavior: contain;
 }
 
 .kotak:focus {
@@ -29,6 +29,7 @@
 }
 
 .dialog {
+  width: calc(100% - 2 * var(--space-4));
   max-width: 560px;
   max-height: calc(100dvh - 2rem);
   border-radius: var(--radius-panel);
@@ -37,6 +38,7 @@
 .samping {
   height: 100%;
   max-height: 100dvh;
+  margin: 0 0 0 auto;
   border-radius: var(--radius-panel) 0 0 var(--radius-panel);
   animation: masukKanan 0.2s ease-out;
 }
@@ -162,24 +164,18 @@
 
 /* HP: panel samping menjadi lembar bawah. */
 @media (max-width: 640px) {
-  .latarPenuhHp {
-    padding: 0;
-  }
-
   .kotakPenuhHp {
+    width: 100%;
+    max-width: 100%;
     max-height: 100dvh;
     border-radius: 0;
-  }
-
-  .latarSamping {
-    align-items: flex-end;
-    justify-content: center;
   }
 
   .samping {
     height: auto;
     max-width: none;
     max-height: 92dvh;
+    margin: auto 0 0;
     border-radius: var(--radius-panel) var(--radius-panel) 0 0;
     animation-name: masukBawah;
   }

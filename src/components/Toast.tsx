@@ -45,10 +45,32 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  // Modal asli (<dialog> + showModal) berada di top layer dan menutupi z-index apa pun. Wadah toast dijadikan popover
+  // manual lalu ditampilkan ulang tiap daftar berubah, supaya naik ke atas modal yang baru dibuka. Peramban tanpa
+  // dukungan popover mengabaikannya: wadah tetap tampil normal lewat z-index.
+  const wadah = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = wadah.current;
+    if (!el || typeof el.showPopover !== 'function') return;
+    try {
+      // Atribut dipasang di sini (bukan di JSX): gaya bawaan [popover] tertutup menyembunyikan elemen di jsdom.
+      if (!el.hasAttribute('popover')) el.setAttribute('popover', 'manual');
+      const terbuka = el.matches(':popover-open');
+      if (toasts.length === 0) {
+        if (terbuka) el.hidePopover();
+        return;
+      }
+      if (terbuka) el.hidePopover();
+      el.showPopover();
+    } catch {
+      // Tanpa dukungan penuh: tampil biasa.
+    }
+  }, [toasts]);
+
   return (
     <ToastContext.Provider value={{ toast }}>
       {children}
-      <div className={styles.wadah} data-toast="wadah">
+      <div ref={wadah} className={styles.wadah} data-toast="wadah">
         {toasts.map((t) => (
           <ToastCard key={t.id} toast={t} onClose={removeToast} />
         ))}

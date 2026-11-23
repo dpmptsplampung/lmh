@@ -52,10 +52,6 @@
   color: var(--status-info-fg);
 }
 
-.ikonBulat {
-  border-radius: 50%;
-}
-
 .title {
   margin: 0;
   font-size: var(--text-xl);
@@ -254,52 +250,6 @@
 }
 
 /* Dialog konfirmasi */
-.modalOverlay {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-4);
-  overflow-y: auto;
-  background: var(--surface-overlay);
-}
-
-.modalCard {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  width: 100%;
-  max-width: 420px;
-  max-height: 100%;
-  margin: auto;
-  padding: var(--space-6);
-  overflow-y: auto;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-panel);
-  box-shadow: var(--shadow-overlay);
-}
-
-.modalHeader {
-  text-align: center;
-}
-
-.modalTitle {
-  margin: 0 0 6px;
-  font-size: var(--text-lg);
-  font-weight: 650;
-  color: var(--text-primary);
-}
-
-.modalSubtitle {
-  margin: 0;
-  font-size: var(--fs-body);
-  line-height: 1.5;
-  color: var(--text-secondary);
-}
-
 .summaryContainer {
   display: flex;
   flex-direction: column;
@@ -334,12 +284,6 @@
   overflow-wrap: anywhere;
 }
 
-.modalActions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
 .cancelBtn,
 .confirmBtn {
   flex: 1 1 140px;
@@ -351,8 +295,7 @@
     padding: var(--space-2);
   }
 
-  .card,
-  .modalCard {
+  .card {
     padding: var(--space-4);
   }
 }

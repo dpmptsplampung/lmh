@@ -1,8 +1,14 @@
 /* Rupa toast memakai token tema; [data-toast] menandai elemen yang disembunyikan saat cetak. */
 .wadah {
   position: fixed;
-  right: 1.5rem;
-  bottom: 1.5rem;
+  /* Reset gaya bawaan [popover] (inset 0, margin auto, kotak berbingkai) agar tata letak tidak berubah. */
+  inset: auto 1.5rem 1.5rem auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow: visible;
+  background: transparent;
+  color: inherit;
   z-index: var(--z-toast, 1400);
   display: flex;
   flex-direction: column;

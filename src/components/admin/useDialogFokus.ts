@@ -6,6 +6,8 @@
 //  - Tab / Shift+Tab berputar di dalam dialog (focus trap);
 //  - Escape memanggil `onEscape` (pemanggil memutuskan menutup / meminta konfirmasi);
 //  - saat ditutup, fokus dikembalikan ke elemen pemicu yang aktif sebelum dialog dibuka.
+// Bila `wadah` adalah elemen <dialog> yang belum terbuka, hook membukanya dengan showModal() SESUDAH mencatat pemicu
+// (showModal memindahkan fokus sendiri, jadi urutannya penting) dan sebelum memilih fokus awal.
 // Dipakai dialog antrean (alihkan / kembalikan / selesai eskalasi) dan wizard pendataan.
 import { useEffect, useRef, type RefObject } from 'react';
 
@@ -56,7 +58,12 @@ export function useDialogFokus(
     const pemicu =
       sedangFokus instanceof HTMLElement && sedangFokus !== document.body ? sedangFokus : terakhirDiklik;
     const el = wadah.current;
-    if (el && !el.contains(document.activeElement)) {
+    let dibukaNative = false;
+    if (el instanceof HTMLDialogElement && !el.open && typeof el.showModal === 'function') {
+      el.showModal();
+      dibukaNative = true;
+    }
+    if (el && (dibukaNative || !el.contains(document.activeElement))) {
       // Prioritas: penanda eksplisit, lalu isian formulir pertama (bukan tombol Tutup di header), lalu elemen fokus pertama.
       const awal =
         el.querySelector<HTMLElement>('[data-autofocus]') ??

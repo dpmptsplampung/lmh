@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import Dialog from './Dialog';
@@ -78,13 +78,39 @@ describe('Dialog', () => {
   it('klik latar menutup hanya bila tutupDenganLatar', () => {
     const { unmount } = render(<Contoh />);
     fireEvent.click(screen.getByRole('button', { name: 'Buka' }));
-    fireEvent.mouseDown(screen.getByRole('dialog').parentElement as HTMLElement);
+    // Klik ::backdrop jatuh ke elemen <dialog> dengan koordinat di luar kotak (jsdom: kotak 0x0 di titik 0,0).
+    fireEvent.mouseDown(screen.getByRole('dialog'), { clientX: -10, clientY: -10 });
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     unmount();
     render(<Contoh latar />);
     fireEvent.click(screen.getByRole('button', { name: 'Buka' }));
-    fireEvent.mouseDown(screen.getByRole('dialog').parentElement as HTMLElement);
+    // Klik di dalam isi kotak tidak menutup.
+    fireEvent.mouseDown(screen.getByRole('textbox'), { clientX: -10, clientY: -10 });
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    fireEvent.mouseDown(screen.getByRole('dialog'), { clientX: -10, clientY: -10 });
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('dibuka sebagai dialog modal asli (<dialog> + showModal) dan Esc asli (cancel) memanggil penutup', () => {
+    render(<Contoh />);
+    fireEvent.click(screen.getByRole('button', { name: 'Buka' }));
+    const d = screen.getByRole('dialog');
+    expect(d.tagName).toBe('DIALOG');
+    expect(d).toHaveAttribute('open');
+    const cancel = new Event('cancel', { cancelable: true });
+    fireEvent(d, cancel);
+    expect(cancel.defaultPrevented).toBe(true);
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('cancel asli diabaikan saat dikunci dan dialog yang ditutup paksa dibuka ulang', () => {
+    render(<Contoh dikunci />);
+    fireEvent.click(screen.getByRole('button', { name: 'Buka' }));
+    const d = screen.getByRole('dialog');
+    fireEvent(d, new Event('cancel', { cancelable: true }));
+    expect(screen.getByRole('dialog')).toBe(d);
+    act(() => (d as HTMLDialogElement).close());
+    expect(d).toHaveAttribute('open');
   });
 
   it('mengunci gulir body selama terbuka dan memulihkannya', () => {
