@@ -23,7 +23,26 @@
   box-shadow: var(--shadow-md);
   transition: opacity var(--transition-base);
 }
-.gambar[data-status='memuat'] { opacity: 0; }
+/* Wadah seukuran gambar: lapisan tautan memakai persen terhadap gambar yang tampil, bukan terhadap kotak halaman. */
+.kotak { position: relative; display: block; max-width: 100%; line-height: 0; }
+/* Gambar yang sedang dimuat tidak memakai ruang dan tak terlihat; gambar lama tetap tampil di bawah status memuat. */
+.kotak[data-status='memuat'] { position: absolute; width: 0; height: 0; overflow: hidden; opacity: 0; pointer-events: none; }
+.tautan {
+  position: absolute;
+  display: block;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.tautan:hover { outline: 2px solid var(--border-focus); outline-offset: -1px; background: color-mix(in srgb, var(--border-focus) 12%, transparent); }
+.tautan:focus-visible { outline: 3px solid var(--focus-color); outline-offset: 1px; }
+/* Layar sentuh: area ketuk minimal 44px tanpa menggeser posisi visual tautan. */
+@media (pointer: coarse) {
+  .tautan::after { content: ''; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%); }
+}
 .memuat {
   position: absolute;
   inset: 0;
@@ -32,7 +51,12 @@
   justify-content: center;
   color: var(--text-secondary);
   font-size: var(--text-sm);
+  pointer-events: none;
+  /* Muncul setelah jeda singkat: slide yang sudah dipramuat tidak berkedip. */
+  opacity: 0;
+  animation: munculMemuat 0s linear 200ms forwards;
 }
+@keyframes munculMemuat { to { opacity: 1; } }
 .gagal {
   display: flex;
   flex-direction: column;

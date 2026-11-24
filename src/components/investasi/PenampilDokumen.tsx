@@ -3,6 +3,9 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { ChevronLeft, ChevronRight, FileText, Info, Mail, RefreshCw } from 'lucide-react';
 import { satuanHalaman } from './dokumen-logika';
+import LapisanTautan from './LapisanTautan';
+import { useTautanDokumen } from './useTautanDokumen';
+import { usePramuatHalaman } from './usePramuatHalaman';
 import KerangkaModal from '@/components/ui/KerangkaModal';
 import Tombol from '@/components/ui/Tombol';
 import styles from './penampil.module.css';
@@ -34,11 +37,16 @@ export default function PenampilDokumen({ dokumenId, judul, jumlahHalaman, kateg
   // Status dicatat per percobaan (halaman + nomor coba ulang) supaya pindah halaman otomatis kembali ke "memuat".
   const [percobaan, setPercobaan] = useState(0);
   const [hasil, setHasil] = useState<{ kunci: string; status: StatusGambar }>({ kunci: '', status: 'memuat' });
+  // Gambar terakhir yang selesai dimuat: tetap tampil (dan tautannya tetap bisa diklik) sampai gambar baru siap.
+  const [terakhir, setTerakhir] = useState<{ halaman: number; src: string } | null>(null);
   const siap = jumlahHalaman > 0;
   const idLompat = useId();
   const kunci = `${halaman}:${percobaan}`;
   const status: StatusGambar = hasil.kunci === kunci ? hasil.status : 'memuat';
   const satuan = satuanHalaman(kategori);
+  const tautanPerHalaman = useTautanDokumen(dokumenId, jumlahHalaman);
+  const { sumber } = usePramuatHalaman(dokumenId, halaman, jumlahHalaman, siap && status === 'siap');
+  const src = sumber(halaman, percobaan);
   const satuanJudul = satuan === 'slide' ? 'Slide' : 'Halaman';
   const pindah = (ke: number) => setHalaman(Math.min(Math.max(1, ke), jumlahHalaman));
 
@@ -147,17 +155,30 @@ export default function PenampilDokumen({ dokumenId, judul, jumlahHalaman, kateg
                   <Tombol varian="sekunder" ikon={RefreshCw} onClick={() => setPercobaan(n => n + 1)}>Coba lagi</Tombol>
                 </div>
               ) : (
-                // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/no-noninteractive-element-interactions -- PNG berwatermark dinamis (next/image tidak berlaku); onError memunculkan coba ulang
-                <img
-                  key={kunci}
-                  src={`/api/investment-docs/page-image?doc_id=${dokumenId}&page=${halaman}`}
-                  alt={`${judul}, ${satuan} ${halaman} dari ${jumlahHalaman}`}
-                  className={styles.gambar}
-                  data-status={status}
-                  draggable={false}
-                  onLoad={() => setHasil({ kunci, status: 'siap' })}
-                  onError={() => setHasil({ kunci, status: 'gagal' })}
-                />
+                <>
+                  {status === 'memuat' && terakhir && terakhir.halaman !== halaman && (
+                    <div className={styles.kotak}>
+                      {/* eslint-disable-next-line @next/next/no-img-element -- gambar lama bertahan sampai yang baru siap */}
+                      <img src={terakhir.src} alt="" className={styles.gambar} draggable={false} />
+                      <LapisanTautan tautan={tautanPerHalaman.get(terakhir.halaman) ?? []} satuan={satuan} onLompat={pindah} />
+                    </div>
+                  )}
+                  <div className={styles.kotak} data-status={status}>
+                    {/* eslint-disable-next-line @next/next/no-img-element, jsx-a11y/no-noninteractive-element-interactions -- gambar berwatermark dinamis (next/image tidak berlaku); onError memunculkan coba ulang */}
+                    <img
+                      key={kunci}
+                      ref={el => { if (el && status === 'memuat' && el.complete && el.naturalWidth > 0) setHasil({ kunci, status: 'siap' }); }}
+                      src={src}
+                      alt={`${judul}, ${satuan} ${halaman} dari ${jumlahHalaman}`}
+                      className={styles.gambar}
+                      data-status={status}
+                      draggable={false}
+                      onLoad={() => { setHasil({ kunci, status: 'siap' }); setTerakhir({ halaman, src }); }}
+                      onError={() => setHasil({ kunci, status: 'gagal' })}
+                    />
+                    {status === 'siap' && <LapisanTautan tautan={tautanPerHalaman.get(halaman) ?? []} satuan={satuan} onLompat={pindah} />}
+                  </div>
+                </>
               )}
             </div>
           </>
