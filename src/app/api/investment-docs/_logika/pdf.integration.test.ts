@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import sharp from 'sharp';
-import { bukaPdf, renderHalaman } from './pdf';
+import { bukaPdf, buatVarianWeb, renderHalaman } from './pdf';
 
 // PDF sintetis valid dengan xref; tanpa jaringan, data nyata, atau penyimpanan eksternal.
 function pdfSederhana() {
@@ -20,6 +20,15 @@ function pdfSederhana() {
   return new TextEncoder().encode(s);
 }
 describe('PDF nyata melalui parser, canvas, dan sharp', () => {
+  it('menulis WebP dengan lebar paling banyak 1920 px dan rasio halaman tetap', async () => {
+    const png = await sharp({
+      create: { width: 3840, height: 2160, channels: 3, background: 'white' },
+    }).png().toBuffer();
+    expect(await sharp(await buatVarianWeb(png)).metadata()).toMatchObject({
+      format: 'webp', width: 1920, height: 1080,
+    });
+  });
+
   it('merender PDF sintetis menjadi PNG skala 1.5 tanpa metadata', async () => {
     const pdf = await bukaPdf(pdfSederhana());
     try {
@@ -28,6 +37,7 @@ describe('PDF nyata melalui parser, canvas, dan sharp', () => {
       const meta = await sharp(png).metadata();
       expect(meta).toMatchObject({ format: 'png', width: 150, height: 150 });
       expect(meta.exif).toBeUndefined();
+      expect(await sharp(await buatVarianWeb(png)).metadata()).toMatchObject({ width: 150, height: 150 });
     } finally { await pdf.tutup(); }
   });
 });

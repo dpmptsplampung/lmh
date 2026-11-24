@@ -56,30 +56,27 @@ const mockSupabase = async (
 };
 
 const mockServiceClient = async (
-  opts: { downloadError?: unknown; downloadData?: Blob | null } = {},
+  opts: { downloadError?: unknown; downloadData?: Blob | null; tanpaWeb?: boolean } = {},
 ) => {
   process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://supabase.local';
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-key';
   const supabaseMod = await import('@supabase/supabase-js');
   const createClient = supabaseMod.createClient as unknown as ReturnType<typeof vi.fn>;
+  const download = vi.fn(async (path: string) =>
+    opts.downloadError || (opts.tanpaWeb && path.endsWith('.webp'))
+      ? { data: null, error: opts.downloadError ?? 'not found' }
+      : {
+          data: opts.downloadData
+            ?? new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])]),
+          error: null,
+        });
   const mock = {
     storage: {
-      from: vi.fn().mockReturnValue({
-        download: vi.fn().mockResolvedValue(
-          opts.downloadError
-            ? { data: null, error: opts.downloadError }
-            : {
-                data:
-                  opts.downloadData ??
-                  new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])]),
-                error: null,
-              },
-        ),
-      }),
+      from: vi.fn().mockReturnValue({ download }),
     },
   };
   createClient.mockReturnValue(mock);
-  return mock;
+  return { ...mock, download };
 };
 
 const mockSharp = async (outputPng: Buffer) => {
@@ -152,8 +149,8 @@ describe('pembatas laju gambar dokumen', () => {
     const { GET } = await import('./route');
     const terlama = '192.0.2.1';
     const kedua = '192.0.2.2';
-    for (let i = 0; i < 30; i++) await GET(permintaan(terlama));
-    for (let i = 0; i < 30; i++) await GET(permintaan(kedua));
+    for (let i = 0; i < 90; i++) await GET(permintaan(terlama));
+    for (let i = 0; i < 90; i++) await GET(permintaan(kedua));
     expect((await GET(permintaan(terlama))).status).toBe(429);
     for (let i = 0; i < 4094; i++) await GET(permintaan(ipUji(i)));
 
@@ -173,7 +170,7 @@ describe('pembatas laju gambar dokumen', () => {
 
   it('menggabungkan IPv6 terkompresi dan lengkap dari satu /64', async () => {
     const { GET } = await import('./route');
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 90; i++) {
       expect((await GET(permintaan('2001:db8::abcd:0:0:1'))).status).toBe(404);
     }
     expect((await GET(permintaan('2001:0DB8:0000:0000:ABCD:0000:0000:0002'))).status).toBe(429);
@@ -183,7 +180,7 @@ describe('pembatas laju gambar dokumen', () => {
   it('mengisolasi kuota dan kapasitas peta sampul dari penampil halaman', async () => {
     const { GET } = await import('./route');
     const ip = '192.0.2.20';
-    for (let i = 0; i < 29; i++) expect((await GET(permintaan(ip))).status).toBe(404);
+    for (let i = 0; i < 89; i++) expect((await GET(permintaan(ip))).status).toBe(404);
     for (let i = 0; i < 120; i++) expect((await GET(permintaan(ip, 'sampul'))).status).toBe(404);
     expect((await GET(permintaan(ip, 'sampul'))).status).toBe(429);
     for (let i = 0; i < 4100; i++) await GET(permintaan(ipUji(i), 'sampul'));
@@ -250,8 +247,8 @@ describe('GET /api/investment-docs/page-image — document lookup', () => {
     const res = await GET(buildRequest({ doc_id, page, ...(varian ? { varian } : {}) }));
     expect(res.status).toBe(status);
     if (status === 200) {
-      expect(r2.storage.from.mock.results[0]?.value.download).toHaveBeenCalledWith(
-        `pages/${doc_id}/offline/page-${page}.png`,
+      expect(r2.download).toHaveBeenCalledWith(
+        `pages/${doc_id}/offline/${varian === 'sampul' ? `page-${page}.png` : `web-${page}.webp`}`,
       );
     }
   });
@@ -276,22 +273,39 @@ describe('GET /api/investment-docs/page-image — watermark + stream', () => {
     process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-key';
   });
 
-  it('returns watermarked PNG with correct headers', async () => {
+  it.each([true, false])('menyajikan WebP ber-watermark dengan fallback PNG=%s', async tanpaWeb => {
     await mockSupabase({
       halaman_gambar: ['pages/x/page-1.png'],
       jumlah_halaman: 1,
       status: 'aktif',
     });
-    await mockServiceClient();
-    const fakePng = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
-    await mockSharp(fakePng);
+    const storage = await mockServiceClient({ tanpaWeb });
+    const hasil = Buffer.from('hasil WebP');
+    const gambar = await mockSharp(hasil);
     const { GET } = await import('./route');
     const res = await GET(buildRequest({ doc_id: '550e8400-e29b-41d4-a716-446655440000', page: '1' }));
     expect(res.status).toBe(200);
-    expect(res.headers.get('Content-Type')).toBe('image/png');
+    expect(res.headers.get('Content-Type')).toBe('image/webp');
     expect(res.headers.get('Cache-Control')).toBe('no-store');
     const buf = Buffer.from(await res.arrayBuffer());
-    expect(buf.equals(fakePng)).toBe(true);
+    expect(buf.equals(hasil)).toBe(true);
+    const dibaca = storage.download.mock.calls.map(([path]) => path);
+    expect(dibaca).toEqual(['pages/x/web-1.webp', ...(tanpaWeb ? ['pages/x/page-1.png'] : [])]);
+    expect(gambar.composite).toHaveBeenCalledTimes(1);
+    expect(gambar.webp).toHaveBeenCalledWith({ quality: 80, effort: 1 });
+    expect(gambar.png).not.toHaveBeenCalled();
+  });
+
+  it('mengecilkan PNG fallback sebelum watermark dengan ukuran yang sesuai', async () => {
+    await mockSupabase({ halaman_gambar: ['pages/x/page-1.png'], jumlah_halaman: 1, status: 'aktif' });
+    await mockServiceClient({ tanpaWeb: true });
+    const gambar = await mockSharp(Buffer.from('hasil WebP'));
+    gambar.metadata.mockResolvedValue({ width: 2880, height: 1620 });
+    const { GET } = await import('./route');
+    const res = await GET(buildRequest({ doc_id: '550e8400-e29b-41d4-a716-446655440000', page: '1' }));
+    expect(res.status).toBe(200);
+    expect(gambar.resize).toHaveBeenCalledWith({ width: 1920, height: 1080, fit: 'fill' });
+    expect(gambar.composite.mock.calls[0][0][0].input.toString()).toContain('<svg width="1920" height="1080"');
   });
 
   it('returns 500 when page object missing in storage', async () => {
@@ -358,7 +372,7 @@ describe('sampul halaman pertama', () => {
     await mockSupabase(null);
     const { GET } = await import('./route');
     const doc = { doc_id: '11111111-1111-4111-8111-111111111111', page: '1' };
-    for (let i = 0; i < 30; i++) expect((await GET(buildRequest(doc))).status).toBe(404);
+    for (let i = 0; i < 90; i++) expect((await GET(buildRequest(doc))).status).toBe(404);
     expect((await GET(buildRequest(doc))).status).toBe(429);
     expect((await GET(buildRequest({ ...doc, varian: 'sampul' }))).status).toBe(404);
   });

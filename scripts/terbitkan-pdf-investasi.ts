@@ -1,10 +1,11 @@
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { parseArgs } from 'node:util';
 import { z } from 'zod';
-import { bukaPdf, MAKS_BYTE, renderHalaman } from '../src/app/api/investment-docs/_logika/pdf';
+import { bukaPdf, buatVarianWeb, MAKS_BYTE, renderHalaman } from '../src/app/api/investment-docs/_logika/pdf';
+import { ekstrakTautan } from '../src/app/api/investment-docs/_logika/ekstraksi-tautan';
 import { metadataDokumen } from '../src/app/api/investment-docs/_logika/metadata';
 import { barisDokumenOffline, idDokumenOffline, kunciDokumenOffline } from '../src/app/api/investment-docs/_logika/terbit-offline';
 
@@ -105,7 +106,7 @@ async function sambungProduksi(tujuan: Awaited<ReturnType<typeof tujuanTerbit>>,
     }
   }
   return {
-    async simpanObjek(kunci: string, bytes: Buffer, tipe: 'image/png' | 'application/pdf') {
+    async simpanObjek(kunci: string, bytes: Buffer, tipe: 'image/png' | 'image/webp' | 'application/json' | 'application/pdf') {
       // PUT tunggal Cloudflare R2 menghasilkan ETag MD5, termasuk untuk PDF sumber.
       const etag = createHash('md5').update(bytes).digest('hex');
       let objek = await bacaObjek(kunci);
@@ -160,6 +161,8 @@ async function utama() {
   });
   const halamanSelesai: string[] = [];
   let pngBytes = 0;
+  let webBytes = 0;
+  let tautanBytes = 0;
   let terlama = { halaman: 0, ms: 0 };
   let terbesar = { halaman: 0, byte: 0 };
   try {
@@ -173,23 +176,35 @@ async function utama() {
         console.warn(`Peringatan: halaman ${halaman} gagal dirender.`);
         return null;
       });
+      const web = png ? await buatVarianWeb(png) : null;
       const ms = performance.now() - awal;
       if (ms > terlama.ms) terlama = { halaman, ms };
-      if (!png) continue;
+      if (!png || !web) continue;
       if (png.length > terbesar.byte) terbesar = { halaman, byte: png.length };
       if (direktori) {
-        await writeFile(join(direktori, `page-${halaman}.png`), png, { flag: 'wx' });
+        await writeFile(join(direktori, basename(objek.path)), png, { flag: 'wx' });
+        await writeFile(join(direktori, basename(objek.web.path)), web, { flag: 'wx' });
       } else {
         const tindakan = await produksi?.simpanObjek(objek.kunci, png, 'image/png');
         console.log(`${objek.kunci} ${png.length} byte${tindakan ? ` (${tindakan})` : ''}`);
+        const tindakanWeb = await produksi?.simpanObjek(objek.web.kunci, web, 'image/webp');
+        console.log(`${objek.web.kunci} ${web.length} byte${tindakanWeb ? ` (${tindakanWeb})` : ''}`);
       }
       pngBytes += png.length;
+      webBytes += web.length;
       halamanSelesai.push(objek.path);
     }
     const baris = barisDokumenOffline(id, {
       judul: args.judul, kategori: args.kategori, deskripsi: args.deskripsi, urutan_tampil: args.urutan,
     }, rencana, halamanSelesai);
-    if (direktori) return;
+    const tautan = Buffer.from(JSON.stringify(await ekstrakTautan(pdf.doc)));
+    tautanBytes = tautan.length;
+    if (direktori) {
+      await writeFile(join(direktori, basename(rencana.tautan.path)), tautan, { flag: 'wx' });
+      return;
+    }
+    const tindakanTautan = await produksi?.simpanObjek(rencana.tautan.kunci, tautan, 'application/json');
+    console.log(`${rencana.tautan.kunci} ${tautan.length} byte${tindakanTautan ? ` (${tindakanTautan})` : ''}`);
     const tindakan = await produksi?.simpanObjek(rencana.sumber.kunci, bytes, 'application/pdf');
     console.log(`${rencana.sumber.kunci} ${bytes.length} byte${tindakan ? ` (${tindakan})` : ''}`);
     if (!produksi) console.log(JSON.stringify({ tabel: 'investment_documents', baris }, null, 2));
@@ -205,7 +220,8 @@ async function utama() {
       total_ms: Math.round(performance.now() - mulai),
       render_terlama: { ...terlama, ms: Math.round(terlama.ms) }, png_terbesar: terbesar,
       puncak_rss_byte: process.resourceUsage().maxRSS * 1024,
-      png_byte: pngBytes, pdf_byte: bytes.length, total_byte: pngBytes + bytes.length,
+      png_byte: pngBytes, webp_byte: webBytes, tautan_byte: tautanBytes, pdf_byte: bytes.length,
+      total_byte: pngBytes + webBytes + tautanBytes + bytes.length,
     }));
   }
 }

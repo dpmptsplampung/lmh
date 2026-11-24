@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { pathTautan, pathVarianWeb } from '@/lib/investasi/aset-halaman';
 import { MAKS_HALAMAN_TERSAJI } from '@/lib/investasi/dokumen';
 import { kunciObjek } from '@/lib/storage/area';
 import { sumberFinal } from './unggahan';
@@ -26,8 +27,12 @@ export function kunciDokumenOffline(id: string, jumlah: number) {
   const objek = (path: string) => ({ path, kunci: kunciObjek('investment-docs', path) });
   return {
     sumber: objek(sumberFinal(id)),
+    tautan: objek(pathTautan(id)),
     // Satu batch offline dengan ID tetap. Format path mengikuti render batch browser.
-    halaman: Array.from({ length: jumlah }, (_, index) => objek(`pages/${id}/${id}/page-${index + 1}.png`)),
+    halaman: Array.from({ length: jumlah }, (_, index) => {
+      const path = `pages/${id}/${id}/page-${index + 1}.png`;
+      return { ...objek(path), web: objek(pathVarianWeb(path)!) };
+    }),
   };
 }
 
