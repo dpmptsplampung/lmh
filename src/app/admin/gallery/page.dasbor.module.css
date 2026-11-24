@@ -4,11 +4,6 @@
   flex-wrap: wrap;
 }
 
-.area2 {
-  padding: 0 var(--pad-page) var(--pad-page);
-  min-width: 0;
-}
-
 .baris9 {
   display: flex;
   flex-direction: column;
@@ -23,7 +18,11 @@
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+}
+
+.baris11 > :last-child {
+  min-width: 0;
 }
 
 .area12 {
@@ -66,7 +65,19 @@
 .sel17 {
   font-size: var(--text-sm);
   font-weight: 600;
-  color: var(--status-warning-fg);
+  white-space: nowrap;
+}
+
+.kosong {
+  color: var(--text-tertiary);
+}
+
+/* Ringkasan satu baris di atas daftar. */
+.ringkasan {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
 }
 
 .sel18 {
@@ -88,14 +99,14 @@
 
 .baris20 {
   display: flex;
+  align-items: center;
   gap: var(--space-1);
-  flex-wrap: wrap;
-  max-width: 96px; /* ikon aksi berjajar 2x2 di tabel; di kartu HP selebar kartu */
+  flex-wrap: nowrap; /* satu baris ikon aksi: baris tabel tidak menjulang */
 }
 
 @media (max-width: 640px) {
   .baris20 {
-    max-width: none;
+    flex-wrap: wrap;
     gap: var(--space-2);
   }
 }
@@ -125,52 +136,63 @@
   flex-wrap: wrap;
 }
 
-.baris29 {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--color-success-700);
-  font-size: var(--text-sm);
-  flex-wrap: wrap;
-}
-
 .kisi30 {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
   align-items: end;
   gap: var(--space-4);
 }
 
-@media (max-width: 640px) {
-  .kisi30 {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .kisi30 > :last-child {
-    grid-column: 1 / -1;
-  }
+/* Kontrol berkas: input asli disembunyikan secara visual (tetap terfokus papan ketik), label jadi tombol berbahasa Indonesia. */
+.berkasBaris {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
 }
 
-/* Kontrol berkas bawaan peramban: tombol "pilih berkas" mengikuti rupa tombol sekunder dasbor. */
-.berkas {
-  cursor: pointer;
+.berkasInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
 }
 
-.berkas::file-selector-button {
-  margin-right: var(--space-3);
-  padding: var(--space-1) var(--space-3);
+.berkasTombol {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 36px;
+  padding: 0 var(--space-4);
   border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
-  background: var(--bg-surface-hover);
+  border-radius: var(--radius-button);
+  background: var(--bg-surface);
   color: var(--text-primary);
-  font: inherit;
+  font-size: var(--fs-body);
   font-weight: 600;
   cursor: pointer;
 }
 
-.berkas:disabled,
-.berkas:disabled::file-selector-button {
+.berkasTombol:hover {
+  background: var(--bg-surface-hover);
+}
+
+.berkasInput:focus-visible + .berkasTombol {
+  box-shadow: var(--focus-ring);
+}
+
+.berkasTombol[data-nonaktif='true'] {
   cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.berkasNama {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
 }
 
 .baris31 {
@@ -199,6 +221,12 @@
   color: var(--text-tertiary);
 }
 
-.statistik { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: var(--gap-grid); margin-bottom: var(--space-5); }
-
 @media print { .area43 { display: none; } }
+
+/* HP: kolom Dokumen selebar kartu dan rata kiri; judul dan deskripsi boleh membungkus, tidak terpotong. */
+@media (max-width: 640px) {
+  .baris11 { align-items: flex-start; width: 100%; text-align: left; }
+  .baris11 > :last-child { flex: 1; }
+  .teks16 { max-width: none; white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+  .teks15 { overflow-wrap: anywhere; }
+}

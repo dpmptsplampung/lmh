@@ -1,0 +1,97 @@
+/* Penampil dokumen bersama (hanya lihat). Kotaknya KerangkaModal; di HP memenuhi layar (penuhDiHp). */
+.peringatan { display: inline-flex; align-items: center; gap: var(--space-1); font-size: var(--text-sm); }
+.badan { width: 100%; min-height: 0; }
+.halaman {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  width: 100%;
+  min-height: 320px;
+  padding: var(--space-3);
+  background: var(--color-neutral-100);
+  border-radius: var(--radius-lg);
+}
+.gambar {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: calc(100dvh - 14rem);
+  object-fit: contain;
+  background: var(--color-neutral-0);
+  box-shadow: var(--shadow-md);
+  transition: opacity var(--transition-base);
+}
+.gambar[data-status='memuat'] { opacity: 0; }
+.memuat {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+.gagal {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  min-height: 280px;
+  text-align: center;
+  color: var(--color-danger-700);
+}
+.gagal p { margin: 0; }
+.kosong {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  min-height: 320px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+.kosong p { margin: 0; }
+.kosong svg { opacity: 0.4; }
+.kosong a { display: inline-flex; align-items: center; min-height: 44px; color: var(--text-link); font-size: var(--text-sm); }
+
+.kaki { display: flex; flex: 1; min-width: 0; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.nav { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
+.lompat { display: flex; align-items: center; gap: var(--space-2); margin: 0; min-width: 0; }
+.lompatLabel, .lompatDari { font-size: var(--text-sm); color: var(--text-secondary); white-space: nowrap; }
+.lompatIsian {
+  width: 5rem;
+  min-height: 44px;
+  padding: 0 var(--space-2);
+  font: inherit;
+  font-size: var(--text-base);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  color: var(--text-primary);
+  background: var(--color-neutral-0);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+.minat { margin-left: auto; }
+
+@media (max-width: 640px) {
+  /* Target sentuh >= 44px dan kaki yang tidak menumpuk tiga baris di HP. */
+  .kaki { justify-content: stretch; }
+  /* Isian "Ke slide" di baris sendiri; Sebelumnya dan Berikutnya berbagi baris di bawahnya. */
+  .nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; gap: var(--space-2); }
+  .nav button, .minat { min-height: 44px; flex: none; }
+  .nav button { padding: 0 var(--space-3); }
+  .lompat { grid-column: 1 / -1; grid-row: 1; justify-content: center; gap: var(--space-2); }
+  .lompatIsian { width: 5rem; }
+  .minat { width: 100%; margin-left: 0; }
+  .halaman { padding: var(--space-2); min-height: 240px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gambar { transition: none; }
+}
+@media print {
+  .badan { display: none; }
+}

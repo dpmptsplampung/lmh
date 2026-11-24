@@ -7,6 +7,9 @@ import { describe, expect, it } from 'vitest';
 const BERKAS = [
   'src/components/investasi/investasi.module.css',
   'src/components/investasi/kerangka.module.css',
+  'src/components/investasi/dokumen.module.css',
+  'src/components/investasi/penampil.module.css',
+  'src/app/gallery/gallery.module.css',
   'src/app/investasi/investasi.module.css',
   'src/app/investasi/ipro/[slug]/detail.module.css',
 ];

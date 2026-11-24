@@ -1,10 +1,21 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { InvestasiPublik, KartuPublik } from '@/lib/data/publik-server';
+import type { AngkaInvestasiPublik } from '@/lib/data/investasi';
+import type { DokumenPublik } from '@/lib/investasi/dokumen';
 
-const h = vi.hoisted(() => ({ data: null as unknown as InvestasiPublik }));
-vi.mock('@/lib/data/publik-server', () => ({ muatInvestasiPublik: async () => h.data }));
+type DataHub = Omit<InvestasiPublik, 'dokumen'> & { dokumen: DokumenPublik[]; petaPotensi: DokumenPublik | null };
+const h = vi.hoisted(() => ({
+  data: null as unknown as DataHub,
+  ringkasan: { angka: null, galat: false } as { angka: AngkaInvestasiPublik | null; galat: boolean },
+}));
+vi.mock('@/lib/data/publik-server', () => ({
+  muatInvestasiPublik: async () => h.data,
+  muatAngkaInvestasiPublik: async () => h.ringkasan,
+}));
 vi.mock('@/lib/supabase/client', () => ({ createClient: () => ({ auth: { getSession: async () => ({ data: { session: null }, error: null }) } }) }));
 
 import InvestasiPage, { metadata, revalidate } from './page';
@@ -15,10 +26,15 @@ const kartu = (n: number, sektor: string, kab_kota: string, tahap: string | null
   tahap_kajian: tahap, sumber_url: sumber === 'foila' ? `https://invest.lampungprov.go.id/p/${n}` : null, urutan: n, diterbitkan_pada: '2026-11-01T00:00:00Z',
   gambar: { url: `https://r2.example/${n}.webp`, url_mini: `https://r2.example/${n}-640.webp`, alt: `Foto proyek ${n}`, lebar: 800, tinggi: 500 },
 });
-const lengkap = (): InvestasiPublik => ({
+const dok = (id: string, kategori: DokumenPublik['kategori'] = 'Kajian', jumlah = 12): DokumenPublik => ({
+  id, judul: `Dokumen ${id}`, kategori, deskripsi: `Ringkasan ${id}.`, nilai_investasi: 'Rp 5 M', mata_uang: 'IDR', jumlah_halaman: jumlah,
+  sampul: jumlah > 0 ? `/api/investment-docs/page-image?doc_id=${id}&page=1&varian=sampul` : null, urutan_tampil: 1, sorotan: kategori === 'Peta Potensi',
+});
+const lengkap = (): DataHub => ({
   ptsp: [kartu(1, 'energi', 'Kab. Pesawaran', 'fs'), kartu(2, 'pariwisata', 'Kab. Pesawaran'), kartu(3, 'energi', 'Kab. Lampung Selatan', 'ipro')],
   foila: [kartu(9, 'infrastruktur', 'Kota Bandar Lampung', null, 'foila'), kartu(10, 'energi', 'Kab. Pesawaran', null, 'foila')],
-  dokumen: [{ id: 'd1', judul: 'Profil Investasi', kategori: 'IPRO', deskripsi: 'Ringkasan dokumen.', nilai_investasi: 'Rp 5 M', jumlah_halaman: 12, urutan_tampil: 1 }],
+  dokumen: [dok('d1', 'Profil')],
+  petaPotensi: null,
   sebaran: [
     { sektor: 'energi', kab_kota: 'Kab. Pesawaran', jumlah: 2 }, { sektor: 'energi', kab_kota: 'Kab. Lampung Selatan', jumlah: 1 },
     { sektor: 'pariwisata', kab_kota: 'Kab. Pesawaran', jumlah: 1 },
@@ -28,13 +44,14 @@ const lengkap = (): InvestasiPublik => ({
 });
 async function tampil() { render(await InvestasiPage()); }
 
-beforeEach(() => { h.data = lengkap(); window.history.replaceState(null, '', '/investasi'); });
+beforeEach(() => { h.data = lengkap(); h.ringkasan = { angka: null, galat: false }; window.history.replaceState(null, '', '/investasi'); });
 afterEach(() => { cleanup(); window.history.replaceState(null, '', '/'); });
 
 describe('hub /investasi', () => {
   it('ISR 60 detik, metadata statis dengan kanonik', () => {
     expect(revalidate).toBe(60);
     expect(metadata.title).toBe('Peluang Investasi Lampung');
+    expect(metadata.openGraph?.siteName).toBe('Investment Gallery');
     expect(metadata.alternates?.canonical).toBe('/investasi');
     expect(String(metadata.description).length).toBeGreaterThan(40);
   });
@@ -45,20 +62,21 @@ describe('hub /investasi', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Peluang Investasi Lampung' })).toBeInTheDocument();
     const urutan = screen.getAllByRole('heading').map(el => Number(el.tagName.slice(1)));
     for (let i = 1; i < urutan.length; i++) expect(urutan[i] - urutan[i - 1]).toBeLessThanOrEqual(1);
-    for (const nama of [/Proyek siap ditawarkan/, 'Peta Potensi Investasi', 'Dari portal FOILA', 'Dokumen investasi']) {
+    for (const nama of [/Proyek siap ditawarkan/, 'Jelajah Proyek', 'Dari portal FOILA', 'Investment Gallery']) {
       expect(screen.getByRole('region', { name: nama })).toBeInTheDocument();
     }
-    expect(document.getElementById('peta-potensi')).not.toBeNull();
+    expect(document.getElementById('jelajah-proyek')).not.toBeNull();
+    expect(screen.queryByRole('region', { name: 'Peta Potensi Investasi' })).toBeNull();
   });
 
   it('kartu PTSP menaut ke detail; kartu FOILA hanya tautan keluar; dokumen maksimal 6 dengan tombol ke /gallery', async () => {
-    h.data.dokumen = Array.from({ length: 8 }, (_, i) => ({ id: `d${i}`, judul: `Dokumen ${i}`, kategori: null, deskripsi: null, nilai_investasi: null, jumlah_halaman: 3, urutan_tampil: i }));
+    h.data.dokumen = Array.from({ length: 8 }, (_, i) => dok(`${i}`, 'Lainnya', 3));
     await tampil();
     expect(screen.getByRole('link', { name: 'Proyek 1' })).toHaveAttribute('href', '/investasi/ipro/proyek-1');
     const foila = screen.getByRole('link', { name: /Proyek 9/ });
     expect(foila).toHaveAttribute('href', 'https://invest.lampungprov.go.id/p/9');
     expect(foila).toHaveAttribute('target', '_blank');
-    const seksiDok = screen.getByRole('region', { name: 'Dokumen investasi' });
+    const seksiDok = screen.getByRole('region', { name: 'Investment Gallery' });
     expect(within(seksiDok).getAllByRole('heading', { level: 3 })).toHaveLength(6);
     expect(within(seksiDok).getByRole('link', { name: 'Lihat semua dokumen' })).toHaveAttribute('href', '/gallery');
   });
@@ -87,10 +105,12 @@ describe('hub /investasi', () => {
     expect(within(seksi).getAllByRole('heading', { level: 3 })).toHaveLength(3);
   });
 
-  it('Peta Potensi: kotak sektor menyaring daftar dan menandai aria-pressed; sektor tanpa proyek nonaktif', async () => {
+  it('Jelajah Proyek: kotak sektor menyaring daftar dan menandai aria-pressed; sektor tanpa proyek nonaktif', async () => {
     await tampil();
-    const peta = screen.getByRole('region', { name: 'Peta Potensi Investasi' });
-    expect(within(peta).getByRole('button', { name: /Pertanian/ })).toBeDisabled();
+    const peta = screen.getByRole('region', { name: 'Jelajah Proyek' });
+    // Hanya sektor berisi yang menjadi kotak; sektor kosong diringkas satu baris.
+    expect(within(peta).queryByRole('button', { name: /Pertanian/ })).toBeNull();
+    expect(within(peta).getByText(/sektor lain belum ada proyek/)).toBeInTheDocument();
     const energi = within(peta).getByRole('button', { name: /Energi/ });
     expect(energi).toHaveTextContent('2 proyek');
     act(() => { fireEvent.click(energi); });
@@ -103,9 +123,9 @@ describe('hub /investasi', () => {
 
   it('peta menghitung PTSP saja sesuai daftar tujuan, termasuk sektor/wilayah yang juga memiliki FOILA', async () => {
     await tampil();
-    const peta = screen.getByRole('region', { name: 'Peta Potensi Investasi' });
+    const peta = screen.getByRole('region', { name: 'Jelajah Proyek' });
     expect(within(peta).getByText(/Sebaran proyek IPRO PTSP/)).toBeInTheDocument();
-    expect(within(peta).getByRole('button', { name: /Infrastruktur/ })).toBeDisabled();
+    expect(within(peta).queryByRole('button', { name: /Infrastruktur/ })).toBeNull();
     expect(within(peta).queryByRole('button', { name: /Kota Bandar Lampung/ })).toBeNull();
     const daftar = screen.getByRole('region', { name: /Proyek siap ditawarkan/ });
     for (const nama of [/Energi/, /Pariwisata/, /^Kab\. Pesawaran\s+2$/, /^Kab\. Lampung Selatan\s+1$/]) {
@@ -128,12 +148,12 @@ describe('hub /investasi', () => {
     expect(screen.getByRole('link', { name: /Kunjungi portal FOILA/ })).toHaveAttribute('href', 'https://invest.lampungprov.go.id/');
   });
 
-  it('tanpa proyek: seksi Peta Potensi dan tombol lompat di hero tidak tampil', async () => {
+  it('tanpa proyek: seksi Jelajah Proyek dan tombol lompat di hero tidak tampil', async () => {
     h.data = { ...lengkap(), ptsp: [], sebaran: [] };
     await tampil();
-    expect(screen.queryByRole('region', { name: 'Peta Potensi Investasi' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Jelajah Proyek' })).toBeNull();
     expect(screen.queryByRole('link', { name: /Lihat .*proyek/ })).toBeNull();
-    expect(screen.queryByRole('link', { name: 'Peta potensi' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Jelajah Proyek' })).toBeNull();
   });
 
   it('navigasi: lompat ke isi, kepala dan kaki bernama', async () => {
@@ -143,5 +163,73 @@ describe('hub /investasi', () => {
     expect(screen.getByRole('link', { name: 'Lampung Maju Hub, ke beranda' })).toHaveAttribute('href', '/');
     expect(screen.getByRole('link', { name: 'Akun saya' })).toHaveAttribute('href', '/me');
     expect(screen.getByRole('link', { name: 'Investasi', current: 'page' })).toHaveAttribute('href', '/investasi');
+    // Dokumen tetap terjangkau di semua ukuran dan satu landmark main milik root layout (bukan halaman ini).
+    expect(within(screen.getByRole('navigation', { name: 'Navigasi utama' })).getByRole('link', { name: 'Investment Gallery' })).toHaveAttribute('href', '/gallery');
+    expect(document.querySelectorAll('main')).toHaveLength(0);
+    expect(screen.getAllByText('Investment Gallery').length).toBeGreaterThan(0);
+  });
+
+  it('hero: judul putih eksplisit (K1) dan angka ringkas dari loader tanpa total nilai', async () => {
+    h.ringkasan = { angka: { jumlah_proyek: 5, jumlah_dokumen: 3, jumlah_sektor: 4, jumlah_wilayah: 0 }, galat: false };
+    await tampil();
+    const hero = screen.getByRole('heading', { level: 1 }).closest('section') as HTMLElement;
+    const butir = within(hero).getAllByText(/proyek siap|dokumen dapat|sektor berisi|kabupaten/);
+    expect(butir.map(b => b.textContent)).toEqual(['proyek siap ditawarkan', 'dokumen dapat dibaca daring', 'sektor berisi proyek']);
+    expect(within(hero).getByText('5')).toBeInTheDocument();
+    expect(hero.textContent).not.toMatch(/Rp|USD|total nilai/i);
+    const css = readFileSync(join(process.cwd(), 'src/app/investasi/investasi.module.css'), 'utf8');
+    expect(css).toMatch(/\.pahlawanJudul\s*\{[^}]*color:\s*var\(--color-neutral-0\)/);
+  });
+
+  it('hero: galat angka atau angka semuanya 0 menyembunyikan panel (tanpa mengklaim 0)', async () => {
+    h.ringkasan = { angka: null, galat: true };
+    await tampil();
+    expect(document.querySelector('dl[data-jumlah]')).toBeNull();
+    cleanup();
+    h.ringkasan = { angka: { jumlah_proyek: 0, jumlah_dokumen: 0, jumlah_sektor: 0, jumlah_wilayah: 0 }, galat: false };
+    await tampil();
+    expect(document.querySelector('dl[data-jumlah]')).toBeNull();
+  });
+
+  it('sorotan Peta Potensi: tampil di atas daftar dengan aksi utama; tersembunyi bila tidak ada dokumen', async () => {
+    h.data.petaPotensi = dok('peta1', 'Peta Potensi', 24);
+    await tampil();
+    const sorotan = screen.getByRole('region', { name: 'Dokumen peta1' });
+    expect(sorotan).toHaveAttribute('id', 'peta-potensi');
+    expect(within(sorotan).getByText('24 slide, dapat dibaca daring (hanya lihat)')).toBeInTheDocument();
+    const urutan = screen.getAllByRole('region').map(r => r.id || r.getAttribute('aria-labelledby'));
+    expect(urutan.indexOf('peta-potensi')).toBeLessThan(urutan.indexOf('proyek-ptsp'));
+    fireEvent.click(within(sorotan).getByRole('button', { name: 'Buka Peta Potensi' }));
+    expect(screen.getByRole('dialog', { name: 'Dokumen peta1' })).toBeInTheDocument();
+    expect(within(screen.getByRole('dialog')).getByAltText('Dokumen peta1, slide 1 dari 24')).toBeInTheDocument();
+    cleanup();
+    h.data.petaPotensi = null;
+    await tampil();
+    expect(document.getElementById('peta-potensi')).toBeNull();
+  });
+
+  it('kartu dokumen: seluruh kartu membuka penampil, "Ajukan minat" membuka formulir, jumlah halaman 0 = diproses', async () => {
+    h.data.dokumen = [dok('d1', 'Profil', 12), dok('d2', 'Kajian', 0)];
+    await tampil();
+    const seksi = screen.getByRole('region', { name: 'Investment Gallery' });
+    expect(within(seksi).getByText('12 halaman')).toBeInTheDocument();
+    expect(within(seksi).getByText('Sedang diproses')).toBeInTheDocument();
+    fireEvent.click(within(seksi).getByRole('button', { name: /Dokumen d1, lihat dokumen/ }));
+    expect(screen.getByRole('dialog', { name: 'Dokumen d1' })).toBeInTheDocument();
+    cleanup();
+    await tampil();
+    fireEvent.click(screen.getByRole('button', { name: 'Ajukan minat: Dokumen d1' }));
+    expect(screen.getByRole('dialog', { name: 'Ajukan Minat Investasi' })).toBeInTheDocument();
+  });
+
+  it('kisi mengikuti jumlah kartu (tanpa kolom kosong) dan saringan HP dilipat di balik tombol', async () => {
+    await tampil();
+    expect(document.querySelector('ul[data-jumlah="3"]')).not.toBeNull();
+    const toggle = screen.getByRole('button', { name: 'Saring proyek' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    act(() => { fireEvent.change(screen.getByLabelText('Sektor'), { target: { value: 'energi' } }); });
+    expect(screen.getByRole('button', { name: 'Saringan (1 aktif)' })).toBeInTheDocument();
   });
 });

@@ -211,4 +211,28 @@ describe('Admin gallery PDF pipeline', () => {
       );
     });
   });
+
+  it('form: kategori pilihan tetap, kontrol file berbahasa Indonesia, status hanya saat edit, jumlah halaman otomatis', async () => {
+    const mock = buildMock();
+    mock._select.mockReturnValue({ order: vi.fn().mockResolvedValue({ data: [{
+      id: 'doc-lama', judul: 'Dokumen Lama', kategori: 'Manufaktur & Industri', urutan_tampil: 1, file_path: 'raw/x.pdf',
+      jumlah_halaman: 5, halaman_selesai: 5, status: 'aktif', deskripsi: null, nilai_investasi: null, image_url: null, galat: null,
+    }], error: null }) });
+    render(<AdminGalleryPage />);
+    // Ringkasan satu baris, bukan dua kartu statistik.
+    expect(await screen.findByLabelText('Ringkasan dokumen')).toHaveTextContent('1 aktif');
+    fireEvent.click(screen.getByRole('button', { name: /tambah dokumen/i }));
+    const kategori = await screen.findByLabelText('Kategori') as HTMLSelectElement;
+    expect([...kategori.options].map(o => o.textContent)).toEqual(['Pilih kategori', 'Peta Potensi', 'Kajian', 'Profil', 'Lainnya']);
+    expect(screen.getByText('Pilih file PDF')).toBeInTheDocument();
+    expect(screen.getByText('Belum ada file dipilih')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Status')).toBeNull();
+    expect(screen.queryByLabelText('Jumlah Halaman')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Batal' }));
+    fireEvent.click(await screen.findByTitle('Edit'));
+    expect(await screen.findByLabelText('Status')).toBeInTheDocument();
+    // Nilai kategori lama tetap terbaca sampai staf memilih kategori baru.
+    expect(screen.getByText(/Kategori lama: "Manufaktur & Industri"/)).toBeInTheDocument();
+    expect(screen.getByText(/Jumlah halaman: 5/)).toBeInTheDocument();
+  });
 });

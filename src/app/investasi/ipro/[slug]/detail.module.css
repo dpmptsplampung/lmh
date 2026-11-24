@@ -15,7 +15,8 @@
 /* Pemisah menempel di akhir butir sebelumnya, supaya tidak tertinggal di awal baris saat membungkus. */
 .remah li:not(:last-child)::after { content: '›'; color: var(--text-tertiary); }
 .remah a { color: var(--text-link); display: inline-flex; align-items: center; min-height: 44px; }
-.remah [aria-current='page'] { color: var(--text-primary); font-weight: 600; overflow-wrap: anywhere; }
+/* Judul panjang dipotong satu baris (teks utuh tetap ada untuk pembaca layar dan di h1). */
+.remah [aria-current='page'] { color: var(--text-primary); font-weight: 600; max-width: 32ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; line-height: 44px; }
 .heroKisi { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-6); align-items: start; }
 .heroFoto { aspect-ratio: 16 / 10; overflow: hidden; border-radius: var(--radius-2xl); background: var(--color-neutral-200); }
 .heroFoto img { display: block; width: 100%; height: 100%; object-fit: cover; }
@@ -36,6 +37,12 @@
 .deskripsi { display: flex; flex-direction: column; gap: var(--space-4); max-width: 72ch; line-height: 1.7; color: var(--text-primary); }
 .deskripsi p { margin: 0; }
 
+/* ---- Ajakan penutup ---- */
+.ajakanAkhir { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-3); padding: var(--space-8); border-radius: var(--radius-2xl); background: var(--color-primary-800); color: var(--color-neutral-0); }
+.ajakanAkhir h2 { margin: 0; font-family: var(--font-display); font-size: var(--text-2xl); line-height: 1.2; color: var(--color-neutral-0); }
+.ajakanAkhir p { margin: 0; max-width: 56ch; line-height: 1.6; color: var(--color-primary-100); }
+.ajakanAksi { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-2); }
+
 /* ---- Kontak ---- */
 .kontak { padding: var(--space-5); background: var(--color-neutral-0); border: 1px solid var(--border-default); border-radius: var(--radius-xl); }
 .kontakDaftar { list-style: none; margin: 0 0 var(--space-3); padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
@@ -51,7 +58,7 @@
   .kolomSamping { position: sticky; top: calc(var(--header-height) + var(--space-4)); }
 }
 @media (max-width: 640px) {
-  .aksi > * { flex: 1 1 100%; }
+  .aksi > *, .ajakanAksi > * { flex: 1 1 100%; }
   /* Tautan email/telepon cukup besar untuk jari. */
   .kontakDaftar li { align-items: center; }
   .kontakDaftar svg { margin-top: 0; }

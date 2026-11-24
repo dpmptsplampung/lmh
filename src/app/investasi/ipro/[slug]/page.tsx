@@ -5,6 +5,7 @@ import GaleriGambar from '@/components/investasi/GaleriGambar';
 import KerangkaInvestasi from '@/components/investasi/KerangkaInvestasi';
 import { CONTACT_EMAIL_FALLBACK } from '@/lib/constants';
 import { muatIproPublik } from '@/lib/data/publik-server';
+import AjakanIpro from './_bagian/AjakanIpro';
 import AksiIpro from './_bagian/AksiIpro';
 import HeroIpro from './_bagian/HeroIpro';
 import KontakIpro from './_bagian/KontakIpro';
@@ -39,6 +40,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     description: deskripsi,
     alternates: { canonical: kanonik },
     openGraph: {
+      siteName: 'Investment Gallery',
       title: ipro.judul,
       description: deskripsi,
       url: kanonik,
@@ -61,7 +63,7 @@ export default async function DetailIproPage({ params }: Props) {
 
   return (
     <KerangkaInvestasi aktif="detail">
-      <main className={styles.halaman}>
+      <div className={styles.halaman}>
         {jsonLd && <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serialisasiJsonLd(jsonLd) }} />}
         <HeroIpro
           ipro={ipro}
@@ -91,7 +93,8 @@ export default async function DetailIproPage({ params }: Props) {
             <KontakIpro ipro={ipro} />
           </aside>
         </div>
-      </main>
+        <AjakanIpro ipro={{ id: ipro.id, judul: ipro.judul }} />
+      </div>
     </KerangkaInvestasi>
   );
 }

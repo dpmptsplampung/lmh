@@ -18,7 +18,6 @@ export default function TabelFakta({ ipro }: { ipro: DetailIproPublik }) {
   return (
     <Tabel
       caption="Fakta proyek"
-      captionTampil
       kolom={[{ kunci: 'label', judul: 'Informasi', judulBaris: true }, { kunci: 'nilai', judul: 'Keterangan' }]}
       baris={baris}
       kunciBaris="label"

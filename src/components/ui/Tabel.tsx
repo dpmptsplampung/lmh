@@ -130,7 +130,7 @@ export default function Tabel<T>({
                   k.sembunyiDiHp && styles.sembunyiDiHp,
                 );
                 return k.judulBaris ? (
-                  <th key={k.kunci} scope="row" className={cn(kelas, styles.kepalaBaris)} data-label={label}>
+                  <th key={k.kunci} scope="row" className={cn(kelas, styles.kepalaBaris)} data-label={k.peran ? undefined : label}>
                     {isi}
                   </th>
                 ) : (
