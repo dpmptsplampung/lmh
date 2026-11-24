@@ -323,7 +323,16 @@ describe('reservasi pengunjung (rpc reservasi_buat / reservasi_batalkan, daftar 
     bukaKalender();
     // Batas (dulu atribut max pada input date) kini dijaga PemilihTanggal: hari di luar batas aria-disabled,
     // dan bulan di luar batas tidak bisa dibuka.
-    const hari = tombolHari(toLocalYmd(d));
+    let hari = tombolHari(toLocalYmd(d));
+    if (!hari) {
+      // Di akhir bulan batas 7 hari bisa jatuh ke bulan berikutnya: bulan itu boleh dibuka, tetapi hari +8 tetap
+      // tidak tersedia. Hanya bila bulan itu benar-benar di luar batas, tombolnya yang aria-disabled.
+      const berikut = screen.getByRole('button', { name: 'Bulan berikutnya' });
+      if (berikut.getAttribute('aria-disabled') !== 'true') {
+        fireEvent.click(berikut);
+        hari = tombolHari(toLocalYmd(d));
+      }
+    }
     if (hari) {
       expect(hari).toHaveAttribute('aria-label', expect.stringMatching(/tidak tersedia/));
       fireEvent.click(hari);
