@@ -1,10 +1,9 @@
 'use client';
 import { useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
-import { mutasiWajibBaris } from '@/lib/supabase/mutate';
 import { perluMuatUlang } from '@/components/admin/mutasi-ui';
 import { useToast } from '@/components/Toast';
-import { nowServer } from '@/lib/time';
+import { kategoriDokumen } from '@/lib/investasi/dokumen';
+import { patchDokumen } from './mutasi-dokumen';
 import { emptyForm, type GalleryDoc, type GalleryForm } from '../_logika/tipe';
 import { jsonPost, prosesDokumen } from '../_logika/unggah';
 export function useGalleryForm(docs: GalleryDoc[], loadData: () => Promise<void>) {
@@ -12,6 +11,7 @@ export function useGalleryForm(docs: GalleryDoc[], loadData: () => Promise<void>
   // Form modal state
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [dokumenAwal, setDokumenAwal] = useState<GalleryDoc | null>(null);
   const [form, setForm] = useState<GalleryForm>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
@@ -46,9 +46,10 @@ export function useGalleryForm(docs: GalleryDoc[], loadData: () => Promise<void>
   const handleOpenForm = (doc?: GalleryDoc) => {
     if (doc) {
       setEditingId(doc.id);
+      setDokumenAwal(doc);
       setForm({
         judul: doc.judul,
-        kategori: doc.kategori ?? '',
+        kategori: kategoriDokumen(doc.kategori),
         urutan_tampil: doc.urutan_tampil,
         jumlah_halaman: doc.jumlah_halaman,
         deskripsi: doc.deskripsi ?? '',
@@ -60,6 +61,7 @@ export function useGalleryForm(docs: GalleryDoc[], loadData: () => Promise<void>
       setPdfFile(null);
     } else {
       setEditingId(null);
+      setDokumenAwal(null);
       setForm({ ...emptyForm, urutan_tampil: docs.length + 1 });
       setPdfFile(null);
     }
@@ -97,32 +99,27 @@ export function useGalleryForm(docs: GalleryDoc[], loadData: () => Promise<void>
         await loadData();
         await lanjutkan({ id: doc.id, halaman_selesai: 0, jumlah_halaman: doc.jumlah_halaman });
       } else {
-        // Metadata-only update (no PDF re-upload on edit for this gate)
-        const supabase = createClient();
-        const payload = {
+        const statusAwal = dokumenAwal?.status;
+        const urutanAwal = dokumenAwal?.urutan_tampil;
+        const ubahStatus = (statusAwal === 'aktif' || statusAwal === 'nonaktif') &&
+          (form.status === 'aktif' || form.status === 'nonaktif') && statusAwal !== form.status;
+        await patchDokumen(editingId, {
+          aksi: 'metadata',
           judul: form.judul.trim(),
           kategori: form.kategori.trim() || null,
-          urutan_tampil: form.urutan_tampil,
+          ...(urutanAwal !== undefined && urutanAwal !== form.urutan_tampil
+            ? { urutan_tampil: form.urutan_tampil, urutan_lama: urutanAwal } : {}),
           deskripsi: form.deskripsi.trim() || null,
           nilai_investasi: form.nilai_investasi.trim() || null,
           image_url: form.image_url.trim() || null,
-          status: form.status,
-          updated_at: nowServer().toISOString(),
-        };
-        await mutasiWajibBaris(
-          supabase
-            .from('investment_documents')
-            .update(payload)
-            .eq('id', editingId)
-            .select('id'),
-        );
+          ...(ubahStatus ? { status: form.status, status_lama: statusAwal } : {}),
+        });
       }
       setShowForm(false);
       setPdfFile(null);
       toast('Dokumen berhasil disimpan.', 'success');
       loadData();
     } catch (err) {
-      // MutasiError.message = pesan Indonesia siap tampil; jalur upload (fetch) melempar Error biasa.
       const message = err instanceof Error ? err.message : 'Gagal menyimpan dokumen.';
       setFormError(message);
       toast(message, 'error');

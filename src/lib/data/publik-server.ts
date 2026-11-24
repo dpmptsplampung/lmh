@@ -26,8 +26,10 @@ import { logServerEvent } from '@/lib/observability/logger';
 import type { IkmRow } from '@/lib/ikm';
 import { toWIBDateString } from '@/lib/time';
 import { gabungkanBlok, type BlokTersusun } from '@/lib/homepage/blok';
-import { daftarDokumenAktif, daftarIproTerbit, gambarUntukProyek, iproTerbitBySlug,
-  type DokumenRingkas, type GambarIpro, type IproDetail, type IproKartu } from './investasi';
+import { angkaInvestasiPublik, cuplikanDokumenPublik, daftarIproTerbit, dokumenAktifById, gambarUntukProyek,
+  halamanDokumenPublik, iproTerbitBySlug, UKURAN_HALAMAN_GALERI, type AngkaInvestasiPublik,
+  type DokumenPublik, type DokumenRingkas, type GambarIpro, type IproDetail, type IproKartu } from './investasi';
+import { TAG_INVESTASI_PUBLIK } from '@/lib/investasi/cache-server';
 import { urlPublik } from '@/lib/storage/r2';
 import { objekBelumAda } from '@/lib/akses-data/galat';
 import {
@@ -48,7 +50,7 @@ export const TAG_PUBLIK = {
   faq: 'publik-faq',
   transparansi: 'publik-transparansi',
   standar: 'publik-standar',
-  investasi: 'publik-investasi',
+  investasi: TAG_INVESTASI_PUBLIK,
 } as const;
 export type TagPublik = (typeof TAG_PUBLIK)[keyof typeof TAG_PUBLIK];
 
@@ -446,22 +448,30 @@ export type InvestasiPublik = { ptsp: KartuPublik[]; foila: KartuPublik[]; dokum
   sebaran: { sektor: string; kab_kota: string; jumlah: number }[]; galat: boolean };
 export type DetailIproPublik = IproDetail & {
   gambar: GambarIproPublik[];
-  dokumen: Pick<DokumenRingkas, 'id' | 'judul' | 'jumlah_halaman'> | null;
+  dokumen: Pick<DokumenPublik, 'id' | 'judul' | 'jumlah_halaman'> | null;
 };
 
 function gambarIproPublik(gambar: GambarIpro): GambarIproPublik {
   const { kunci, kunci_mini, ...isian } = gambar;
   return { ...isian, url: urlPublik(kunci), url_mini: urlPublik(kunci_mini) };
 }
-const investasiBawaan = (): InvestasiPublik => ({ ptsp: [], foila: [], dokumen: [], sebaran: [], galat: true });
-async function muatInvestasiMentah(sb: SupabaseClient): Promise<Termuat<InvestasiPublik>> {
+// Bentuk dasar tetap menerima fixture layar lama selama migrasi UI.
+type HubInvestasiPublik = Omit<InvestasiPublik, 'dokumen'> & {
+  dokumen: DokumenPublik[];
+  petaPotensi: DokumenPublik | null;
+};
+const investasiBawaan = (): HubInvestasiPublik => ({
+  ptsp: [], foila: [], dokumen: [], petaPotensi: null, sebaran: [], galat: true,
+});
+async function muatInvestasiMentah(sb: SupabaseClient): Promise<Termuat<HubInvestasiPublik>> {
   const [proyek, dokumen] = await Promise.all([
     denganBatasWaktu(daftarIproTerbit(sb), BATAS_MUAT_MS, null),
-    denganBatasWaktu(daftarDokumenAktif(sb, 12), BATAS_MUAT_MS, null),
+    denganBatasWaktu(cuplikanDokumenPublik(sb), BATAS_MUAT_MS, null),
   ]);
   const daftar = proyek?.data ?? [];
   const gambar = await denganBatasWaktu(gambarUntukProyek(sb, daftar.map(p => p.id)), BATAS_MUAT_MS, null);
-  const galat = [proyek, dokumen, gambar].some(r => r === null || (!!r.error && !objekBelumAda(r.error)));
+  const galat = [proyek, gambar].some(r => r === null || (!!r.error && !objekBelumAda(r.error))) ||
+    dokumen === null || dokumen.errors.some(error => !!error && !objekBelumAda(error));
   const kelompok = new Map<string, { sektor: string; kab_kota: string; jumlah: number }>();
   const kartu = daftar.map(p => {
     const g = gambar?.data?.find(g => g.proyek_id === p.id && g.utama) ?? gambar?.data?.find(g => g.proyek_id === p.id);
@@ -471,23 +481,53 @@ async function muatInvestasiMentah(sb: SupabaseClient): Promise<Termuat<Investas
     return { ...p, gambar: g ? gambarIproPublik(g) : null };
   });
   return { data: { ptsp: kartu.filter(p => p.sumber === 'ptsp'), foila: kartu.filter(p => p.sumber === 'foila'),
-    dokumen: dokumen?.data ?? [], sebaran: [...kelompok.values()], galat }, lengkap: !galat };
+    dokumen: dokumen?.dokumen ?? [], petaPotensi: dokumen?.petaPotensi ?? null, sebaran: [...kelompok.values()], galat }, lengkap: !galat };
 }
-export const muatInvestasiPublik = denganCache('investasi', [TAG_PUBLIK.investasi], muatInvestasiMentah, investasiBawaan);
+export const muatInvestasiPublik = denganCache('investasi', [TAG_PUBLIK.investasi], muatInvestasiMentah, investasiBawaan, 2);
 
-const muatIproBerkunci = denganCache<{ ipro: DetailIproPublik | null; galat: boolean }, [string]>(
+type GaleriPublik = { dokumen: DokumenPublik[]; adaBerikutnya: boolean; galat: boolean };
+const galeriGagal = (): GaleriPublik => ({ dokumen: [], adaBerikutnya: false, galat: true });
+const muatGaleriBerkunci = denganCache<GaleriPublik, [string]>(
+  'galeri-investasi', [TAG_PUBLIK.investasi], async (sb, halaman) => {
+    const hasil = await denganBatasWaktu(halamanDokumenPublik(sb, Number(halaman)), BATAS_MUAT_MS, null);
+    const dokumen = hasil?.data ?? [];
+    const galat = hasil === null || !!hasil.error;
+    return { data: { dokumen: dokumen.slice(0, UKURAN_HALAMAN_GALERI),
+      adaBerikutnya: dokumen.length > UKURAN_HALAMAN_GALERI, galat }, lengkap: !galat };
+  }, galeriGagal,
+);
+
+export function muatGaleriPublik(halaman = 1): Promise<GaleriPublik> {
+  if (!Number.isSafeInteger(halaman) || halaman < 1 || halaman > Math.floor(2_147_483_647 / UKURAN_HALAMAN_GALERI)) {
+    return Promise.resolve(galeriGagal());
+  }
+  return muatGaleriBerkunci(String(halaman));
+}
+
+type RingkasanInvestasiPublik = { angka: AngkaInvestasiPublik | null; galat: boolean };
+const ringkasanGagal = (): RingkasanInvestasiPublik => ({ angka: null, galat: true });
+export const muatAngkaInvestasiPublik = denganCache(
+  'angka-investasi', [TAG_PUBLIK.investasi], async (sb) => {
+    const hasil = await denganBatasWaktu(angkaInvestasiPublik(sb), BATAS_MUAT_MS, null);
+    return hasil?.data && !hasil.error
+      ? { data: { angka: hasil.data, galat: false }, lengkap: true }
+      : { data: ringkasanGagal(), lengkap: false };
+  }, ringkasanGagal,
+);
+
+type DetailIproDenganDokumen = Omit<DetailIproPublik, 'dokumen'> & { dokumen: DokumenPublik | null };
+const muatIproBerkunci = denganCache<{ ipro: DetailIproDenganDokumen | null; galat: boolean }, [string]>(
   'ipro-detail', [TAG_PUBLIK.investasi], async (sb, slug) => {
     const hasil = await denganBatasWaktu(iproTerbitBySlug(sb, slug), BATAS_MUAT_MS, null);
     const dokumenId = hasil?.data?.dokumen_id;
-    const dokumen = dokumenId ? await denganBatasWaktu(sb.from('investment_documents')
-      .select('id, judul, jumlah_halaman').eq('id', dokumenId).eq('status', 'aktif').maybeSingle(), BATAS_MUAT_MS, null) : null;
+    const dokumen = dokumenId ? await denganBatasWaktu(dokumenAktifById(sb, dokumenId), BATAS_MUAT_MS, null) : null;
     const galat = hasil === null || (!!hasil.error && !objekBelumAda(hasil.error)) ||
       (!!dokumenId && (dokumen === null || (!!dokumen.error && !objekBelumAda(dokumen.error))));
     return { data: { ipro: hasil?.data ? { ...hasil.data, gambar: hasil.data.gambar.map(gambarIproPublik),
       dokumen: dokumen?.data ?? null } : null, galat }, lengkap: !galat };
-  }, () => ({ ipro: null, galat: true }), 2,
+  }, () => ({ ipro: null, galat: true }), 3,
 );
-export async function muatIproPublik(slug: string): Promise<DetailIproPublik | null> {
+export async function muatIproPublik(slug: string): Promise<DetailIproDenganDokumen | null> {
   const hasil = await muatIproBerkunci(slug);
   if (hasil.galat) throw new Error('Data IPRO belum dapat dimuat.');
   return hasil.ipro;

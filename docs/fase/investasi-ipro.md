@@ -52,6 +52,15 @@ Navigasi: `src/lib/admin-nav.ts`, kelompok "Kemitraan & Investasi", tiga entri d
 
 Setiap mutasi data terbit memanggil `revalidateTag('publik-investasi', { expire: 0 })` langsung di route (bukan lewat `segarkanPublik`, karena route revalidasi bersama khusus admin).
 
+### Penyiapan PDF melalui jalur offline
+
+Jalur browser menerima PDF 1–50 halaman. Untuk PDF 51–200 halaman, PM dapat menyiapkan satu dokumen dengan `scripts/terbitkan-pdf-investasi.ts`. Penampil dan sampul menggunakan keluaran PNG dari renderer produksi yang sama. Skrip memproses halaman berurutan pada skala 1,5 dengan batas 40 juta piksel per halaman. PDF sumber berukuran maksimum 50 MiB.
+
+- Gunakan `bun --no-env-file --no-install run scripts/terbitkan-pdf-investasi.ts` dengan `--berkas`, `--judul`, `--kategori 'Peta Potensi'`, `--deskripsi` dan `--urutan`. Pilih `--render-lokal <dir-kosong>` untuk menyimpan PNG dan mengukur waktu, memori serta byte. Mode ini tidak menghubungi layanan dan tidak memuat berkas lingkungan.
+- Gunakan `--terbitkan` untuk menghitung kunci objek, byte dan baris yang direncanakan. Proses membaca host dari `NEXT_PUBLIC_SUPABASE_URL`, `R2_ACCOUNT_ID` dan `R2_BUCKET_PRIVATE` yang sudah ada di lingkungan proses. Periksa host dan ketik `LANJUT` di terminal. `--yes` tersedia bila konfirmasi diberikan lewat opsi CLI.
+- Tambahkan `--terapkan` dengan kredensial Supabase dan R2 yang disediakan ke lingkungan proses. Skrip memeriksa setiap PNG dan PDF di bucket privat lewat tipe konten, panjang dan ETag dari PUT tunggal. PDF yang sama menghasilkan ID dokumen tetap. Ulangi dengan PDF, metadata dan versi renderer yang sama bila proses terputus. Bila objek di kunci yang sama berbeda, proses berhenti untuk pemeriksaan.
+- Setelah semua objek terkonfirmasi, skrip mencatat satu baris berstatus `nonaktif` dengan daftar dan jumlah halaman lengkap. Simpan ID yang dilaporkan. Setelah kode penampil terpasang, PM mengaktifkan dokumen melalui pengelola Investment Gallery, yang juga menginvalifikasi cache publik. Periksa sampul dan halaman terakhir dari katalog publik.
+
 ## Alur pengunjung
 
 - **`/investasi`** (Server Component, `revalidate = 60`): IPRO PTSP, kartu FOILA, cuplikan Dokumen Investasi (maksimal 6), dan seksi Peta Potensi (`#peta-potensi`: kisi sektor dan kabupaten/kota, tanpa peta ubin). Data lewat `muatInvestasiPublik()` di `src/lib/data/publik-server.ts` (tag `publik-investasi`).

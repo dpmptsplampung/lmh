@@ -56,6 +56,8 @@ import {
   muatStandarPublik,
   muatTransparansiPublik,
   muatInvestasiPublik,
+  muatGaleriPublik,
+  muatAngkaInvestasiPublik,
   muatIproPublik,
   rentangKuartalWIB,
 } from './publik-server';
@@ -80,7 +82,7 @@ function klienTiruan(
       const catatan: Panggilan = { tabel, langkah: [] };
       panggilan.push(catatan);
       const q: Record<string, unknown> = {};
-      for (const nama of ['select', 'in', 'eq', 'neq', 'order', 'limit', 'maybeSingle']) {
+      for (const nama of ['select', 'in', 'eq', 'neq', 'order', 'limit', 'range', 'or', 'ilike', 'maybeSingle']) {
         q[nama] = (...args: unknown[]) => {
           catatan.langkah.push([nama, ...args]);
           return q;
@@ -93,7 +95,8 @@ function klienTiruan(
     rpc(nama: string, args: Record<string, unknown> = {}) {
       panggilanRpc.push({ nama, args });
       const b = opsi.rpc?.[nama];
-      return balas(typeof b === 'function' ? b(args) : b);
+      const janji = balas(typeof b === 'function' ? b(args) : b);
+      return Object.assign(janji, { single: () => janji });
     },
   };
   return { sb, panggilan, panggilanRpc };
@@ -147,8 +150,9 @@ afterEach(() => {
 });
 
 describe('cache investasi publik', () => {
-  it.each(['investasi', 'ipro-detail'])('loader %s memakai tag investasi dan umur 60 detik', nama => {
-    const cache = PEMBUNGKUS.find(p => p.keyParts?.includes(`publik-${nama}-v${nama === 'ipro-detail' ? 2 : 1}`));
+  it.each([['investasi', 2], ['ipro-detail', 3], ['galeri-investasi', 1], ['angka-investasi', 1]])(
+    'loader %s memakai tag investasi dan umur 60 detik', (nama, versi) => {
+    const cache = PEMBUNGKUS.find(p => p.keyParts?.includes(`publik-${nama}-v${versi}`));
     expect(cache?.opsi).toEqual({ tags: ['publik-investasi'], revalidate: 60 });
   });
   it('hub mengelompokkan sumber dan sebaran, URL gambar dibentuk server', async () => {
@@ -156,7 +160,7 @@ describe('cache investasi publik', () => {
       ipro_proyek: [{ data: [{ id: 'p1', sumber: 'ptsp', sektor: 'energi', kab_kota: 'Lampung' },
         { id: 'p2', sumber: 'foila', sektor: 'energi', kab_kota: 'Lampung' }], error: null }],
       ipro_gambar: [{ data: [{ proyek_id: 'p1', kunci: 'gambar.webp', kunci_mini: 'mini.webp', utama: true, alt: 'Energi', lebar: 1600, tinggi: 800 }], error: null }],
-      investment_documents: [{ data: [], error: null }],
+      investment_documents: [{ data: [], error: null }, { data: [], error: null }],
     } });
     const r = await muatInvestasiPublik();
     expect(r.galat).toBe(false); expect(r.ptsp).toHaveLength(1); expect(r.foila).toHaveLength(1);
@@ -166,11 +170,55 @@ describe('cache investasi publik', () => {
   it('galat sesaat hub tidak tersimpan sehingga percobaan berikut dapat pulih', async () => {
     pasang({ from: {
       ipro_proyek: [galat503, { data: [], error: null }],
-      investment_documents: [{ data: [], error: null }, { data: [], error: null }],
+      investment_documents: Array.from({ length: 4 }, () => ({ data: [], error: null })),
     } });
     expect((await muatInvestasiPublik()).galat).toBe(true);
     expect((await muatInvestasiPublik()).galat).toBe(false);
   });
+  const barisDokumen = (id: string, kategori = 'Kajian') => ({
+    id, judul: id, kategori, urutan_tampil: 1, jumlah_halaman: 1, deskripsi: null,
+    nilai_investasi: null, halaman_gambar: ['privat/page-1.png'],
+  });
+
+  it('sorotan diambil seluruh katalog dengan query terpisah dari enam kartu', async () => {
+    const biasa = Array.from({ length: 6 }, (_, i) => barisDokumen(String(i)));
+    const t = pasang({ from: {
+      ipro_proyek: [{ data: [], error: null }],
+      investment_documents: [{ data: biasa, error: null },
+        { data: [barisDokumen('peta-jauh', 'Peta Potensi')], error: null }],
+    } });
+    const hasil = await muatInvestasiPublik();
+    expect(hasil.dokumen).toHaveLength(6);
+    expect(hasil.petaPotensi).toMatchObject({ id: 'peta-jauh', sorotan: true });
+    expect(JSON.stringify(hasil)).not.toContain('privat/page-1.png');
+    const [umum, peta] = dipakai(t.panggilan, 'investment_documents');
+    expect(umum.langkah).toContainEqual(['limit', 6]);
+    expect(umum.langkah).toContainEqual(['or', 'kategori.is.null,kategori.not.ilike.%peta%potensi%']);
+    expect(peta.langkah).toContainEqual(['ilike', 'kategori', '%peta%potensi%']);
+    expect(peta.langkah).toContainEqual(['limit', 1]);
+  });
+
+  it('halaman galeri stabil dan terpisah di cache, dengan satu baris penanda halaman berikutnya', async () => {
+    const daftar = Array.from({ length: 25 }, (_, i) => barisDokumen(String(i)));
+    const t = pasang({ from: { investment_documents: [{ data: daftar, error: null },
+      { data: [barisDokumen('24')], error: null }] } });
+    expect(await muatGaleriPublik()).toMatchObject({ adaBerikutnya: true, galat: false, dokumen: expect.any(Array) });
+    expect((await muatGaleriPublik()).dokumen).toHaveLength(24);
+    expect(await muatGaleriPublik(2)).toMatchObject({ adaBerikutnya: false, dokumen: [{ id: '24' }] });
+    const q = dipakai(t.panggilan, 'investment_documents');
+    expect(q).toHaveLength(2);
+    expect(q[0].langkah.slice(1)).toEqual([['eq', 'status', 'aktif'], ['order', 'urutan_tampil'], ['order', 'id'], ['range', 0, 24]]);
+    expect(q[1].langkah.at(-1)).toEqual(['range', 24, 48]);
+  });
+
+  it('angka hero memakai agregat tersendiri tanpa mengambil nilai investasi', async () => {
+    const angka = { jumlah_proyek: 215, jumlah_dokumen: 7, jumlah_sektor: 3, jumlah_wilayah: 5 };
+    const t = pasang({ rpc: { investasi_angka_publik: { data: angka, error: null } } });
+    expect(await muatAngkaInvestasiPublik()).toEqual({ angka, galat: false });
+    expect(t.panggilan).toEqual([]);
+    expect(t.panggilanRpc).toEqual([{ nama: 'investasi_angka_publik', args: {} }]);
+  });
+
   it('detail tidak ditemukan null; galat sesaat dilempar dan tidak disimpan', async () => {
     pasang({ from: { ipro_proyek: [galat503, { data: null, error: null }],
       ipro_gambar: [{ data: [], error: null }, { data: [], error: null }] } });
@@ -188,11 +236,11 @@ describe('cache investasi publik', () => {
     const t = pasang({ from: {
       ipro_proyek: [{ data: { id: 'p1', dokumen_id: 'dok-di-luar-hub' }, error: null }],
       ipro_gambar: [{ data: [], error: null }],
-      investment_documents: [{ data: { id: 'dok-di-luar-hub', judul: 'Kajian terpilih', jumlah_halaman: 17 }, error: null }],
+      investment_documents: [{ data: { id: 'dok-di-luar-hub', judul: 'Kajian terpilih', jumlah_halaman: 17, halaman_gambar: ['a', 'b'] }, error: null }],
     } });
-    expect((await muatIproPublik('energi'))?.dokumen).toEqual({ id: 'dok-di-luar-hub', judul: 'Kajian terpilih', jumlah_halaman: 17 });
+    expect((await muatIproPublik('energi'))?.dokumen).toMatchObject({ id: 'dok-di-luar-hub', judul: 'Kajian terpilih', jumlah_halaman: 2 });
     expect(dipakai(t.panggilan, 'investment_documents')).toEqual([{ tabel: 'investment_documents', langkah: [
-      ['select', 'id, judul, jumlah_halaman'], ['eq', 'id', 'dok-di-luar-hub'], ['eq', 'status', 'aktif'], ['maybeSingle'],
+      ['select', 'id, judul, kategori, deskripsi, nilai_investasi, jumlah_halaman, urutan_tampil, halaman_gambar'], ['eq', 'status', 'aktif'], ['eq', 'id', 'dok-di-luar-hub'], ['maybeSingle'],
     ] }]);
   });
   it('dokumen tidak aktif atau hilang menjadi null; tanpa dokumen_id tidak menjalankan query dokumen', async () => {
@@ -229,10 +277,10 @@ describe('konfigurasi cache', () => {
     expect(REVALIDASI_DETIK).toBe(60);
   });
 
-  it('delapan fungsi publik masing-masing dibungkus unstable_cache dengan kunci unik dan revalidate 60', () => {
-    expect(PEMBUNGKUS).toHaveLength(8);
+  it('sepuluh fungsi publik masing-masing dibungkus unstable_cache dengan kunci unik dan revalidate 60', () => {
+    expect(PEMBUNGKUS).toHaveLength(10);
     const kunci = PEMBUNGKUS.map((p) => JSON.stringify(p.keyParts));
-    expect(new Set(kunci).size).toBe(8);
+    expect(new Set(kunci).size).toBe(10);
     for (const p of PEMBUNGKUS) expect(p.opsi?.revalidate).toBe(60);
   });
 

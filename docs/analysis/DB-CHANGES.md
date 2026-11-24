@@ -32,6 +32,12 @@
 
 ## Riwayat (dari yang terbaru)
 
+### [2026-11-24] — Investment Gallery seragam
+
+- Migrasi `202611240001_investment_gallery_publik.sql` berstatus **BELUM DITERAPKAN**.
+- DDL menambah `investasi_tukar_urutan_dokumen(uuid, uuid, integer, integer)` dan `investasi_angka_publik()` dengan hak pemanggil. Penerapan DDL tidak mengubah isi tabel atau data pengunjung.
+- Rollback melalui `docs/rollback-investment-gallery-publik-202611240001.sql` setelah aplikasi berhenti memakai RPC. Urutan yang sudah disimpan oleh pengelola tetap berlaku.
+
 ### [2026-10-14 malam] — Cutover Fase 3: 0002-0009, 0011, 0012, 0013 diterapkan ke produksi + ledger diisi (atas izin CEO)
 - WP/Migrasi   : `202610140002` s.d. `0009`, `0011`, `0012`, `0013` (tanpa 0010: tidak ada berkasnya), entri per migrasi di bawah
 - Jenis        : DDL + DATA (backfill di 0003/0007/0009) + KONFIGURASI (job pg_cron)

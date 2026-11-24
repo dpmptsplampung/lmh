@@ -1,6 +1,8 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
+vi.mock('server-only', () => ({}));
+vi.mock('next/cache', () => ({ revalidateTag: vi.fn() }));
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(),
 }));
@@ -386,4 +388,75 @@ describe('lease basi dan path asing', () => {
     expect((await DELETE(buildRequest(), paramsOf())).status).toBe(200);
     expect(mock._remove.mock.calls.flatMap(c => c[0])).toEqual([`pages/${DOC_ID}/b/page-2.png`]);
   });
+});
+
+
+it('DELETE sukses menginvalidasi tag investasi', async () => {
+  const { revalidateTag } = await import('next/cache');
+  vi.mocked(revalidateTag).mockClear();
+  await mockSupabase({ user: { id: 'admin' }, role: 'admin' });
+  const { DELETE } = await import('./route');
+  expect((await DELETE(buildRequest(), paramsOf())).status).toBe(200);
+  expect(revalidateTag).toHaveBeenCalledExactlyOnceWith('publik-investasi', { expire: 0 });
+});
+
+describe('PATCH katalog dokumen', () => {
+  const tetangga = '22222222-2222-4222-8222-222222222222';
+  const id = '11111111-1111-4111-8111-111111111111';
+  const payloadStatus = { aksi: 'status', status: 'nonaktif', status_lama: 'aktif' };
+  const payloadUrutan = { aksi: 'urutan', tetangga_id: tetangga, urutan_lama: 1, urutan_tetangga: 2 };
+  const payloadMetadata = { aksi: 'metadata', judul: 'Dokumen baru', kategori: 'peta-potensi',
+    deskripsi: null, nilai_investasi: 'USD 10', image_url: null };
+  const patch = (input: object) => new Request(`http://localhost/api/investment-docs/${id}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input),
+  });
+  const pasang = async (opsi: { boleh?: boolean; kosong?: boolean; konflik?: boolean } = {}) => {
+    const { createClient } = await import('@/lib/supabase/server');
+    const update = vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnThis(), select: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({ data: opsi.kosong ? null : { id }, error: null }),
+    });
+    const rpc = vi.fn(async (nama: string) => nama === 'boleh_kelola_investasi'
+      ? { data: opsi.boleh ?? true, error: null }
+      : { data: null, error: opsi.konflik ? { code: '40001', message: 'KONFLIK_VERSI' } : null });
+    vi.mocked(createClient).mockResolvedValue({
+      auth: { getUser: async () => ({ data: { user: { id } }, error: null }) },
+      from: vi.fn(() => ({ update })), rpc,
+    } as unknown as Awaited<ReturnType<typeof createClient>>);
+    return { update, rpc };
+  };
+
+  beforeEach(() => vi.clearAllMocks());
+
+  it.each([payloadStatus, payloadMetadata, payloadUrutan])('invalidasi satu kali sesudah mutasi $aksi', async input => {
+    const t = await pasang();
+    const { PATCH } = await import('./route');
+    const { revalidateTag } = await import('next/cache');
+    const respons = await PATCH(patch(input), paramsOf(id));
+    expect(respons.status).toBe(200);
+    expect(await respons.json()).toEqual({ data: { id } });
+    expect(revalidateTag).toHaveBeenCalledExactlyOnceWith('publik-investasi', { expire: 0 });
+    if (input.aksi === 'urutan') {
+      expect(t.update).not.toHaveBeenCalled();
+      expect(t.rpc).toHaveBeenLastCalledWith('investasi_tukar_urutan_dokumen', {
+        p_id: id, p_tetangga_id: tetangga, p_urutan_lama: 1, p_urutan_tetangga: 2,
+      });
+    } else {
+      expect(t.update).toHaveBeenCalledTimes(1);
+      expect(t.update.mock.calls[0][0]).not.toHaveProperty('aksi');
+      expect(t.update.mock.calls[0][0]).not.toHaveProperty('status_lama');
+      if (input.aksi === 'metadata') expect(t.update.mock.calls[0][0]).toMatchObject({ kategori: 'Peta Potensi' });
+    }
+  });
+
+  it.each([[payloadUrutan, { konflik: true }, 409], [payloadStatus, { kosong: true }, 409],
+    [payloadMetadata, { boleh: false }, 403], [{ ...payloadStatus, status: 'diproses' }, {}, 400]] as const)(
+    'menolak mutasi %o dengan status %s tanpa invalidasi', async (input, opsi, status) => {
+      await pasang(opsi);
+      const { PATCH } = await import('./route');
+      const { revalidateTag } = await import('next/cache');
+      expect((await PATCH(patch(input), paramsOf(id))).status).toBe(status);
+      expect(revalidateTag).not.toHaveBeenCalled();
+    },
+  );
 });

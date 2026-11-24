@@ -1,8 +1,10 @@
 import { cocokMagicBytes } from '@/lib/storage/area';
 import { getObjectBytes, headObject } from '@/lib/storage/r2';
 import { logServerEvent } from '@/lib/observability/logger';
+import { MAKS_HALAMAN_TERSAJI } from '@/lib/investasi/dokumen';
 
 export const MAKS_BYTE = 50 * 1024 * 1024;
+export const MAKS_HALAMAN_UNGGAH_BROWSER = 50;
 const MAKS_PIKSEL = 40_000_000;
 type DokumenPdf = Awaited<ReturnType<typeof bukaPdf>>['doc'];
 
@@ -17,18 +19,19 @@ export async function bacaPdf(kunci: string): Promise<Uint8Array> {
   return bytes;
 }
 
-export async function bukaPdf(bytes: Uint8Array) {
+export async function bukaPdf(bytes: Uint8Array, jalur: 'browser' | 'offline' = 'browser') {
   if (bytes.length > MAKS_BYTE || !cocokMagicBytes('application/pdf', bytes)
     || /\/Encrypt\b/.test(new TextDecoder('latin1').decode(bytes))) throw new Error('INPUT_TIDAK_VALID');
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
   const task = pdfjs.getDocument({ data: bytes, useSystemFonts: true, maxImageSize: MAKS_PIKSEL, canvasMaxAreaInBytes: MAKS_PIKSEL * 4 });
   try {
     const doc = await task.promise;
-    if (await doc.getPermissions() !== null || doc.numPages < 1 || doc.numPages > 50) throw new Error('INPUT_TIDAK_VALID');
+    const batas = jalur === 'offline' ? MAKS_HALAMAN_TERSAJI : MAKS_HALAMAN_UNGGAH_BROWSER;
+    if (await doc.getPermissions() !== null || doc.numPages < 1 || doc.numPages > batas) throw new Error('INPUT_TIDAK_VALID');
     return { doc, tutup: () => task.destroy() };
   } catch (error) {
     // Jangan telan galat pembuka: tanpa log ini kegagalan pdfjs di server tampak sebagai berkas tidak valid.
-    logServerEvent('warn', { operation: 'investasi.pdf.buka_gagal', error });
+    if (jalur === 'browser') logServerEvent('warn', { operation: 'investasi.pdf.buka_gagal', error });
     await task.destroy();
     throw new Error('INPUT_TIDAK_VALID');
   }

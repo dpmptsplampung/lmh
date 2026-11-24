@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { revalidateTag } from 'next/cache';
+import { invalidasiInvestasiPublik } from '@/lib/investasi/cache-server';
 import { layaniKelola, type IdContext } from '@/lib/investasi/akses-server';
 import { bacaJson, galat, galatRpc, headersPrivat } from '@/lib/investasi/http';
 import { MutasiError, mutasiBolehKosong } from '@/lib/supabase/mutate';
@@ -29,7 +29,10 @@ export async function POST(request: Request, context: IdContext) {
     const jawaban = (n: number, selesai: boolean) => Response.json({
       halaman_selesai: n, jumlah_halaman: doc.jumlah_halaman, selesai,
     }, { headers: headersPrivat });
-    if (doc.status === 'aktif' && doc.halaman_selesai === doc.jumlah_halaman) return jawaban(doc.halaman_selesai, true);
+    if (doc.status === 'aktif' && doc.halaman_selesai === doc.jumlah_halaman) {
+      invalidasiInvestasiPublik();
+      return jawaban(doc.halaman_selesai, true);
+    }
     if (!['diproses', 'gagal'].includes(doc.status)) return galat('KONFLIK_STATUS', requestId);
     // Render hanya membaca salinan final yang tidak pernah menerima PUT klien, bukan path apa pun dari baris DB.
     if (doc.file_path !== sumberFinal(id)) return galat('KONFLIK_STATUS', requestId);
@@ -45,6 +48,7 @@ export async function POST(request: Request, context: IdContext) {
     let pdf: Awaited<ReturnType<typeof bukaPdf>> | undefined;
     let selesaiHalaman = doc.halaman_selesai;
     let belumTercatat: string | undefined;
+    let terbit = false;
     const batchId = crypto.randomUUID();
     const gambar: string[] = [...(doc.halaman_gambar ?? [])];
     try {
@@ -69,7 +73,7 @@ export async function POST(request: Request, context: IdContext) {
         status: selesai ? 'aktif' : 'diproses', diproses_pada: null, galat: null,
       }).eq('id', id).eq('diproses_pada', lease).eq('halaman_selesai', selesaiHalaman).select('id').maybeSingle()).catch(asalMutasi);
       if (!hasil.length) return galat('KONFLIK_VERSI', requestId);
-      if (selesai) revalidateTag('publik-investasi', { expire: 0 });
+      terbit = selesai;
       return jawaban(selesaiHalaman, selesai);
     } catch (e) {
       if (belumTercatat) await hapusAman([belumTercatat], id);
@@ -79,6 +83,10 @@ export async function POST(request: Request, context: IdContext) {
         galat: input ? 'PDF tidak valid atau melampaui batas pemrosesan.' : 'Pemrosesan PDF terhenti; lanjutkan pemrosesan atau hapus dokumen.',
       }).eq('id', id).eq('diproses_pada', lease).select('id').maybeSingle()).catch(asalMutasi);
       return galat(input ? 'INPUT_TIDAK_VALID' : e instanceof Error && e.message === 'KONFLIK_VERSI' ? 'KONFLIK_VERSI' : 'GAGAL_INTERNAL', requestId);
-    } finally { await pdf?.tutup(); }
+    } finally {
+      // Cache kedaluwarsa setelah commit, bahkan jika pembersihan parser gagal.
+      try { if (terbit) invalidasiInvestasiPublik(); }
+      finally { await pdf?.tutup(); }
+    }
   });
 }

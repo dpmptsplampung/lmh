@@ -6,18 +6,18 @@ import { hapusAman, sumberFinal } from './_logika/unggahan';
 import { pathPdfInvestasiSah } from '@/lib/storage/area';
 import { bukaPdf, bacaPdf, MAKS_BYTE } from './_logika/pdf';
 
+import { metadataDokumen } from './_logika/metadata';
+
 export const maxDuration = 60;
-const teks = (maks: number, min = 0) => z.string()
-  .refine(v => !Array.from(v).some(c => (c.charCodeAt(0) < 32 && c !== '\n') || c.charCodeAt(0) === 127))
-  .trim().min(min).max(maks);
+
 const schema = z.object({
+  ...metadataDokumen,
   kunci: z.string().refine(v => v.startsWith('investment-docs/') && pathPdfInvestasiSah(v.slice('investment-docs/'.length))),
-  judul: teks(255, 1),
-  kategori: teks(100).optional(),
-  deskripsi: teks(2000).optional(),
-  nilai_investasi: teks(100).optional(),
-  image_url: z.url().optional(),
-  urutan_tampil: z.number().int().min(0).default(0),
+  kategori: metadataDokumen.kategori.prefault(null),
+  deskripsi: metadataDokumen.deskripsi.optional(),
+  nilai_investasi: metadataDokumen.nilai_investasi.optional(),
+  image_url: metadataDokumen.image_url.optional(),
+  urutan_tampil: metadataDokumen.urutan_tampil.default(0),
 }).strict();
 
 export async function POST(request: Request) {

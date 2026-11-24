@@ -93,3 +93,16 @@ it('daftar pengelola mengambil batas maksimum ditambah satu agar anomali tidak t
   t.state.tabel.ipro_gambar = Array.from({ length: 13 }, (_, i) => ({ ...awal, id: String(i) }));
   expect((await iproKelolaById(t.sb, ID)).data?.gambar).toHaveLength(13);
 });
+
+it('memetakan dokumen lama tanpa membocorkan kunci halaman atau menebak mata uang', async () => {
+  const { dokumenPublik } = await import('./investasi');
+  expect(dokumenPublik({
+    id: ID, judul: 'Lampung', kategori: ' peta-potensi ', deskripsi: null,
+    nilai_investasi: 'Rp 2,4 Triliun', jumlah_halaman: 17, urutan_tampil: 4,
+    halaman_gambar: ['pages/1.png', 'pages/2.png', null, 'pages/4.png'],
+  })).toEqual({
+    id: ID, judul: 'Lampung', kategori: 'Peta Potensi', deskripsi: null,
+    nilai_investasi: 'Rp 2,4 Triliun', mata_uang: 'IDR', jumlah_halaman: 2, urutan_tampil: 4,
+    sampul: `/api/investment-docs/page-image?doc_id=${ID}&page=1&varian=sampul`, sorotan: true,
+  });
+});

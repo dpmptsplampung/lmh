@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { kunciObjek } from '@/lib/storage/area';
 import { getObjectBytes } from '@/lib/storage/r2';
-import { capWaktuWIB } from '@/lib/time';
+import { unstable_cache } from 'next/cache';
+import { jumlahHalamanSiapBaca, MAKS_HALAMAN_TERSAJI } from '@/lib/investasi/dokumen';
+import { capWaktuWIB, nowServer } from '@/lib/time';
 import { z } from 'zod';
 import crypto from 'node:crypto';
 import sharp from 'sharp';
@@ -10,23 +12,25 @@ export const maxDuration = 30;
 
 const querySchema = z.object({
   doc_id: z.string().uuid(),
-  page: z.coerce.number().int().positive(),
-});
+  page: z.coerce.number().int().positive().max(MAKS_HALAMAN_TERSAJI),
+  varian: z.literal('sampul').optional(),
+}).refine(q => !q.varian || q.page === 1);
 
 // Per-IP rate limit (in-memory, best-effort per instance) dicek PERTAMA, sebelum auth dan query DB,
 // supaya permintaan berlebih tidak memicu kerja mahal. Belum ada lapisan lintas-instance di endpoint ini.
 const RATE_LIMIT_MAX = 30;
+const RATE_LIMIT_SAMPUL = 120;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const rateBuckets = new Map<string, { windowStart: number; count: number }>();
 
-// In-memory watermark cache keyed per doc+page+subject+minute. Bounded with
+// In-memory watermark cache keyed per page path+subject+minute. Bounded with
 // oldest-first eviction; responses still carry Cache-Control: no-store.
 const CACHE_MAX_ENTRIES = 200;
 const watermarkCache = new Map<string, Buffer>();
 
-function cacheKey(docId: string, page: number, subject: string): string {
-  const minute = Math.floor(Date.now() / 60_000);
-  return `${docId}:${page}:${subject}:${minute}`;
+function cacheKey(pagePath: string, subject: string): string {
+  const minute = Math.floor(nowServer().getTime() / 60_000);
+  return `${pagePath}:${subject}:${minute}`;
 }
 
 function cacheGet(key: string): Buffer | undefined {
@@ -46,15 +50,22 @@ function cacheSet(key: string, value: Buffer): void {
   watermarkCache.set(key, value);
 }
 
-function checkIpRate(ipHash: string): boolean {
-  const now = Date.now();
-  const bucket = rateBuckets.get(ipHash);
+function checkIpRate(ipHash: string, sampul: boolean): boolean {
+  const now = nowServer().getTime();
+  const kunci = sampul ? `sampul:${ipHash}` : ipHash;
+  const bucket = rateBuckets.get(kunci);
+  if (!bucket && rateBuckets.size >= 4096) {
+    for (const [id, lama] of rateBuckets) {
+      if (now - lama.windowStart >= RATE_LIMIT_WINDOW_MS) rateBuckets.delete(id);
+    }
+    if (rateBuckets.size >= 4096) return false;
+  }
   if (!bucket || now - bucket.windowStart >= RATE_LIMIT_WINDOW_MS) {
-    rateBuckets.set(ipHash, { windowStart: now, count: 1 });
+    rateBuckets.set(kunci, { windowStart: now, count: 1 });
     return true;
   }
   bucket.count += 1;
-  return bucket.count <= RATE_LIMIT_MAX;
+  return bucket.count <= (sampul ? RATE_LIMIT_SAMPUL : RATE_LIMIT_MAX);
 }
 
 
@@ -136,10 +147,27 @@ function escapeXml(s: string): string {
   });
 }
 
+// Simpan gambar dasar kecil hanya di Data Cache server; watermark peminta dipasang setelah cache dibaca.
+const muatDasarSampul = unstable_cache(async (pagePath: string) => {
+  const bytes = await getObjectBytes('private', kunciObjek('investment-docs', pagePath));
+  if (!bytes) throw new Error('Gambar halaman tidak tersedia');
+  const kecil = await sharp(Buffer.from(bytes)).resize({
+    width: 480, height: 480, fit: 'inside', withoutEnlargement: true,
+  }).webp({ quality: 75 }).toBuffer();
+  return kecil.toString('base64');
+}, ['investment-docs-sampul-480-v1'], { revalidate: 86_400 });
+
+function responsGambar(bytes: Buffer, sampul: boolean): Response {
+  return new Response(new Uint8Array(bytes), {
+    headers: { 'Content-Type': sampul ? 'image/webp' : 'image/png', 'Cache-Control': 'no-store' },
+  });
+}
+
 export async function GET(request: NextRequest) {
   const parsed = querySchema.safeParse({
     doc_id: request.nextUrl.searchParams.get('doc_id') ?? '',
     page: request.nextUrl.searchParams.get('page') ?? '',
+    varian: request.nextUrl.searchParams.get('varian') ?? undefined,
   });
 
   if (!parsed.success) {
@@ -149,24 +177,19 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const { doc_id, page } = parsed.data;
-
-  const supabase = await createClient();
+  const { doc_id, page, varian } = parsed.data;
+  const sampul = varian === 'sampul';
 
   // Rate limit IP lokal dulu (murah), sebelum auth dan query.
   const ipHash = await hashIp(getClientIp(request));
-  if (!checkIpRate(ipHash)) {
+  if (!checkIpRate(ipHash, sampul)) {
     return NextResponse.json(
       { error: 'Terlalu banyak permintaan. Coba lagi nanti.' },
       { status: 429 },
     );
   }
 
-  // Identitas watermark (login: nama+email; anon: sesi). Seed sesi dari IP+cookie
-  // agar anon konsisten per perangkat tanpa menyimpan PII.
-  const sessionSeed = `${getClientIp(request)}|${request.headers.get('cookie') ?? ''}`;
-  const { subject, label } = await resolveWatermarkIdentity(supabase, sessionSeed);
-
+  const supabase = await createClient();
   const { data: docRow, error: docError } = await supabase
     .from('investment_documents')
     .select('halaman_gambar, jumlah_halaman, status')
@@ -182,50 +205,33 @@ export async function GET(request: NextRequest) {
   if (docRow.status !== 'aktif') {
     return NextResponse.json({ error: 'Document not found' }, { status: 404 });
   }
-  const key = cacheKey(doc_id, page, subject);
-  const cached = cacheGet(key);
-  if (cached) {
-    return new Response(new Uint8Array(cached), {
-      headers: { 'Content-Type': 'image/png', 'Cache-Control': 'no-store' },
-    });
-  }
-
-  if (!docRow.halaman_gambar || docRow.halaman_gambar.length === 0) {
+  if (!docRow.halaman_gambar?.length) {
     return NextResponse.json({ error: 'Document not yet processed' }, { status: 404 });
   }
-  if (page > docRow.jumlah_halaman || page > docRow.halaman_gambar.length) {
+  if (page > jumlahHalamanSiapBaca(docRow)) {
     return NextResponse.json({ error: 'Page out of range' }, { status: 400 });
   }
-
   const pagePath = docRow.halaman_gambar[page - 1]!;
+  const sessionSeed = `${getClientIp(request)}|${request.headers.get('cookie') ?? ''}`;
+  const { subject, label } = await resolveWatermarkIdentity(supabase, sessionSeed);
+  const key = cacheKey(pagePath, subject);
+  const cached = sampul ? undefined : cacheGet(key);
+  if (cached) return responsGambar(cached, sampul);
 
-  let pageBytes: Uint8Array | null = null;
   try {
-    pageBytes = await getObjectBytes('private', kunciObjek('investment-docs', pagePath));
+    const bytes = sampul
+      ? Buffer.from(await muatDasarSampul(pagePath), 'base64')
+      : await getObjectBytes('private', kunciObjek('investment-docs', pagePath));
+    if (!bytes) throw new Error('Gambar halaman tidak tersedia');
+
+    const gambar = sharp(Buffer.from(bytes));
+    const metadata = await gambar.metadata();
+    const overlay = await buildWatermarkOverlay(metadata.width ?? 800, metadata.height ?? 1100, `${label} | ${capWaktuWIB()}`);
+    const komposit = gambar.composite([{ input: overlay, gravity: 'center' }]);
+    const watermarked = await (sampul ? komposit.webp({ quality: 82 }) : komposit.png()).toBuffer();
+    if (!sampul) cacheSet(key, watermarked);
+    return responsGambar(watermarked, sampul);
   } catch {
-    pageBytes = null;
-  }
-  if (!pageBytes) {
     return NextResponse.json({ error: 'Failed to fetch page image' }, { status: 500 });
   }
-
-  const pageBuffer = Buffer.from(pageBytes);
-
-  // INV-04: watermark memuat identitas peminta + waktu (dibakar di server, bukan overlay CSS).
-  const ts = capWaktuWIB();
-  const watermarkText = `${label} | ${ts}`;
-
-  const metadata = await sharp(pageBuffer).metadata();
-  const overlay = await buildWatermarkOverlay(metadata.width ?? 800, metadata.height ?? 1100, watermarkText);
-
-  const watermarked = await sharp(pageBuffer)
-    .composite([{ input: overlay, gravity: 'center' }])
-    .png()
-    .toBuffer();
-
-  cacheSet(key, watermarked);
-
-  return new Response(new Uint8Array(watermarked), {
-    headers: { 'Content-Type': 'image/png', 'Cache-Control': 'no-store' },
-  });
 }
