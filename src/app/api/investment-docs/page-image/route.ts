@@ -7,6 +7,7 @@ import { jumlahHalamanSiapBaca, MAKS_HALAMAN_TERSAJI } from '@/lib/investasi/dok
 import { capWaktuWIB, nowServer } from '@/lib/time';
 import { z } from 'zod';
 import crypto from 'node:crypto';
+import { isIPv6 } from 'node:net';
 import sharp from 'sharp';
 export const maxDuration = 30;
 
@@ -21,7 +22,12 @@ const querySchema = z.object({
 const RATE_LIMIT_MAX = 30;
 const RATE_LIMIT_SAMPUL = 120;
 const RATE_LIMIT_WINDOW_MS = 60_000;
-const rateBuckets = new Map<string, { windowStart: number; count: number }>();
+const RATE_BUCKET_MAX_ENTRIES = 4096;
+type EmberLaju = { windowStart: number; count: number };
+const rateBuckets = {
+  halaman: new Map<string, EmberLaju>(),
+  sampul: new Map<string, EmberLaju>(),
+};
 
 // In-memory watermark cache keyed per page path+subject+minute. Bounded with
 // oldest-first eviction; responses still carry Cache-Control: no-store.
@@ -52,26 +58,42 @@ function cacheSet(key: string, value: Buffer): void {
 
 function checkIpRate(ipHash: string, sampul: boolean): boolean {
   const now = nowServer().getTime();
-  const kunci = sampul ? `sampul:${ipHash}` : ipHash;
-  const bucket = rateBuckets.get(kunci);
-  if (!bucket && rateBuckets.size >= 4096) {
-    for (const [id, lama] of rateBuckets) {
-      if (now - lama.windowStart >= RATE_LIMIT_WINDOW_MS) rateBuckets.delete(id);
-    }
-    if (rateBuckets.size >= 4096) return false;
-  }
-  if (!bucket || now - bucket.windowStart >= RATE_LIMIT_WINDOW_MS) {
-    rateBuckets.set(kunci, { windowStart: now, count: 1 });
+  const buckets = sampul ? rateBuckets.sampul : rateBuckets.halaman;
+  const bucket = buckets.get(ipHash);
+  if (bucket && now - bucket.windowStart < RATE_LIMIT_WINDOW_MS) {
+    const batas = sampul ? RATE_LIMIT_SAMPUL : RATE_LIMIT_MAX;
+    if (bucket.count >= batas) return false;
+    bucket.count += 1;
     return true;
   }
-  bucket.count += 1;
-  return bucket.count <= (sampul ? RATE_LIMIT_SAMPUL : RATE_LIMIT_MAX);
+
+  // Sisipkan ulang ember yang diperbarui agar urutan peta mengikuti awal jendela.
+  if (bucket) buckets.delete(ipHash);
+  if (buckets.size >= RATE_BUCKET_MAX_ENTRIES) {
+    const terlama = buckets.keys().next().value;
+    if (terlama !== undefined) buckets.delete(terlama);
+  }
+  buckets.set(ipHash, { windowStart: now, count: 1 });
+  return true;
 }
 
+function prefiksIp(ip: string): string {
+  if (!isIPv6(ip)) return ip;
 
-async function hashIp(ip: string): Promise<string> {
-  const hash = crypto.createHash('sha256').update(ip).digest('hex');
-  return hash.slice(0, 8);
+  // URL menyeragamkan huruf, nol awal, dan akhiran IPv4 sebelum pemadatan dibuka.
+  const tanpaZona = ip.split('%', 1)[0] ?? ip;
+  const alamat = new URL(`http://[${tanpaZona}]`).hostname.slice(1, -1);
+  const [awal, akhir] = alamat.split('::');
+  const kiri = awal ? awal.split(':') : [];
+  const kanan = akhir ? akhir.split(':') : [];
+  const bagian = akhir === undefined
+    ? kiri
+    : [...kiri, ...Array<string>(8 - kiri.length - kanan.length).fill('0'), ...kanan];
+  return `${bagian.slice(0, 4).join(':')}::/64`;
+}
+
+function hashIp(ip: string): string {
+  return crypto.createHash('sha256').update(prefiksIp(ip)).digest('hex');
 }
 
 function getClientIp(request: NextRequest): string {
@@ -181,7 +203,8 @@ export async function GET(request: NextRequest) {
   const sampul = varian === 'sampul';
 
   // Rate limit IP lokal dulu (murah), sebelum auth dan query.
-  const ipHash = await hashIp(getClientIp(request));
+  const ip = getClientIp(request);
+  const ipHash = hashIp(ip);
   if (!checkIpRate(ipHash, sampul)) {
     return NextResponse.json(
       { error: 'Terlalu banyak permintaan. Coba lagi nanti.' },
@@ -212,7 +235,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Page out of range' }, { status: 400 });
   }
   const pagePath = docRow.halaman_gambar[page - 1]!;
-  const sessionSeed = `${getClientIp(request)}|${request.headers.get('cookie') ?? ''}`;
+  const sessionSeed = `${ip}|${request.headers.get('cookie') ?? ''}`;
   const { subject, label } = await resolveWatermarkIdentity(supabase, sessionSeed);
   const key = cacheKey(pagePath, subject);
   const cached = sampul ? undefined : cacheGet(key);

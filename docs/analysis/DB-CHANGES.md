@@ -36,6 +36,7 @@
 
 - Migrasi `202611240001_investment_gallery_publik.sql` berstatus **BELUM DITERAPKAN**.
 - DDL menambah `investasi_tukar_urutan_dokumen(uuid, uuid, integer, integer)` dan `investasi_angka_publik()` dengan hak pemanggil. Penerapan DDL tidak mengubah isi tabel atau data pengunjung.
+- RPC pertukaran urutan membatasi waktu tunggu setiap upaya memperoleh kunci hingga 2 detik. API mengembalikan `KONFLIK_VERSI` untuk SQLSTATE `55P03`.
 - Rollback melalui `docs/rollback-investment-gallery-publik-202611240001.sql` setelah aplikasi berhenti memakai RPC. Urutan yang sudah disimpan oleh pengelola tetap berlaku.
 
 ### [2026-10-14 malam] — Cutover Fase 3: 0002-0009, 0011, 0012, 0013 diterapkan ke produksi + ledger diisi (atas izin CEO)

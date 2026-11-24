@@ -34,6 +34,14 @@ beforeAll(async () => {
 }, 60_000);
 afterAll(async () => { await db?.close(); });
 
+it('membatasi waktu tunggu kunci pada fungsi pertukaran urutan', async () => {
+  const hasil = await db.query(`
+    SELECT proconfig FROM pg_proc
+    WHERE oid = 'public.investasi_tukar_urutan_dokumen(uuid, uuid, integer, integer)'::regprocedure
+  `);
+  expect(hasil.rows[0]?.proconfig).toContain('lock_timeout=2s');
+});
+
 it('staf menukar tetangga, menolak harapan usang, dan mengatasi angka urutan seri', async () => {
   expect(await tukar(warga, 0, 1, 10, 20)).toMatchObject({ ok: false, kode: '42501' });
   expect(await tukar(null, 0, 1, 10, 20)).toMatchObject({ ok: false, kode: '42501' });

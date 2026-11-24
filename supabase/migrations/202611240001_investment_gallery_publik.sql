@@ -3,6 +3,7 @@ CREATE FUNCTION public.investasi_tukar_urutan_dokumen(
   p_id uuid, p_tetangga_id uuid, p_urutan_lama integer, p_urutan_tetangga integer
 ) RETURNS void
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = ''
+SET lock_timeout = '2s'
 AS $$
 DECLARE
   v_posisi bigint;

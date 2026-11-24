@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 
 vi.mock('next/cache', () => ({
   unstable_cache: (muat: (path: string) => Promise<string>) => {
@@ -130,6 +130,68 @@ describe('GET /api/investment-docs/page-image — input validation', () => {
     const { GET } = await import('./route');
     const res = await GET(buildRequest({ doc_id: '550e8400-e29b-41d4-a716-446655440000', page: '0' }));
     expect(res.status).toBe(400);
+  });
+});
+
+describe('pembatas laju gambar dokumen', () => {
+  const doc = { doc_id: '11111111-1111-4111-8111-111111111111', page: '1' };
+  const permintaan = (ip: string, varian?: 'sampul') => buildRequest(
+    { ...doc, ...(varian ? { varian } : {}) }, { 'x-forwarded-for': ip },
+  );
+  const ipUji = (i: number) => `198.18.${Math.floor(i / 256)}.${i % 256}`;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    vi.useFakeTimers({ toFake: ['Date'] });
+    await mockSupabase(null);
+  });
+
+  afterEach(() => vi.useRealTimers());
+
+  it('menerima IP baru saat peta penuh dan hanya membuang ember terlama', async () => {
+    const { GET } = await import('./route');
+    const terlama = '192.0.2.1';
+    const kedua = '192.0.2.2';
+    for (let i = 0; i < 30; i++) await GET(permintaan(terlama));
+    for (let i = 0; i < 30; i++) await GET(permintaan(kedua));
+    expect((await GET(permintaan(terlama))).status).toBe(429);
+    for (let i = 0; i < 4094; i++) await GET(permintaan(ipUji(i)));
+
+    expect((await GET(permintaan('192.0.2.3'))).status).toBe(404);
+    expect((await GET(permintaan(kedua))).status).toBe(429);
+    expect((await GET(permintaan(terlama))).status).toBe(404);
+  });
+
+  it('tetap menerima pengunjung setelah lebih dari 4096 IP berbeda dalam satu jendela', async () => {
+    const { GET } = await import('./route');
+    const status = new Set<number>();
+    for (let i = 0; i < 4100; i++) status.add((await GET(permintaan(ipUji(i)))).status);
+
+    expect(status).toEqual(new Set([404]));
+    expect((await GET(permintaan('192.0.2.10'))).status).toBe(404);
+  });
+
+  it('menggabungkan IPv6 terkompresi dan lengkap dari satu /64', async () => {
+    const { GET } = await import('./route');
+    for (let i = 0; i < 30; i++) {
+      expect((await GET(permintaan('2001:db8::abcd:0:0:1'))).status).toBe(404);
+    }
+    expect((await GET(permintaan('2001:0DB8:0000:0000:ABCD:0000:0000:0002'))).status).toBe(429);
+    expect((await GET(permintaan('2001:db8:0:1::3'))).status).toBe(404);
+  });
+
+  it('mengisolasi kuota dan kapasitas peta sampul dari penampil halaman', async () => {
+    const { GET } = await import('./route');
+    const ip = '192.0.2.20';
+    for (let i = 0; i < 29; i++) expect((await GET(permintaan(ip))).status).toBe(404);
+    for (let i = 0; i < 120; i++) expect((await GET(permintaan(ip, 'sampul'))).status).toBe(404);
+    expect((await GET(permintaan(ip, 'sampul'))).status).toBe(429);
+    for (let i = 0; i < 4100; i++) await GET(permintaan(ipUji(i), 'sampul'));
+
+    expect((await GET(permintaan(ip))).status).toBe(404);
+    expect((await GET(permintaan(ip))).status).toBe(429);
+    expect((await GET(permintaan('192.0.2.21'))).status).toBe(404);
+    expect((await GET(permintaan(ip, 'sampul'))).status).toBe(404);
   });
 });
 

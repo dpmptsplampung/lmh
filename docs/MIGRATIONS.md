@@ -22,6 +22,7 @@ Terapkan `0005` bersama klien RPC dalam satu jendela rilis, karena penulisan gam
 ### Investment Gallery seragam (belum diterapkan)
 
 `202611240001_investment_gallery_publik.sql` menambah RPC pertukaran urutan dokumen staf dan agregat angka hero publik.
+RPC pertukaran menunggu paling lama 2 detik untuk setiap upaya memperoleh kunci. API memetakan galat kunci `55P03` ke `KONFLIK_VERSI`.
 Prasyarat `202611190001` dan `202611190003`. Terapkan di staging sebelum produksi dan sebelum merilis pemanggil RPC.
 Rollback DDL tersedia di [rollback Investment Gallery](rollback-investment-gallery-publik-202611240001.sql).
 
