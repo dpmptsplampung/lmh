@@ -35,6 +35,10 @@ if (typeof document !== 'undefined') {
   );
 }
 
+// Tumpukan dialog aktif (yang terbuka paling akhir ada di ujung). Hanya dialog teratas yang menanggapi Escape dan Tab;
+// tanpa ini satu Esc menutup semua dialog bertumpuk (mis. formulir minat di atas penampil dokumen).
+const tumpukan: Array<RefObject<HTMLElement | null>> = [];
+
 function elemenFokus(wadah: HTMLElement): HTMLElement[] {
   return Array.from(wadah.querySelectorAll<HTMLElement>(SELEKTOR_FOKUS)).filter(
     (el) => !el.hasAttribute('disabled') && el.getAttribute('aria-hidden') !== 'true',
@@ -52,12 +56,23 @@ export function useDialogFokus(
     escapeRef.current = onEscape;
   });
 
+  // Pemicu dicatat sekali per pembukaan. Efek yang dijalankan ulang (StrictMode dev) tidak boleh menggantinya dengan
+  // elemen di dalam dialog sendiri, yang hilang saat dialog ditutup.
+  const pemicuRef = useRef<HTMLElement | null>(null);
+
   useEffect(() => {
-    if (!aktif) return;
-    const sedangFokus = document.activeElement;
-    const pemicu =
-      sedangFokus instanceof HTMLElement && sedangFokus !== document.body ? sedangFokus : terakhirDiklik;
+    if (!aktif) {
+      pemicuRef.current = null;
+      return;
+    }
     const el = wadah.current;
+    if (!pemicuRef.current) {
+      const sedangFokus = document.activeElement;
+      const calon =
+        sedangFokus instanceof HTMLElement && sedangFokus !== document.body ? sedangFokus : terakhirDiklik;
+      if (calon && !(el && el.contains(calon))) pemicuRef.current = calon;
+    }
+    tumpukan.push(wadah);
     let dibukaNative = false;
     if (el instanceof HTMLDialogElement && !el.open && typeof el.showModal === 'function') {
       el.showModal();
@@ -74,6 +89,7 @@ export function useDialogFokus(
     }
 
     const onKey = (e: KeyboardEvent) => {
+      if (tumpukan[tumpukan.length - 1] !== wadah) return;
       if (e.key === 'Escape') {
         e.preventDefault();
         escapeRef.current();
@@ -105,6 +121,9 @@ export function useDialogFokus(
     document.addEventListener('keydown', onKey);
     return () => {
       document.removeEventListener('keydown', onKey);
+      const i = tumpukan.lastIndexOf(wadah);
+      if (i >= 0) tumpukan.splice(i, 1);
+      const pemicu = pemicuRef.current;
       if (pemicu && pemicu.isConnected) pemicu.focus();
     };
   }, [aktif, wadah]);

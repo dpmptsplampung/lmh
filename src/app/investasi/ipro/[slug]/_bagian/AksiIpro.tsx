@@ -14,7 +14,7 @@ type Props = {
   kontakEmail: string;
 };
 
-/** Aksi utama: Hubungi petugas (formulir tanpa login) dan Lihat dokumen kajian (penampil view-only). */
+/** Aksi utama: Hubungi petugas (formulir tanpa login) dan Lihat dokumen (penampil view-only). */
 export default function AksiIpro({ ipro, dokumen, kontakEmail }: Props) {
   const [formulir, setFormulir] = useState(false);
   const [penampil, setPenampil] = useState(false);
@@ -22,7 +22,7 @@ export default function AksiIpro({ ipro, dokumen, kontakEmail }: Props) {
     <div className={styles.aksi}>
       <Tombol ukuran="besar" ikon={MessageSquare} onClick={() => setFormulir(true)}>Hubungi petugas</Tombol>
       {dokumen && (
-        <Tombol ukuran="besar" varian="sekunder" ikon={FileText} onClick={() => setPenampil(true)}>Lihat dokumen kajian</Tombol>
+        <Tombol ukuran="besar" varian="sekunder" ikon={FileText} onClick={() => setPenampil(true)}>Lihat dokumen</Tombol>
       )}
       <FormulirHubungi terbuka={formulir} onTutup={() => setFormulir(false)} ipro={ipro} />
       {penampil && dokumen && (

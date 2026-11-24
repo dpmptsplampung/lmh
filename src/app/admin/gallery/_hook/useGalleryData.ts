@@ -1,10 +1,10 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { mutasiWajibBaris, pesanMutasi } from '@/lib/supabase/mutate';
+import { pesanMutasi } from '@/lib/supabase/mutate';
 import { perluMuatUlang } from '@/components/admin/mutasi-ui';
 import { useToast } from '@/components/Toast';
-import { nowServer } from '@/lib/time';
+import { patchDokumen } from './mutasi-dokumen';
 import { KOLOM_DOKUMEN_GALERI, type GalleryDoc } from '../_logika/tipe';
 export function useGalleryData() {
   const { toast } = useToast();
@@ -13,9 +13,18 @@ export function useGalleryData() {
   const [loadError, setLoadError] = useState('');
 
   // Detail modal
-  const [viewingDoc, setViewingDoc] = useState<GalleryDoc | null>(null);
+  const [viewingDoc, simpanViewingDoc] = useState<GalleryDoc | null>(null);
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const [loadingSignedUrl, setLoadingSignedUrl] = useState(false);
+  const permintaanPratinjau = useRef(0);
+  const sedangMemindah = useRef(false);
+
+  const setViewingDoc = (doc: GalleryDoc | null) => {
+    permintaanPratinjau.current++;
+    simpanViewingDoc(doc);
+    setSignedUrl(null);
+    setLoadingSignedUrl(false);
+  };
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -26,7 +35,8 @@ export function useGalleryData() {
         .select(KOLOM_DOKUMEN_GALERI)
         .order('urutan_tampil', { ascending: true });
       if (error) throw error;
-      setDocs((data || []) as GalleryDoc[]);
+      const baris = (data ?? []) as GalleryDoc[];
+      setDocs(baris.toSorted((a, b) => a.urutan_tampil - b.urutan_tampil || a.id.localeCompare(b.id)));
       setLoadError('');
     } catch {
       setLoadError('Gagal memuat data galeri. Silakan coba lagi.');
@@ -42,18 +52,11 @@ export function useGalleryData() {
   }, [loadData]);
 
   const handleToggleStatus = async (id: string, currentStatus: string) => {
+    if (currentStatus !== 'aktif' && currentStatus !== 'nonaktif') return;
     const newStatus = currentStatus === 'aktif' ? 'nonaktif' : 'aktif';
     try {
-      const supabase = createClient();
-      // .select('id') + mutasiWajibBaris: RLS yang menolak UPDATE = 0 baris tanpa error (sukses palsu).
-      await mutasiWajibBaris(
-        supabase
-          .from('investment_documents')
-          .update({ status: newStatus, updated_at: nowServer().toISOString() })
-          .eq('id', id)
-          .select('id'),
-      );
-      setDocs(prev => prev.map(d => d.id === id ? { ...d, status: newStatus as 'aktif' | 'nonaktif' } : d));
+      await patchDokumen(id, { aksi: 'status', status_lama: currentStatus, status: newStatus });
+      setDocs(prev => prev.map(d => d.id === id ? { ...d, status: newStatus } : d));
       toast(`Status berhasil diubah menjadi ${newStatus}.`, 'success');
     } catch (e) {
       toast(`Gagal mengubah status dokumen. ${pesanMutasi(e)}`, 'error');
@@ -82,84 +85,40 @@ export function useGalleryData() {
     }
   };
 
-  // Tukar urutan_tampil dua dokumen = DUA UPDATE terpisah (klien tak punya transaksi). Bila langkah 2
-  // gagal setelah langkah 1 berhasil, langkah 1 dibatalkan (best-effort) supaya tidak ada dua dokumen
-  // berurutan sama. Daftar dimuat ulang dari server bila ada langkah yang sempat berhasil atau ditolak,
-  // agar layar tidak basi (gangguan jaringan murni di langkah 1 tidak mengubah apa pun -> cukup toast).
-  const tukarUrutan = async (doc: GalleryDoc, tetangga: GalleryDoc) => {
-    const urutanDoc = doc.urutan_tampil;
-    const urutanTetangga = tetangga.urutan_tampil;
-    let langkah1Berhasil = false;
-    let pembatalanGagal = false;
+  const pindahkanDokumen = async (doc: GalleryDoc, arah: -1 | 1) => {
+    if (sedangMemindah.current) return;
+    const posisi = docs.findIndex(d => d.id === doc.id);
+    const tetangga = docs[posisi + arah];
+    if (posisi < 0 || !tetangga) return;
+    sedangMemindah.current = true;
     try {
-      const supabase = createClient();
-      const setUrutan = (id: string, urutan: number) =>
-        mutasiWajibBaris(
-          supabase
-            .from('investment_documents')
-            .update({ urutan_tampil: urutan, updated_at: nowServer().toISOString() })
-            .eq('id', id)
-            .select('id'),
-        );
-
-      await setUrutan(tetangga.id, urutanDoc); // langkah 1
-      langkah1Berhasil = true;
-      try {
-        await setUrutan(doc.id, urutanTetangga); // langkah 2
-      } catch (e2) {
-        try {
-          await setUrutan(tetangga.id, urutanTetangga); // batalkan langkah 1
-        } catch {
-          pembatalanGagal = true;
-        }
-        throw e2;
-      }
-
-      setDocs(prev => prev.map(d => {
-        if (d.id === tetangga.id) return { ...d, urutan_tampil: urutanDoc };
-        if (d.id === doc.id) return { ...d, urutan_tampil: urutanTetangga };
-        return d;
-      }));
+      await patchDokumen(doc.id, { aksi: 'urutan', tetangga_id: tetangga.id,
+        urutan_lama: docs[posisi].urutan_tampil, urutan_tetangga: tetangga.urutan_tampil });
+      await loadData();
     } catch (e) {
-      toast(
-        pembatalanGagal
-          ? `Gagal mengubah urutan dokumen dan pembatalan juga gagal, urutan mungkin tidak konsisten — periksa daftar. ${pesanMutasi(e)}`
-          : `Gagal mengubah urutan dokumen. ${pesanMutasi(e)}`,
-        'error',
-      );
-      if (langkah1Berhasil || perluMuatUlang(e)) await loadData();
+      toast(`Gagal mengubah urutan dokumen. ${pesanMutasi(e)}`, 'error');
+      if (perluMuatUlang(e)) await loadData();
+    } finally {
+      sedangMemindah.current = false;
     }
   };
 
-  const handleMoveUp = async (doc: GalleryDoc) => {
-    const sorted = docs.toSorted((a, b) => a.urutan_tampil - b.urutan_tampil);
-    const index = sorted.findIndex(d => d.id === doc.id);
-    if (index <= 0) return;
-
-    await tukarUrutan(doc, sorted[index - 1]);
-  };
-
-  const handleMoveDown = async (doc: GalleryDoc) => {
-    const sorted = docs.toSorted((a, b) => a.urutan_tampil - b.urutan_tampil);
-    const index = sorted.findIndex(d => d.id === doc.id);
-    if (index < 0 || index >= sorted.length - 1) return;
-
-    await tukarUrutan(doc, sorted[index + 1]);
-  };
+  const handleMoveUp = (doc: GalleryDoc) => pindahkanDokumen(doc, -1);
+  const handleMoveDown = (doc: GalleryDoc) => pindahkanDokumen(doc, 1);
 
   const handleViewDoc = async (doc: GalleryDoc) => {
     setViewingDoc(doc);
-    setSignedUrl(null);
+    const idPermintaan = permintaanPratinjau.current;
     setLoadingSignedUrl(true);
     try {
       const res = await fetch('/api/investment-docs/signed-url?file_path=' + encodeURIComponent(doc.file_path));
       if (!res.ok) throw new Error('Failed to fetch signed URL');
       const data = await res.json();
-      setSignedUrl(data.signedUrl);
+      if (idPermintaan === permintaanPratinjau.current) setSignedUrl(data.signedUrl);
     } catch {
-      toast('Gagal memuat pratinjau PDF.', 'error');
+      if (idPermintaan === permintaanPratinjau.current) toast('Gagal memuat pratinjau PDF.', 'error');
     } finally {
-      setLoadingSignedUrl(false);
+      if (idPermintaan === permintaanPratinjau.current) setLoadingSignedUrl(false);
     }
   };
 

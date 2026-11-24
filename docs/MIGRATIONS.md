@@ -19,6 +19,13 @@ Urutan terapan (satu berkas per transaksi, hanya sesudah host dan daftar berkas 
 
 Terapkan `0005` bersama klien RPC dalam satu jendela rilis, karena penulisan gambar langsung dicabut. Rantai lengkap tercatat di `supabase/migrations/MANIFEST.json`. Bukti perilaku hanya lokal (PGlite `scripts/lokal-rantai/skenario-baru-ipro.mjs` dan `skenario-nav-lencana.mjs`, test kontrak `supabase/migrations/2026111900*.test.ts`); belum ada bukti terhadap PostgreSQL nyata dengan beberapa koneksi.
 
+### Investment Gallery seragam (belum diterapkan)
+
+`202611240001_investment_gallery_publik.sql` menambah RPC pertukaran urutan dokumen staf dan agregat angka hero publik.
+RPC pertukaran menunggu paling lama 2 detik untuk setiap upaya memperoleh kunci. API memetakan galat kunci `55P03` ke `KONFLIK_VERSI`.
+Prasyarat `202611190001` dan `202611190003`. Terapkan di staging sebelum produksi dan sebelum merilis pemanggil RPC.
+Rollback DDL tersedia di [rollback Investment Gallery](rollback-investment-gallery-publik-202611240001.sql).
+
 ### Rincian 0001, 0002, 0005: IPRO inti, Kotak Masuk, gambar atomik (BELUM DITERAPKAN)
 
 Prasyarat: `202611160001_lingkup_layanan_staf`; terapkan `202611190001` sebelum `202611190002`, masing-masing dalam satu transaksi. Bukti perilaku hanya lokal melalui `scripts/lokal-rantai/skenario-baru-ipro.mjs`; `0001` sampai `0005` sudah diterapkan ke produksi pada 2026-11-20 (lihat paragraf di atas); staging belum ada.

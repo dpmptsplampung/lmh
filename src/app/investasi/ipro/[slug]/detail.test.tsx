@@ -171,15 +171,15 @@ describe('detail IPRO: aksi', () => {
     expect(JSON.parse((fetchMock.mock.calls[0] as unknown as [string, { body: string }])[1].body)).toMatchObject({ ipro_id: '20000000-0000-4000-8000-000000000001', setuju_pdp: true });
   });
 
-  it('"Lihat dokumen kajian" membuka penampil view-only bila dokumen aktif; tanpa dokumen aktif tombolnya tidak ada', async () => {
+  it('"Lihat dokumen" membuka penampil view-only bila dokumen aktif; tanpa dokumen aktif tombolnya tidak ada', async () => {
     await tampil();
-    fireEvent.click(screen.getByRole('button', { name: 'Lihat dokumen kajian' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Lihat dokumen' }));
     const dialog = screen.getByRole('dialog', { name: 'Kajian Pesisir' });
-    expect(within(dialog).getByAltText('Halaman 1 dari 4')).toBeInTheDocument();
+    expect(within(dialog).getByAltText('Kajian Pesisir, halaman 1 dari 4')).toBeInTheDocument();
     cleanup();
     h.ipro!.dokumen = null;
     await tampil();
-    expect(screen.queryByRole('button', { name: 'Lihat dokumen kajian' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Lihat dokumen' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Hubungi petugas' })).toBeInTheDocument();
   });
 });

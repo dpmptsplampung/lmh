@@ -1,0 +1,106 @@
+/* Kartu dokumen, kisi, dan sorotan Peta Potensi (dipakai /gallery dan hub /investasi). */
+
+/* ---- Kisi: jumlah kolom mengikuti jumlah kartu ---- */
+.kisi { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-5); grid-template-columns: minmax(0, 1fr); }
+.kisi > li { min-width: 0; }
+
+/* ---- Kartu ---- */
+.kartu {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--color-neutral-0);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--transition-base), border-color var(--transition-base), transform var(--transition-base);
+}
+.kartu:hover, .kartu:focus-within { box-shadow: var(--shadow-lg); border-color: var(--color-primary-300); }
+.kartu:hover { transform: translateY(-2px); }
+
+.sampul { position: relative; aspect-ratio: 4 / 3; overflow: hidden; background: var(--color-neutral-200); }
+.sampulGambar { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top center; }
+.sampulKosong { display: flex; width: 100%; height: 100%; align-items: center; justify-content: center; color: var(--color-neutral-500); }
+
+.isi { display: flex; flex-direction: column; flex: 1; gap: var(--space-2); padding: var(--space-4) var(--space-5) var(--space-5); }
+.meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
+.halaman { font-size: var(--text-sm); color: var(--text-secondary); }
+.judul { margin: 0; font-family: var(--font-display); font-size: var(--text-lg); line-height: 1.3; }
+/* Satu tombol pada judul memenuhi seluruh kartu (area klik besar) tanpa menyarangkan elemen interaktif. */
+.pemicu {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+.pemicu::after { content: ''; position: absolute; inset: 0; }
+.pemicu:hover { color: var(--color-primary-700); }
+.kartu .pemicu:focus-visible { outline: none; }
+.kartu .pemicu:focus-visible::after { outline: 3px solid var(--color-primary-600); outline-offset: -3px; border-radius: var(--radius-xl); }
+.deskripsi {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.nilai { margin: 0; font-weight: 700; color: var(--color-primary-800); }
+.nilaiLabel { margin-right: var(--space-1); font-size: var(--text-sm); font-weight: 400; color: var(--text-secondary); }
+.aksi { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-top: auto; padding-top: var(--space-3); }
+.lihat { font-size: var(--text-sm); font-weight: 700; color: var(--text-link); }
+.aksi > :last-child { position: relative; z-index: 1; }
+
+/* ---- Sorotan Peta Potensi ---- */
+.sorotan {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: center;
+  padding: var(--space-6);
+  border-radius: var(--radius-2xl);
+  background: var(--color-primary-900);
+  color: var(--color-neutral-0);
+  box-shadow: var(--shadow-lg);
+  scroll-margin-top: calc(var(--header-height) + var(--space-4));
+}
+.sorotanSampul { aspect-ratio: 16 / 10; border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); }
+.sorotanIsi { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-3); min-width: 0; }
+.sorotanJudul { margin: 0; font-family: var(--font-display); font-size: var(--text-3xl); line-height: 1.15; color: var(--color-neutral-0); overflow-wrap: anywhere; }
+.sorotanDeskripsi { margin: 0; max-width: 56ch; line-height: 1.6; color: var(--color-primary-100); }
+.sorotanFakta { margin: 0; font-size: var(--text-sm); font-weight: 600; color: var(--color-accent-300); }
+.sorotanAksi { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-2); }
+
+@media (min-width: 640px) {
+  .kisi { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kisi[data-jumlah='1'] { grid-template-columns: minmax(0, 420px); }
+  .sorotan { padding: var(--space-8); }
+}
+@media (min-width: 1024px) {
+  .kisi, .kisi[data-jumlah='banyak'], .kisi[data-jumlah='3'] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .kisi[data-jumlah='1'] { grid-template-columns: minmax(0, 420px); }
+  .kisi[data-jumlah='2'], .kisi[data-jumlah='4'] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* Lima kartu atau lebih: tetap tiga kolom sama lebar; baris terakhir rata kiri (sorotan Peta Potensi tetap terbesar). */
+  .sorotan { grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: var(--space-10); padding: var(--space-10); }
+  .sorotanJudul { font-size: var(--text-4xl); }
+}
+@media (min-width: 1280px) {
+  .kisi[data-jumlah='4'] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .sorotanAksi > * { flex: 1 1 100%; }
+  .aksi > :last-child { min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .kartu { transition: none; }
+  .kartu:hover { transform: none; }
+}

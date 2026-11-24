@@ -1,6 +1,11 @@
+import { z } from 'zod';
+import { layaniKelola } from '@/lib/investasi/akses-server';
+import { bacaJson, galat, galatRpc, sukses } from '@/lib/investasi/http';
+import { invalidasiInvestasiPublik } from '@/lib/investasi/cache-server';
+import { metadataDokumen, statusDokumenTerbit, urutanDokumen } from '../_logika/metadata';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { mutasiWajibBaris } from '@/lib/supabase/mutate';
+import { MutasiError, mutasiBolehKosong, mutasiWajibBaris } from '@/lib/supabase/mutate';
 import { logServerEvent } from '@/lib/observability/logger';
 import { catatMutasi } from '@/lib/observability/catat-mutasi';
 import { kunciObjek } from '@/lib/storage/area';
@@ -84,5 +89,57 @@ export async function DELETE(_request: NextRequest, context: RouteContext) {
     logServerEvent('warn', { operation: 'investment_docs.delete.storage', route: '/api/investment-docs/[id]', docId: id, nFile: paths.length });
   }
 
+  invalidasiInvestasiPublik();
   return NextResponse.json({ ok: true, id }, { status: 200 });
+}
+
+
+const permintaanMutasi = z.discriminatedUnion('aksi', [
+  z.strictObject({
+    aksi: z.literal('status'), status: statusDokumenTerbit, status_lama: statusDokumenTerbit, urutan_lama: z.never().optional(),
+  }),
+  z.strictObject({
+    ...metadataDokumen,
+    aksi: z.literal('metadata'), deskripsi: metadataDokumen.deskripsi.nullable(),
+    nilai_investasi: metadataDokumen.nilai_investasi.nullable(), image_url: metadataDokumen.image_url.nullable(),
+    status: statusDokumenTerbit.optional(), status_lama: statusDokumenTerbit.optional(),
+    urutan_tampil: urutanDokumen.optional(), urutan_lama: z.int32().optional(),
+  }).refine(v => (v.status === undefined) === (v.status_lama === undefined) &&
+    (v.urutan_tampil === undefined) === (v.urutan_lama === undefined)),
+  z.strictObject({
+    aksi: z.literal('urutan'), tetangga_id: z.uuid(), urutan_lama: z.int32(), urutan_tetangga: z.int32(),
+  }),
+]);
+
+export async function PATCH(request: Request, context: RouteContext) {
+  return layaniKelola(async (client, requestId) => {
+    const { id } = await context.params;
+    const parsed = permintaanMutasi.safeParse(await bacaJson(request));
+    if (!z.uuid().safeParse(id).success || !parsed.success) return galat('INPUT_TIDAK_VALID', requestId);
+    const input = parsed.data;
+    if (input.aksi === 'urutan') {
+      if (input.tetangga_id === id) return galat('INPUT_TIDAK_VALID', requestId);
+      const { error } = await client.rpc('investasi_tukar_urutan_dokumen', {
+        p_id: id, p_tetangga_id: input.tetangga_id,
+        p_urutan_lama: input.urutan_lama, p_urutan_tetangga: input.urutan_tetangga,
+      });
+      if (error) return galatRpc(error, requestId);
+    } else {
+      const { aksi, status_lama, urutan_lama, ...perubahan } = input;
+      let query = client.from('investment_documents').update(perubahan).eq('id', id);
+      if (status_lama !== undefined) query = query.eq('status', status_lama);
+      if (urutan_lama !== undefined) query = query.eq('urutan_tampil', urutan_lama);
+      try {
+        const baris = await mutasiBolehKosong(query.select('id').maybeSingle());
+        if (!baris.length) {
+          const adaPembanding = aksi === 'status' || status_lama !== undefined || urutan_lama !== undefined;
+          return galat(adaPembanding ? 'KONFLIK_VERSI' : 'TIDAK_DITEMUKAN', requestId);
+        }
+      } catch (error) {
+        return galatRpc(error instanceof MutasiError ? error.asal : error, requestId);
+      }
+    }
+    invalidasiInvestasiPublik();
+    return sukses({ id });
+  });
 }

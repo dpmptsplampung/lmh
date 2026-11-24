@@ -141,6 +141,7 @@ export const FORWARD_MIGRATION_FILES = [
   '202611190003_investasi_dokumen_proses.sql',
   '202611190004_nav_lencana_investasi.sql',
   '202611190005_ipro_gambar_atomik.sql',
+  '202611240001_investment_gallery_publik.sql',
 ] as const;
 
 export function listMigrationFiles(): string[] {

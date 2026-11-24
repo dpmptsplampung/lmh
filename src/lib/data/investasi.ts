@@ -1,10 +1,13 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { z } from 'zod';
 import type { iproBuatSchema, iproUbahSchema } from '@/lib/investasi/skema';
+import { kategoriDokumen, jumlahHalamanSiapBaca, mataUangDokumen, POLA_KATEGORI_PETA, type DokumenPublik } from '@/lib/investasi/dokumen';
 import { MAKS_GAMBAR_PTSP } from '@/lib/investasi/konstanta';
 import { buatSlug } from '@/lib/investasi/slug';
 import { slugFoila, validasiUrlFoila } from '@/lib/investasi/foila';
 import { MutasiError, mutasiBolehKosong } from '@/lib/supabase/mutate';
+
+export type { DokumenPublik } from '@/lib/investasi/dokumen';
 
 export const KOLOM_IPRO_KARTU = 'id, sumber, slug, judul, judul_en, ringkasan, ringkasan_en, sektor, kab_kota, nilai_investasi, mata_uang, nilai_teks, irr_persen, tahap_kajian, sumber_url, urutan, diterbitkan_pada';
 export const KOLOM_IPRO_DETAIL = `${KOLOM_IPRO_KARTU}, deskripsi, deskripsi_en, lokasi_teks, lat, lng, pemilik, npv_nilai, payback_bulan, skema, status_lahan, luas_ha, perizinan, dokumen_id, kontak_instansi, kontak_email, kontak_telepon, diubah_pada`;
@@ -13,6 +16,10 @@ export const KOLOM_GAMBAR = 'id, proyek_id, kunci, kunci_mini, lebar, tinggi, al
 export const KOLOM_MINAT_DAFTAR = 'id, kanal, status, versi, nama, instansi, created_at, aktivitas_pada, petugas_id, ipro_id, doc_id, ipro_proyek(judul), investment_documents(judul)';
 export const KOLOM_MINAT_DETAIL = `${KOLOM_MINAT_DAFTAR}, email, no_hp, catatan, minat`;
 export const KOLOM_DOKUMEN = 'id, judul, kategori, deskripsi, nilai_investasi, jumlah_halaman, urutan_tampil';
+
+const KOLOM_DOKUMEN_PUBLIK = `${KOLOM_DOKUMEN}, halaman_gambar`;
+export const UKURAN_HALAMAN_GALERI = 24;
+export type AngkaInvestasiPublik = { jumlah_proyek: number; jumlah_dokumen: number; jumlah_sektor: number; jumlah_wilayah: number };
 
 export type IproKartu = {
   id: string; sumber: 'ptsp' | 'foila'; slug: string; judul: string; judul_en: string | null;
@@ -108,6 +115,52 @@ export function daftarDokumenAktif(sb: SupabaseClient, batas = 12) {
   return hasil<DokumenRingkas[]>(sb.from('investment_documents').select(KOLOM_DOKUMEN).eq('status', 'aktif')
     .order('urutan_tampil').limit(Number.isFinite(batas) ? Math.max(1, Math.min(200, Math.floor(batas))) : 12));
 }
+
+type BarisDokumenPublik = DokumenRingkas & { halaman_gambar: (string | null)[] | null };
+
+export function dokumenPublik(baris: BarisDokumenPublik): DokumenPublik {
+  const { id, judul, deskripsi, nilai_investasi, urutan_tampil } = baris;
+  const kategori = kategoriDokumen(baris.kategori);
+  const jumlah_halaman = jumlahHalamanSiapBaca(baris);
+  return { id, judul, kategori, deskripsi, nilai_investasi,
+    mata_uang: mataUangDokumen(nilai_investasi), jumlah_halaman, urutan_tampil,
+    sampul: jumlah_halaman > 0 ? `/api/investment-docs/page-image?doc_id=${id}&page=1&varian=sampul` : null,
+    sorotan: kategori === 'Peta Potensi',
+  };
+}
+
+function kueriDokumenAktif(sb: SupabaseClient) {
+  return sb.from('investment_documents').select(KOLOM_DOKUMEN_PUBLIK).eq('status', 'aktif');
+}
+
+async function daftarDokumenPublik(query: PromiseLike<{ data: unknown; error: GalatData | null }>) {
+  const r = await hasil<BarisDokumenPublik[]>(query);
+  return { data: r.data?.map(dokumenPublik) ?? null, error: r.error };
+}
+
+export function halamanDokumenPublik(sb: SupabaseClient, halaman: number) {
+  const mulai = (halaman - 1) * UKURAN_HALAMAN_GALERI;
+  return daftarDokumenPublik(kueriDokumenAktif(sb)
+    .order('urutan_tampil').order('id').range(mulai, mulai + UKURAN_HALAMAN_GALERI));
+}
+
+export async function cuplikanDokumenPublik(sb: SupabaseClient) {
+  const [dokumen, peta] = await Promise.all([
+    daftarDokumenPublik(kueriDokumenAktif(sb).or(`kategori.is.null,kategori.not.ilike.${POLA_KATEGORI_PETA}`)
+      .order('urutan_tampil').order('id').limit(6)),
+    daftarDokumenPublik(kueriDokumenAktif(sb).ilike('kategori', POLA_KATEGORI_PETA)
+      .order('urutan_tampil').order('id').limit(1)),
+  ]);
+  return { dokumen: dokumen.data ?? [], petaPotensi: peta.data?.[0] ?? null, errors: [dokumen.error, peta.error] };
+}
+
+export async function dokumenAktifById(sb: SupabaseClient, id: string) {
+  const r = await hasil<BarisDokumenPublik>(kueriDokumenAktif(sb).eq('id', id).maybeSingle());
+  return { data: r.data ? dokumenPublik(r.data) : null, error: r.error };
+}
+
+export const angkaInvestasiPublik = (sb: SupabaseClient) =>
+  hasil<AngkaInvestasiPublik>(sb.rpc('investasi_angka_publik').single());
 
 function denganSumber(input: Record<string, unknown>): Record<string, unknown> {
   if (input.sumber !== 'foila' && !input.sumber_url) return input;
