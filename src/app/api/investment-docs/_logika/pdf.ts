@@ -2,6 +2,7 @@ import { cocokMagicBytes } from '@/lib/storage/area';
 import { getObjectBytes, headObject } from '@/lib/storage/r2';
 import { logServerEvent } from '@/lib/observability/logger';
 import { MAKS_HALAMAN_TERSAJI } from '@/lib/investasi/dokumen';
+import { BATAS_VARIAN_WEB } from '@/lib/investasi/aset-halaman';
 
 export const MAKS_BYTE = 50 * 1024 * 1024;
 export const MAKS_HALAMAN_UNGGAH_BROWSER = 50;
@@ -19,14 +20,17 @@ export async function bacaPdf(kunci: string): Promise<Uint8Array> {
   return bytes;
 }
 
-export async function bukaPdf(bytes: Uint8Array, jalur: 'browser' | 'offline' = 'browser') {
-  if (bytes.length > MAKS_BYTE || !cocokMagicBytes('application/pdf', bytes)
-    || /\/Encrypt\b/.test(new TextDecoder('latin1').decode(bytes))) throw new Error('INPUT_TIDAK_VALID');
+export async function bukaPdf(bytes: Uint8Array, jalur: 'browser' | 'offline' | 'tautan-lokal' = 'browser') {
+  // Backfill membuka PDF lokal besar untuk anotasi, sehingga batas unggah dan pemindaian string tidak dipakai.
+  if (!cocokMagicBytes('application/pdf', bytes) || (jalur !== 'tautan-lokal' &&
+    (bytes.length > MAKS_BYTE || /\/Encrypt\b/.test(new TextDecoder('latin1').decode(bytes))))) {
+    throw new Error('INPUT_TIDAK_VALID');
+  }
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
   const task = pdfjs.getDocument({ data: bytes, useSystemFonts: true, maxImageSize: MAKS_PIKSEL, canvasMaxAreaInBytes: MAKS_PIKSEL * 4 });
   try {
     const doc = await task.promise;
-    const batas = jalur === 'offline' ? MAKS_HALAMAN_TERSAJI : MAKS_HALAMAN_UNGGAH_BROWSER;
+    const batas = jalur === 'browser' ? MAKS_HALAMAN_UNGGAH_BROWSER : MAKS_HALAMAN_TERSAJI;
     if (await doc.getPermissions() !== null || doc.numPages < 1 || doc.numPages > batas) throw new Error('INPUT_TIDAK_VALID');
     return { doc, tutup: () => task.destroy() };
   } catch (error) {
@@ -35,6 +39,14 @@ export async function bukaPdf(bytes: Uint8Array, jalur: 'browser' | 'offline' = 
     await task.destroy();
     throw new Error('INPUT_TIDAK_VALID');
   }
+}
+
+export async function buatVarianWeb(png: Uint8Array): Promise<Buffer> {
+  const sharp = (await import('sharp')).default;
+  return sharp(png, { limitInputPixels: MAKS_PIKSEL })
+    .resize({ ...BATAS_VARIAN_WEB, fit: 'inside', withoutEnlargement: true })
+    .webp({ quality: 80 })
+    .toBuffer();
 }
 
 export async function renderHalaman(doc: DokumenPdf, nomor: number): Promise<Buffer> {

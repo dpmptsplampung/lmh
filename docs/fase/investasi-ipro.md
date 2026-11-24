@@ -48,18 +48,29 @@ Navigasi: `src/lib/admin-nav.ts`, kelompok "Kemitraan & Investasi", tiga entri d
 2. **Gambar**: unggah mentah ke R2 lewat presigned PUT (area `ipro-mentah`), lalu server mengubahnya menjadi WebP (EXIF dibuang) di area `ipro-gambar`. Setiap gambar wajib `alt`.
 3. **Terbit/arsip/kembali ke draf** lewat `POST /api/admin/ipro/[id]/status`. Syarat terbit: PTSP = deskripsi, gambar utama, sektor dan kab/kota sah; FOILA = URL FOILA sah dan tepat satu gambar. Dua editor yang bentrok mendapat 409 `KONFLIK_VERSI`.
 4. **Kotak Masuk**: daftar dengan saringan jenis (Dokumen/IPRO) dan status, panel detail (nama, instansi, email, HP, pesan, waktu WIB), tombol balas lewat email, pemilih status berkunci `versi`. `?id=<lead>` membuka panel langsung (tautan dari email notifikasi). Lencana sidebar `pesanInvestasi`.
-5. **Dokumen Investment Gallery (Paket B)**: PDF diunggah langsung ke R2 (presigned PUT, batas 50 MiB/50 halaman), didaftarkan lewat `POST /api/investment-docs`, lalu dirender menjadi PNG ber-watermark per batch delapan halaman lewat `POST /api/investment-docs/[id]/render`; klien mengulang sampai selesai. Dokumen `diproses` bisa dilanjutkan, `gagal` bisa dihapus.
+5. **Dokumen Investment Gallery (Paket B)**. PDF diunggah langsung ke R2 (presigned PUT, batas 50 MiB/50 halaman) dan didaftarkan lewat `POST /api/investment-docs`. Rute `POST /api/investment-docs/[id]/render` menulis PNG dan WebP privat dalam batch sampai delapan halaman. Sebelum dokumen aktif, rute menulis `links.json` dari anotasi PDF. Dokumen `diproses` bisa dilanjutkan dan dokumen `gagal` bisa dihapus.
 
 Setiap mutasi data terbit memanggil `revalidateTag('publik-investasi', { expire: 0 })` langsung di route (bukan lewat `segarkanPublik`, karena route revalidasi bersama khusus admin).
 
 ### Penyiapan PDF melalui jalur offline
 
-Jalur browser menerima PDF 1–50 halaman. Untuk PDF 51–200 halaman, PM dapat menyiapkan satu dokumen dengan `scripts/terbitkan-pdf-investasi.ts`. Penampil dan sampul menggunakan keluaran PNG dari renderer produksi yang sama. Skrip memproses halaman berurutan pada skala 1,5 dengan batas 40 juta piksel per halaman. PDF sumber berukuran maksimum 50 MiB.
+Jalur browser menerima PDF 1–50 halaman. Untuk PDF 51–200 halaman, PM dapat menyiapkan satu dokumen dengan `scripts/terbitkan-pdf-investasi.ts`. Skrip memproses halaman berurutan pada skala 1,5 dengan batas 40 juta piksel per halaman. PDF sumber berukuran maksimum 50 MiB.
 
-- Gunakan `bun --no-env-file --no-install run scripts/terbitkan-pdf-investasi.ts` dengan `--berkas`, `--judul`, `--kategori 'Peta Potensi'`, `--deskripsi` dan `--urutan`. Pilih `--render-lokal <dir-kosong>` untuk menyimpan PNG dan mengukur waktu, memori serta byte. Mode ini tidak menghubungi layanan dan tidak memuat berkas lingkungan.
+- Gunakan `bun --no-env-file --no-install run scripts/terbitkan-pdf-investasi.ts` dengan `--berkas`, `--judul`, `--kategori 'Peta Potensi'`, `--deskripsi` dan `--urutan`. Pilih `--render-lokal <dir-kosong>` untuk menyimpan PNG, WebP, serta `links.json` dan mengukur waktu, memori serta byte. Mode ini berjalan sepenuhnya secara lokal.
 - Gunakan `--terbitkan` untuk menghitung kunci objek, byte dan baris yang direncanakan. Proses membaca host dari `NEXT_PUBLIC_SUPABASE_URL`, `R2_ACCOUNT_ID` dan `R2_BUCKET_PRIVATE` yang sudah ada di lingkungan proses. Periksa host dan ketik `LANJUT` di terminal. `--yes` tersedia bila konfirmasi diberikan lewat opsi CLI.
-- Tambahkan `--terapkan` dengan kredensial Supabase dan R2 yang disediakan ke lingkungan proses. Skrip memeriksa setiap PNG dan PDF di bucket privat lewat tipe konten, panjang dan ETag dari PUT tunggal. PDF yang sama menghasilkan ID dokumen tetap. Ulangi dengan PDF, metadata dan versi renderer yang sama bila proses terputus. Bila objek di kunci yang sama berbeda, proses berhenti untuk pemeriksaan.
+- Tambahkan `--terapkan` dengan kredensial Supabase dan R2 yang disediakan ke lingkungan proses. Skrip memeriksa setiap PNG, WebP, JSON, dan PDF di bucket privat lewat tipe konten, panjang dan ETag dari PUT tunggal. PDF yang sama menghasilkan ID dokumen tetap. Ulangi dengan PDF, metadata dan versi renderer yang sama bila proses terputus. Bila objek di kunci yang sama berbeda, proses berhenti untuk pemeriksaan.
 - Setelah semua objek terkonfirmasi, skrip mencatat satu baris berstatus `nonaktif` dengan daftar dan jumlah halaman lengkap. Simpan ID yang dilaporkan. Setelah kode penampil terpasang, PM mengaktifkan dokumen melalui pengelola Investment Gallery, yang juga menginvalifikasi cache publik. Periksa sampul dan halaman terakhir dari katalog publik.
+
+### Melengkapi varian dokumen lama
+
+```sh
+bun --no-env-file --no-install run scripts/lengkapi-varian-web-investasi.ts --doc-id "$DOC_ID" --pdf "$PDF_LOKAL"
+```
+
+- Gunakan PDF sumber lokal dengan isi, urutan, dan rotasi yang sama seperti PNG yang sudah tersimpan. Backfill memeriksa jumlah halaman sebelum menulis tautan dan menerima PDF lokal di atas 50 MiB. R2 hanya dibaca untuk PNG halaman dan keberadaan varian.
+- Dry-run bawaan membaca metadata dokumen dan memeriksa keberadaan varian. Skrip mencetak host Supabase dan R2 serta ringkasan jumlah aset. Pakai variabel lingkungan proses yang sama seperti jalur terbit offline.
+- Tambahkan `--terapkan` untuk membuat hingga tiga varian sekaligus. Objek yang sudah ada dilewati. Tambahkan `--paksa` untuk menulis ulang varian dan tautan. Jika ada halaman gagal, ringkasan mencantumkan nomornya dan penulisan tautan baru ditunda sampai percobaan berikutnya.
+- `halaman_gambar` terus menyimpan path PNG. WebP tersimpan sebagai `web-<n>.webp` di direktori PNG yang sama, dengan lebar maksimal 1920 piksel dan rasio asli. Tautan tersimpan di `investment-docs/pages/<id>/<id>/links.json` dalam bucket privat.
 
 ## Alur pengunjung
 
@@ -82,11 +93,15 @@ Jalur browser menerima PDF 1–50 halaman. Untuk PDF 51–200 halaman, PM dapat 
 | `/api/admin/ipro/[id]/gambar` | POST | Tambah gambar (`maxDuration = 30`, sharp). |
 | `/api/admin/ipro/[id]/gambar/[gambarId]` | PATCH, DELETE | Ubah atau hapus gambar. |
 | `/api/investment-docs` | POST | Daftarkan PDF yang sudah diunggah, status `diproses`. |
-| `/api/investment-docs/[id]/render` | POST | Render batch halaman PNG (`maxDuration = 60`). |
+| `/api/investment-docs/[id]/render` | POST | Render PNG dan WebP per batch serta simpan tautan sebelum aktivasi (`maxDuration = 60`). |
+| `/api/investment-docs/page-image` | GET | Halaman 1–200 dari dokumen aktif. Membaca basis WebP dengan fallback PNG dan mengirim WebP ber-watermark dengan `no-store`. Kuota 90/menit/IP untuk halaman dan 120/menit/IP untuk sampul. |
+| `/api/investment-docs/links?doc_id=<uuid>` | GET | Tautan internal dan URL HTTP(S) dari dokumen aktif. Satu pembacaan baris dan satu pembacaan R2 pada cache miss. Kuota 60/menit/IP. |
 | `/api/investment-docs/[id]` | DELETE | Hapus dokumen (menolak lease render yang masih aktif). |
 | `/api/storage/presign`, `/api/storage/konfirmasi` | POST | Area baru `ipro-mentah`, `ipro-gambar`; `investment-docs` kini boleh untuk petugas modul `investasi`. |
 
 Route multipart lama `POST /api/investment-docs/upload` sudah dihapus. Galat memakai bentuk `{ error: { code, message }, request_id }`; pemeta kode ke HTTP ada di `src/lib/investasi/http.ts`.
+
+Endpoint tautan mengembalikan `{ versi: 1, tautan: [...] }` dengan posisi `x, y, w, h` berupa pecahan dari sudut kiri atas halaman `hal` dan tujuan `ke` (halaman 1-based) atau `url`. Berkas yang belum tersedia menghasilkan daftar kosong. Respons 200 dapat disimpan di cache publik selama lima menit, termasuk saat status dokumen berubah selama masa cache. Origin mengembalikan 404 untuk dokumen nonaktif atau hilang, 400 untuk UUID tidak valid, 429 saat melewati kuota, dan 500 untuk berkas rusak atau galat layanan.
 
 ## Keamanan dan privasi
 
@@ -99,7 +114,7 @@ Route multipart lama `POST /api/investment-docs/upload` sudah dihapus. Galat mem
 ## Hal belum pasti dan backlog
 
 1. `bersihkanRawLama` di `src/app/api/investment-docs/_logika/unggahan.ts` belum punya pemanggil dari aplikasi. Sapu manual objek mentah R2 yatim lebih dari 24 jam sekarang lewat skrip `scripts/bersihkan-raw-investasi/bersihkan-raw-investasi.mjs` (dry-run bawaan; `--hapus` menghapus; hanya awalan `raw/` berpola sah; `doppler run --project lmh --config prd -- node ...`). Pembersih terjadwal belum ada (keputusan pemilik 2026-11-21: skrip manual).
-2. PNG yatim mungkin tertinggal bila render ber-lease basi menulis sesudah DELETE selesai (risiko kecil).
+2. Aset halaman yatim mungkin tertinggal bila render ber-lease basi menulis sesudah DELETE selesai (risiko kecil).
 3. `CopyObject`/ETag R2 yang nyata dan kinerja render PDF besar di Vercel belum diuji; baru tiruan dan lokal.
 4. Kontensi PostgreSQL nyata belum diuji; PGlite hanya satu koneksi, jadi hanya membuktikan transaksi dan urutan, bukan kunci antarsesi.
 5. Realtime Kotak Masuk tidak dipasang: `investasi_lead` belum ada di publikasi realtime, jadi daftar dimuat ulang manual.

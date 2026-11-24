@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { kunciObjek } from '@/lib/storage/area';
 import { getObjectBytes } from '@/lib/storage/r2';
+import { BATAS_VARIAN_WEB, pathVarianWeb } from '@/lib/investasi/aset-halaman';
+import { buatPembatasLajuDokumen, ipPeminta } from '@/lib/investasi/laju-dokumen';
 import { unstable_cache } from 'next/cache';
 import { jumlahHalamanSiapBaca, MAKS_HALAMAN_TERSAJI } from '@/lib/investasi/dokumen';
 import { capWaktuWIB, nowServer } from '@/lib/time';
 import { z } from 'zod';
 import crypto from 'node:crypto';
-import { isIPv6 } from 'node:net';
 import sharp from 'sharp';
 export const maxDuration = 30;
 
@@ -17,17 +18,9 @@ const querySchema = z.object({
   varian: z.literal('sampul').optional(),
 }).refine(q => !q.varian || q.page === 1);
 
-// Per-IP rate limit (in-memory, best-effort per instance) dicek PERTAMA, sebelum auth dan query DB,
-// supaya permintaan berlebih tidak memicu kerja mahal. Belum ada lapisan lintas-instance di endpoint ini.
-const RATE_LIMIT_MAX = 30;
-const RATE_LIMIT_SAMPUL = 120;
-const RATE_LIMIT_WINDOW_MS = 60_000;
-const RATE_BUCKET_MAX_ENTRIES = 4096;
-type EmberLaju = { windowStart: number; count: number };
-const rateBuckets = {
-  halaman: new Map<string, EmberLaju>(),
-  sampul: new Map<string, EmberLaju>(),
-};
+// Kuota dipisah agar pramuat halaman dan kisi galeri tidak saling memakai jatah.
+const bolehMuatHalaman = buatPembatasLajuDokumen(90);
+const bolehMuatSampul = buatPembatasLajuDokumen(120);
 
 // In-memory watermark cache keyed per page path+subject+minute. Bounded with
 // oldest-first eviction; responses still carry Cache-Control: no-store.
@@ -54,54 +47,6 @@ function cacheSet(key: string, value: Buffer): void {
     if (oldest !== undefined) watermarkCache.delete(oldest);
   }
   watermarkCache.set(key, value);
-}
-
-function checkIpRate(ipHash: string, sampul: boolean): boolean {
-  const now = nowServer().getTime();
-  const buckets = sampul ? rateBuckets.sampul : rateBuckets.halaman;
-  const bucket = buckets.get(ipHash);
-  if (bucket && now - bucket.windowStart < RATE_LIMIT_WINDOW_MS) {
-    const batas = sampul ? RATE_LIMIT_SAMPUL : RATE_LIMIT_MAX;
-    if (bucket.count >= batas) return false;
-    bucket.count += 1;
-    return true;
-  }
-
-  // Sisipkan ulang ember yang diperbarui agar urutan peta mengikuti awal jendela.
-  if (bucket) buckets.delete(ipHash);
-  if (buckets.size >= RATE_BUCKET_MAX_ENTRIES) {
-    const terlama = buckets.keys().next().value;
-    if (terlama !== undefined) buckets.delete(terlama);
-  }
-  buckets.set(ipHash, { windowStart: now, count: 1 });
-  return true;
-}
-
-function prefiksIp(ip: string): string {
-  if (!isIPv6(ip)) return ip;
-
-  // URL menyeragamkan huruf, nol awal, dan akhiran IPv4 sebelum pemadatan dibuka.
-  const tanpaZona = ip.split('%', 1)[0] ?? ip;
-  const alamat = new URL(`http://[${tanpaZona}]`).hostname.slice(1, -1);
-  const [awal, akhir] = alamat.split('::');
-  const kiri = awal ? awal.split(':') : [];
-  const kanan = akhir ? akhir.split(':') : [];
-  const bagian = akhir === undefined
-    ? kiri
-    : [...kiri, ...Array<string>(8 - kiri.length - kanan.length).fill('0'), ...kanan];
-  return `${bagian.slice(0, 4).join(':')}::/64`;
-}
-
-function hashIp(ip: string): string {
-  return crypto.createHash('sha256').update(prefiksIp(ip)).digest('hex');
-}
-
-function getClientIp(request: NextRequest): string {
-  const forwarded = request.headers.get('x-forwarded-for');
-  if (forwarded) return forwarded.split(',')[0]!.trim();
-  const realIp = request.headers.get('x-real-ip');
-  if (realIp) return realIp.trim();
-  return '0.0.0.0';
 }
 
 // INV-04: tentukan identitas watermark.
@@ -179,9 +124,15 @@ const muatDasarSampul = unstable_cache(async (pagePath: string) => {
   return kecil.toString('base64');
 }, ['investment-docs-sampul-480-v1'], { revalidate: 86_400 });
 
-function responsGambar(bytes: Buffer, sampul: boolean): Response {
+async function muatDasarHalaman(pathPng: string) {
+  const web = pathVarianWeb(pathPng);
+  const varian = web ? await getObjectBytes('private', kunciObjek('investment-docs', web)) : null;
+  return varian ?? await getObjectBytes('private', kunciObjek('investment-docs', pathPng));
+}
+
+function responsGambar(bytes: Buffer): Response {
   return new Response(new Uint8Array(bytes), {
-    headers: { 'Content-Type': sampul ? 'image/webp' : 'image/png', 'Cache-Control': 'no-store' },
+    headers: { 'Content-Type': 'image/webp', 'Cache-Control': 'no-store' },
   });
 }
 
@@ -203,9 +154,8 @@ export async function GET(request: NextRequest) {
   const sampul = varian === 'sampul';
 
   // Rate limit IP lokal dulu (murah), sebelum auth dan query.
-  const ip = getClientIp(request);
-  const ipHash = hashIp(ip);
-  if (!checkIpRate(ipHash, sampul)) {
+  const ip = ipPeminta(request);
+  if (!(sampul ? bolehMuatSampul(ip) : bolehMuatHalaman(ip))) {
     return NextResponse.json(
       { error: 'Terlalu banyak permintaan. Coba lagi nanti.' },
       { status: 429 },
@@ -239,21 +189,25 @@ export async function GET(request: NextRequest) {
   const { subject, label } = await resolveWatermarkIdentity(supabase, sessionSeed);
   const key = cacheKey(pagePath, subject);
   const cached = sampul ? undefined : cacheGet(key);
-  if (cached) return responsGambar(cached, sampul);
+  if (cached) return responsGambar(cached);
 
   try {
     const bytes = sampul
       ? Buffer.from(await muatDasarSampul(pagePath), 'base64')
-      : await getObjectBytes('private', kunciObjek('investment-docs', pagePath));
+      : await muatDasarHalaman(pagePath);
     if (!bytes) throw new Error('Gambar halaman tidak tersedia');
 
     const gambar = sharp(Buffer.from(bytes));
-    const metadata = await gambar.metadata();
-    const overlay = await buildWatermarkOverlay(metadata.width ?? 800, metadata.height ?? 1100, `${label} | ${capWaktuWIB()}`);
+    const { width = 800, height = 1100 } = await gambar.metadata();
+    const skala = sampul ? 1 : Math.min(1, BATAS_VARIAN_WEB.width / width, BATAS_VARIAN_WEB.height / height);
+    const lebar = Math.max(1, Math.round(width * skala));
+    const tinggi = Math.max(1, Math.round(height * skala));
+    if (skala < 1) gambar.resize({ width: lebar, height: tinggi, fit: 'fill' });
+    const overlay = await buildWatermarkOverlay(lebar, tinggi, `${label} | ${capWaktuWIB()}`);
     const komposit = gambar.composite([{ input: overlay, gravity: 'center' }]);
-    const watermarked = await (sampul ? komposit.webp({ quality: 82 }) : komposit.png()).toBuffer();
+    const watermarked = await komposit.webp(sampul ? { quality: 82 } : { quality: 80, effort: 1 }).toBuffer();
     if (!sampul) cacheSet(key, watermarked);
-    return responsGambar(watermarked, sampul);
+    return responsGambar(watermarked);
   } catch {
     return NextResponse.json({ error: 'Failed to fetch page image' }, { status: 500 });
   }

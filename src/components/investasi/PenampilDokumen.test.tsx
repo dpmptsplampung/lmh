@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import PenampilDokumen from './PenampilDokumen';
 
-afterEach(cleanup);
+// Penampil mengambil tautan dan memramuat tetangga lewat fetch; di sini semuanya dijawab kosong/gagal.
+beforeEach(() => { vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 404 }))); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const DOK = '50000000-0000-4000-8000-000000000001';
 
 describe('PenampilDokumen', () => {

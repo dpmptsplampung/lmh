@@ -13,9 +13,11 @@ describe('dokumen PDF offline', () => {
     expect(idDokumenOffline(Buffer.from('%PDF-1.8'))).not.toBe(id);
     expect(kunciDokumenOffline(id, 164)).toEqual({
       sumber: { path: `src/${id}.pdf`, kunci: `investment-docs/src/${id}.pdf` },
+      tautan: { path: `pages/${id}/${id}/links.json`, kunci: `investment-docs/pages/${id}/${id}/links.json` },
       halaman: Array.from({ length: 164 }, (_, i) => {
         const path = `pages/${id}/${id}/page-${i + 1}.png`;
-        return { path, kunci: `investment-docs/${path}` };
+        const pathWeb = `pages/${id}/${id}/web-${i + 1}.webp`;
+        return { path, kunci: `investment-docs/${path}`, web: { path: pathWeb, kunci: `investment-docs/${pathWeb}` } };
       }),
     });
   });

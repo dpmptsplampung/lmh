@@ -4,7 +4,13 @@ vi.mock('server-only', () => ({}));
 vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn() }));
 vi.mock('next/cache', () => ({ revalidateTag: vi.fn() }));
 vi.mock('@/lib/storage/r2', () => ({ putObject: vi.fn(async () => {}), deleteObjects: vi.fn(async () => {}) }));
-vi.mock('../../_logika/pdf', () => ({ bacaPdf: vi.fn(async () => new Uint8Array()), bukaPdf: vi.fn(async () => ({ doc: { numPages: 10 }, tutup: vi.fn() })), renderHalaman: vi.fn(async () => Buffer.from('png')) }));
+vi.mock('../../_logika/pdf', () => ({
+  bacaPdf: vi.fn(async () => new Uint8Array()),
+  bukaPdf: vi.fn(async () => ({ doc: { numPages: 10 }, tutup: vi.fn() })),
+  renderHalaman: vi.fn(async () => Buffer.from('png')),
+  buatVarianWeb: vi.fn(async () => Buffer.from('webp')),
+}));
+vi.mock('../../_logika/ekstraksi-tautan', () => ({ ekstrakTautan: vi.fn(async () => ({ versi: 1, tautan: [] })) }));
 import { createClient } from '@/lib/supabase/server';
 import { putObject, deleteObjects } from '@/lib/storage/r2';
 import { revalidateTag } from 'next/cache';
@@ -14,20 +20,20 @@ import { POST } from './route';
 let t: ReturnType<typeof tiruan>;
 beforeEach(() => { vi.clearAllMocks(); t = tiruan(); vi.mocked(createClient).mockResolvedValue(t.sb); });
 describe('render PDF bertahap', () => {
-  it.each(['error', 'nol'])('PUT berhasil, checkpoint %s: PNG dibersihkan', async mode => {
+  it.each(['error', 'nol'])('PUT berhasil, checkpoint %s: kedua gambar dibersihkan', async mode => {
     vi.mocked(putObject).mockImplementationOnce(async () => {
       if (mode === 'error') t.state.updateError = { code: 'XX000' };
       else t.state.nol = true;
     });
     expect((await POST(request({ mulai: 1 }), context)).status).toBe(mode === 'error' ? 500 : 409);
     const path = vi.mocked(putObject).mock.calls[0][1];
-    expect(deleteObjects).toHaveBeenCalledWith('private', [path]);
+    expect(deleteObjects).toHaveBeenCalledWith('private', [path, path.replace('page-1.png', 'web-1.webp')]);
     expect(t.state.rows[0].halaman_selesai).toBe(0);
   });
-  it('baris hilang setelah PUT: PNG yang baru diunggah tetap dibersihkan', async () => {
+  it('baris hilang setelah PUT: kedua gambar tetap dibersihkan', async () => {
     vi.mocked(putObject).mockImplementationOnce(async () => { t.state.rows = []; });
     expect((await POST(request({ mulai: 1 }), context)).status).toBe(409);
-    expect(deleteObjects).toHaveBeenCalledWith('private', [vi.mocked(putObject).mock.calls[0][1]]);
+    expect(deleteObjects).toHaveBeenCalledWith('private', vi.mocked(putObject).mock.calls.map(([, path]) => path));
   });
   it('autentikasi dan modul diperiksa sebelum storage', async () => {
     t.state.user = null; expect((await POST(request({ mulai: 1 }), context)).status).toBe(401);
@@ -65,7 +71,11 @@ describe('render PDF bertahap', () => {
     const b = await POST(request({ mulai: 9 }), context);
     expect(await b.json()).toEqual({ halaman_selesai: 10, jumlah_halaman: 10, selesai: true });
     expect(t.state.rows[0]).toMatchObject({ status: 'aktif', halaman_selesai: 10, diproses_pada: null });
-    expect(putObject).toHaveBeenLastCalledWith('private', expect.stringMatching(new RegExp(`^investment-docs/pages/${ID}/[0-9a-f-]{36}/page-10.png$`)), expect.any(Buffer), 'image/png');
+    const png = (t.state.rows[0].halaman_gambar as string[])[9];
+    expect(png).toMatch(new RegExp(`^pages/${ID}/[0-9a-f-]{36}/page-10\\.png$`));
+    expect(putObject).toHaveBeenCalledWith('private', `investment-docs/${png}`, Buffer.from('png'), 'image/png');
+    expect(putObject).toHaveBeenCalledWith('private', `investment-docs/${png.replace('page-10.png', 'web-10.webp')}`, Buffer.from('webp'), 'image/webp');
+    expect(putObject).toHaveBeenLastCalledWith('private', `investment-docs/pages/${ID}/${ID}/links.json`, Buffer.from('{"versi":1,"tautan":[]}'), 'application/json');
     expect(revalidateTag).toHaveBeenCalledWith('publik-investasi', { expire: 0 });
     expect((await POST(request({ mulai: 9 }), context)).status).toBe(409);
     expect((await POST(request({ mulai: 11 }), context)).status).toBe(200);
@@ -83,13 +93,25 @@ describe('render PDF bertahap', () => {
     expect((await POST(request({ mulai: 1 }), context)).status).toBe(200);
   });
   it('kegagalan storage mempertahankan kemajuan; retry mulai dari halaman terakhir', async () => {
-    vi.mocked(putObject).mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('personal@example.invalid'));
+    vi.mocked(putObject).mockResolvedValueOnce(undefined).mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('personal@example.invalid'));
     const r = await POST(request({ mulai: 1 }), context);
     expect(r.status).toBe(500); expect(JSON.stringify(await r.json())).not.toContain('personal@');
     expect(t.state.rows[0]).toMatchObject({ status: 'gagal', halaman_selesai: 1, diproses_pada: null });
     expect(String(t.state.rows[0].galat)).not.toContain('personal@');
     expect((await POST(request({ mulai: 2 }), context)).status).toBe(200);
     expect(t.state.rows[0].halaman_selesai).toBe(9);
+  });
+  it('dapat mengulang halaman terakhir bila PUT tautan gagal sebelum terbit', async () => {
+    expect((await POST(request({ mulai: 1 }), context)).status).toBe(200);
+    vi.mocked(putObject).mockImplementation(async (_bucket, key) => {
+      if (key.endsWith('/links.json')) throw new Error('R2 gagal');
+    });
+    expect((await POST(request({ mulai: 9 }), context)).status).toBe(500);
+    expect(t.state.rows[0]).toMatchObject({ status: 'gagal', halaman_selesai: 9 });
+    vi.mocked(putObject).mockResolvedValue(undefined);
+    expect((await POST(request({ mulai: 10 }), context)).status).toBe(200);
+    expect(t.state.rows[0]).toMatchObject({ status: 'aktif', halaman_selesai: 10 });
   });
   it('0 baris CAS 409 dan galat DB 500 tanpa memulai render', async () => {
     t.state.nol = true;

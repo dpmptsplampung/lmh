@@ -8,7 +8,7 @@ vi.mock('pdfjs-dist/legacy/build/pdf.mjs', () => ({ getDocument: () => ({
 }) }));
 vi.mock('@/lib/observability/logger', () => ({ logServerEvent: vi.fn() }));
 import { logServerEvent } from '@/lib/observability/logger';
-import { bukaPdf, renderHalaman } from './pdf';
+import { bukaPdf, MAKS_BYTE, renderHalaman } from './pdf';
 const bytes = (s: string) => new TextEncoder().encode(s);
 describe('batas PDF investasi', () => {
   beforeEach(() => vi.clearAllMocks());
@@ -36,6 +36,15 @@ describe('batas PDF investasi', () => {
     h.pages = halaman;
     const pdf = await bukaPdf(bytes('%PDF-1.4'), 'offline');
     expect(pdf.doc.numPages).toBe(halaman);
+    await pdf.tutup();
+  });
+  it('membuka PDF di atas batas unggah lewat jalur tautan lokal', async () => {
+    h.pages = 164;
+    const besar = new Uint8Array(MAKS_BYTE + 1);
+    besar.set(bytes('%PDF-1.4'));
+    await expect(bukaPdf(besar, 'offline')).rejects.toThrow('INPUT_TIDAK_VALID');
+    const pdf = await bukaPdf(besar, 'tautan-lokal');
+    expect(pdf.doc.numPages).toBe(164);
     await pdf.tutup();
   });
   it.each([0, 201])('menolak %i halaman melalui jalur offline', async (halaman) => {

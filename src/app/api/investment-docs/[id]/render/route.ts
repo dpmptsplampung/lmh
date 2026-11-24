@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { pathTautan, pathVarianWeb } from '@/lib/investasi/aset-halaman';
 import { invalidasiInvestasiPublik } from '@/lib/investasi/cache-server';
 import { layaniKelola, type IdContext } from '@/lib/investasi/akses-server';
 import { bacaJson, galat, galatRpc, headersPrivat } from '@/lib/investasi/http';
@@ -7,7 +8,8 @@ import { nowServer } from '@/lib/time';
 import { kunciObjek } from '@/lib/storage/area';
 import { hapusAman, LEASE_MS, sumberFinal } from '../../_logika/unggahan';
 import { putObject } from '@/lib/storage/r2';
-import { bacaPdf, bukaPdf, renderHalaman } from '../../_logika/pdf';
+import { bacaPdf, bukaPdf, buatVarianWeb, renderHalaman } from '../../_logika/pdf';
+import { ekstrakTautan } from '../../_logika/ekstraksi-tautan';
 
 export const maxDuration = 60;
 function asalMutasi(error: unknown): never {
@@ -47,25 +49,37 @@ export async function POST(request: Request, context: IdContext) {
     if (!claimed.length) return galat('KONFLIK_VERSI', requestId);
     let pdf: Awaited<ReturnType<typeof bukaPdf>> | undefined;
     let selesaiHalaman = doc.halaman_selesai;
-    let belumTercatat: string | undefined;
+    let belumTercatat: string[] = [];
     let terbit = false;
     const batchId = crypto.randomUUID();
     const gambar: string[] = [...(doc.halaman_gambar ?? [])];
     try {
       pdf = await bukaPdf(await bacaPdf(kunciObjek('investment-docs', sumberFinal(id))));
-      if (pdf.doc.numPages !== doc.jumlah_halaman) throw new Error('INPUT_TIDAK_VALID');
+      const dokumen = pdf.doc;
+      if (dokumen.numPages !== doc.jumlah_halaman) throw new Error('INPUT_TIDAK_VALID');
+      const simpanTautan = async () => {
+        const tautan = await ekstrakTautan(dokumen);
+        await putObject('private', kunciObjek('investment-docs', pathTautan(id)), Buffer.from(JSON.stringify(tautan)), 'application/json');
+      };
+      if (selesaiHalaman === doc.jumlah_halaman) await simpanTautan();
       const akhir = Math.min(selesaiHalaman + 8, doc.jumlah_halaman);
       for (let n = selesaiHalaman + 1; n <= akhir; n++) {
         if (n > parsed.data.mulai && nowServer().getTime() - mulaiWaktu.getTime() > 45_000) break;
-        const png = await renderHalaman(pdf.doc, n);
+        const png = await renderHalaman(dokumen, n);
+        const web = await buatVarianWeb(png);
         const path = `pages/${id}/${batchId}/page-${n}.png`;
-        belumTercatat = kunciObjek('investment-docs', path);
-        await putObject('private', kunciObjek('investment-docs', path), png, 'image/png');
+        const kunciPng = kunciObjek('investment-docs', path);
+        const kunciWeb = kunciObjek('investment-docs', pathVarianWeb(path)!);
+        belumTercatat = [kunciPng, kunciWeb];
+        await putObject('private', kunciPng, png, 'image/png');
+        await putObject('private', kunciWeb, web, 'image/webp');
+        // Pertahankan checkpoint terakhir agar seluruh aset bisa dicoba ulang jika penulisan tautan gagal.
+        if (n === doc.jumlah_halaman) await simpanTautan();
         gambar[n - 1] = path;
         const hasil = await mutasiBolehKosong(client.from('investment_documents').update({ halaman_gambar: gambar, halaman_selesai: n })
           .eq('id', id).eq('diproses_pada', lease).eq('halaman_selesai', n - 1).select('id').maybeSingle()).catch(asalMutasi);
         if (!hasil.length) throw new Error('KONFLIK_VERSI');
-        belumTercatat = undefined;
+        belumTercatat = [];
         selesaiHalaman = n;
       }
       const selesai = selesaiHalaman === doc.jumlah_halaman;
@@ -76,7 +90,7 @@ export async function POST(request: Request, context: IdContext) {
       terbit = selesai;
       return jawaban(selesaiHalaman, selesai);
     } catch (e) {
-      if (belumTercatat) await hapusAman([belumTercatat], id);
+      if (belumTercatat.length) await hapusAman(belumTercatat, id);
       // Pesan baku: parser PDF dapat membawa teks dokumen/PII di dalam exception.
       const input = e instanceof Error && e.message === 'INPUT_TIDAK_VALID';
       await mutasiBolehKosong(client.from('investment_documents').update({ status: 'gagal', diproses_pada: null,
